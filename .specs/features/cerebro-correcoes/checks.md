@@ -13,7 +13,7 @@ proofs use `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwri
 
 ### S1 - uma só verdade sobre links · ~9 files · ~150 KB · ~38k
 
-**C1** - A note A holding `[[B]]` with B an indexed Markdown file gives `GET /api/memory/graph` exactly one edge `{source: A.id, target: B.id, kind: "wikilink"}` while both are nodes (AC 1)
+**C1** - A note A holding `[[B]]` with B an indexed Markdown file gives `GET /api/memory/graph` exactly one edge `{source: A, target: B, kind: "wikilink"}` while both are nodes; at its own layer `linkEdges` gives the resolved wikilink, no edge for an unresolved one and none to a file the `allow` refuses (AC 1)
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C1 "`
 
 **C2** - A holding `[texto](./b.md#parte)` gives one edge `kind: "markdown-link"` A→B; the same link written twice in A still gives one edge (AC 2)
@@ -51,10 +51,10 @@ Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C12 "`
 
 ### S2 - a política em toda leitura · ~4 files · ~45 KB · ~12k
 
-**C13** - With a user exclude added after the pass (no reindex), and with a stale row under the home's `config/`, `GET /api/memory/graph` returns neither as a node, no edge touching them, and a `totalFiles` that does not count them (AC 13)
+**C13** - With a user exclude added after the pass (no reindex), a stale row under the home's `config/`, one under its `logs/` and one with a secret name (`*.pem`), `GET /api/memory/graph` returns none of them as a node, no edge touching them, and a `totalFiles` that does not count them (AC 13)
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C13 "`
 
-**C14** - `GET /api/memory/related` answers `404 not_found` for an excluded row's id and for an id with no row; for an allowed row no file in the answer is an excluded one (AC 14)
+**C14** - `GET /api/memory/related` answers `404 not_found` for an excluded row's id and for an id with no row; for an allowed row no file in the answer is an excluded one; at its own layer `relatedFiles` answers `null` for the two refused ids (AC 14)
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C14 "`
 
 **C15** - With 30 matching files of which the 20 best by BM25 are excluded, `GET /api/memory/search?q=…&limit=8` returns 8 allowed rows, in the order the unfiltered matches had them; with 5 allowed matches it returns 5 (AC 15)
@@ -65,22 +65,22 @@ Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C16 "`
 
 ### S3 - uma frase acha notas · ~4 files · ~80 KB · ~20k
 
-**C17** - The query "o que decidimos sobre o orçamento" searches only the words `extractKeywords` keeps, and returns a note holding "orçamento" and not "decidimos" (AC 17)
+**C17** - The query "o que decidimos sobre o orçamento17" searches only the words `extractKeywords` keeps: a note made only of its stopwords is not returned, the note holding "orçamento17" and not "decidimos" is (first, at the core's own layer), and the strict query finds nothing (AC 17)
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C17 "`
 
-**C18** - With notes holding all kept words, some, and one, every note holding all comes before any holding only some (AC 18)
+**C18** - With notes holding all kept words, two and one, the answer is exactly the note with all words first and then the other two, each once, through the route and at the core's own layer, in the order all, more, fewer (AC 18)
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C18 "`
 
-**C19** - With no note holding all kept words, notes holding 3, 2 and 1 of them come in that order, and two holding the same number come by BM25 (AC 19)
+**C19** - With no note holding all kept words, notes holding 3, 2 and 1 of them come in that order, and two holding the same number come by BM25, through the route and at the core's own layer (AC 19)
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C19 "`
 
 **C20** - On the fixed corpus (`tests/fixtures/semantic-corpus.json`) with the semantic search off, `GET /api/memory/search` puts the expected note in the first three for at least 11 of the 12 questions (AC 20)
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C20 "`
 
-**C21** - A query made only of stopwords ("o que é") searches the typed words strictly; a query that is only punctuation ("?!") answers the empty-query listing (AC 21)
+**C21** - A query made only of stopwords ("sobre entre") searches the typed words strictly: the note holding both is returned and the one holding only "sobre" is not; a query that is only punctuation ("?!") answers the empty-query listing (AC 21)
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C21 "`
 
-**C22** - No answer of `GET /api/memory/search` holds the same file id twice, across the two queries and the semantic fusion (`mode=auto` with the `hash` provider on); the other modes still behave: `mode=semantic` answers `409 semantic_disabled` with the semantic search off and only `via: "semantic"` rows with it on (AC 22, `cerebro-v2` AC 43 unchanged)
+**C22** - No answer holds the same file id twice: a file that holds every word (a match of both queries) is listed once through the route and at the core's own layer, and `mode=text` and `mode=auto` with the `hash` provider on return unique ids; `mode=semantic` answers `409 semantic_disabled` with the semantic search off and only `via: "semantic"` rows with it on (AC 22, `cerebro-v2` AC 43 unchanged)
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C22 "`
 
 **C31** - The C46 of `cerebro-v2`, amended by AD-037: the strict query (`strictWordsSearch`) finds 5 of the 12 questions and `mode=text` finds at least 11, the hybrid still 11 (AD-037, AC 20)
@@ -88,22 +88,23 @@ Proof: `npx vitest run tests/memory.semantic.test.ts -t "C46 on the fixed corpus
 
 ### S4 - erro de busca é erro · ~6 files · ~140 KB · ~36k
 
-**C23** - With `/api/v1/memory/search` answering `500` (and, in a second run, aborted as a network failure), the Second Brain screen (moldura) and the Núcleo brain scene each show "Search failed." / "A busca falhou." with an icon and a "Try again" / "Tentar de novo" button in the place of the hits, and no hit of the earlier successful query (AC 23)
+**C23** - With `/api/v1/memory/search` answering `500`, `403`, or aborted as a network failure, the Second Brain screen (moldura) and the Núcleo brain scene each show "Search failed." / "A busca falhou." with an icon and a "Try again" / "Tentar de novo" button in the place of the hits (right after the search box in the frame, inside the results in the Núcleo; no hit list), the message before the button, and no hit of the earlier successful query (AC 23)
 Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts brain-errors.spec.ts -g "C23 "`
 
 **C24** - The shared search hook, after a failed request, on "Tentar de novo" repeats the request for the current text once; when it succeeds the error is cleared and the new hits are returned (AC 24)
 Proof: `npm run test -w apps/command-centre -- src/brain/useBrainSearch.test.tsx -t "C24 "`
 
-**C25** - With `/api/v1/memory/related` failing, the Núcleo brain scene shows "Could not load related files." / "Não foi possível carregar os relacionados." with "Try again" in place of the list, and none of the previously selected node's related files (AC 25)
+**C25** - With `/api/v1/memory/related` failing, the Núcleo reader shows "Could not load related files." / "Não foi possível carregar os relacionados." with "Try again" in a section of its rail, and the "Close, but not linked" list is not shown; on the component, the list shows with the files loaded and gives way to the message (before the button) when the request failed, and "Try again" calls the retry once (AC 25)
 Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts brain-errors.spec.ts -g "C25 "`
+Proof: `npm run test -w apps/command-centre -- src/nucleo/scenes/BrainSceneReader.related.test.tsx -t "C25 "`
 
-**C26** - The two error states have computed font size ≥ 12px, `role="alert"`, and axe (WCAG 2 A/AA) reports no serious or critical violation on the whole page of both screens in the dark and the light theme; the new CSS uses only tokens (stylelint) (AC 26)
+**C26** - Both error states (the failed search on both screens, the failed related files of the Núcleo reader) have the message at 13px or more (running text, `design-system/design.md`) and the button label at 12px or more, `role="alert"`, and axe (WCAG 2 A/AA) reports no serious or critical violation on the whole page in the dark and the light theme; the new CSS uses only tokens (stylelint) (AC 26)
 Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts brain-errors.spec.ts -g "C26 "`
 Proof: `npx stylelint --config stylelint.config.mjs "apps/command-centre/src/brain/*.css" "apps/command-centre/src/nucleo/scenes/*.css"`
 
 ### S5 - o mapa acompanha o índice · ~5 files · ~60 KB · ~15k
 
-**C27** - `POST /api/memory/index` after a note changed rewrites `memory/ROUTER.md` with today's journal block before `index.finished` is announced; a pass started by `FsWatchSentinel.flush` does the same; a pass with `added + updated + removed = 0` writes no router file (AC 27)
+**C27** - `POST /api/memory/index` after a note changed rewrites `memory/ROUTER.md` with today's journal block before `index.finished` is announced; a pass started by `FsWatchSentinel.flush` does the same, and so does a pass run by the worker (the installed service's path, `index.started` with `mode: "worker"`); the passes settle within three and a pass with no change writes no router file; on a home with no routers a pass creates none (AC 27, as amended by AD-038(b))
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C27 "`
 
 **C28** - `generateRouters` called twice with nothing changed writes nothing the second time: `ROUTER.md` and each `areas/*.md` keep their `mtimeMs` and inode (AC 28)
@@ -139,14 +140,14 @@ Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C34 "`
 | readers moved to `note_links` (4)          | graph C1 · related C7 · hygiene orphans C6 · recall pointers C8                                  | -        |
 | link places ignored (3)                    | ``` fence C3 · ~~~ fence C3 · inline code C3                                                     | -        |
 | link lifecycle (3)                         | rename C5 · create C5 · ambiguous key C4                                                         | -        |
-| policy exclusions on read (3)              | user exclude C13, C14, C15 · home `config/` C13 · secret name C16                                | -        |
+| policy exclusions on read (4)              | user exclude C13, C14, C15 · home `config/` C13 · home `logs/` C13 · secret name C13, C16        | -        |
 | reads filtered before the cut (2)          | text query C15 · empty query C16                                                                 | -        |
 | query branches (4)                         | all words C18 · some words C19 · stopwords only C21 · punctuation only C21                       | -        |
 | search modes (3)                           | `text` C20, C31 · `auto` C22 · `semantic` C22                                                    | -        |
-| search error kinds (2)                     | HTTP `500` C23 · network C23                                                                     | -        |
-| screens with the error state (2)           | moldura Second Brain C23, C26 · Núcleo brain scene C23, C25, C26                                 | -        |
+| search error kinds (3)                     | HTTP `5xx` C23 · HTTP `4xx` C23 · network C23                                                    | -        |
+| error states (3)                           | moldura search C23, C26 · Núcleo search C23, C26 · Núcleo related files C25, C26                 | -        |
 | themes for axe (2)                         | dark C26 · light C26                                                                             | -        |
-| router regeneration triggers (2)           | `POST /api/memory/index` C27 · `fsWatch` pass C27, C29                                           | -        |
+| router regeneration triggers (3)           | `POST /api/memory/index` C27 · `fsWatch` pass C27, C29 · worker pass C27                         | -        |
 | router write outcomes (3)                  | changed C27 · unchanged C28 · failed C30                                                         | -        |
 | doors (4)                                  | 1 C9, C10, C34 · 2 C1, C12 · 3 C17-C21, C31 · 4 C14, C32                                         | -        |
 | entities of Relations (1)                  | `note_links` C1, C9, C34                                                                         | -        |
@@ -174,7 +175,8 @@ Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C34 "`
 | Decides, not reached across a boundary (`generateRouters` write-if-changed, migration 22)   | one at its own layer                                  | one asserted case per row                                                                      |
 | Screens                                                                                     | one in a real browser per screen                      | each state the plan names, both themes for axe                                                 |
 
-Evidence:
+Evidence (own-layer proofs since round 1: `searchFiles` in C17, C18, C19, C21, C22; `linkEdges` in C1; `relatedFiles`
+in C14; the reader's guard in C25):
 
 - `core/src/memory/search.ts`: after the change, 4 query branches (all, some, stopwords only, nothing left) and the
   filter-before-cut loop -> decides
@@ -211,10 +213,16 @@ Evidence:
   longer list the routers themselves, because a router listed by mtime moved each time it was written and made the next
   pass write it again (found by C27); (c) the C45 example of `cerebro-v2` ("a file only the vectors found") changed from
   an English question to "ação" over the morphology corpus, because since AD-037 the words find a file that holds some
-  of them and porter joins English forms on both sides; the assertion is the same (AD-037 records it); (d) C26 counts
+  of them and porter joins English forms on both sides; the assertion is the same (AD-038(a), pending the owner); (d) C26 counts
   serious and critical violations, the convention of `tests/e2e/a11y.spec.ts`; (e) C29 runs with a 1 s debounce, the
   minimum the settings schema accepts; (f) two `core.memory` tests that read `file_links` directly assert the same claims
   over `linkEdges`, and three interface tests that used the removed `same-area` kind use `related`, `same-dir` or
   `wikilink` in its place with the same assertions
+- **Round 1 of the verification (FAIL, 10 gaps), fixed:** the duplicate and stopword mutants now die (C22 with a file in
+  both queries, C17 with a stopword-only note, C18 exact), C21 proves strictness, C25 is proven on the reader component
+  (the guard) and placed in the rail in the browser, C26 measures both error states at 13px for the message, C23 covers
+  `4xx` and the placement, C13 covers the home's `logs/` and a secret name, the new branches have own-layer proofs, C27
+  runs through the worker and on a fresh home, and the recall resolves wikilinks within its readable scope; AD-037 is back
+  to its approved text and the build amendments are AD-038
 - **Abandoned:** regenerating the routers from the route and the sentinel themselves (the plan's first `Flow` hop 6):
   the announcement `index.finished` is made inside the pass, so only a hook before it can keep AC 27

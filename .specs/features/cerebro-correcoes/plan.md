@@ -225,6 +225,16 @@ e ver o `mtime` igual.
 | collection arestas do grafo                          | grouping, naming, ordering, duplicates     | AC 1, AC 2, AC 4, AC 11                                                                         |
 | document `ROUTER.md`                                 | structure, what the reader does next       | existing - o conteúdo não muda; AC 27 decide quando é regravado                                 |
 
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+O texto aprovado acima fica como foi aprovado, exceto `Flow` e `Impact`, que se mantêm verdadeiros. O que mudou depois fica
+aqui, com a decisão (AD-038) e a pergunta ao dono (`.specs/STATE.md`, "Perguntas ao dono", cerebro-correcoes, 1).
+
+- **AC 27, roteadores que já existem.** Uma passada atualiza os roteadores só quando `memory/ROUTER.md` já existe; ela nunca os
+  cria numa home nova. Um roteador que existe mas não se lê é regenerado e a falha vai ao log (AC 30). Padrão: vale a emenda.
+- **AC 26, a mensagem a 13px.** O AC diz 12px no mínimo; a fonte que obriga (`design-system/design.md`) põe mensagens a 13px
+  (`--fs-3`) e deixa 12px para rótulos. O C26 afirma 13px para a mensagem e 12px para o rótulo do botão, o que cumpre os dois.
+
 ## Sources
 
 - `reports/Segundo cérebro para agentes.md`, roteiro R1 a R5 e R9 — o escopo desta feature.
