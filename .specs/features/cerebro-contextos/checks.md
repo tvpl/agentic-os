@@ -434,3 +434,20 @@ universal search (`useUniversalSearch`), the Second Brain's facets (`GET /api/me
   four); making the brief through `POST /api/memory/notes` (it cannot name `memory/notes/<id>/_resumo.md`); an Enter
   handler on the dialog's typed path (the form's submit adds the typed path instead, so no key listener is added);
   the Núcleo selector at the shell's gutter (it covered the spine's Settings module).
+
+- **Round 1 of the verification (FAIL), fixed** (`verification.md`, `fd91839`; fixes at `49474bc`, `4c0aa2f`,
+  `4fb8b0e`): no check, `Test policy` row or existing `Proof:` line was weakened or removed. (1) Own layer:
+  `tests/contexts.layer.test.ts` calls `contexts.ts` (each refused kind and the ok case, the three states, membership
+  equal/child/same-prefix sibling/by real path/case folding with `platform` injected), `Execution.startPrompt` and
+  `startSkill` (given inside, first `ok`, none `ok`, unknown, kept by a conversation) and the `RunManager`'s
+  `readDirs` order, named as extra proofs of C3, C7, C10, C17-C21 and C23. (2) C22 reworded to what its proof asserts;
+  the narrowing of AC 22 and door 7 is in `plan.md`, "Emendas depois da aprovação", owner question cerebro-contextos 1,
+  AD-040 marked pending it; the code is unchanged. (3) C48 (sync `409 context_unavailable`, a new behavioural test),
+  C49 (door 9, the existing test renamed with its id), C50 (`PUT /api/ui-preferences` `400`, the same). (4) C51, the
+  chip of a continued conversation. (5) C52 and C53, the two placements, in components and in the browser. (6) The
+  chevron, the "Add" button (Enter in the typed path adds it, through its own form, no key listener) and the
+  settings header's "New context…" are gone. (7) `contextPromptBlock` and `buildRunPrompt` at their own layer (C21).
+  Notes: C47 gains the raw `fs` read sweep; C3's secret case is a folder refused for its name. On the tree of
+  `4fb8b0e`: `npm run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0; `npx vitest run`
+  (131 files, 1752 passed, 1 skipped) and `npm run test -w apps/command-centre` (140 files, 1125) are green; each of
+  the 70 `Proof:` lines exits 0 and runs only its check's tests; `contexts.spec.ts` (9) and `a11y.spec.ts` pass.
