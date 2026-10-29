@@ -37,38 +37,48 @@ da execução e o bloqueio de edição do adaptador do Claude (exists), a creden
 (`RUN_API_READ_ROUTES`, exists), o indexador e as linhas de `files`, o leitor de front matter, `generateRouters`, o compilador de
 sincronização e o editor de notas do `cerebro-v2`; nenhuma segunda forma de dar pasta a um agente, nem de ler front matter.
 
-1. Pedido de execução → `RunManager` (exists) recebe `skillSlug: "organize-brain"` e a entrada `folder` (door 5); confere que a
-   pasta está dentro de uma das `settings.indexedFolders`, fora do que a política esconde, e que o provedor declara `protectsDirs`
-   (door 5); acrescenta a pasta a `readDirs` e a `protectedDirs`, ao lado de `memory/`.
+1. Pedido de execução (`POST /api/skills/:slug/run`, `mordomo run` e a ferramenta MCP `skills_run`, exists) → `Execution.startSkill`
+   (exists) recebe `organize-brain` com a entrada `folder` (door 5) ou com `contextId` (`cerebro-contextos`, exists; a pasta é
+   então o primeiro caminho `ok` do contexto); confere que a pasta está dentro de uma das `settings.indexedFolders` (ou de
+   `memory/`), fora do que a política esconde, dentro do contexto quando há um, e que o provedor declara `protectsDirs` (door 5)
+   → `RunManager` (exists) confere de novo ao lançar, começa a execução em `<home>/workspace` e acrescenta a pasta (e os
+   caminhos `ok` do contexto) a `readDirs` e a `protectedDirs`, ao lado de `memory/` (door 9).
 2. A execução lê `skills/organize-brain/SKILL.md` (new, door 1), `resources/guia.md` e `resources/perguntas.md` (new, door 1), e
-   pede `GET /api/memory/maps` (new, door 4) com a sua credencial para saber quais pastas não têm índice ou o têm velho.
+   pede `GET /api/memory/maps` (new, door 4) com a sua credencial, que só vê `memory/notes/` e as pastas da execução (door 10),
+   para saber quais pastas não têm índice ou o têm velho e onde cada índice fica (`indexPath`).
 3. Etapa `entrevista` → a execução escreve `memory/inbox/entrevista-<AAAA-MM-DD>.md` (door 2) com as perguntas que faltam; o dono
    a preenche no `NoteEditor` (exists, `cerebro-v2`); etapa `aplicar` → a execução lê as respostas e grava as notas de
    `memory/notes/negocio/` (door 2), entre elas `metas.md`.
 4. Etapa `indexar` → a execução grava uma nota-índice `_index.md` por pasta (door 2, door 3): dentro de `memory/notes/…` ao lado
-   das notas, ou em `memory/maps/<raiz>/<subcaminho>/_index.md` para uma pasta do usuário; escreve em `artifacts/` o relatório do
-   que propôs e do que não fez.
+   das notas, ou em `memory/maps/<slug da raiz>/<subcaminho>/_index.md` (door 8) para uma pasta do usuário; com um contexto, a
+   etapa `aplicar` escreve no `memory/notes/<id>/_resumo.md` do contexto (exists, `cerebro-contextos`); escreve em `artifacts/`
+   o relatório do que propôs e do que não fez.
 5. Indexação → `MemoryIndexer` (exists) lê do front matter `type`, `status`, `updated`, `last_reviewed`, `natureza`, `escopo` e `review_every` para `fields` (door 6);
    `folderDigests` (new, door 4) calcula o resumo dos filhos de cada pasta a partir das linhas de `files`.
 6. Roteadores → `generateRouters` (exists) lista no `ROUTER.md` as notas-índice e as pastas sem índice ou com índice velho.
 7. Compilação → `SyncCompiler.agentsFileContent` (exists) acrescenta a seção "Goals and priorities" a partir de
-   `memory/notes/negocio/metas.md` e, com `memory.agentStance` (door 7) em `contest-conflicts`, a instrução de contestar.
+   `memory/notes/negocio/metas.md` e, com `memory.agentStance` (door 7) em `contest-conflicts`, a instrução de contestar; vale
+   para a compilação no home e para a de um contexto (`GET /api/sync/plan?context=<id>`, exists), que usam o mesmo
+   `agentsFileContent`.
 8. Interface → a tela de Configurações (exists), seção Memória, ganha o seletor de `memory.agentStance`.
 
 ## Impact
 
-| Front       | What changes                                                                                                                                                                                                                                                                                             |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| domain      | new term: `nota-índice` - um `_index.md` que diz o que uma pasta é e aponta para as notas-índice das subpastas; vive em `memory/`, nunca na pasta do usuário                                                                                                                                             |
-| domain      | new term: `resumo dos filhos` (`children-digest`) - `sha256:` da lista ordenada dos filhos diretos de uma pasta como o índice os conhece; uma nota-índice com outro resumo está velha                                                                                                                    |
-| domain      | new term: `postura do agente` (`memory.agentStance`) - `neutral` ou `contest-conflicts`; só o dono muda                                                                                                                                                                                                  |
-| domain      | existing term: entrada `path` de uma skill era só texto no prompt; numa skill de memória, a entrada chamada `folder` passa a dar uma pasta somente leitura à execução - quem ramifica hoje: nenhuma skill embarcada tem entrada `folder` (`skills/*/SKILL.md`)                                           |
-| domain      | existing term: `fields` de um arquivo eram só os `chave:: valor` do texto; passam a ter também `type`, `status`, `updated`, `last_reviewed`, `natureza`, `escopo` e `review_every` do front matter - quem lê hoje: o grafo (`graph.ts:132`) e a interface que mostra `fields` (`brain/PreviewPanel.tsx`) |
-| stored data | nada migra: `fields` é JSON livre e a próxima passada que tocar um arquivo com front matter grava os novos campos; arquivos que não mudaram ganham os campos na passada completa seguinte (eles só são relidos quando mudam - fica dito na Assumptions)                                                  |
-| settings    | `settings.memory.agentStance` (padrão `neutral`); `settings.memorySkills` passa a ter `organize-brain` no padrão - um `settings.json` que já grava `memorySkills` não muda e a skill, sem `memory/`, para dizendo como ligar                                                                             |
-| contrato    | manifesto de provedor ganha `capabilities.protectsDirs` (Claude `true`, Codex e Cursor `false`)                                                                                                                                                                                                          |
-| arquivos    | `memory/inbox/`, `memory/notes/negocio/` e `memory/maps/` passam a existir quando a skill roda; `ROUTER.md` ganha a seção de notas-índice; o `AGENTS.md`/`CLAUDE.md` compilado ganha uma seção                                                                                                           |
-| domain      | nome evitado: as notas do negócio vão para `memory/notes/negocio/`, não `contexto/`, porque `contexto` passa a ser o escopo de trabalho de `cerebro-contextos` (C2), com pasta de notas em `memory/notes/<id>/`                                                                                          |
+| Front       | What changes                                                                                                                                                                                                                                                                                                                                 |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| domain      | new term: `nota-índice` - um `_index.md` que diz o que uma pasta é e aponta para as notas-índice das subpastas; vive em `memory/`, nunca na pasta do usuário                                                                                                                                                                                 |
+| domain      | new term: `resumo dos filhos` (`children-digest`) - `sha256:` da lista ordenada dos filhos diretos de uma pasta como o índice os conhece; uma nota-índice com outro resumo está velha                                                                                                                                                        |
+| domain      | new term: `postura do agente` (`memory.agentStance`) - `neutral` ou `contest-conflicts`; só o dono muda                                                                                                                                                                                                                                      |
+| domain      | existing term: entrada `path` de uma skill era só texto no prompt; numa skill de memória, a entrada chamada `folder` passa a dar uma pasta somente leitura à execução - quem ramifica hoje: nenhuma skill embarcada tem entrada `folder` (`skills/*/SKILL.md`)                                                                               |
+| domain      | existing term: `fields` de um arquivo eram só os `chave:: valor` do texto; passam a ter também `type`, `status`, `updated`, `last_reviewed`, `natureza`, `escopo` e `review_every` do front matter - quem lê hoje: o grafo (`graph.ts:132`) e a interface que mostra `fields` (`brain/PreviewPanel.tsx`)                                     |
+| stored data | nada migra: `fields` é JSON livre e a próxima passada que tocar um arquivo com front matter grava os novos campos; arquivos que não mudaram ganham os campos na passada completa seguinte (eles só são relidos quando mudam - fica dito na Assumptions)                                                                                      |
+| settings    | `settings.memory.agentStance` (padrão `neutral`); `settings.memorySkills` passa a ter `organize-brain` no padrão - um `settings.json` que já grava `memorySkills` não muda e a skill, sem `memory/`, para dizendo como ligar                                                                                                                 |
+| contrato    | manifesto de provedor ganha `capabilities.protectsDirs` (Claude `true`, Codex e Cursor `false`)                                                                                                                                                                                                                                              |
+| arquivos    | `memory/inbox/`, `memory/notes/negocio/` e `memory/maps/` passam a existir quando a skill roda; `ROUTER.md` ganha a seção de notas-índice; o `AGENTS.md`/`CLAUDE.md` compilado ganha uma seção                                                                                                                                               |
+| domain      | nome evitado: as notas do negócio vão para `memory/notes/negocio/`, não `contexto/`, porque `contexto` passa a ser o escopo de trabalho de `cerebro-contextos` (C2), com pasta de notas em `memory/notes/<id>/`                                                                                                                              |
+| domain      | existing term: uma execução de contexto começa no primeiro caminho `ok` (`cerebro-contextos`, AC 17); uma execução que recebe pasta protegida (door 5) começa em `<home>/workspace` e todos os caminhos `ok` do contexto fora de `memory/` ficam protegidos (door 9) - quem ramifica hoje: `Execution.contextCwd` e `RunManager.contextDirs` |
+| domain      | existing term: o resumo de um contexto (`memory/notes/<id>/_resumo.md`, `cerebro-contextos` door 9) tem `type: brief` e as seções `O que é`, `O que importa`, `Metas`, `O que ignorar`; o guia passa a listar `brief` entre os `type`                                                                                                        |
+| contrato    | `POST /api/skills/:slug/run` ganha os erros `400 folder_not_indexed` e `409 folder_protection_unsupported`; `GET /api/memory/maps` entra na tabela `API`, na `RUN_API_READ_ROUTES` e em `EXPECTED_ROUTE_SCOPES` (`content`)                                                                                                                  |
 
 ## Relations
 
@@ -77,11 +87,13 @@ indexados como qualquer outro.
 
 ## Surface
 
-| Route                      | In                                    | Out                                                                                                                                                   | Status              |
-| -------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| `GET /api/memory/maps`     | query `root?`                         | `folders[]`: `path` · `rel` · `children` · `digest` · `index` (caminho ou `null`) · `indexDigest` (ou `null`) · `state` (`missing`, `stale`, `fresh`) | `200`, `400`, `404` |
-| `PUT /api/settings` (muda) | `memory.agentStance`                  | as configurações                                                                                                                                      | `200`, `400`        |
-| `POST /api/runs` (muda)    | `inputs.folder` numa skill de memória | a execução                                                                                                                                            | `202`, `400`, `409` |
+| Route                                          | In                                                 | Out                                                                                                                                                   | Status                            |
+| ---------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `GET /api/memory/maps`                         | query `root?`                                      | `folders[]`: `path` · `rel` · `children` · `digest` · `index` (caminho ou `null`) · `indexDigest` (ou `null`) · `state` (`missing`, `stale`, `fresh`) | `200`, `400`, `404`               |
+| `PUT /api/settings` (muda)                     | `memory.agentStance`                               | as configurações                                                                                                                                      | `200`, `400`                      |
+| `POST /api/runs` (muda)                        | `inputs.folder` numa skill de memória              | a execução                                                                                                                                            | `202`, `400`, `409`               |
+| `POST /api/skills/:slug/run` (muda; emenda 1)  | `inputs.folder` numa skill de memória, `contextId` | a execução                                                                                                                                            | `200`, `202`, `400`, `404`, `409` |
+| `GET /api/memory/maps` (emenda 5: `indexPath`) | query `root?`                                      | cada item de `folders[]` ganha `indexPath`: onde o índice está ou ficará (door 8)                                                                     | `200`, `400`, `403`, `404`        |
 
 ## Landing
 
@@ -94,6 +106,10 @@ indexados como qualquer outro.
 | 5. Pasta somente leitura para uma skill | numa skill de `memorySkills`, a entrada `folder` resolvida (realpath) tem de estar dentro de uma de `settings.indexedFolders` e ser permitida pelo filtro; entra em `readDirs` e em `protectedDirs`; provedor sem `capabilities.protectsDirs: true` → `409 folder_protection_unsupported`; fora das pastas indexadas → `400 folder_not_indexed`                                                                                                                                                                   | dar a pasta como diretório de trabalho: o agente escreve nela; confiar na regra escrita no `SKILL.md`: o arquivo é editável por agente e por dispositivo (`skills/types.ts:31-35`), então a regra não é mecanismo                                                                                                                                    |
 | 6. Campos do front matter               | `parseFrontMatter` lê também `type`, `status`, `updated`, `last_reviewed`, `natureza`, `escopo`, `review_every` (texto até 64 caracteres); eles entram em `fields` com essas chaves, e um `chave:: valor` do corpo com a mesma chave vence                                                                                                                                                                                                                                                                        | uma coluna por campo em `files`: migração para um vocabulário que o dono personaliza; ler todo o YAML: o leitor é pequeno de propósito (`frontMatter.ts:1-5`)                                                                                                                                                                                        |
 | 7. Postura e metas no mapa dos agentes  | `settings.memory.agentStance: "neutral" \| "contest-conflicts"` (padrão `neutral`, valor ilegível lido como `neutral`); o compilado ganha, depois do título, `## Goals and priorities` com até 10 itens de primeiro nível da seção `## Metas` de `memory/notes/negocio/metas.md` (cada um cortado em 160 caracteres) e a linha `Full goals: <caminho>`; com `contest-conflicts`, mais a linha `- When a request conflicts with these goals, say so and propose the alternative that serves them before doing it.` | a postura escrita pela própria skill no arquivo de metas: uma nota que um agente escreve passaria a mudar as instruções de todo agente (envenenamento de memória, OWASP ASI06); o arquivo de metas inteiro no compilado: o compilado é lido em toda conversa e deve ser um mapa                                                                      |
+
+| 8. Slug da raiz em `memory/maps/` (acrescentada ao derivar os checks) | `<slug da raiz>` = o nome da pasta raiz como em `settings.indexedFolders` em NFD, sem acentos, minúsculo, cada sequência fora de `[a-z0-9]` vira `-`, sem `-` nas pontas, até 40 caracteres (`pasta` quando vazio), mais `-` e os 8 primeiros hex do SHA-256 do caminho absoluto da raiz; a rota de mapas devolve o caminho em `indexPath` | só o nome: duas raízes chamadas `Projetos` colidem; só o hash: quem abre `memory/maps/` não reconhece a pasta; o agente calcular o caminho sozinho: um SHA-256 feito por um agente erra em silêncio |
+| 9. Pasta de trabalho de uma execução com pasta protegida (acrescentada ao derivar os checks, emenda 2) | uma execução que recebe uma pasta protegida (door 5) começa em `<home>/workspace`; com `contextId` e sem `folder`, a pasta é o primeiro caminho `ok` do contexto, e todo caminho `ok` do contexto fora de `memory/` entra em `readDirs` e em `protectedDirs`; `memory/notes/<id>/` entra só em `readDirs`; uma pasta sob `<home>/memory/` é aceita e fica fora de `protectedDirs` | começar no primeiro caminho `ok`, como `cerebro-contextos` AC 17 faz para toda execução: é dar a pasta como diretório de trabalho, que a door 5 recusa, e o prompt de uma skill de escrita diz que ela pode mudar o diretório de trabalho |
+| 10. O que a credencial da execução vê na rota de mapas (acrescentada ao derivar os checks, emenda 4) | com a credencial de uma execução, `GET /api/memory/maps` responde só pastas sob `memory/notes/` e sob as pastas protegidas da execução (a entrada `folder` e os caminhos `ok` do contexto); um `root` fora delas é `404 not_found`; com o token do dono nada muda | o acervo inteiro: o agente veria pela API nomes e estrutura de pastas que a execução não recebeu, o que a AD-012 e a AD-040(d) recusam |
 
 - Nothing else in this change is hard to reverse: o texto do guia e das perguntas, a ordem das perguntas e o relatório em
   `artifacts/` mudam por edição.
@@ -193,20 +209,17 @@ nome da nota da entrevista.
 
 ## Assumptions
 
-| Assumption                               | Chosen default                                                                                                       | Rationale                                                                                                                                          | Confirmed? |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Entrevista assíncrona                    | a etapa `entrevista` grava a nota de perguntas e para; o dono preenche no editor; a etapa `aplicar` lê               | continuar a conversa (`POST /api/sessions/:id/continue`) é um prompt solto, sem a skill e sem `memory/` (`routes/sessions.ts:27-35`)               | n          |
-| Campos novos em arquivos que não mudaram | só aparecem quando o arquivo muda ou numa passada depois de um "Reindexar tudo"                                      | a passada não relê arquivo sem mudança (cerebro-v2, AC 35); reler tudo uma vez é o que o botão já faz                                              | n          |
-| Raiz de `memory/notes` congelada         | regra no guia mais o relatório da execução; nenhuma trava no motor                                                   | a execução escreve com as ferramentas do agente, não pela rota de notas; a detecção de nota fora do lugar é da higiene (`cerebro-higiene-rituais`) | n          |
-| Limite de leitura por execução           | o guia manda ler no máximo 200 arquivos por execução, por cabeçalhos e primeiras linhas, e dizer o que ficou de fora | uma pasta de milhares de arquivos estouraria o contexto; a reexecução continua pelas pastas ainda `missing` ou `stale`                             | n          |
-| Nomes das notas do negócio               | em português, sem acento, os de door 2                                                                               | o produto de inspiração usa os nomes em inglês de uma marca; os nossos seguem o idioma do dono e o slug das notas (cerebro-v2, AC 3)               | n          |
+| Assumption                               | Chosen default                                                                                                                 | Rationale                                                                                                                                          | Confirmed? |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Entrevista assíncrona                    | a etapa `entrevista` grava a nota de perguntas e para; o dono preenche no editor; a etapa `aplicar` lê                         | continuar a conversa (`POST /api/sessions/:id/continue`) é um prompt solto, sem a skill e sem `memory/` (`routes/sessions.ts:27-35`)               | n          |
+| Campos novos em arquivos que não mudaram | só aparecem quando o arquivo muda ou numa passada depois de um "Reindexar tudo"                                                | a passada não relê arquivo sem mudança (cerebro-v2, AC 35); reler tudo uma vez é o que o botão já faz                                              | n          |
+| Raiz de `memory/notes` congelada         | regra no guia mais o relatório da execução; nenhuma trava no motor                                                             | a execução escreve com as ferramentas do agente, não pela rota de notas; a detecção de nota fora do lugar é da higiene (`cerebro-higiene-rituais`) | n          |
+| Limite de leitura por execução           | o guia manda ler no máximo 200 arquivos por execução, por cabeçalhos e primeiras linhas, e dizer o que ficou de fora           | uma pasta de milhares de arquivos estouraria o contexto; a reexecução continua pelas pastas ainda `missing` ou `stale`                             | n          |
+| Nomes das notas do negócio               | em português, sem acento, os de door 2                                                                                         | o produto de inspiração usa os nomes em inglês de uma marca; os nossos seguem o idioma do dono e o slug das notas (cerebro-v2, AC 3)               | n          |
+| Postura padrão dos agentes               | `neutral`; o dono liga `contest-conflicts` em Configurações › Memória                                                          | resposta do dono à pergunta 1 em 29/10/2026 (o padrão recomendado); AC 29 vale para os dois valores                                                | y          |
+| Perfil da skill                          | `controlled_write` em `memory/`, sem aprovação a cada escrita; sob `review_before_write` cada escrita espera o dono, como hoje | resposta do dono à pergunta 2 em 29/10/2026 (o padrão recomendado)                                                                                 | y          |
 
-**Open questions:**
-
-| #   | Kind           | Question                                                                                                                                                               | Until answered                                                                                                          |
-| --- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 1   | open           | A postura padrão deve ser `neutral` (recomendo: o dono liga quando quiser) ou `contest-conflicts` (o vídeo de referência põe a "regra de ouro" ligada desde o início)? | `neutral`; AC 29 vale para os dois valores                                                                              |
-| 2   | blocks go-live | A skill pode rodar sob o perfil `controlled_write` em `memory/` sem aprovação a cada escrita, ou fica no `review_before_write` (cada escrita espera o dono)?           | o perfil que o dono já usa vale; sob `review_before_write` a etapa `indexar` de uma pasta grande pede muitas aprovações |
+**Open questions:** none - all resolved or logged above. As perguntas 1 (postura padrão) e 2 (perfil da skill) foram respondidas pelo dono em 29/10/2026 com os padrões recomendados: a postura padrão é `neutral` e a skill roda sob `controlled_write` em `memory/`.
 
 ## Observable
 
@@ -230,6 +243,46 @@ nome da nota da entrevista.
 | collection pastas do mapa                               | grouping, naming, ordering, duplicates, exception | AC 17, AC 18, AC 26; exceção: pasta escondida pela política (AC 23)                                    |
 | collection notas do negócio                             | naming, duplicates                                | door 2; AC 7 (pergunta já respondida não gera nota nova)                                               |
 | API `POST /api/runs` (entrada `folder` com `contextId`) | error shape and codes                             | AC 34, AC 35                                                                                           |
+
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+O texto aprovado acima fica como foi aprovado, exceto `Flow` e `Impact`, que se mantêm verdadeiros, e as linhas que `Surface`
+e `Landing` ganharam (doors 8 a 10), que só acrescentam. O plano foi escrito antes de `cerebro-contextos` (C2); o que a C2
+construiu (`a85b2c9..c0ff2e7`, AD-040) e o que a derivação dos checks achou ficam aqui, cada um com como `checks.md` resolve.
+
+1. **Rota de uma execução de skill.** A linha `POST /api/runs (muda)` de `Surface` e do `Observable`: uma skill começa por
+   `POST /api/skills/:slug/run` (e `mordomo run`, `skills_run`, pelo mesmo `Execution.startSkill`), que responde `200`
+   (`queued`) ou `202` (`waiting_approval`); `POST /api/runs` leva um prompt, sem skill nem `inputs`, e não muda. Os checks
+   provam a linha acrescentada em `Surface` (C12-C16, C44-C46).
+2. **Pasta de trabalho com contexto (C2 AC 17).** A C2 começa uma execução de contexto no primeiro caminho `ok` e dá os outros
+   como `readDirs` sem proteção; a door 5 recusa dar a pasta como diretório de trabalho. Door 9: começa em `<home>/workspace` e
+   todo caminho `ok` fora de `memory/` fica protegido (C13, C44). O C17 de `cerebro-contextos` segue verdadeiro para toda
+   execução que não protege pasta.
+3. **Caminho de contexto dentro de `memory/`.** A C2 aceita uma pasta de `memory/` como caminho de contexto; a door 5 só fala de
+   `settings.indexedFolders`. Uma `folder` sob `<home>/memory/` é aceita e fica fora de `protectedDirs` (door 9, C21).
+4. **Alcance da credencial na rota de mapas (AD-040(d)).** O AC 17 fala das raízes indexadas; a C2 estreitou o que a credencial
+   de uma execução lê a `memory/` e ao seu contexto. Door 10: com essa credencial a rota só vê `memory/notes/` e as pastas da
+   execução (C31). Segue a pergunta ao dono ainda aberta de `cerebro-contextos` (1).
+5. **Onde fica um índice que falta.** O AC 19 dá `index: null` para `missing` e a door 2 não dava a forma de `<slug da raiz>`:
+   o agente não saberia onde escrever. Não vem da C2, foi achado ao derivar. Door 8 e o campo `indexPath` (C24, C26, C32).
+6. **`type: brief` e a seção de metas do resumo (C2 door 9).** O `_resumo.md` da C2 tem `type: brief` e as seções `## O que é`,
+   `## O que importa`, `## Metas`, `## O que ignorar`; o AC 3 não lista `brief`, e `natureza` é chave do front matter (door 6),
+   não de uma seção. O guia lista `brief`, e `aplicar` marca a seção `## Metas` com o callout `> [!plano]` (C3, C47).
+7. **Não sobrescrever vs. o resumo.** O AC 4 proíbe sobrescrever arquivo sem `generated-by: organize-brain`, e o `_resumo.md`
+   (do dono ou do `PATCH /api/contexts/:id {brief:true}`) não o tem. A única exceção é o resumo do contexto da execução:
+   `aplicar` só preenche seção vazia, nunca reescreve texto do dono, e cria um que falta na forma do modelo da C2 (C4, C47).
+8. **Caminhos no texto da skill.** O AC 6 e a door 2 escrevem `memory/inbox/…`; o teste do seguranca-p1 C49
+   (`tests/builtin-context.test.ts`) recusa um arquivo de skill embarcada que nomeie caminho relativo ao home. O texto diz "na
+   pasta de memória que o prompt dá" (`<pasta de memória>/inbox/…`); os arquivos escritos são os mesmos (C6, C11).
+9. **O id do contexto no prompt.** O bloco do contexto da C2 traz o nome e o mapa `…/contexts/<id>.md`, sem uma linha de id; o
+   `SKILL.md` tira o `<id>` do nome do arquivo do mapa para nomear a nota da entrevista; o banco de perguntas ganha a seção `contexto` (C5, C47).
+10. **Lugar do seletor de postura.** O AC 31 diz só Configurações › Memória; a C2 pôs Contextos logo depois das pastas indexadas
+    (C52 dela). "Postura dos agentes" é o último bloco da aba, depois do campo de registros, e nada da C2 muda de lugar (C41).
+11. **Compilação de um contexto (C2 AC 30).** A compilação na pasta principal de um contexto usa o mesmo `agentsFileContent`; a
+    seção de metas (do `metas.md` geral) também vai para lá (C36).
+12. **O padrão de `etapa`.** A door 1 dá a `etapa` o padrão `entrevista`, e `SkillInputSchema` (`contracts/src/skills.ts`) não
+    tem campo de padrão: o padrão é a primeira opção e o `placeholder`, e o `SKILL.md` diz que sem `etapa` roda `entrevista`
+    (C1, C6).
 
 ## Sources
 
