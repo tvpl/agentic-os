@@ -4,6 +4,7 @@ import type { MordomoPaths } from "../paths.js";
 import type { Settings } from "../config/schema.js";
 import type { Routine, SilentRoutine } from "../routines/types.js";
 import type { Connector } from "../connectors/registry.js";
+import { linkEdges } from "./links.js";
 import { checkRouters } from "./routers.js";
 
 /**
@@ -58,6 +59,8 @@ export interface HygieneOptions {
   /** Items listed per category (default 50). */
   perKind?: number;
   now?: number;
+  /** Today's policy over stored rows (`MemoryIndexer.rowFilter`): links count only between files it allows. */
+  allow?: (row: { root: string; rel: string }) => boolean;
 }
 
 const DAY = 86_400_000;
@@ -91,16 +94,17 @@ export function memoryHygiene(
   const routerMaster = path.join(paths.memory, "ROUTER.md");
   const isGenerated = (p: string) => p === routerMaster || p.startsWith(routerDir + path.sep);
 
-  // 1. Orphans: markdown notes with no markdown-link edge in either direction.
+  // 1. Orphans: Markdown notes with no link of `note_links` that resolves, in either direction (wikilinks included).
+  const allow = opts.allow ?? (() => true);
+  const linked = new Set<number>();
+  for (const edge of linkEdges(db, allow)) {
+    linked.add(edge.source);
+    linked.add(edge.target);
+  }
   const orphanRows = db
-    .prepare(
-      `SELECT f.path, f.name, f.mtime FROM files f
-       WHERE f.ext IN ('.md', '.markdown')
-         AND NOT EXISTS (SELECT 1 FROM file_links l WHERE l.kind = 'markdown-link' AND (l.src_id = f.id OR l.dst_id = f.id))
-       ORDER BY f.mtime DESC`,
-    )
-    .all() as Array<{ path: string; name: string; mtime: number }>;
-  const orphans = orphanRows.filter((r) => !isGenerated(r.path));
+    .prepare("SELECT id, root, rel, path, name, mtime FROM files WHERE ext IN ('.md', '.markdown') ORDER BY mtime DESC")
+    .all() as Array<{ id: number; root: string; rel: string; path: string; name: string; mtime: number }>;
+  const orphans = orphanRows.filter((r) => !linked.has(r.id) && !isGenerated(r.path) && allow(r));
   counts.orphan = orphans.length;
   for (const r of orphans.slice(0, perKind)) {
     items.push({ kind: "orphan", id: r.path, name: r.name, detail: `No links in or out; last modified ${daysAgo(r.mtime, now)} d ago.`, action: "link" });

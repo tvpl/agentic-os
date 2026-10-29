@@ -11,6 +11,8 @@ import {
   type ReadScope,
 } from "../security/safeFs.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
+import { extractLinks } from "./linkParser.js";
+import { resolveWikilink } from "./links.js";
 import { areaSlug } from "./routers.js";
 
 /**
@@ -420,21 +422,17 @@ function excerptOf(section: Section, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max).trimEnd()}\n…(truncated)`;
 }
 
-function pointerTargets(section: Section, fromFile: string, limit: number): string[] {
+/**
+ * The files the links of one section lead to (`[x](y)` and `[[wikilink]]`, outside code), as absolute paths, at most
+ * `limit`: read by the same parser as `note_links` and resolved by the same rule as the links panel.
+ */
+function pointerTargets(db: Db, section: Section, from: FileRow, limit: number): string[] {
   const out: string[] = [];
-  const dir = path.dirname(fromFile);
-  for (const m of section.body.matchAll(/\[[^\]]*\]\(([^)#?\s]+)\)/g)) {
-    const target = m[1]!;
-    if (/^[a-z]+:\/\//i.test(target)) continue;
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(target);
-    } catch {
-      continue;
-    }
-    const resolved = path.resolve(dir, decoded);
-    if (resolved !== fromFile && !out.includes(resolved)) out.push(resolved);
+  for (const link of extractLinks(section.body, from.path)) {
     if (out.length >= limit) break;
+    const target =
+      link.kind === "markdown-link" ? link.target : resolveWikilink(db, from, link.target, () => true)[0]?.path;
+    if (target && target !== from.path && !out.includes(target)) out.push(target);
   }
   return out;
 }
@@ -483,7 +481,7 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
       why,
     });
     // (d) one level of pointers out of the chosen section.
-    for (const target of pointerTargets(best.section, cand.file.path, pointerLimit)) {
+    for (const target of pointerTargets(db, best.section, cand.file, pointerLimit)) {
       if (openedPaths.has(target)) continue;
       const row = lookup.get(target) as Record<string, unknown> | undefined;
       if (!row) continue; // only indexed files — same exclusion policy as the index

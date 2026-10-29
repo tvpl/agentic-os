@@ -112,11 +112,15 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       query: q.q,
       maxNodes: q.maxNodes,
       related: q.related,
+      // Rows are judged by today's policy as they are read: an excluded file is no node, no edge, no count.
+      allow: ctx.indexer.rowFilter(),
     });
   });
 
   bind(app, "memory.related", async ({ query: { id } }) => {
-    return relatedFiles(ctx.db, id);
+    const related = relatedFiles(ctx.db, id, ctx.indexer.rowFilter());
+    if (!related) throw httpError(404, "File not found", "not_found");
+    return related;
   });
 
   bind(app, "memory.links", async ({ query: { id } }) => {
@@ -251,7 +255,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
         // Same verdict as GET /api/routines/silent, so both views agree.
         silent: ctx.scheduler.silent(q.silentRoutineDays ?? 30),
       },
-      q,
+      { ...q, allow: ctx.indexer.rowFilter() },
     );
   });
 

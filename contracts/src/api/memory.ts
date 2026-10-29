@@ -137,7 +137,7 @@ const GraphDataSchema = z.object({
     z.object({
       source: z.number(),
       target: z.number(),
-      kind: z.enum(["markdown-link", "same-dir", "same-area", "related"]),
+      kind: z.enum(["markdown-link", "wikilink", "same-dir", "related"]),
       why: z.string(),
     }),
   ),
@@ -365,6 +365,7 @@ export const memoryRoutes = {
     scope: "content",
     query: z.object({ id: z.coerce.number().int() }),
     responses: { 200: z.array(z.object({ file: FileRowSchema, why: z.string() })) },
+    errors: [notFound("The file")],
   }),
   "memory.links": route({
     method: "GET",

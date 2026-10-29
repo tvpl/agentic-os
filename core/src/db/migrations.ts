@@ -521,4 +521,14 @@ CREATE TABLE IF NOT EXISTS file_vectors (
 );
 `,
   },
+  {
+    version: 22,
+    name: "drop-file-links",
+    // cerebro-correcoes, door 1: the links between files are only the ones of `note_links`, resolved when read. The old
+    // table of resolved ids and its map of pending targets go; `note_links` already holds every link (migration 20).
+    sql: `
+DROP TABLE IF EXISTS file_links;
+DELETE FROM meta WHERE key = 'index.pending_links';
+`,
+  },
 ];

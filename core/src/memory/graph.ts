@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { Db } from "../db/db.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
+import { linkEdges } from "./links.js";
 import { relatedEdges } from "./related.js";
 
 export interface GraphNode {
@@ -22,7 +23,7 @@ export interface GraphNode {
 export interface GraphEdge {
   source: number;
   target: number;
-  kind: "markdown-link" | "same-dir" | "same-area" | "related";
+  kind: "markdown-link" | "wikilink" | "same-dir" | "related";
   /** Human explanation of why the two files are related. */
   why: string;
 }
@@ -41,8 +42,17 @@ export interface GraphData {
  */
 export function buildGraph(
   db: Db,
-  opts: { area?: string; dir?: string; query?: string; maxNodes?: number; related?: boolean } = {},
+  opts: {
+    area?: string;
+    dir?: string;
+    query?: string;
+    maxNodes?: number;
+    related?: boolean;
+    /** Today's policy over stored rows (`MemoryIndexer.rowFilter`): a row it refuses is no node, no edge, no count. */
+    allow?: (row: { root: string; rel: string }) => boolean;
+  } = {},
 ): GraphData {
+  const allow = opts.allow ?? (() => true);
   const maxNodes = Math.min(opts.maxNodes ?? 400, 4000);
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -59,28 +69,31 @@ export function buildGraph(
     params.push(`%${opts.query}%`, `%${opts.query}%`);
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  const totalFiles = (
-    db.prepare(`SELECT COUNT(*) c FROM files ${where}`).get(...params) as { c: number }
-  ).c;
-  const rows = db
-    .prepare(`SELECT * FROM files ${where} ORDER BY mtime DESC LIMIT ?`)
-    .all(...params, maxNodes) as Array<Record<string, unknown>>;
-  const files = rows.map(fileRowFromDb);
+  // The policy is judged before the cut, so a page of excluded rows does not leave the graph short.
+  const files: FileRow[] = [];
+  let totalFiles = 0;
+  for (const row of db
+    .prepare(`SELECT * FROM files ${where} ORDER BY mtime DESC`)
+    .iterate(...params) as IterableIterator<Record<string, unknown>>) {
+    const file = fileRowFromDb(row);
+    if (!allow(file)) continue;
+    totalFiles++;
+    if (files.length < maxNodes) files.push(file);
+  }
   const included = new Set(files.map((f) => f.id));
 
   const edges: GraphEdge[] = [];
-  const linkRows = db
-    .prepare("SELECT src_id, dst_id FROM file_links WHERE kind = 'markdown-link'")
-    .all() as Array<{ src_id: number; dst_id: number }>;
-  for (const link of linkRows) {
-    if (included.has(link.src_id) && included.has(link.dst_id)) {
-      edges.push({
-        source: link.src_id,
-        target: link.dst_id,
-        kind: "markdown-link",
-        why: "One file links to the other with a markdown link.",
-      });
-    }
+  for (const link of linkEdges(db, allow, included)) {
+    if (!included.has(link.target)) continue;
+    edges.push({
+      source: link.source,
+      target: link.target,
+      kind: link.kind,
+      why:
+        link.kind === "wikilink"
+          ? "One note links to the other with a wikilink."
+          : "One file links to the other with a markdown link.",
+    });
   }
 
   // Same-directory edges: connect each file to a directory hub (cheapest way to
@@ -173,28 +186,34 @@ function storedOrComputedRelated(
   return out;
 }
 
-export function relatedFiles(db: Db, fileId: number): Array<{ file: FileRow; why: string }> {
-  const links = db
-    .prepare(
-      `SELECT CASE WHEN src_id = ? THEN dst_id ELSE src_id END AS other, kind
-       FROM file_links WHERE src_id = ? OR dst_id = ? LIMIT 50`,
-    )
-    .all(fileId, fileId, fileId) as Array<{ other: number; kind: string }>;
+/**
+ * The files connected to one: its links in both directions (`note_links`, resolved today), then the ones with similar
+ * content. `null` when the id is not a row today's policy allows (the route answers `404`); no file it refuses is listed.
+ */
+export function relatedFiles(
+  db: Db,
+  fileId: number,
+  allow: (row: { root: string; rel: string }) => boolean = () => true,
+): Array<{ file: FileRow; why: string }> | null {
+  const byId = db.prepare("SELECT * FROM files WHERE id = ?");
+  const fileOf = (id: number): FileRow | null => {
+    const row = byId.get(id) as Record<string, unknown> | undefined;
+    const file = row ? fileRowFromDb(row) : null;
+    return file && allow(file) ? file : null;
+  };
+  if (!fileOf(fileId)) return null;
   const out: Array<{ file: FileRow; why: string }> = [];
-  for (const link of links) {
-    const row = db.prepare("SELECT * FROM files WHERE id = ?").get(link.other) as
-      | Record<string, unknown>
-      | undefined;
-    if (!row) continue;
+  for (const link of linkEdges(db, allow)) {
+    if (link.source !== fileId && link.target !== fileId) continue;
+    const other = link.source === fileId ? link.target : link.source;
+    if (out.some((o) => o.file.id === other)) continue;
+    const file = fileOf(other);
+    if (!file) continue;
     out.push({
-      file: fileRowFromDb(row),
-      why:
-        link.kind === "markdown-link"
-          ? "Connected by a markdown link."
-          : link.kind === "same-dir"
-            ? "They share the same folder."
-            : "They belong to the same area.",
+      file,
+      why: link.kind === "wikilink" ? "Connected by a wikilink." : "Connected by a markdown link.",
     });
+    if (out.length >= 50) break;
   }
   const related = db
     .prepare(
@@ -204,8 +223,8 @@ export function relatedFiles(db: Db, fileId: number): Array<{ file: FileRow; why
     .all(fileId, fileId, fileId) as Array<{ other: number; score: number; terms: string }>;
   for (const r of related) {
     if (out.some((o) => o.file.id === r.other)) continue;
-    const row = db.prepare("SELECT * FROM files WHERE id = ?").get(r.other) as Record<string, unknown> | undefined;
-    if (!row) continue;
+    const file = fileOf(r.other);
+    if (!file) continue;
     let terms: string[] = [];
     try {
       terms = JSON.parse(r.terms) as string[];
@@ -213,7 +232,7 @@ export function relatedFiles(db: Db, fileId: number): Array<{ file: FileRow; why
       /* keep empty */
     }
     out.push({
-      file: fileRowFromDb(row),
+      file,
       why: `Similar content (${Math.round(r.score * 100)}%)${terms.length ? `: ${terms.join(", ")}` : ""}.`,
     });
   }

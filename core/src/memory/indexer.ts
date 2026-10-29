@@ -49,7 +49,6 @@ const RELATED_WRITE_ROWS = 500;
  * a waiting writer gets it at its first or second poll.
  */
 export const WRITE_REST_RATIO = 6;
-const PENDING_LINKS_KEY = "index.pending_links";
 const LAST_INDEX_KEY = "last_index";
 /**
  * Which version of the link extraction the stored `note_links` come from (the first full pass after migration 20, or
@@ -131,7 +130,6 @@ interface PreparedFile {
   fieldsJson: string;
   /** The JSON of the file's top terms, or null when the text is too short to carry any. */
   terms: string | null;
-  linkTargets: string[];
   noteLinks: ParsedLink[];
   markdown: boolean;
 }
@@ -143,9 +141,6 @@ function termsOf(name: string, content: string): string | null {
   return JSON.stringify([...termFrequencies(`${name}\n${body}`, 80).entries()]);
 }
 
-/** Unresolved markdown links: target absolute path → ids of the source files pointing at it. */
-type PendingLinks = Map<string, number[]>;
-
 /**
  * Incremental workspace indexer.
  * - honours the exclusion policy (settings excludes, hard blocklist, secret
@@ -153,9 +148,9 @@ type PendingLinks = Map<string, number[]>;
  * - never moves, renames or rewrites indexed files;
  * - re-reads content only when size/mtime (or owning root/area) changed;
  * - binary detection is content-based (NUL byte in the first 8 KiB);
- * - markdown links are extracted per file when it is (re)indexed and stored
- *   in `file_links`; links to files not indexed yet wait in a pending map so
- *   they resolve as soon as the target appears — nothing is re-read wholesale;
+ * - links are extracted per Markdown file when it is (re)indexed and stored
+ *   in `note_links` with the target as text, resolved when somebody reads them,
+ *   so a file that appears later is linked without its sources being re-read;
  * - every chunk of upserts/removals runs in one transaction;
  * - nested indexed roots are deterministic: the longest root owns the file.
  *
@@ -176,6 +171,8 @@ export class MemoryIndexer {
   private cancelRequested = false;
   /** How long the write transactions since the last `takeWriteMs` held the write lock. */
   private writeMs = 0;
+  /** Runs when a pass that changed rows ends, before `index.finished` is announced (`setAfterPass`). */
+  private afterPass: ((stats: IndexStats) => void) | null = null;
 
   constructor(
     private readonly db: Db,
@@ -219,13 +216,11 @@ export class MemoryIndexer {
     }>;
     const doomed = rows.filter((row) => !allowed(row));
     if (doomed.length === 0) return 0;
-    const pending = this.loadPendingLinks();
     const stats: IndexStats = {
       scanned: 0, added: 0, updated: 0, removed: 0, skippedExcluded: 0, skippedBinary: 0, related: 0, durationMs: 0,
     };
     this.write(() => {
-      for (const row of doomed) this.removeFile(row.id, row.path, pending, stats);
-      this.savePendingLinks(pending);
+      for (const row of doomed) this.removeFile(row.id, stats);
     });
     return stats.removed;
   }
@@ -298,6 +293,24 @@ export class MemoryIndexer {
     return this.inFlight;
   }
 
+  /**
+   * What to do when a pass that added, updated or removed a row ends, before `index.finished` is announced: the engine
+   * regenerates the routers here (.specs/features/cerebro-correcoes, S5). A hook that throws never fails the pass.
+   */
+  setAfterPass(hook: ((stats: IndexStats) => void) | null): void {
+    this.afterPass = hook;
+  }
+
+  /** The end of a pass, wherever it ran (this thread or the worker host): the hook, then the caller announces. */
+  finishPass(stats: IndexStats): void {
+    if (!this.afterPass || stats.added + stats.updated + stats.removed === 0) return;
+    try {
+      this.afterPass(stats);
+    } catch {
+      // the hook reports its own failure; the pass stands
+    }
+  }
+
   /** Hand the passes to a runner (the worker host) from now on. */
   attachRunner(runner: IndexRunner | null): void {
     this.runner = runner;
@@ -338,6 +351,7 @@ export class MemoryIndexer {
         this.cancelRequested = false;
         throw new IndexCancelledError();
       }
+      this.finishPass(stats);
       this.bus?.emit("index.finished", { stats, ...(runId ? { runId } : {}) });
       return stats;
     } catch (error) {
@@ -574,7 +588,6 @@ export class MemoryIndexer {
 
       // Phase 2: upserts, in waves. A wave is READ without any lock (the files, their parsing, the terms and the links:
       // most of the time of a file) and then WRITTEN in one short transaction.
-      const pending = this.loadPendingLinks();
       const seen = new Set<string>();
       const total = candidates.length;
       emit(total, "index");
@@ -599,7 +612,7 @@ export class MemoryIndexer {
         }
         if (wave.length > 0) {
           const began = performance.now();
-          this.write(() => wave.forEach((file) => this.applyFile(file, stats, pending)));
+          this.write(() => wave.forEach((file) => this.applyFile(file, stats)));
           holdPerFileMs = 0.7 * holdPerFileMs + 0.3 * Math.max(0.01, (performance.now() - began) / wave.length);
         }
         emit(total, "index", false);
@@ -613,7 +626,7 @@ export class MemoryIndexer {
       emit(total, "prune");
       for (let i = 0; i < stale.length; i += INDEX_CHUNK_SIZE) {
         const rows = stale.slice(i, i + INDEX_CHUNK_SIZE);
-        this.write(() => rows.forEach((row) => this.removeFile(row.id, row.path, pending, stats)));
+        this.write(() => rows.forEach((row) => this.removeFile(row.id, stats)));
         emit(total, "prune", false);
         yield;
       }
@@ -639,7 +652,6 @@ export class MemoryIndexer {
 
       stats.durationMs = Date.now() - started;
       this.write(() => {
-        this.savePendingLinks(pending);
         this.db
           .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
           .run(RELATED_AT_KEY, String(relatedFrom));
@@ -649,7 +661,10 @@ export class MemoryIndexer {
           .run(LAST_INDEX_KEY, JSON.stringify({ at: Date.now(), stats }));
       });
       emit(total, "related");
-      if (announce) this.bus?.emit("index.finished", { stats, ...(runId ? { runId } : {}) });
+      if (announce) {
+        this.finishPass(stats);
+        this.bus?.emit("index.finished", { stats, ...(runId ? { runId } : {}) });
+      }
       return stats;
     } catch (error) {
       if (announce)
@@ -773,14 +788,13 @@ export class MemoryIndexer {
       tagsJson: JSON.stringify(tags),
       fieldsJson: JSON.stringify(fields),
       terms: termsOf(name, content),
-      linkTargets: markdown ? this.markdownTargets(full, content) : [],
       noteLinks: markdown ? extractLinks(content, full) : [],
       markdown,
     };
   }
 
   /** The rows of one prepared file, inside the wave's write transaction. */
-  private applyFile(file: PreparedFile, stats: IndexStats, pending: PendingLinks): void {
+  private applyFile(file: PreparedFile, stats: IndexStats): void {
     const { root, full, rel, area } = file.c;
     const now = Date.now();
     // Looked up again here: the row was read before the transaction, and the transaction is what decides.
@@ -811,54 +825,8 @@ export class MemoryIndexer {
         .run(id, file.name, rel, file.content);
       this.storeTerms(id, file.terms);
       stats.added++;
-      // Markdown files indexed earlier that point at this path get their link now.
-      const waiting = pending.get(full);
-      if (waiting) {
-        for (const src of waiting) this.insertLink(src, id);
-        pending.delete(full);
-      }
     }
-    if (file.markdown) {
-      this.refreshLinks(id, file.linkTargets, pending);
-      this.writeNoteLinks(id, file.noteLinks);
-    }
-  }
-
-  /** The absolute paths a Markdown file links to (`[text](./other.md)`), without the ones that are not files. */
-  private markdownTargets(full: string, content: string): string[] {
-    const dir = path.dirname(full);
-    const targets = new Set<string>();
-    for (const match of content.matchAll(/\[[^\]]*\]\(([^)#?\s]+)\)/g)) {
-      const target = match[1]!;
-      if (/^[a-z]+:\/\//i.test(target)) continue;
-      let decoded: string;
-      try {
-        decoded = decodeURIComponent(target);
-      } catch {
-        continue;
-      }
-      const resolved = path.resolve(dir, decoded);
-      if (resolved === full) continue;
-      targets.add(resolved);
-    }
-    return [...targets];
-  }
-
-  /** Recompute the outgoing markdown links of one file (called only when it changed). */
-  private refreshLinks(id: number, targets: readonly string[], pending: PendingLinks): void {
-    this.db.prepare("DELETE FROM file_links WHERE src_id = ? AND kind = 'markdown-link'").run(id);
-    dropSource(pending, id);
-    const lookup = this.db.prepare("SELECT id FROM files WHERE path = ?");
-    for (const resolved of targets) {
-      const dst = lookup.get(resolved) as { id: number } | undefined;
-      if (dst) {
-        this.insertLink(id, dst.id);
-      } else {
-        const list = pending.get(resolved) ?? [];
-        if (!list.includes(id)) list.push(id);
-        pending.set(resolved, list);
-      }
-    }
+    if (file.markdown) this.writeNoteLinks(id, file.noteLinks);
   }
 
   /** Replace what one Markdown file says about other files (`note_links`). */
@@ -905,32 +873,14 @@ export class MemoryIndexer {
     return new Set(rows.map((row) => row.file_id));
   }
 
-  private insertLink(src: number, dst: number): void {
-    if (src === dst) return;
-    this.db
-      .prepare("INSERT OR IGNORE INTO file_links (src_id, dst_id, kind) VALUES (?, ?, 'markdown-link')")
-      .run(src, dst);
-  }
-
-  private removeFile(id: number, filePath: string, pending: PendingLinks, stats: IndexStats): void {
-    // Remember who linked here so the edge comes back if the file reappears.
-    const inbound = this.db
-      .prepare("SELECT src_id FROM file_links WHERE dst_id = ? AND kind = 'markdown-link'")
-      .all(id) as Array<{ src_id: number }>;
-    if (inbound.length > 0) {
-      const list = pending.get(filePath) ?? [];
-      for (const { src_id } of inbound) if (!list.includes(src_id)) list.push(src_id);
-      pending.set(filePath, list);
-    }
+  private removeFile(id: number, stats: IndexStats): void {
     this.db.prepare("DELETE FROM files WHERE id = ?").run(id);
     this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(id);
-    this.db.prepare("DELETE FROM file_links WHERE src_id = ? OR dst_id = ?").run(id, id);
     this.db.prepare("DELETE FROM note_links WHERE src_id = ?").run(id);
     this.db.prepare("DELETE FROM file_vectors WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_terms WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_related WHERE src_id = ? OR dst_id = ?").run(id, id);
     this.touched.delete(id);
-    dropSource(pending, id);
     stats.removed++;
   }
 
@@ -990,38 +940,6 @@ export class MemoryIndexer {
       yield;
     }
     return edges.length;
-  }
-
-  private loadPendingLinks(): PendingLinks {
-    const row = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(PENDING_LINKS_KEY) as
-      | { value: string }
-      | undefined;
-    const out: PendingLinks = new Map();
-    if (!row) return out;
-    try {
-      for (const [target, srcs] of Object.entries(JSON.parse(row.value) as Record<string, number[]>)) {
-        if (Array.isArray(srcs) && srcs.length > 0) out.set(target, srcs.filter((n) => Number.isInteger(n)));
-      }
-    } catch {
-      /* corrupt map: start clean; links re-resolve as files change */
-    }
-    return out;
-  }
-
-  private savePendingLinks(pending: PendingLinks): void {
-    const obj: Record<string, number[]> = {};
-    for (const [target, srcs] of pending) if (srcs.length > 0) obj[target] = srcs;
-    this.db
-      .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-      .run(PENDING_LINKS_KEY, JSON.stringify(obj));
-  }
-}
-
-function dropSource(pending: PendingLinks, id: number): void {
-  for (const [target, srcs] of pending) {
-    const kept = srcs.filter((s) => s !== id);
-    if (kept.length === 0) pending.delete(target);
-    else if (kept.length !== srcs.length) pending.set(target, kept);
   }
 }
 

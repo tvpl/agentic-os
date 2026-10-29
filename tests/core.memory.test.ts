@@ -18,6 +18,7 @@ import {
   type Db,
   type MordomoPaths,
 } from "@mordomo/core/internal";
+import { linkEdges } from "../core/src/memory/links.js";
 import { makeTempHome } from "./helpers.js";
 
 let ctx: { paths: MordomoPaths; cleanup: () => void };
@@ -178,14 +179,12 @@ describe("memory indexer", () => {
     indexer.indexAll();
     const idOf = (name: string) =>
       (db.prepare("SELECT id FROM files WHERE name = ?").get(name) as { id: number } | undefined)?.id;
+    // The links are the ones of note_links, resolved when read (cerebro-correcoes, AD-037(b)): the same claims as
+    // before, over the edges as they resolve today instead of the retired file_links table.
     const linkCount = (src: number, dst: number) =>
-      (
-        db
-          .prepare(
-            "SELECT COUNT(*) c FROM file_links WHERE src_id = ? AND dst_id = ? AND kind = 'markdown-link'",
-          )
-          .get(src, dst) as { c: number }
-      ).c;
+      linkEdges(db, () => true).filter(
+        (e) => e.source === src && e.target === dst && e.kind === "markdown-link",
+      ).length;
     const hub = idOf("hub.md")!;
     expect(linkCount(hub, idOf("notes.md")!)).toBe(1);
 
@@ -315,9 +314,11 @@ describe("graph and relations", () => {
     const insert = db.prepare(
       "INSERT INTO files (root, path, rel, name, ext, dir, area, size, mtime, indexed_at, title, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '[]')",
     );
+    // A link as the indexer stores it (note_links: the target as text, resolved when read).
     const link = db.prepare(
-      "INSERT OR IGNORE INTO file_links (src_id, dst_id, kind) VALUES (?, ?, 'markdown-link')",
+      "INSERT OR IGNORE INTO note_links (src_id, kind, target, label, line) VALUES (?, 'markdown-link', ?, NULL, 1)",
     );
+    let previous = "";
     db.transaction(() => {
       for (let i = 0; i < 1500; i++) {
         const dir = path.join(workspace, `d${i % 30}`);
@@ -335,7 +336,8 @@ describe("graph and relations", () => {
           i,
         );
         const id = Number(info.lastInsertRowid);
-        if (id > 1) link.run(id, id - 1);
+        if (previous) link.run(id, previous);
+        previous = p;
       }
     })();
     const started = performance.now();
