@@ -336,3 +336,37 @@ Status of batch A (updated in the commit that closes each piece):
 - the folder of a run of a memory skill, only to read (S2: C13-C23), the folder line of the prompt (C8) and the work
   context (S5: C44-C48): closed, every proof green in `tests/organize.runs.test.ts`, `tests/organize.layer.test.ts` and
   `tests/organize.skill.test.ts`; with it batch A is closed (C1-C23 and C44-C48)
+
+- **Boundary (batch A):** C1-C23 and C44-C48 closed. S1 without the folder line of the prompt (C1-C7, C9-C12, C47) at
+  `0d1cbf5`; S2, the folder line (C8) and S5 at `46a48c0`, which closes the batch. On the tree of `46a48c0`:
+  `npm run build`, `npm run typecheck` and `npm run lint` exit 0, `npx vitest run` at the root is green (134 files, 1783
+  tests, 1 skipped) and `npm run test -w apps/command-centre` too (140 files, 1125 tests); each of the 32 `Proof:` lines
+  of the batch passes and runs only its check's tests (C13 and C22 run two each, one per entry point). S3, S4, C49 and
+  C50 are untouched (batch B): there is no maps route, no index note logic, no goals section and no stance setting.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape, for batch B: (a) door 11
+  added in `46a48c0` (`RunFailure.code` gains `folder_not_indexed` and `folder_protection_unsupported`; the route
+  refusals are `FolderNotIndexedError` and `FolderProtectionUnsupportedError` in `core/src/runs/protectedFolder.ts`,
+  outside `ENGINE_ERROR_CODES`), with an Impact row; `skills.run` already declares both codes, so C49 only has to prove
+  them; (b) a skill takes a folder when the owner's `memorySkills` names it and it declares the input `folder`; the
+  folder is kept in the run's `request.inputs.folder` (filled from the context's first `ok` path when absent), so the
+  `RunManager` reads door 5 again at launch for an approval, a routine or a retry; (c) any run handed a folder starts in
+  `<home>/workspace`, a folder under `memory/` included, and its `readDirs` are the skill folder, `memory/`, the folder,
+  then the context's `ok` paths and `memory/notes/<id>/`; (d) `capabilities.protectsDirs` is optional in the manifest
+  type and on the wire (absent reads `false`), and `GET /api/providers` always fills it; (e) C2's proof reads the
+  resource route with `?rel=`, the route's only query parameter (`contracts/src/api/skills.ts`), where the check's text
+  says `?path=`: the claim (each file served with `200` and its text) is unchanged; (f) the hint of C10 is given to any
+  built-in memory skill (the default `memorySkills`, read from `defaultSettings()`) the owner took out of the list;
+  (g) `mordomo run` prints `folder_not_indexed: ` or `folder_protection_unsupported: ` before the message on stderr;
+  (h) the input `folder` is labelled "Folder (an indexed folder, read-only)", so the input line of the prompt is not
+  read as the `Folder to organize (read-only)` line; (i) pins moved the way the repo moves them:
+  `tests/builtin-context.test.ts` names three memory skills (its title says "the three memory skills are"), the v1
+  `settings.changed` fixture carries the new default, and `tests/api.contract.test.ts` C13 counts 66 raised pairs;
+  `tests/data.settings.test.ts` needed no change; (j) `tests/helpers/organizeWorld.ts` is the shared world (a seeded
+  home, an indexed folder, the three fake providers, the Claude adapter spied) and `tests/organize.layer.test.ts` holds
+  the run half of the own-layer proofs, for batch B to extend; the skill's prose already names `GET /api/memory/maps`
+  with `root`, and each entry's `state`, `digest` and `indexPath`.
+- **Abandoned:** adding the two codes to `ENGINE_ERROR_CODES` (the sdk C50 pin is another feature's Landing); a public
+  `DEFAULT_MEMORY_SKILLS` in `@mordomo/contracts` (contracts C41 pins the package's exports) and `folderFailureCode` in
+  `@mordomo/core/internal` (sdk C38 pins that barrel): the catalog reads `defaultSettings()` and the CLI the error's
+  `code`; making `protectsDirs` required as `readConfinement` is (every manifest written before it would stop
+  compiling, while absent already fails closed).
