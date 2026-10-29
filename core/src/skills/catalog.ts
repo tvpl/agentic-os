@@ -18,6 +18,7 @@ import {
 } from "../security/safeFs.js";
 import { copyTreeWithoutLinks, writeWorkspaceFile } from "../security/safeWrite.js";
 import type { StoreProblem } from "../routines/store.js";
+import { defaultSettings } from "../config/schema.js";
 
 /** A SKILL.md body at or above this many lines is flagged "thick" (ARMS S-L2). */
 export const THICK_LINE_THRESHOLD = 150;
@@ -416,6 +417,11 @@ export class SkillCatalog {
         `  long-term memory: ${path.join(memory, "MEMORY.md")}`,
         `  daily journal: ${path.join(memory, "journal")}${path.sep}YYYY-MM-DD.md`,
         "Local API for the memory routes only: the environment variables MORDOMO_URL (base address) and MORDOMO_RUN_TOKEN (credential of this run only, sent as the header x-mordomo-token). If they are not set, there is no API for this run: use the files above and skip what needs the API, and say so. There is no other token and no other file to read: never look in the config folder of the home.",
+      );
+    } else if (defaultSettings().memorySkills.includes(skill.slug)) {
+      // A built-in memory skill the owner took out of the list: it is told why it has no memory, and how to get it.
+      lines.push(
+        `This skill works on the second brain, but "${skill.slug}" is not in the owner's settings.memorySkills, so this run has no memory folder and no API: say so and stop. The owner adds it with PUT /api/settings, memorySkills holding the current list plus "${skill.slug}" (Settings in the Command Centre).`,
       );
     }
     return lines.join("\n");

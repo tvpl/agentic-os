@@ -328,3 +328,8 @@ The estimate exceeds the 150k budget, so the build stops here for the mechanism 
     plus tests (`organize.maps`, the other half of `organize.layer`, `organize.sync`, `AgentStance.test.tsx`, the e2e spec)
     ≈ 67 KB → ≈ 17k = ≈ 115k; C24-C43, C49, C50
 - Mechanism: handoff (the owner chose it on 2026-10-29: two batches A, B, sequential, each only on green)
+
+Status of batch A (updated in the commit that closes each piece):
+
+- S1 without the folder line of the prompt (C1-C7, C9-C12, C47): closed, every proof green in
+  `tests/organize.skill.test.ts` and `tests/builtin-context.test.ts`

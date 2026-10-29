@@ -111,8 +111,9 @@ describe.skipIf(!POSIX)(
       }
     });
 
-    it("a skill that talks of the run credential is one the owner's settings name, and the two memory skills are", () => {
-      expect(s.ctx.settings().memorySkills).toEqual(["recall", "consolidate-memory"]);
+    it("a skill that talks of the run credential is one the owner's settings name, and the three memory skills are", () => {
+      // cerebro-organizar (AC 9, C11): organize-brain is the third built-in memory skill.
+      expect(s.ctx.settings().memorySkills).toEqual(["recall", "consolidate-memory", "organize-brain"]);
       for (const skill of skills()) {
         const text = textFiles(skill.dir)
           .map((f) => fs.readFileSync(f, "utf8"))
@@ -126,7 +127,7 @@ describe.skipIf(!POSIX)(
           .filter((k) => k.memoryAccess)
           .map((k) => k.slug)
           .sort(),
-      ).toEqual(["consolidate-memory", "recall"]);
+      ).toEqual(["consolidate-memory", "organize-brain", "recall"]);
     });
 
     it("each skill run starts in <home>/workspace with its own folder, and a memory skill also gets memory/ and its credential", async () => {
@@ -654,7 +655,7 @@ describe.skipIf(!POSIX)(
         fs.rmSync(path.join(s.home, "skills", "borrowed"), { recursive: true });
       }
       // the list is the owner's: a device cannot change it, the owner can, and only then does a skill gain the memory
-      const patch = { memorySkills: ["recall", "consolidate-memory", "sneaky-owner"] };
+      const patch = { memorySkills: ["recall", "consolidate-memory", "organize-brain", "sneaky-owner"] };
       const asDevice = await s.app.inject({
         method: "PUT",
         url: "/api/settings",
@@ -673,7 +674,7 @@ describe.skipIf(!POSIX)(
       try {
         expect((await run("sneaky-owner")).extraEnv?.MORDOMO_RUN_TOKEN).toMatch(/^rc_/);
       } finally {
-        s.ctx.settingsStore.update({ memorySkills: ["recall", "consolidate-memory"] });
+        s.ctx.settingsStore.update({ memorySkills: ["recall", "consolidate-memory", "organize-brain"] });
       }
     });
 
