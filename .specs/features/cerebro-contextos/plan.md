@@ -229,17 +229,12 @@ do acervo inteiro.
 
 | Assumption                                  | Chosen default                                                                      | Rationale                                                                                                                                            | Confirmed? |
 | ------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Orçamento do mapa do contexto               | 4 800 caracteres (cerca de 1 200 tokens), o mesmo do bloco do diário no `ROUTER.md` | o mapa é ponteiro, não documentação; o recall com o contexto busca o resto                                                                           | n          |
-| Tamanho do resumo no prompt                 | os primeiros 2 000 caracteres de `_resumo.md`                                       | o resumo é o "o que importa" do dono; mais que isso é conteúdo, que o agente lê pelo caminho                                                         | n          |
-| Pasta de `memory/` como caminho de contexto | aceita (um contexto pode ser só um conjunto de notas)                               | o dono pode querer um contexto de notas sem pasta de projeto; a pasta de trabalho de uma execução dele é a pasta de notas, que o `resolveCwd` aceita | n          |
-| Execução iniciada por dispositivo pareado   | pode levar `contextId`, com a mesma regra de provedor de hoje (`assertMayStart`)    | o contexto só estreita o que a execução lê; não amplia                                                                                               | n          |
+| Orçamento do mapa do contexto               | 4 800 caracteres (cerca de 1 200 tokens), o mesmo do bloco do diário no `ROUTER.md` | o mapa é ponteiro, não documentação; o recall com o contexto busca o resto                                                                           | y          |
+| Tamanho do resumo no prompt                 | os primeiros 2 000 caracteres de `_resumo.md`                                       | o resumo é o "o que importa" do dono; mais que isso é conteúdo, que o agente lê pelo caminho                                                         | y          |
+| Pasta de `memory/` como caminho de contexto | aceita (um contexto pode ser só um conjunto de notas)                               | o dono pode querer um contexto de notas sem pasta de projeto; a pasta de trabalho de uma execução dele é a pasta de notas, que o `resolveCwd` aceita | y          |
+| Execução iniciada por dispositivo pareado   | pode levar `contextId`, com a mesma regra de provedor de hoje (`assertMayStart`)    | o contexto só estreita o que a execução lê; não amplia                                                                                               | y          |
 
-**Open questions:**
-
-| #   | Kind | Question                                                                                                                                                                                                        | Until answered                                                          |
-| --- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| 1   | open | O contexto ativo vale por máquina (moldura, Núcleo e CLI juntos; recomendado, door 5) ou cada conversa do chat escolhe o seu?                                                                                   | um por máquina; a conversa guarda o contexto com que começou (AC 23)    |
-| 2   | open | Uma execução com contexto pode ler as notas gerais (`MEMORY.md`, diário) além do contexto (recomendado: sim, o recall com `context=all` e os caminhos do bloco de lugares continuam) ou fica presa ao contexto? | o agente vê o contexto primeiro e o acervo inteiro quando pede (door 7) |
+**Open questions:** none - all resolved or logged above. As perguntas 1 (contexto ativo por máquina) e 2 (a execução com contexto também lê as notas gerais) foram respondidas pelo dono em 29/10/2026 com os padrões recomendados.
 
 ## Observable
 
