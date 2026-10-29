@@ -127,6 +127,13 @@ fixed template:
   characters). Empty sections are dropped, today comes first, and whatever does
   not fit is cut with `…(trimmed)`. The journal block is excluded from the
   router pointer check, since it is free text, not a map.
+- **The routers follow the index.** Once `memory/ROUTER.md` exists (the setup,
+  `mordomo index` or "Refresh" make it), every index pass that added, updated or
+  removed a file brings it and `memory/areas/*.md` up to date before it announces
+  `index.finished`. A router is written only when its bytes change, and the area
+  indexes never list the routers themselves, so a folder watch on `memory/` does
+  not index its own write in a loop. A regeneration that fails is logged in
+  `logs/memory.jsonl` (`routers_failed`) and never fails the pass.
 
 | Endpoint | Purpose |
 |---|---|
@@ -262,7 +269,9 @@ name that several files share resolves to the one in the same folder, else the s
 alphabetically, and the others come back as `alternatives`. Names are compared without regard to case or to how an
 accent is spelled (`[[Édito]]`, `[[édito]]` and a file the system stored as `E` plus a combining accent are one name;
 without the accent it is another). **Renaming a note never rewrites other files**: the
-links that pointed at the old name show as broken in their sources until you fix them (or rename it back).
+links that pointed at the old name show as broken in their sources until you fix them (or rename it back). The
+graph, the related files, the orphans of the hygiene report and the recall's pointers count the same links as this
+panel (wikilinks included), resolved when they are read, and none of them shows a file today's policy excludes.
 
 **The index worker.** The pass that scans, reads, indexes, links and relates the files runs in a
 `worker_thread` with its own database connection (memory limit 512 MB), so the service keeps answering while
@@ -274,6 +283,12 @@ to start under it, and the pass refuses to start under a restore: `409 restore_i
 the Second Brain). A pass that died with the service is taken up again at the next start; the passes are
 incremental, so what was committed stays. `GET /api/memory/status` says `indexing.mode`: `worker`, or `inline`
 when the worker script is not next to the service (a source checkout).
+
+**Word search.** `GET /api/memory/search` searches the words that matter in the question (the stopwords of
+English and Portuguese left out, accents folded, at most 8): the notes that hold every word come first in BM25 order,
+then, when that does not fill the page, the notes that hold some of them, more words first. A question made only of
+stopwords is searched as typed; one with no word at all lists the recent files. Files your policy excludes are left
+out before the page is cut, so a page is never short because of them.
 
 **Semantic search (optional, off by default).** `GET /api/memory/search` ranks by words (BM25 over the
 full-text index; NUL bytes in `q` are ignored, so a `q` made only of them lists the recent files like an empty one). With `memory.embeddings.enabled` on (`PUT /api/settings`, owner only) the index also keeps one
@@ -290,10 +305,11 @@ turning it off deletes the vectors at the next index pass.
   note in the first three for 11 questions and the strict word search (every word of the question) for 5; the one it
   misses asks for a synonym. **What that number does not show**: a search for _any_ of the words, ranked by BM25,
   also gets the same 11, so on those questions the gain comes from not requiring every word, and the vectors add
-  nothing to it. What the `hash` vectors do add is measured on `tests/fixtures/semantic-morphology.json`: a question
-  made of the other number of Portuguese `-ção` and `-ão` words ("devoluções" for a note that says "devolução")
-  finds its note by the vectors, and neither the strict nor the any-word search finds it. Meaning (synonyms, a
-  question that shares no word with the note) needs the `http` provider.
+  nothing to it; the word search of the screens does exactly that since `cerebro-correcoes` (AD-037), and finds the
+  same 11 with the semantic search off. What the `hash` vectors still add is a singular question for a note that only
+  holds the plural of a Portuguese `-ção` word ("ação" for a note that says "ações"), which the full-text index keeps
+  apart and the vectors join. Meaning (synonyms, a question that shares no word with the note) needs the `http`
+  provider.
 - **`provider: "http"`** sends the text of each indexed `.md` or `.txt` file (the folders you indexed, not only your
   notes; cut at 8 000 characters, 16 per request) and **the question of every search** in mode `auto` or `semantic`
   (once there is a vector; mode `text` sends nothing) to `endpoint`, an

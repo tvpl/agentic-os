@@ -42,7 +42,9 @@ import { openDb, type Db } from "./db/db.js";
 import { EventBus } from "./events.js";
 import { MordomoError } from "./errors.js";
 import { ExecutionService } from "./execution/service.js";
+import { JsonlLogger } from "./logs/jsonl.js";
 import { MemoryIndexer } from "./memory/indexer.js";
+import { generateRouters } from "./memory/routers.js";
 import { IndexWorkerHost } from "./memory/indexHost.js";
 import { SemanticSearch } from "./memory/semantic.js";
 import { installJournalHooks } from "./memory/journal.js";
@@ -58,7 +60,13 @@ import { RoutineStore } from "./routines/store.js";
 import { RunManager, providerEnvDrop, type CreateRunInput } from "./runs/runManager.js";
 import { ApprovalStore, requiresFullReview, type Approval } from "./security/approvals.js";
 import { DeviceStore } from "./security/devices.js";
-import { grantedReadScope, readScope, type ReadScope } from "./security/safeFs.js";
+import {
+  grantedReadScope,
+  homeReadScope,
+  readScope,
+  statWorkspacePath,
+  type ReadScope,
+} from "./security/safeFs.js";
 import { writeDecision, type WriteOrigin } from "./security/profiles.js";
 import { SentinelRunner } from "./sentinels/runner.js";
 import { SkillCatalog } from "./skills/catalog.js";
@@ -293,6 +301,31 @@ export class MordomoEngine {
       bus: this.events,
       getSettings: () => this.settings(),
       indexer: this.indexer,
+    });
+    // The routers follow the index (.specs/features/cerebro-correcoes, S5): a pass that changed rows brings them up to
+    // date before it is announced. Only routers that exist: the first ones are made by the setup, `mordomo index` or the
+    // owner's "Refresh", never by a pass on its own. A regeneration that fails is logged and never fails the pass.
+    this.indexer.setAfterPass(() => {
+      try {
+        statWorkspacePath(
+          homeReadScope(this.paths.home, [this.paths.memory]),
+          path.join(this.paths.memory, "ROUTER.md"),
+        );
+      } catch (error) {
+        // no routers yet: nothing to keep up to date (one that exists but cannot be read is regenerated, and its
+        // failure logged, below)
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      }
+      try {
+        generateRouters(this.db, this.paths, this.settings());
+      } catch (error) {
+        const { logMaxFileBytes, logRetentionDays } = this.settings().limits;
+        new JsonlLogger(this.paths.logs, "memory", logMaxFileBytes, logRetentionDays).append({
+          level: "warn",
+          code: "routers_failed",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
     // An index from before the home's config/ was private may hold rows of it: they go now, not at the next pass.
     try {

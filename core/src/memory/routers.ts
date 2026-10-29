@@ -35,6 +35,20 @@ const JOURNAL_END = "<!-- journal:end -->";
 export const DEFAULT_JOURNAL_BUDGET_TOKENS = 1200;
 
 /**
+ * Write a router file only when its bytes change (.specs/features/cerebro-correcoes, AC 28): a regeneration that would
+ * write what is already there leaves the file, its mtime and its inode alone, so a watcher of `memory/` does not see
+ * the routers' own write as a change and index again.
+ */
+function writeIfChanged(scope: ReturnType<typeof homeReadScope>, file: string, text: string): void {
+  try {
+    if (readWorkspaceText(scope, file, { maxBytes: MAX_ROUTER_BYTES }).text === text) return;
+  } catch {
+    // missing, too large or not readable: the write below decides (and refuses what it must)
+  }
+  writeWorkspaceFile(scope, file, text);
+}
+
+/**
  * Today's and yesterday's journal, rendered for the master router under a
  * token budget: today first, empty sections dropped, yesterday trimmed to
  * whatever budget is left. Deterministic for a given pair of files.
@@ -73,12 +87,17 @@ export function generateRouters(
   const areas = settings.areas;
   const folders = settings.indexedFolders.filter((f) => f.enabled);
 
+  // The routers are pointers to the files, never to themselves: a router listed by mtime would move each time it is
+  // written, and its own rewrite would make the next pass write it again (.specs/features/cerebro-correcoes, AC 29).
+  const masterFile = path.join(paths.memory, "ROUTER.md");
+  const areasFolder = path.join(paths.memory, "areas") + path.sep;
+  const isRouter = (file: FileRow) => file.path === masterFile || file.path.startsWith(areasFolder);
   const areaFiles = new Map<string, FileRow[]>();
   for (const area of areas) {
     const rows = db
-      .prepare("SELECT * FROM files WHERE area = ? ORDER BY mtime DESC LIMIT 40")
+      .prepare("SELECT * FROM files WHERE area = ? ORDER BY mtime DESC LIMIT 42")
       .all(area) as Array<Record<string, unknown>>;
-    areaFiles.set(area, rows.map(fileRowFromDb));
+    areaFiles.set(area, rows.map(fileRowFromDb).filter((file) => !isRouter(file)).slice(0, 40));
   }
 
   // Master router
@@ -125,7 +144,7 @@ export function generateRouters(
   lines.push("", ...renderJournalBlock(days, budget));
   const masterPath = path.join(paths.memory, "ROUTER.md");
   const scope = homeReadScope(paths.home, [paths.memory]);
-  writeWorkspaceFile(scope, masterPath, lines.join("\n") + "\n");
+  writeIfChanged(scope, masterPath, lines.join("\n") + "\n");
   written.push(masterPath);
 
   // Area indexes — pointers, not documentation; kept under a page.
@@ -146,7 +165,7 @@ export function generateRouters(
       areaLines.push(`- ${label} → \`${f.path}\``);
     }
     const areaPath = path.join(areasDir, `${areaSlug(area)}.md`);
-    writeWorkspaceFile(scope, areaPath, areaLines.join("\n") + "\n");
+    writeIfChanged(scope, areaPath, areaLines.join("\n") + "\n");
     written.push(areaPath);
   }
   return { written };
