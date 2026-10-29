@@ -597,7 +597,7 @@ describe("S3 the API and the CLI start nothing of their own", () => {
     },
     {
       suite: "tests/device-scopes.test.ts",
-      why: "cerebro-v2: the migrations after the scopes one include the links between notes and the vectors",
+      why: "cerebro-v2 and cerebro-correcoes: the migrations after the scopes one include the links between notes, the vectors and the end of the old link table",
       base: [
         "      // Two later migrations (round 1) also run over these rows: who a push subscription and a retry receipt belong to.",
         "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
@@ -607,12 +607,14 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       ],
       head: [
         "      // Later migrations also run over these rows: who a push subscription and a retry receipt belong to (round 1), and",
-        "      // the table of links between notes (cerebro-v2), which touches none of them.",
+        "      // the table of links between notes (cerebro-v2) and the end of the old link table (cerebro-correcoes), which touch",
+        "      // none of them.",
         "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
         '        "push-subscription-device",',
         '        "run-action-receipt-requester",',
         '        "note-links",',
         '        "file-vectors",',
+        '        "drop-file-links",',
         "      ]);",
       ],
     },

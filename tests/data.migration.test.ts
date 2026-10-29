@@ -516,7 +516,7 @@ describe("C30 migration 20 on a database that already holds an index", () => {
     }
   });
 
-  it("C56 file_vectors has exactly the shape of door 2, and the database ends at version 21", () => {
+  it("C56 file_vectors has exactly the shape of door 2, and the database ends at the last migration (22 since cerebro-correcoes)", () => {
     const home = tempHome();
     const { db } = openDb(home.paths);
     try {
@@ -541,9 +541,14 @@ describe("C30 migration 20 on a database that already holds an index", () => {
         sql: string;
       };
       expect(table.sql).not.toMatch(/virtual|vec0/i);
-      expect(db.pragma("user_version", { simple: true })).toBe(21);
-      expect(MIGRATIONS.at(-1)!.version).toBe(21);
-      expect(MIGRATIONS.slice(-2).map((m) => m.name)).toEqual(["note-links", "file-vectors"]);
+      // cerebro-correcoes added migration 22 (the end of file_links) after these two
+      expect(db.pragma("user_version", { simple: true })).toBe(22);
+      expect(MIGRATIONS.at(-1)!.version).toBe(22);
+      expect(MIGRATIONS.slice(-3).map((m) => m.name)).toEqual([
+        "note-links",
+        "file-vectors",
+        "drop-file-links",
+      ]);
       // the migration SQL twice leaves the table as it was
       const sql = MIGRATIONS.find((m) => m.version === 21)!.sql!;
       db.exec(sql);
