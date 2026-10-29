@@ -20,6 +20,7 @@ import {
 } from "../SettingsFields";
 import type { SettingsShape } from "./shared";
 import { Tooltip } from "../../ui";
+import { ContextsSettings } from "../../contexts/ContextsSettings";
 
 export function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
   const t = useT();
@@ -134,6 +135,8 @@ export function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
           </Button>
         </div>
       </Field>
+      {/* After the indexed folders (cerebro-contextos design: "Configurações › Memória › Contextos"). */}
+      <ContextsSettings />
       <p className="hint">
         <RefreshCw size={11} style={{ verticalAlign: -1 }} aria-hidden /> {t("brain.refresh")}:{" "}
         {t("nav.brain")} <ArrowRight size={11} style={{ verticalAlign: -1 }} aria-hidden />{" "}

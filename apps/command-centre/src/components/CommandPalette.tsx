@@ -53,6 +53,7 @@ import { APPS, appKindOf } from "../desktop/apps";
 import { useT, type TKey } from "../i18n";
 import { localizeSkill } from "../views/Skills/localize";
 import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills } from "../queries";
+import { useWorkContext } from "../contexts/useWorkContext";
 import { PRESETS, applyAccentTokens, applyPreset, type PresetId } from "../theme";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { getNotifySound } from "../hooks/useNotifications";
@@ -350,6 +351,8 @@ export function CommandPalette({
   const [files, setFiles] = useState<MemorySearchHit[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const needle = query.trim();
+  // The files of the active work context only (cerebro-contextos AC 32).
+  const fileContext = useWorkContext().query;
   useEffect(() => {
     if (page.kind !== "root" || needle.length < 2) {
       setFiles([]);
@@ -361,7 +364,7 @@ export function CommandPalette({
     const timer = window.setTimeout(() => {
       apiCall(
         "GET /api/memory/search",
-        { query: { q: needle, limit: 8 } },
+        { query: { q: needle, limit: 8, ...(fileContext ? { context: fileContext } : {}) } },
         {
           signal: controller.signal,
         },
@@ -380,7 +383,7 @@ export function CommandPalette({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [needle, page.kind]);
+  }, [needle, page.kind, fileContext]);
   const fileRows = useMemo<Row[]>(
     () =>
       files.map((f) => ({

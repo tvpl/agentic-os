@@ -61,7 +61,8 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
   "approval.requested": [["approvals"], ["run"], ["notifications"]],
   "approval.resolved": [["approvals"], ["run"], ["runs"], ["settings"], ["connectors"], ["notifications"]],
   "approval.expired": [["approvals"], ["run"], ["runs"]],
-  "settings.changed": [["settings"], ["meta"], ["providers"], ["uiPreferences"]],
+  // The work contexts live in settings.json (cerebro-contextos): another window that changes them refreshes the selector.
+  "settings.changed": [["settings"], ["meta"], ["providers"], ["uiPreferences"], ["contexts"]],
   "backup.created": [["backups"]],
   "notification.read": [["notifications"]],
   "notification.created": [["notifications"], ["metrics"]],

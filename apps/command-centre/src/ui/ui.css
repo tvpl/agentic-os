@@ -256,6 +256,31 @@ html:has(.nu-shell),
 .ui-menu-item.new {
   color: var(--accent-text);
 }
+/* The mark of the chosen item of a set: a check, never a colour alone; the slot keeps the others aligned. */
+.ui-menu-check {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+}
+.ui-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+.ui-menu-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: var(--fs-3);
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+.ui-menu-note svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
 
 /* ---- tooltip --------------------------------------------------------------------- */
 .ui-tip {

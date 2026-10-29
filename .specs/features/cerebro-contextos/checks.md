@@ -86,7 +86,7 @@ Proof: `npx vitest run tests/contexts.runs.test.ts -t "C22 "`
 **C23** - `POST /api/sessions/:id/continue` of a session whose first run had a context records the new run with the same `contextId`; a different `contextId` in the body answers `409 context_unavailable` (AC 23)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C23 "`
 
-**C24** - After the context of a recorded run is deleted, `GET /api/runs/:id` still answers its `contextId`, and the run detail of the interface shows the id with "Contexto apagado" / "Context deleted" (AC 24)
+**C24** - After the context of a recorded run is deleted, `GET /api/runs/:id` still answers its `contextId`, and the run detail of the interface shows the id with "Contexto apagado" / "Deleted context" (AC 24)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C24 "`
 Proof: `npm run test -w apps/command-centre -- src/contexts/RunContext.test.tsx -t "C24 "`
 
@@ -128,7 +128,7 @@ Proof: `npm run test -w apps/command-centre -- src/contexts/NewContextDialog.tes
 **C35** - A typed folder outside the indexed folders shows "This folder is not indexed." and "Index and create", which adds it to `indexedFolders` by `PUT /api/settings`, calls `POST /api/memory/index`, then `POST /api/contexts` (in that order) (AC 35)
 Proof: `npm run test -w apps/command-centre -- src/contexts/NewContextDialog.test.tsx -t "C35 "`
 
-**C36** - Settings › Memory › Contexts lists each context with its paths and their state as icon plus text ("Ok", "Folder gone", "Outside the indexed folders"), "Edit", "Edit brief" (opens the note editor on `_resumo.md`, creating it from the template when missing) and "Delete", whose confirmation says the notes stay and only then calls `DELETE` (AC 36)
+**C36** - Settings › Memory › Contexts lists each context with its paths and their state as icon plus text ("Ok", "Folder is gone", "Outside the indexed folders"), "Edit", "Edit brief" (opens the note editor on `_resumo.md`, creating it from the template when missing) and "Delete", whose confirmation says the notes stay and only then calls `DELETE` (AC 36)
 Proof: `npm run test -w apps/command-centre -- src/contexts/ContextsSettings.test.tsx -t "C36 "`
 
 **C37** - With no context the selector shows "Whole brain" and "Create a context to focus the brain on a project."; while the list loads a spinner with "Loading…"; when it fails the error with "Try again", which asks again (AC 37)
@@ -344,3 +344,6 @@ Status of batch C (updated in the commit that closes each piece):
   route; the changed routes' fields and errors) and `api.openapi` C16, C47's two sweeps green and unchanged (70 rows;
   the module-state list); with them `PUT /api/ui-preferences` refuses an `activeContext` that is not an id and
   `PATCH /api/contexts/:id` makes the brief (door 9)
+- S5 in rendered components (C33-C39, and the component half of C31): closed, every proof green in
+  `apps/command-centre/src/contexts/*.test.tsx` and `contextCommands.test.ts`; with them the copy of C24 and C36
+  follows design.md ("Deleted context", "Folder is gone"), and `settings.changed` refreshes the list of contexts

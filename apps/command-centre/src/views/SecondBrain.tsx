@@ -57,6 +57,7 @@ import {
 import { saveLocalSettings, settingsFromUi } from "../brain/state";
 import "../brain/brain.css";
 import { useBrainSearch } from "../brain/useBrainSearch";
+import { graphRequest, useWorkContext } from "../contexts/useWorkContext";
 import { useCommands, type Command } from "../commands/registry";
 import { openNoteEditor } from "../brain/noteEvents";
 
@@ -77,7 +78,6 @@ const LIST_BESIDE_PREVIEW_QUERY = "(min-width: 1100px)";
 const LIST_BESIDE_PREVIEW_GAP_PX = 12;
 /** Zoom a double-click on a file dives to (a single click uses the camera's focus zoom, never zooming out). */
 const FILE_DIVE_K = 3.2;
-const GRAPH_PATH = "/api/memory/graph?maxNodes=3000";
 const LAYOUT_KEYS: Record<
   LayoutKind,
   | "brain.layout.arcs"
@@ -129,7 +129,10 @@ export default function SecondBrain() {
   const [liveCount, setLiveCount] = useState(0);
 
   /* ---------- data ---------- */
-  const graphQuery = useApiQuery<GraphData>(qk.memoryGraph(GRAPH_PARAMS), GRAPH_PATH);
+  // In the active work context (cerebro-contextos AC 32): its files only; the whole index without one.
+  const work = useWorkContext();
+  const graphReq = graphRequest(GRAPH_PARAMS.maxNodes, work.query);
+  const graphQuery = useApiQuery<GraphData>(graphReq.key, graphReq.path, { enabled: work.ready });
   const skillsQuery = useOsSkills();
   const routinesQuery = useOsRoutines();
   const connectorsQuery = useOsConnectors();
@@ -313,7 +316,7 @@ export default function SecondBrain() {
   }, [ui.sel, version, world, dirty, centerOn, wantFocus, t]);
 
   /* ---------- search-as-you-type (server hits) ---------- */
-  const search = useBrainSearch(ui.query);
+  const search = useBrainSearch(ui.query, 8, work.query);
 
   /* ---------- timeline playback ---------- */
   const range = brain.range;

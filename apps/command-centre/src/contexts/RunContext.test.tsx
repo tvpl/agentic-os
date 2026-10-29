@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The work context of a run in the run detail (.specs/features/cerebro-contextos, C24): a run keeps the id of a
- * context deleted after it was recorded, and the detail shows that id with "Context deleted" ("Contexto apagado").
+ * context deleted after it was recorded, and the detail shows that id with "Deleted context" ("Contexto apagado").
  * The network is a stub that never answers: what the screen shows comes from the cache the test fills.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -37,7 +37,7 @@ function inLang(lang: "en" | "pt-BR", ui: ReactElement) {
 }
 
 describe("C24 a run keeps the id of a deleted context", () => {
-  it("C24 the run detail shows the id with Context deleted when GET /api/contexts no longer lists it", () => {
+  it("C24 the run detail shows the id with Deleted context when GET /api/contexts no longer lists it", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => new Promise(() => undefined)),
@@ -58,8 +58,8 @@ describe("C24 a run keeps the id of a deleted context", () => {
     const line = document.querySelector(".run-sheet-line")!;
     expect(line).toBeTruthy();
     expect(line.textContent).toContain("cliente-x");
-    expect(line.textContent).toContain("Context deleted");
-    expect(screen.getByText("Context deleted")).toBeTruthy();
+    expect(line.textContent).toContain("Deleted context");
+    expect(screen.getByText("Deleted context")).toBeTruthy();
   });
 
   it("C24 the text is Contexto apagado in pt-BR, next to the id", () => {
@@ -67,7 +67,7 @@ describe("C24 a run keeps the id of a deleted context", () => {
     expect(document.body.textContent).toContain("cliente-x");
     expect(document.body.textContent).toContain("Contexto apagado");
     expect(dictionaries["pt-BR"]["context.deleted"]).toBe("Contexto apagado");
-    expect(dictionaries.en["context.deleted"]).toBe("Context deleted");
+    expect(dictionaries.en["context.deleted"]).toBe("Deleted context");
   });
 
   it("C24 a context that still exists shows its name and is not called deleted; while the list loads, the id alone", () => {
@@ -76,11 +76,11 @@ describe("C24 a run keeps the id of a deleted context", () => {
       <RunContext contextId="cliente-x" contexts={[CONTEXT("cliente-x", "App do cliente X")]} />,
     );
     expect(document.body.textContent).toContain("App do cliente X");
-    expect(document.body.textContent).not.toContain("Context deleted");
+    expect(document.body.textContent).not.toContain("Deleted context");
     unmount();
     inLang("en", <RunContext contextId="cliente-x" contexts={undefined} />);
     expect(document.body.textContent).toContain("cliente-x");
-    expect(document.body.textContent).not.toContain("Context deleted");
+    expect(document.body.textContent).not.toContain("Deleted context");
   });
 
   it("C24 a run without a context shows no context on the detail", () => {

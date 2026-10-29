@@ -16,6 +16,8 @@ export interface BrainHit {
 export function useBrainSearch(
   query: string,
   limit = 8,
+  /** The active work context (cerebro-contextos AC 32): the hits are its files only. */
+  context?: string,
 ): { hits: BrainHit[]; failed: boolean; retry: () => void } {
   const [hits, setHits] = useState<BrainHit[]>([]);
   const [failed, setFailed] = useState(false);
@@ -29,7 +31,7 @@ export function useBrainSearch(
     }
     let cancelled = false;
     const id = window.setTimeout(() => {
-      void apiCall("GET /api/memory/search", { query: { q, limit } })
+      void apiCall("GET /api/memory/search", { query: { q, limit, ...(context ? { context } : {}) } })
         .then((res) => {
           if (cancelled) return;
           setHits(res);
@@ -45,7 +47,7 @@ export function useBrainSearch(
       cancelled = true;
       window.clearTimeout(id);
     };
-  }, [query, limit, attempt]);
+  }, [query, limit, context, attempt]);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   return { hits, failed, retry };
 }

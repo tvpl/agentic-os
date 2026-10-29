@@ -1,7 +1,7 @@
 /**
  * The work context of a run (.specs/features/cerebro-contextos, AC 24), on the sheet line of the run detail: the
  * context's name, or, when the context was deleted after the run was recorded, the id the run keeps with the text
- * "Context deleted". While the list of contexts loads (or cannot be read), the id alone: nothing is claimed.
+ * "Deleted context". While the list of contexts loads (or cannot be read), the id alone: nothing is claimed.
  */
 import { Crosshair } from "lucide-react";
 import type { ApiCallResult } from "@mordomo/contracts";

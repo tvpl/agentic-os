@@ -1,0 +1,326 @@
+/* Work contexts (.specs/features/cerebro-contextos/design.md): the selector, its menu's rows, the dialog, the
+   settings section and the chip. Text is 13px, labels 12px, colours are tokens, and a state is an icon plus text. */
+
+/* ---- the selector's button ---------------------------------------------------------------- */
+.ctx-sel {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  background: none;
+  color: var(--text);
+  font-size: var(--fs-3);
+  text-align: left;
+  cursor: pointer;
+}
+.ctx-sel:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.ctx-sel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.ctx-sel[data-variant="frame"] {
+  width: calc(100% - 2 * var(--s-2));
+  margin: 0 var(--s-2) var(--s-2);
+}
+.ctx-sel[data-folded] {
+  justify-content: center;
+  width: auto;
+  padding: 8px;
+}
+.ctx-sel svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.ctx-sel .ctx-sel-chev {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  color: var(--text-dim);
+}
+.ctx-sel-text {
+  display: grid;
+  min-width: 0;
+}
+.ctx-sel-name {
+  overflow: hidden;
+  font-size: var(--fs-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-sel-count {
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+
+/* The Núcleo: compact, left of the voice line. */
+.nu-context {
+  position: absolute;
+  left: var(--nu-gutter);
+  bottom: 30px;
+  z-index: 8;
+  max-width: 220px;
+}
+.nu-context .ctx-sel {
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+
+@media (width <= 1300px) {
+  .nu-context {
+    bottom: calc(var(--nu-voice-h, 90px) + 8px);
+  }
+}
+
+/* ---- the rows of its menu (the contents of an item; the item itself is the primitive's) --------- */
+.ctx-item {
+  display: grid;
+  min-width: 0;
+}
+.ctx-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-item-meta,
+.ctx-item-warn {
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.ctx-item-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text);
+}
+.ctx-item-warn svg {
+  width: 12px;
+  height: 12px;
+  color: var(--warn);
+}
+
+/* ---- the dialog ---------------------------------------------------------------------------- */
+.modal.ctx-dialog {
+  width: min(560px, 100%);
+}
+.ctx-form {
+  display: grid;
+  gap: var(--s-4);
+}
+.ctx-folders {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ctx-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ctx-folder-path {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-2);
+}
+.ctx-folder-warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: var(--fs-3);
+  color: var(--text);
+}
+.ctx-folder-warn svg,
+.ctx-folder-row svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.ctx-folder-warn svg {
+  color: var(--warn);
+}
+.ctx-folder-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ctx-folder-add .input {
+  flex: 1;
+  min-width: 160px;
+}
+.ctx-pick {
+  display: grid;
+  gap: 6px;
+  width: min(420px, calc(100vw - 32px));
+}
+.ctx-pick-list {
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.ctx-pick-item {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: var(--fs-2);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.ctx-pick-item[data-depth="1"] {
+  padding-left: 20px;
+}
+.ctx-pick-item:hover,
+.ctx-pick-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.ctx-pick-none {
+  margin: 0;
+  font-size: var(--fs-3);
+  color: var(--text-dim);
+}
+.ctx-dialog-error {
+  margin: 0;
+  font-size: var(--fs-3);
+  color: var(--danger);
+}
+
+/* ---- Settings › Memory › Contexts --------------------------------------------------------- */
+.ctx-settings {
+  display: grid;
+  gap: var(--s-3);
+}
+.ctx-settings-head,
+.ctx-settings-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-3);
+}
+.ctx-settings-head {
+  justify-content: space-between;
+}
+.ctx-rows {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ctx-row {
+  display: grid;
+  gap: 6px;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+}
+.ctx-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: var(--fs-3);
+}
+.ctx-row-name {
+  font-weight: 600;
+}
+.ctx-row-id,
+.ctx-row-files {
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.ctx-row-paths {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ctx-row-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-3);
+}
+.ctx-row-path-t {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-2);
+}
+.ctx-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-2);
+}
+.ctx-state svg {
+  width: 14px;
+  height: 14px;
+}
+.ctx-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ---- the chip above the composer ------------------------------------------------------------ */
+.ctx-chip {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  max-width: 100%;
+  margin: 0 0 6px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: var(--fs-2);
+  color: var(--text);
+}
+.ctx-chip[data-session] {
+  padding-right: 10px;
+}
+.ctx-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-chip svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.ctx-chip-x {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.ctx-chip-x:hover,
+.ctx-chip-x:focus-visible {
+  color: var(--text);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}

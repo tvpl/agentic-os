@@ -35,6 +35,9 @@ const UNREACHED: Record<string, string> = {
   "components/markdown.corpus.ts": "the text the Markdown renderer is held to: imported by specs only",
   "commands/testserver.ts": "test material: imported by specs only",
   "ui/testkit.tsx": "test material: imported by specs only",
+  // cerebro-contextos, batch C: the work-context specs' providers and their stub of the network
+  "contexts/testkit.tsx": "test material: imported by specs only",
+  "contexts/testnet.ts": "test material: imported by specs only",
   "commands/listenersAllowlist.ts":
     "the list of key listeners outside the registry, read by the registry's source check and probe (C16)",
   "testing/canvasText.ts": "a reader of the design-system guards: specs only",

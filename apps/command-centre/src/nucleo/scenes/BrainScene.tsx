@@ -115,9 +115,9 @@ import { distanceForLevel } from "./brainZoom";
 import "./brainScene.css";
 import { RequestFailed } from "../../brain/RequestFailed";
 import { useBrainSearch } from "../../brain/useBrainSearch";
+import { graphRequest, useWorkContext } from "../../contexts/useWorkContext";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
-const GRAPH_PATH = "/api/memory/graph?maxNodes=3000";
 const NO_SKILLS: Skill[] = [];
 const NO_ROUTINES: RoutineStatus[] = [];
 const NO_CONNECTORS: Connector[] = [];
@@ -267,7 +267,10 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   }, [stage]);
 
   /* ---------- data ---------- */
-  const graphQuery = useApiQuery<GraphData>(qk.memoryGraph(GRAPH_PARAMS), GRAPH_PATH);
+  // In the active work context (cerebro-contextos AC 32): its files only; the whole index without one.
+  const work = useWorkContext();
+  const graphReq = graphRequest(GRAPH_PARAMS.maxNodes, work.query);
+  const graphQuery = useApiQuery<GraphData>(graphReq.key, graphReq.path, { enabled: work.ready });
   const uiPreferencesQuery = useOsUiPreferences();
   const skillsQuery = useOsSkills();
   const graph = graphQuery.data ?? null;
@@ -777,7 +780,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   }, [railGroups, nearby, need]);
 
   /* ---------- search: the sky's matches + the server's content hits ---------- */
-  const search = useBrainSearch(ui.query);
+  const search = useBrainSearch(ui.query, 8, work.query);
   const hits = search.hits;
   const [searchFocus, setSearchFocus] = useState(false);
 
