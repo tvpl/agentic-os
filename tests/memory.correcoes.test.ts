@@ -283,6 +283,32 @@ describe("S1 one truth about links", () => {
     }
   });
 
+  it("C8 with a name two readable files share, the recall follows the file GET /api/memory/links resolves", async () => {
+    const dir = area();
+    const src = put(
+      path.join(dir, "x", "rota-lapa8.md"),
+      "# Rota lapa\n\nVer [[Alvo8q]] sobre a rota lapa.\n",
+    );
+    const near = put(
+      path.join(dir, "x", "alvo8q.md"),
+      "# Notas\n\n## Rota lapa completa\n\nrota lapa, rota lapa, rota lapa: a rota lapa sai da praça da lapa.\n",
+    );
+    const far = put(
+      path.join(dir, "y", "z", "alvo8q.md"),
+      "# Notas\n\n## Rota lapa completa\n\nrota lapa, rota lapa, rota lapa: a rota lapa sai da praça da lapa.\n",
+    );
+    await ctx.indexer.indexAllAsync();
+    const links = (await get(`/api/memory/links?id=${idOf(src)}`)).json() as {
+      outgoing: Array<{ resolved: { path: string } | null }>;
+    };
+    expect(links.outgoing[0]!.resolved!.path).toBe(near);
+    const { recall } = await import("../core/src/memory/recall.js");
+    const answer = recall(ctx.db, ctx.paths, ctx.settings(), "rota lapa", { k: 1 });
+    expect(answer.candidates[0]!.path).toBe(src);
+    expect(answer.answerContext.some((c) => c.path === near && c.via === src)).toBe(true);
+    expect(answer.answerContext.some((c) => c.path === far && c.via === src)).toBe(false);
+  });
+
   it("C9 migration 22 drops file_links and the pending map, keeps files and note_links byte for byte, and runs on a database without them", () => {
     const home = makeTempHome("mordomo-m22-");
     try {
