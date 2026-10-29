@@ -452,6 +452,8 @@ describe("S1 each route says who may call it", () => {
     const READS = [
       "GET /api/memory/recall",
       "GET /api/memory/recall/stats",
+      // cerebro-contextos, door 8: the search, read as the recall is
+      "GET /api/memory/search",
       "GET /api/memory/journal",
       "GET /api/memory/facts",
     ];
@@ -1091,13 +1093,14 @@ describe("S3 who asked does not approve", () => {
       const target = MIGRATIONS.find((m) => m.name === "device-scopes-and-who-asked")!.version;
       // Later migrations also run over these rows: who a push subscription and a retry receipt belong to (round 1), and
       // the table of links between notes (cerebro-v2) and the end of the old link table (cerebro-correcoes), which touch
-      // none of them.
+      // none of them, and the work context of a run (cerebro-contextos), a column that reads NULL on the old run.
       expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([
         "push-subscription-device",
         "run-action-receipt-requester",
         "note-links",
         "file-vectors",
         "drop-file-links",
+        "run-context",
       ]);
       const raw = new Database(tmp.paths.dbFile);
       for (const m of MIGRATIONS.filter((x) => x.version < target)) {

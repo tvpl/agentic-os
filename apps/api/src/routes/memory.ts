@@ -1,16 +1,18 @@
 import path from "node:path";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   appendJournal,
   assertFact,
   buildGraph,
   checkRouters,
   classifyNotePath,
+  contextOkPaths,
   createNote,
   ensureJournal,
   factStats,
   generateRouters,
   homeReadScope,
+  inspectPath,
   installJournalHooks,
   journalSections,
   listFacets,
@@ -38,6 +40,34 @@ import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
 import { contextFilter } from "./contexts.js";
+
+/**
+ * What a run's own credential reads through the recall and the search (.specs/features/cerebro-contextos, doors 7 and
+ * 8): the files under `memory/` and under the `ok` paths of the run's work context (the folders the run is already
+ * handed as its working and added folders), never the owner's other folders; and the context a read follows when the
+ * call names none. A context deleted since the run started leaves `memory/`. Null for any other caller.
+ */
+function runReach(
+  ctx: AppContext,
+  req: FastifyRequest,
+): { scope: ReadScope; context: string | undefined } | null {
+  if (req.principal?.kind !== "run") return null;
+  const settings = ctx.settings();
+  const contextId = ctx.runs.get(req.principal.runId)?.contextId ?? null;
+  const context = contextId ? settings.contexts.find((c) => c.id === contextId) : undefined;
+  if (!context) return { scope: homeReadScope(ctx.paths.home, [ctx.paths.memory]), context: undefined };
+  const roots = [ctx.paths.memory, ...contextOkPaths({ paths: ctx.paths, settings }, context)];
+  return { scope: homeReadScope(ctx.paths.home, roots, settings.excludes), context: context.id };
+}
+
+/** Whether the scope lets `file` be read today (a refused path is not a hit). */
+function readable(scope: ReadScope, file: string): boolean {
+  try {
+    return inspectPath(scope, file).blockedReason === null;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * What `POST /api/memory/open` hands to the OS (docs/security.md): documents
@@ -102,12 +132,17 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   bind(app, "memory.index.cancel", async () => ctx.indexHost.cancel());
 
-  bind(app, "memory.search", async ({ query: q }) => {
+  bind(app, "memory.search", async ({ query: q }, req) => {
     // Rows are judged by today's policy as they are read (an old index may still hold a private path).
     const { mode, context, ...filters } = q;
-    const within = contextFilter(ctx, context);
+    const reach = runReach(ctx, req);
+    const within = contextFilter(ctx, context ?? reach?.context);
     const policy = ctx.indexer.rowFilter();
-    const allow = within ? (row: { root: string; rel: string }) => policy(row) && within(row) : policy;
+    type Row = { root: string; rel: string };
+    const scoped = reach
+      ? (row: Row) => policy(row) && readable(reach.scope, path.join(row.root, row.rel))
+      : policy;
+    const allow = within ? (row: Row) => scoped(row) && within(row) : scoped;
     return ctx.semantic.search({ ...filters, query: q.q, allow }, mode ?? "auto");
   });
 
@@ -219,13 +254,15 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   /** Layered retrieval (the deterministic `brain.js`): keywords → index → top-K → sections → pointers. */
   bind(app, "memory.recall", async ({ query: q }, req) => {
-    const within = contextFilter(ctx, q.context);
+    // A run's credential recalls from the memory folder and its work context, not from every folder the owner
+    // granted; without `context` it follows the run's context (door 7).
+    const reach = runReach(ctx, req);
+    const within = contextFilter(ctx, q.context ?? reach?.context);
     const result = recall(ctx.db, ctx.paths, ctx.settings(), q.q, {
       k: q.k,
       area: q.area,
       excerptChars: q.excerptChars,
-      // A run's credential recalls from the memory folder, not from every folder the owner granted.
-      ...(req.principal?.kind === "run" ? { scope: homeReadScope(ctx.paths.home, [ctx.paths.memory]) } : {}),
+      ...(reach ? { scope: reach.scope } : {}),
       ...(within ? { within } : {}),
     });
     if (q.record !== false) recordRecall(ctx.db, result);

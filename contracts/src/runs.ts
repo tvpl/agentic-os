@@ -78,6 +78,11 @@ export interface RunRecord {
   startedBy: string | null;
   /** Token usage and provider-reported cost; null until a provider reports it. */
   usage: RunUsage | null;
+  /**
+   * The work context the run was started in (.specs/features/cerebro-contextos, door 4), kept as it was when the context
+   * is deleted later; null for a run without one and for runs created before migration 23.
+   */
+  contextId: string | null;
 }
 
 /** One thing a provider reported while a run was going. */

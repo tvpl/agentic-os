@@ -4,7 +4,15 @@ import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
 import { CONTEXT_ID, CONTEXT_LIMITS, type Settings, type WorkContext } from "../config/schema.js";
 import { PathAccessError, realpathLenient } from "../security/paths.js";
-import { findPrivateLink, homeReadScope, inspectPath, readScope, statWorkspacePath, type ReadScope } from "../security/safeFs.js";
+import {
+  findPrivateLink,
+  homeReadScope,
+  inspectPath,
+  readScope,
+  readWorkspaceText,
+  statWorkspacePath,
+  type ReadScope,
+} from "../security/safeFs.js";
 import { comparableSegments } from "./excludes.js";
 import { slugify } from "./notes.js";
 
@@ -60,6 +68,15 @@ export class ContextNotFoundError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ContextNotFoundError";
+  }
+}
+
+export class ContextUnavailableError extends Error {
+  readonly statusCode = 409;
+  readonly code = "context_unavailable";
+  constructor(message: string) {
+    super(message);
+    this.name = "ContextUnavailableError";
   }
 }
 
@@ -125,6 +142,55 @@ export function contextPathStates(env: ContextEnv, context: WorkContext): Array<
     const refused = refusal(scope, p, false);
     return { path: p, state: refused === null ? "ok" : refused.missing ? "missing" : "not_indexed" };
   });
+}
+
+/** The paths of a context that are `ok` today, as the owner gave them and in their order (the first is the main one). */
+export function contextOkPaths(env: ContextEnv, context: WorkContext): string[] {
+  return contextPathStates(env, context)
+    .filter((p) => p.state === "ok")
+    .map((p) => p.path);
+}
+
+/** Whether `target` is one of the `ok` paths of a context or lies below one (door 6, for a folder as for a file). */
+export function insideContext(env: ContextEnv, context: WorkContext, target: string): boolean {
+  return contextMembership(env, context)({ root: target, rel: "" });
+}
+
+/** How much of `_resumo.md` the prompt of a run carries (AC 21). */
+export const CONTEXT_BRIEF_PROMPT_CHARS = 2000;
+
+/**
+ * The block a run of a context begins with (AC 21): the name, the paths with their state, where its map is, the start
+ * of its brief when there is one, and where the global router is for anything outside it. Reads only `_resumo.md`,
+ * through the safe reader of `memory/`.
+ */
+export function contextPromptBlock(env: ContextEnv, context: WorkContext): string {
+  const states = contextPathStates(env, context);
+  const lines = [
+    `Work context: ${context.name}`,
+    "This run works inside this work context of the second brain. Its folders (the first is the main one):",
+    ...states.map(
+      (p, i) =>
+        `- ${p.path}${i === 0 ? " (main)" : ""}${p.state === "ok" ? "" : p.state === "missing" ? " (missing)" : " (not indexed)"}`,
+    ),
+    `Map of the context (its key files): ${contextMapFile(env.paths, context.id)}`,
+  ];
+  const briefFile = contextBriefFile(env.paths, context.id);
+  let brief: string | null = null;
+  try {
+    // Four bytes a character at most: the first characters are whole, whatever the language.
+    const read = readWorkspaceText(homeReadScope(env.paths.home, [env.paths.memory]), briefFile, {
+      maxBytes: CONTEXT_BRIEF_PROMPT_CHARS * 4,
+    });
+    brief = read.text.slice(0, CONTEXT_BRIEF_PROMPT_CHARS);
+  } catch {
+    brief = null;
+  }
+  if (brief) lines.push(`Brief of the context (${briefFile}, its first ${CONTEXT_BRIEF_PROMPT_CHARS} characters):`, brief);
+  lines.push(
+    `For anything outside this context, the global router of the second brain is ${path.join(env.paths.memory, "ROUTER.md")}.`,
+  );
+  return lines.join("\n");
 }
 
 /**

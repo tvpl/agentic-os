@@ -421,13 +421,23 @@ export class SkillCatalog {
     return lines.join("\n");
   }
 
-  buildRunPrompt(skill: Skill, inputs: Record<string, string>, artifactsDir: string): string {
+  /**
+   * The prompt of a skill run. A run in a work context begins with `contextBlock` (cerebro-contextos, AC 21), before
+   * the rest: what the run is about comes first.
+   */
+  buildRunPrompt(
+    skill: Skill,
+    inputs: Record<string, string>,
+    artifactsDir: string,
+    contextBlock?: string,
+  ): string {
     const notesFile = this.notesFile(skill);
     const notes = (this.readText(notesFile) ?? "").trim();
     const inputLines = skill.inputs
       .map((input) => `- ${input.label} (${input.name}): ${inputs[input.name]?.trim() || "(not provided)"}`)
       .join("\n");
     return [
+      contextBlock ?? "",
       `You are executing the "${skill.name}" skill from this machine's MordomoOS skill catalog.`,
       `Read the skill definition at: ${skill.skillFile}`,
       this.locationsBlock(skill),

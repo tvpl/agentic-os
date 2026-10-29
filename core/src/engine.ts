@@ -696,6 +696,7 @@ export class MordomoEngine {
       skillSlug: input.slug,
       parentRunId: input.parentRunId ?? null,
       startedBy: input.startedBy,
+      ...(input.contextId ? { contextId: input.contextId } : {}),
     };
   }
 }

@@ -282,3 +282,8 @@ Status of batch A (updated in the commit that closes each piece):
 - **Abandoned:** the membership merged into `allow` everywhere (it resolved a wikilink among the context's files only,
   so a link could mean another file inside a context than outside it); exporting `ContextSchema`, the path states and
   the error classes from the package roots; creating `memory/notes/<id>/` when a context is made.
+
+Status of batch B (updated in the commit that closes each piece):
+
+- S3 in the API and the core (C17-C23, C25, and the API half of C24): closed, every proof green in
+  `tests/contexts.runs.test.ts`

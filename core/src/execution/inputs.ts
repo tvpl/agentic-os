@@ -20,6 +20,8 @@ export interface PromptRunInput {
    * caller decides: a write asked by a paired device always waits for a human (`gateWrite`).
    */
   startedBy: string | null;
+  /** The work context the run is in (cerebro-contextos): `cwd` already lies inside it, and the prompt begins with it. */
+  contextId?: string;
 }
 
 export interface SkillRunInput {
@@ -34,6 +36,8 @@ export interface SkillRunInput {
   parentRunId?: string | null;
   /** Who asked (see `PromptRunInput.startedBy`). */
   startedBy: string | null;
+  /** The work context the run is in (see `PromptRunInput.contextId`). */
+  contextId?: string;
 }
 
 /** What an approved `write_run` approval replays (also its stored payload shape). */
@@ -55,5 +59,6 @@ export function promptRunFields(input: PromptRunInput): Omit<CreateRunInput, "pr
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
     ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
     startedBy: input.startedBy,
+    ...(input.contextId ? { contextId: input.contextId } : {}),
   };
 }

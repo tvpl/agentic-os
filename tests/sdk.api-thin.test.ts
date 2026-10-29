@@ -663,6 +663,48 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(132);"],
       head: ["    expect(operations).toBe(136);"],
     },
+    // cerebro-contextos, batch B: migration 23 (the work context of a run and of a conversation) runs over the old rows
+    // too, and the run credential reaches the search (door 8), read as its recall is.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-contextos: migration 23 after the scopes one",
+      base: [
+        "      // Later migrations also run over these rows: who a push subscription and a retry receipt belong to (round 1), and",
+        "      // the table of links between notes (cerebro-v2) and the end of the old link table (cerebro-correcoes), which touch",
+        "      // none of them.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        '        "note-links",',
+        '        "file-vectors",',
+        '        "drop-file-links",',
+        "      ]);",
+      ],
+      head: [
+        "      // Later migrations also run over these rows: who a push subscription and a retry receipt belong to (round 1), and",
+        "      // the table of links between notes (cerebro-v2) and the end of the old link table (cerebro-correcoes), which touch",
+        "      // none of them, and the work context of a run (cerebro-contextos), a column that reads NULL on the old run.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        '        "note-links",',
+        '        "file-vectors",',
+        '        "drop-file-links",',
+        '        "run-context",',
+        "      ]);",
+      ],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-contextos: the run credential reaches the search (door 8)",
+      base: ['      "GET /api/memory/recall/stats",', '      "GET /api/memory/journal",'],
+      head: [
+        '      "GET /api/memory/recall/stats",',
+        "      // cerebro-contextos, door 8: the search, read as the recall is",
+        '      "GET /api/memory/search",',
+        '      "GET /api/memory/journal",',
+      ],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

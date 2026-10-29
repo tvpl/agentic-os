@@ -15,10 +15,13 @@ import { redactSecrets } from "../security/redact.js";
 import {
   findPrivateLink,
   grantedReadScope,
+  homeReadScope,
   isHomeDirectory,
   resolveWorkspaceCwd,
+  statWorkspacePath,
   type ReadScope,
 } from "../security/safeFs.js";
+import { contextNotesDir, contextOkPaths } from "../memory/contexts.js";
 import { ownedProcessKiller } from "../spawn/safeSpawn.js";
 import type { EventBus } from "../events.js";
 import { boundedPaths } from "../agents/eventPaths.js";
@@ -101,6 +104,11 @@ export interface CreateRunInput {
    * is created.
    */
   startedBy: string | null;
+  /**
+   * The work context the run is started in (cerebro-contextos, door 4). The caller has resolved `cwd` inside it; when
+   * the run launches, the context's other `ok` paths and its notes folder become added folders (AC 18).
+   */
+  contextId?: string | null;
   /**
    * Initial status. `waiting_approval` makes a write run gated by an approval
    * visible in the Runs list; `markApproved()` moves it to `queued`.
@@ -542,6 +550,48 @@ export class RunManager {
   }
 
   /**
+   * The added folders of a run of a work context (cerebro-contextos, AC 18): the context's `ok` paths other than the
+   * working directory, in their order, then its notes folder (`memory/notes/<id>/`) when it exists. Each is judged
+   * as a working directory is (inside the granted folders, holding none of the home's private folders) and holds no
+   * link into the home's `config/` or `logs/`. Read when the run launches, so a path gone since is not handed over;
+   * a context deleted since adds nothing (the run keeps its id, AC 24).
+   */
+  private contextDirs(record: RunRecord, cwd: string): string[] {
+    if (!record.contextId) return [];
+    const settings = this.getSettings();
+    const context = settings.contexts.find((c) => c.id === record.contextId);
+    if (!context) return [];
+    const scope = this.scope();
+    const checked = (dir: string): string => {
+      const real = resolveWorkspaceCwd(scope, dir);
+      const offending = findPrivateLink(scope, real);
+      if (offending) {
+        throw new PathAccessError(
+          real,
+          `Folder holds a link into the MordomoOS config/ or logs/: ${offending}`,
+        );
+      }
+      return real;
+    };
+    const env = { paths: this.paths, settings, ...(this.platform ? { platform: this.platform } : {}) };
+    const dirs = contextOkPaths(env, context)
+      .map(checked)
+      .filter((real) => real !== cwd);
+    const notes = contextNotesDir(this.paths, context.id);
+    let notesExist = false;
+    try {
+      notesExist = statWorkspacePath(
+        homeReadScope(this.paths.home, [this.paths.memory]),
+        notes,
+      ).stat.isDirectory();
+    } catch {
+      notesExist = false;
+    }
+    if (notesExist) dirs.push(checked(notes));
+    return dirs;
+  }
+
+  /**
    * A run asked for by a paired device runs only where the CLI's reads stay in the working folder: the owner token sits
    * in a file under the home, which a provider that reads the whole disk (`readConfinement: "none"`, or a manifest that
    * says nothing) would hand to a prompt. `403 device_provider_refused` otherwise (`docs/security.md`, T3). `create`
@@ -583,8 +633,8 @@ export class RunManager {
     const promptSummary = redactSecrets(input.prompt.slice(0, 500));
     this.db
       .prepare(
-        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, request_json, skill_slug, routine_id, parent_run_id, session_id, attempts, timeout_ms, permission_profile, max_cost_usd, started_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, request_json, skill_slug, routine_id, parent_run_id, session_id, attempts, timeout_ms, permission_profile, max_cost_usd, started_by, context_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -606,6 +656,7 @@ export class RunManager {
         input.profile,
         input.maxCostUsd ?? null,
         input.startedBy,
+        input.contextId ?? null,
       );
     const record = this.get(id);
     if (!record) throw new Error("run insert failed");
@@ -754,18 +805,23 @@ export class RunManager {
           }
         }
       }
+      // Checked again here: the stored folder may have become private or been revoked since create().
+      const cwd = this.resolveCwd(record.cwd);
+      // What the run is let read besides its working directory: the skill's folders, then the work context's.
+      const skillContext = this.skillContext(record, mode);
+      const readDirs = [...new Set([...(skillContext.readDirs ?? []), ...this.contextDirs(record, cwd)])];
       const agentRun: AgentRun = {
         runId,
         prompt: effectivePrompt,
-        // Checked again here: the stored folder may have become private or been revoked since create().
-        cwd: this.resolveCwd(record.cwd),
+        cwd,
         model: record.model,
         effort: record.effort,
         mode,
         timeoutMs: record.timeoutMs ?? this.getSettings().limits.defaultTimeoutMs,
         profile: record.permissionProfile ?? this.getSettings().securityProfile,
         artifactsDir,
-        ...this.skillContext(record, mode),
+        ...skillContext,
+        ...(readDirs.length > 0 ? { readDirs } : {}),
         // MordomoOS's own secrets stay in the service (docs/security.md).
         dropEnv: providerEnvDrop(this.getSettings()),
         ...(record.sessionId ? { sessionId: record.sessionId } : {}),
@@ -1583,6 +1639,7 @@ interface RawRun {
   timeout_ms: number | null;
   permission_profile: string | null;
   started_by?: string | null;
+  context_id?: string | null;
   input_tokens?: number | null;
   output_tokens?: number | null;
   cache_read_tokens?: number | null;
@@ -1706,6 +1763,7 @@ function fromRow(row: RawRun): RunRecord {
     permissionProfile: row.permission_profile as SecurityProfile | null,
     startedBy: row.started_by ?? null,
     usage: usageFromRow(row),
+    contextId: row.context_id ?? null,
   };
 }
 

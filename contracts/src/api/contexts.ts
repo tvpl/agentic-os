@@ -34,6 +34,19 @@ export const ContextQuery = z.string().min(1).max(64).optional();
 
 export const contextNotFound = err(404, "context_not_found", "The context names no work context");
 
+/** None of a work context's paths is `ok`: there is no folder to write into or to start a run in. */
+export const contextUnavailable = err(
+  409,
+  "context_unavailable",
+  "None of the work context's paths is ok: there is no folder to write into",
+);
+
+/**
+ * The `contextId` of a run request (.specs/features/cerebro-contextos, door 3): the id of a work context. Any text up to
+ * 64 characters, so an id that names no context is `404 context_not_found` rather than a validation error.
+ */
+export const ContextIdField = z.string().min(1).max(64).optional();
+
 const pathNotIndexed = err(
   400,
   "context_path_not_indexed",

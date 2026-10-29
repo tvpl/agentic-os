@@ -334,7 +334,11 @@ describe("S1 one truth about links", () => {
       };
       old.close();
 
-      const { db, migration } = openDb(home.paths);
+      // cerebro-contextos added migration 23 after it: the claim is about 22, so the database goes up to 22.
+      const { db, migration } = openDb(
+        home.paths,
+        MIGRATIONS.filter((m) => m.version <= 22),
+      );
       expect(migration.toVersion).toBe(22);
       expect(db.pragma("user_version", { simple: true })).toBe(22);
       expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'file_links'").get()).toBeUndefined();
@@ -348,7 +352,10 @@ describe("S1 one truth about links", () => {
     // a database that never had them (created at 22 from nothing)
     const fresh = makeTempHome("mordomo-m22-fresh-");
     try {
-      const { db, migration } = openDb(fresh.paths);
+      const { db, migration } = openDb(
+        fresh.paths,
+        MIGRATIONS.filter((m) => m.version <= 22),
+      );
       expect(migration.toVersion).toBe(22);
       expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'file_links'").get()).toBeUndefined();
       db.close();

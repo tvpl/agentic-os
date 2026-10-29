@@ -163,6 +163,7 @@ const run = (
   permissionProfile: null,
   startedBy: null,
   usage: null,
+  contextId: null,
   ...fields,
 });
 const runs: RunRecord[] = [

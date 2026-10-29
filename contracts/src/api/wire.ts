@@ -87,6 +87,7 @@ export const RunRecordSchema = z.object({
   permissionProfile: SecurityProfile.nullable(),
   startedBy: z.string().nullable(),
   usage: RunUsageSchema.nullable(),
+  contextId: z.string().nullable(),
 });
 
 /** A row of `GET /api/runs`: the run without its complete request (needed only on the detail and retry path). */

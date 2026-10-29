@@ -237,6 +237,8 @@ const BROKER_ROUTES = new Set([
  */
 const RUN_API_READ_ROUTES = new Set([
   "GET /api/memory/recall",
+  // cerebro-contextos, door 8: the search, read as the recall is (memory/ and the run's work context).
+  "GET /api/memory/search",
   "GET /api/memory/recall/stats",
   "GET /api/memory/journal",
   "GET /api/memory/facts",

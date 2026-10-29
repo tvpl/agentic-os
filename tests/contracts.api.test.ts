@@ -135,6 +135,7 @@ describe("S6 dependencies and tolerance", () => {
       permissionProfile: null,
       startedBy: null,
       usage: null,
+      contextId: null,
     };
     const approval = {
       id: "a",

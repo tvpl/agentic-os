@@ -139,6 +139,7 @@ export { generateRouters, checkRouters, areaSlug, type RouterIssue } from "./mem
 export {
   changedContext,
   contextMembership,
+  contextOkPaths,
   contextSyncTarget,
   describeContexts,
   findContext,

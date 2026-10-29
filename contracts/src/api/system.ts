@@ -3,13 +3,7 @@ import { z } from "zod";
 import { UI_PREFERENCE_KEYS, UiPreferencesSchema } from "../preferences.js";
 import { EffortLevel, ProviderId, ProviderSettingsSchema, SettingsSchema } from "../settings.js";
 import { BackupNameParams, UuidParams, err, notFound, settingsWriteErrors } from "./common.js";
-import { ContextQuery, contextNotFound } from "./contexts.js";
-
-const contextUnavailable = err(
-  409,
-  "context_unavailable",
-  "None of the work context's paths is ok: there is no folder to write into",
-);
+import { ContextQuery, contextNotFound, contextUnavailable } from "./contexts.js";
 import { binary, route } from "./route.js";
 import {
   ApprovalSchema,

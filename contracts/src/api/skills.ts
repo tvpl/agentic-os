@@ -12,7 +12,8 @@ import {
   notFound,
   settingsWriteErrors,
 } from "./common.js";
-import { RunLaunchSchema } from "./runs.js";
+import { ContextIdField } from "./contexts.js";
+import { RunLaunchSchema, runContextErrors } from "./runs.js";
 import { binary, route } from "./route.js";
 
 const SkillWithFavoriteSchema = SkillSchema.extend({ favorite: z.boolean() });
@@ -44,6 +45,8 @@ const RunSkillBody = z.object({
   inputs: z.record(z.string()).default({}),
   cwd: z.string().optional(),
   timeoutMs: RunTimeout.optional(),
+  /** Run in this work context, as `POST /api/runs` does (.specs/features/cerebro-contextos, S3). */
+  contextId: ContextIdField,
 });
 
 const skillNotFound = notFound("The skill");
@@ -244,7 +247,8 @@ export const skillRoutes = {
   "skills.run": route({
     method: "POST",
     path: "/api/skills/:slug/run",
-    summary: "Run a skill headlessly (202 when a write waits for a human)",
+    summary:
+      "Run a skill headlessly (202 when a write waits for a human); contextId runs it in a work context, cwd then inside one of its paths",
     tag: "skills",
     scope: "run",
     params: SlugParams,
@@ -268,6 +272,7 @@ export const skillRoutes = {
       err(409, "budget_exhausted", "The skill's daily budget is exhausted"),
       err(409, "workspace_unavailable", "The working folder cannot be used"),
       err(429, "too_many_requests", "The queue of runs is full"),
+      ...runContextErrors,
     ],
   }),
 } as const;

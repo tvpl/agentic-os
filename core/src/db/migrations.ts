@@ -531,4 +531,16 @@ DROP TABLE IF EXISTS file_links;
 DELETE FROM meta WHERE key = 'index.pending_links';
 `,
   },
+  {
+    version: 23,
+    name: "run-context",
+    // cerebro-contextos, door 4: the work context a run was started in, and the one a conversation keeps. Text, not a
+    // foreign key: a context lives in settings.json, and a run stays readable after its context is deleted. Every row
+    // that exists reads NULL. Guarded by column, so running it again leaves the same schema.
+    up(db) {
+      if (!hasColumn(db, "runs", "context_id")) db.exec("ALTER TABLE runs ADD COLUMN context_id TEXT");
+      if (!hasColumn(db, "sessions", "context_id"))
+        db.exec("ALTER TABLE sessions ADD COLUMN context_id TEXT");
+    },
+  },
 ];

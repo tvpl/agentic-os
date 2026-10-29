@@ -5,6 +5,18 @@ import type { SecurityProfile } from "../config/schema.js";
 import { MordomoError } from "../errors.js";
 import type { RunMode } from "../agents/types.js";
 import type { CreateRunInput } from "../runs/runManager.js";
+import { contextPromptBlock } from "../memory/contexts.js";
+
+/**
+ * The block a run of a work context begins with (cerebro-contextos, AC 21), or null for a run without one. A context
+ * deleted between the request and the launch (a write that waited for a human) gives none: the run keeps its folder.
+ */
+function contextBlock(engine: MordomoEngine, contextId: string | undefined): string | null {
+  if (!contextId) return null;
+  const settings = engine.settings();
+  const context = settings.contexts.find((c) => c.id === contextId);
+  return context ? contextPromptBlock({ paths: engine.paths, settings }, context) : null;
+}
 
 /**
  * Reuse the run row an approval was gating, or create a fresh one. A row that
@@ -33,8 +45,9 @@ export function launchPromptRun(
   const profile: SecurityProfile = input.mode === "write" ? engine.settings().securityProfile : "read_only";
   const runId = claimRun(engine, approvedRunId, promptRunFields(input), profile);
   const artifactsNote = `\n\nIf you produce files, write them into: ${path.join(engine.paths.artifacts, runId)}`;
+  const block = contextBlock(engine, input.contextId);
   engine.runs
-    .execute(runId, input.prompt + artifactsNote, input.mode)
+    .execute(runId, (block ? `${block}\n\n` : "") + input.prompt + artifactsNote, input.mode)
     .catch((err: unknown) => onError(err, runId));
   return { runId };
 }
@@ -63,7 +76,12 @@ export function launchSkillRun(
     maxCostUsd = skill.budgetUsd - spent;
   }
   const runId = claimRun(engine, approvedRunId, { ...engine.skillRunFields(input), maxCostUsd }, profile);
-  const prompt = engine.skills.buildRunPrompt(skill, input.inputs, path.join(engine.paths.artifacts, runId));
+  const prompt = engine.skills.buildRunPrompt(
+    skill,
+    input.inputs,
+    path.join(engine.paths.artifacts, runId),
+    contextBlock(engine, input.contextId) ?? undefined,
+  );
   engine.runs.execute(runId, prompt, mode).catch((err: unknown) => onError(err, runId));
   return { runId };
 }

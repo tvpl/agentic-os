@@ -72,11 +72,13 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   (`tests/builtin-context.test.ts`). Such a skill is told the absolute paths it needs in its prompt, gets
   `memory/` as an added folder, and gets `MORDOMO_URL` and `MORDOMO_RUN_TOKEN` in its environment: `rc_` +
   32 random bytes, in memory, dropped the moment its run finishes, accepted only while the run is `queued`
-  or `running`, and only on `GET /api/memory/recall`, `…/recall/stats`, `…/journal`, `…/facts`; the two
+  or `running`, and only on `GET /api/memory/recall`, `…/recall/stats`, `…/search`, `…/journal`, `…/facts`; the two
   routes that write (`POST /api/memory/journal/append`, `…/facts`) are open to the credential of a *write*
   run only, are capped (100 writes a run, 500 a day) and record the run as the source (a fact's
-  `sourceRunId` is the credential's run, whatever the body says). Anything else is `403`. Recall through
-  it reads `memory/` only, not the owner's other granted folders. The request log records who called
+  `sourceRunId` is the credential's run, whatever the body says). Anything else is `403`. Recall and search
+  through it read `memory/` only, not the owner's other granted folders; for a run started in a work context,
+  `memory/` and that context's `ok` folders (the ones the run is already handed as its working and added folders),
+  and without `context` they answer for the context alone (`context=all`: everything the credential reads). The request log records who called
   (`owner`, `device:<id>`, `broker:<run>`, `run:<run>`). It replaces the instruction to `cat config/token`
   that those skills used to carry (AD-012). The CLI path (`mordomo recall`) reads the index directly and
   needs no credential. `tests/builtin-context.test.ts` runs every built-in skill and routine against the

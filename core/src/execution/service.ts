@@ -12,6 +12,14 @@ import type { RunMode } from "../agents/types.js";
 import type { ProviderId } from "../config/schema.js";
 import type { MordomoEngine } from "../engine.js";
 import { MordomoError } from "../errors.js";
+import {
+  ContextNotFoundError,
+  ContextUnavailableError,
+  ContextValidationError,
+  contextOkPaths,
+  insideContext,
+} from "../memory/contexts.js";
+import { realpathLenient } from "../security/paths.js";
 import { launchPromptRun, launchSkillRun } from "./launch.js";
 import type { PromptRunInput, SkillRunInput } from "./inputs.js";
 import {
@@ -108,7 +116,8 @@ export class ExecutionService implements Execution {
       }
     }
 
-    const cwd = engine.resolveCwd(body.cwd);
+    const cwd =
+      body.contextId !== undefined ? this.contextCwd(body.contextId, body.cwd) : engine.resolveCwd(body.cwd);
     const skillInput: SkillRunInput = {
       slug: body.slug,
       inputs: body.inputs,
@@ -121,6 +130,7 @@ export class ExecutionService implements Execution {
       cwd,
       timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
       startedBy: body.startedBy,
+      ...(body.contextId !== undefined ? { contextId: body.contextId } : {}),
     };
     return this.gateAndLaunchSkill(
       skillInput,
@@ -312,6 +322,21 @@ export class ExecutionService implements Execution {
     const settings = engine.settings();
     const session = body.sessionId ? engine.runs.sessions.get(body.sessionId) : null;
     if (body.sessionId && !session) throw new MordomoError(404, "Session not found");
+    // An id that names no work context is that, before anything else is said about it (cerebro-contextos, AC 20).
+    if (body.contextId !== undefined && !settings.contexts.some((c) => c.id === body.contextId)) {
+      throw new ContextNotFoundError(`No work context is called ${body.contextId}.`);
+    }
+    // A conversation keeps the work context it started in (door 4): asking for another is refused.
+    let contextId = body.contextId;
+    if (session) {
+      const kept = engine.runs.sessions.contextIdOf(session.id) ?? null;
+      if (body.contextId !== undefined && body.contextId !== kept) {
+        throw new ContextUnavailableError(
+          `This conversation runs ${kept ? `in the work context ${kept}` : "without a work context"}; it cannot continue in ${body.contextId}. Start a new conversation instead.`,
+        );
+      }
+      contextId = kept ?? undefined;
+    }
     const provider = body.provider ?? session?.provider ?? settings.defaultProvider;
     const providerSettings = engine.requireProvider(provider, settings);
     if (!providerSettings.enabled) throw new MordomoError(400, `Provider ${provider} is not enabled`);
@@ -320,7 +345,10 @@ export class ExecutionService implements Execution {
     // A session's cwd is re-checked against the *current* roots: a folder that
     // was granted when the conversation started may have been revoked since.
     const requested = body.cwd ?? session?.cwd ?? null;
-    const cwd = engine.resolveCwd(requested);
+    const cwd =
+      contextId !== undefined
+        ? this.contextCwd(contextId, body.cwd, session?.cwd)
+        : engine.resolveCwd(requested);
     const input: PromptRunInput = {
       prompt: body.prompt,
       provider,
@@ -332,6 +360,7 @@ export class ExecutionService implements Execution {
       ...(body.sessionId ? { sessionId: body.sessionId } : {}),
       ...(body.parentRunId ? { parentRunId: body.parentRunId } : {}),
       startedBy: body.startedBy,
+      ...(contextId !== undefined ? { contextId } : {}),
     };
     // Refused writes must not leave an empty conversation behind.
     engine.assertWriteAllowed(body.mode, "manual");
@@ -370,7 +399,37 @@ export class ExecutionService implements Execution {
       cwd: input.cwd,
       profile: input.mode === "write" ? this.engine.settings().securityProfile : "read_only",
       title: input.prompt,
+      contextId: input.contextId ?? null,
     }).id;
+  }
+
+  /**
+   * Where a run of a work context starts (cerebro-contextos, AC 17-20): `404 context_not_found` for an id that names
+   * none, `409 context_unavailable` when none of its paths is `ok`; a `cwd` the caller gives must lie inside one of
+   * its `ok` paths (`400 validation`); a conversation's folder is kept while it is still inside one; otherwise the
+   * first `ok` path. Always through `resolveCwd`, the one rule of where an agent may start.
+   */
+  private contextCwd(contextId: string, given: string | undefined, kept?: string | null): string {
+    const engine = this.engine;
+    const settings = engine.settings();
+    const context = settings.contexts.find((c) => c.id === contextId);
+    if (!context) throw new ContextNotFoundError(`No work context is called ${contextId}.`);
+    const env = { paths: engine.paths, settings };
+    const ok = contextOkPaths(env, context);
+    if (ok.length === 0) {
+      throw new ContextUnavailableError(`None of the paths of the work context ${contextId} is ok.`);
+    }
+    if (given !== undefined) {
+      if (!insideContext(env, context, realpathLenient(given))) {
+        throw new ContextValidationError(
+          "validation",
+          `The working folder ${given} is not inside a path of the work context ${contextId}.`,
+        );
+      }
+      return engine.resolveCwd(given);
+    }
+    if (kept && insideContext(env, context, realpathLenient(kept))) return engine.resolveCwd(kept);
+    return engine.resolveCwd(ok[0]!);
   }
 
   // ------------------------------------------------------------ approving --
