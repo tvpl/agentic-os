@@ -291,3 +291,48 @@ Status of batch B (updated in the commit that closes each piece):
   green in `apps/command-centre/src/contexts/RunContext.test.tsx`; with it S3 is closed (C17-C25)
 - S6, the CLI and the MCP tools (C41-C45): closed, every proof green in `tests/contexts.cli.test.ts`; with it batch B
   is closed (C17-C25 and C41-C45)
+
+- **Boundary (batch B):** C17-C25 and C41-C45 closed. S3 in the API and the core (C17-C23, C25, the API half of C24) at
+  `322d74d`, the interface half of C24 at `82f4af6`, S6 (C41-C45) at `55c2ed1`, which closes the batch. On the tree of
+  `55c2ed1`: `npm run build`, `npm run typecheck` and `npm run lint` exit 0, `npx vitest run` at the root is green (130
+  files, 1735 tests, 1 skipped) and `npm run test -w apps/command-centre` too (135 files, 1090 tests); each of the 36
+  `Proof:` lines of batches A and B runs exactly its one test (the UI line of C24, its file's four) and passes. S5, C46
+  and C47 are untouched (batch C); C46's and C47's proofs stay green.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape, for batch C: (a) door 8, a
+  `Landing` row added in `322d74d`: the run credential reaches `GET /api/memory/search`, and its recall and search read
+  `memory/` plus the `ok` paths of its run's context (a context deleted since: `memory/` only), so `context=all` is
+  everything the credential reads, never the owner's other folders (`docs/security.md`, `device-scopes` C9 and its
+  `sdk.api-thin` amendment); (b) `contextId` is any text up to 64 characters (`ContextIdField`), an id that names no
+  context is `404 context_not_found` before any session check, a different one on a conversation is `409
+context_unavailable`, and a conversation without a context does not take one on; a conversation whose context was
+  deleted answers `404 context_not_found` on continue; (c) a given `cwd` is checked against the context's `ok` paths
+  (door 6 rules, on its real path) before `resolveCwd`, so a folder outside the context is `400 validation` even when it
+  is outside the granted folders; a continuation keeps the conversation's folder while it is inside the context, else
+  the first `ok` path; (d) `readDirs` = the skill's folders first, then the context's `ok` paths other than the working
+  directory, then `memory/notes/<id>/` when it exists, each judged as a working directory and refused if it holds a link
+  into `config/`/`logs/`, read when the run launches; (e) the block is `contextPromptBlock` (`core/src/memory/contexts.ts`):
+  `Work context: <name>`, the paths with `(main)`/`(missing)`/`(not indexed)`, the map, the first 2 000 characters of
+  `_resumo.md` as they are, and the line naming `<home>/memory/ROUTER.md`; a prompt run is block + blank line + prompt,
+  a skill run passes it to `buildRunPrompt(skill, inputs, artifactsDir, contextBlock?)`; a write approved after its
+  context was deleted launches without a block; (f) `RunRecord.contextId` is required and nullable (contract, wire,
+  `typetests`); `SessionRecord` does not change: `sessions.context_id` is read by `SessionStore.contextIdOf`, so the
+  chat's "Conversation in the context" reads the `contextId` of the conversation's runs (`GET /api/sessions/:id`); (g)
+  `contextUnavailable` moved to `contracts/src/api/contexts.ts` beside `ContextIdField`, `runContextErrors` lives in
+  `runs.ts`, the core gains `ContextUnavailableError` and the barrel `contextOkPaths` (`sdk.surface` C38); (h) the pins
+  moved the way the repo moves them: migration 23 `run-context` in `data.migration` C56 (title now "23 since
+  cerebro-contextos"), `memory.correcoes` C9 migrates to 22 only, `device-scopes` C22 lists `run-context` (amended in
+  `sdk.api-thin`), the `contracts.api` C38 fixture and the interface fixtures (`gallery/main.tsx`,
+  `commands/testserver.ts`) gain `contextId: null`, and the README lists `mordomo context` (`docs.drift` C30); (i) the
+  interface has `qk.contexts` and `useOsContexts` in `queries.ts` (no entry in `invalidationMap` yet: `settings.changed`
+  should invalidate `["contexts"]` once the selector reads it), the `RunContext` component (class `run-work-context`, no
+  CSS file) and the key `context.deleted` in `locales/brain.ts` with C24's English "Context deleted" (design.md's table
+  says "Deleted context": the check was followed, batch C may align the design); (j) the CLI prints
+  `<*| > <id>  <name>  <n> files  <path> (<state>), …` (and `--json`), `context show` regenerates the routers when the
+  map is missing, an active context that no longer exists reads as the whole index, and an unknown `--context` prints
+  `context_not_found: …` on stderr and exits 1; the MCP `skills_run` sends no `contextId` for `all`. Left open:
+  `POST /api/runs/:id/retry` and `POST /api/runs/:id/children` carry no context (a retry of a context run runs without
+  one).
+- **Abandoned:** holding `contextId` to the id pattern (a malformed id would be `400`, not `404 context_not_found`);
+  resolving a given `cwd` before checking it against the context (a folder outside the granted ones would be `403
+forbidden_path`); keeping the run credential's reads in `memory/` (a project context would recall nothing); a
+  `contextId` on `SessionRecord`; continuing a conversation whose context was deleted without a context.
