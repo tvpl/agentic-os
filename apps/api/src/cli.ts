@@ -1790,7 +1790,10 @@ async function cmdRun(args: CliArgs): Promise<void> {
       startedBy: null,
     });
   } catch (err) {
-    console.error(`${pc.red("✘")} ${(err as Error).message}`);
+    // A refusal of the folder input names its code, as the API answers it (cerebro-organizar, door 5).
+    const named = (err as { code?: unknown }).code;
+    const code = named === "folder_not_indexed" || named === "folder_protection_unsupported" ? named : null;
+    console.error(`${pc.red("✘")} ${code ? `${code}: ` : ""}${(err as Error).message}`);
     ctx.close();
     process.exit(1);
   }

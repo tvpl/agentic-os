@@ -22,6 +22,13 @@ import {
   type ReadScope,
 } from "../security/safeFs.js";
 import { contextNotesDir, contextOkPaths } from "../memory/contexts.js";
+import {
+  askedFolder,
+  assertProtectsDirs,
+  folderFailureCode,
+  folderVerdict,
+  insideMemory,
+} from "./protectedFolder.js";
 import { ownedProcessKiller } from "../spawn/safeSpawn.js";
 import type { EventBus } from "../events.js";
 import { boundedPaths } from "../agents/eventPaths.js";
@@ -184,6 +191,8 @@ export type PermissionBrokerFactory = (run: RunRecord) => PermissionBroker | nul
 /** What a catalog skill is given besides its own folder (`Skill.memoryAccess`, from the owner's `memorySkills`). */
 export interface SkillAccess {
   memory: boolean;
+  /** The skill declares the input `folder` (cerebro-organizar, door 5): with `memory`, the folder it names is handed read-only. */
+  folder?: boolean;
 }
 /** The run-scoped credential for the memory routes of the local API, or null when the API is not this process's. */
 export type RunApiAccessFactory = (run: RunRecord, mode: RunMode) => { url: string; token: string } | null;
@@ -506,12 +515,15 @@ export class RunManager {
   private skillContext(
     record: RunRecord,
     mode: RunMode,
+    manifest: AgentAdapter["manifest"] | undefined,
   ): {
     readDirs?: string[];
     protectedDirs?: string[];
     extraEnv?: Record<string, string>;
+    /** The run was handed a folder of the user (door 9): it starts in `<home>/workspace`, its context's paths protected. */
+    handedFolder: boolean;
   } {
-    if (!record.skillSlug || !isValidId(record.skillSlug)) return {};
+    if (!record.skillSlug || !isValidId(record.skillSlug)) return { handedFolder: false };
     const realHome = realpathLenient(this.paths.home);
     const scope = this.scope();
     // A folder is let in only when it is a real folder of the home, outside config/ and logs/, and holds no link
@@ -533,7 +545,26 @@ export class RunManager {
     const skillDir = inHome(path.join(this.paths.skills, record.skillSlug));
     const dirs = [skillDir];
     if (access?.memory) dirs.push(inHome(this.paths.memory));
-    const readDirs = dirs.filter((d): d is string => d !== null);
+    // Door 5, read again when the run launches: the folder may have stopped being one since it was asked for.
+    const asked =
+      access?.memory && access.folder && record.request?.kind === "skill"
+        ? askedFolder(record.request.inputs)
+        : null;
+    const protectedDirs = skillDir ? [skillDir] : [];
+    if (asked !== null) {
+      assertProtectsDirs(manifest, record.provider);
+      const settings = this.getSettings();
+      const folder = folderVerdict(
+        { paths: this.paths, settings, ...(this.platform ? { platform: this.platform } : {}) },
+        asked,
+      );
+      // A folder of memory/ is already handed whole, and is the skill's to write.
+      if (!insideMemory(this.paths, folder)) {
+        dirs.push(folder);
+        protectedDirs.push(folder);
+      }
+    }
+    const readDirs = [...new Set(dirs.filter((d): d is string => d !== null))];
     let api: { url: string; token: string } | null = null;
     if (access?.memory) {
       try {
@@ -544,8 +575,9 @@ export class RunManager {
     }
     return {
       ...(readDirs.length > 0 ? { readDirs } : {}),
-      ...(skillDir ? { protectedDirs: [skillDir] } : {}),
+      ...(protectedDirs.length > 0 ? { protectedDirs } : {}),
       ...(api ? { extraEnv: { MORDOMO_URL: api.url, MORDOMO_RUN_TOKEN: api.token } } : {}),
+      handedFolder: asked !== null,
     };
   }
 
@@ -556,11 +588,11 @@ export class RunManager {
    * link into the home's `config/` or `logs/`. Read when the run launches, so a path gone since is not handed over;
    * a context deleted since adds nothing (the run keeps its id, AC 24).
    */
-  private contextDirs(record: RunRecord, cwd: string): string[] {
-    if (!record.contextId) return [];
+  private contextDirs(record: RunRecord, cwd: string): { dirs: string[]; paths: string[] } {
+    if (!record.contextId) return { dirs: [], paths: [] };
     const settings = this.getSettings();
     const context = settings.contexts.find((c) => c.id === record.contextId);
-    if (!context) return [];
+    if (!context) return { dirs: [], paths: [] };
     const scope = this.scope();
     const checked = (dir: string): string => {
       const real = resolveWorkspaceCwd(scope, dir);
@@ -577,6 +609,8 @@ export class RunManager {
     const dirs = contextOkPaths(env, context)
       .map(checked)
       .filter((real) => real !== cwd);
+    // The context's own paths, which a run handed a folder keeps read-only (door 9): never the notes folder or memory/.
+    const paths = dirs.filter((real) => !insideMemory(this.paths, real));
     const notes = contextNotesDir(this.paths, context.id);
     let notesExist = false;
     try {
@@ -588,7 +622,7 @@ export class RunManager {
       notesExist = false;
     }
     if (notesExist) dirs.push(checked(notes));
-    return dirs;
+    return { dirs, paths };
   }
 
   /**
@@ -805,11 +839,16 @@ export class RunManager {
           }
         }
       }
-      // Checked again here: the stored folder may have become private or been revoked since create().
-      const cwd = this.resolveCwd(record.cwd);
       // What the run is let read besides its working directory: the skill's folders, then the work context's.
-      const skillContext = this.skillContext(record, mode);
-      const readDirs = [...new Set([...(skillContext.readDirs ?? []), ...this.contextDirs(record, cwd)])];
+      const { handedFolder, ...skillContext } = this.skillContext(record, mode, adapter.manifest);
+      // Checked again here: the stored folder may have become private or been revoked since create(). A run handed a
+      // folder of the user starts in <home>/workspace, never in that folder (cerebro-organizar, door 9).
+      const cwd = handedFolder ? this.defaultCwd() : this.resolveCwd(record.cwd);
+      const context = this.contextDirs(record, cwd);
+      const readDirs = [...new Set([...(skillContext.readDirs ?? []), ...context.dirs])];
+      const protectedDirs = [
+        ...new Set([...(skillContext.protectedDirs ?? []), ...(handedFolder ? context.paths : [])]),
+      ];
       const agentRun: AgentRun = {
         runId,
         prompt: effectivePrompt,
@@ -822,6 +861,7 @@ export class RunManager {
         artifactsDir,
         ...skillContext,
         ...(readDirs.length > 0 ? { readDirs } : {}),
+        ...(protectedDirs.length > 0 ? { protectedDirs } : {}),
         // MordomoOS's own secrets stay in the service (docs/security.md).
         dropEnv: providerEnvDrop(this.getSettings()),
         ...(record.sessionId ? { sessionId: record.sessionId } : {}),
@@ -959,10 +999,14 @@ export class RunManager {
     } catch (err) {
       const message = redactSecrets((err as Error).message);
       const status: RunStatus = signal.aborted ? (active.shutdown ? "interrupted" : "cancelled") : "failed";
+      const failure = classifyRunFailure(message, status, mode === "write");
+      // The run's folder was refused when it launched (cerebro-organizar, door 11): say which rule, nothing to retry.
+      const folderCode = status === "failed" ? folderFailureCode(err) : null;
+      if (folderCode) Object.assign(failure, { code: folderCode, recoverable: false });
       this.settle(runId, ["running", "queued"], status, {
         duration_ms: Date.now() - startedAt,
         error: message,
-        failure_json: JSON.stringify(classifyRunFailure(message, status, mode === "write")),
+        failure_json: JSON.stringify(failure),
       });
       this.persistEvent(runId, { type: "error", ts: Date.now(), message }, active);
       return this.get(runId)!;

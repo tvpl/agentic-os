@@ -269,7 +269,17 @@ export const skillRoutes = {
         "device_provider_refused",
         "A paired device may start runs only on a provider that keeps reads in the working folder",
       ),
+      err(
+        400,
+        "folder_not_indexed",
+        "The folder input of a memory skill is not inside an enabled indexed folder or memory/, today's policy hides it, or it holds a link into the home's config/ or logs/",
+      ),
       err(409, "budget_exhausted", "The skill's daily budget is exhausted"),
+      err(
+        409,
+        "folder_protection_unsupported",
+        "The provider cannot keep the folder input of a memory skill read-only",
+      ),
       err(409, "workspace_unavailable", "The working folder cannot be used"),
       err(429, "too_many_requests", "The queue of runs is full"),
       ...runContextErrors,

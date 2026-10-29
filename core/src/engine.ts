@@ -58,6 +58,7 @@ import { ensureDirs, resolvePaths, seedHome, tightenHomeFiles, type MordomoPaths
 import { RoutineScheduler } from "./routines/scheduler.js";
 import { RoutineStore } from "./routines/store.js";
 import { RunManager, providerEnvDrop, type CreateRunInput } from "./runs/runManager.js";
+import { takesFolder } from "./runs/protectedFolder.js";
 import { ApprovalStore, requiresFullReview, type Approval } from "./security/approvals.js";
 import { DeviceStore } from "./security/devices.js";
 import {
@@ -282,7 +283,7 @@ export class MordomoEngine {
         permissionBroker: (run) => this.permissionBrokerFor(run),
         skillAccess: (slug) => {
           const skill = this.skills.load(slug);
-          return skill ? { memory: skill.memoryAccess } : null;
+          return skill ? { memory: skill.memoryAccess, folder: takesFolder(skill) } : null;
         },
         runApiAccess: (run, mode) => this.runApiAccessFor(run, mode),
       },

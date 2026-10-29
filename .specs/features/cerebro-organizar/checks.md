@@ -333,3 +333,6 @@ Status of batch A (updated in the commit that closes each piece):
 
 - S1 without the folder line of the prompt (C1-C7, C9-C12, C47): closed, every proof green in
   `tests/organize.skill.test.ts` and `tests/builtin-context.test.ts`
+- the folder of a run of a memory skill, only to read (S2: C13-C23), the folder line of the prompt (C8) and the work
+  context (S5: C44-C48): closed, every proof green in `tests/organize.runs.test.ts`, `tests/organize.layer.test.ts` and
+  `tests/organize.skill.test.ts`; with it batch A is closed (C1-C23 and C44-C48)

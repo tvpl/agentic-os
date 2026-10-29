@@ -15,6 +15,7 @@ export const claudeManifest: ProviderManifest = {
     resume: "flag",
     writeConfinement: "broker",
     readConfinement: "workdir",
+    protectsDirs: true,
   },
   layout: {
     instructionsFile: "CLAUDE.md",

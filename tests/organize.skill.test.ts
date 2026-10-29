@@ -279,6 +279,23 @@ describe.skipIf(!POSIX)("S1 the skill organize-brain, its guide and its question
     );
   });
 
+  it("C8 the prompt of a run with folder holds the memory lines and the folder line; without folder no folder line", async () => {
+    const clientes = w.dir("clientes");
+    const memory = w.ctx.paths.memory;
+    const withFolder = await runIt({ inputs: { etapa: "indexar", folder: clientes } });
+    const lines = withFolder.prompt.split("\n");
+    for (const line of [
+      `Memory folder (an added folder of this run): ${memory}`,
+      `  long-term memory: ${path.join(memory, "MEMORY.md")}`,
+      `  daily journal: ${path.join(memory, "journal")}/YYYY-MM-DD.md`,
+      `Folder to organize (read-only): ${fs.realpathSync(clientes)}`,
+    ])
+      expect(lines, line).toContain(line);
+    const without = await runIt({ inputs: { etapa: "entrevista" } });
+    expect(without.prompt).toContain(`Memory folder (an added folder of this run): ${memory}`);
+    expect(without.prompt).not.toContain("Folder to organize");
+  });
+
   it("C9 a new home's memorySkills names the three memory skills, and a stored list of two is read as it is", async () => {
     const fresh = makeTempHome("mordomo-organize-c9-");
     try {
@@ -359,5 +376,23 @@ describe.skipIf(!POSIX)("S1 the skill organize-brain, its guide and its question
     const questions = contexto.body.split("\n").filter((l) => /^\d+\. /.test(l));
     for (const [i, topic] of ["O que é", "O que importa", "metas", "O que ignorar"].entries())
       expect(questions[i], topic).toContain(topic);
+  });
+
+  it("C48 the prompt of a run with contextId starts with the context block and holds the folder and memory lines", async () => {
+    const first = w.dir("contexto-c48");
+    const created = await w.call("POST", "/api/contexts", { name: "Cliente C48", paths: [first] });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const id = created.body.id as string;
+    const memory = w.ctx.paths.memory;
+    const { prompt } = await runIt({ contextId: id, inputs: { etapa: "entrevista" } });
+    const lines = prompt.split("\n");
+    expect(lines[0]).toBe("Work context: Cliente C48");
+    expect(lines).toContain(
+      `Map of the context (its key files): ${path.join(memory, "contexts", `${id}.md`)}`,
+    );
+    expect(lines).toContain(`Folder to organize (read-only): ${fs.realpathSync(first)}`);
+    expect(lines).toContain(`Memory folder (an added folder of this run): ${memory}`);
+    expect(lines).toContain(`  long-term memory: ${path.join(memory, "MEMORY.md")}`);
+    expect(lines).toContain(`  daily journal: ${path.join(memory, "journal")}/YYYY-MM-DD.md`);
   });
 });

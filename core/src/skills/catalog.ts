@@ -5,7 +5,7 @@ import { parseSkillFile } from "./parse.js";
 import type { MordomoPaths } from "../paths.js";
 import { SkillFrontmatterSchema, type Skill, type SkillFrontmatter, type SkillResource, type SkillResourceKind } from "./types.js";
 import { isValidId, resolveInsideDir } from "../security/ids.js";
-import { PathAccessError } from "../security/paths.js";
+import { PathAccessError, realpathLenient } from "../security/paths.js";
 import {
   homeReadScope,
   listWorkspaceDir,
@@ -19,6 +19,7 @@ import {
 import { copyTreeWithoutLinks, writeWorkspaceFile } from "../security/safeWrite.js";
 import type { StoreProblem } from "../routines/store.js";
 import { defaultSettings } from "../config/schema.js";
+import { askedFolder, takesFolder } from "../runs/protectedFolder.js";
 
 /** A SKILL.md body at or above this many lines is flagged "thick" (ARMS S-L2). */
 export const THICK_LINE_THRESHOLD = 150;
@@ -407,7 +408,7 @@ export class SkillCatalog {
    * so a skill never reaches for `memory/…` or `config/…` relative to where it is: it is told here. A memory skill
    * is also told how to reach the memory routes of the local API without the owner token.
    */
-  locationsBlock(skill: Skill): string {
+  locationsBlock(skill: Skill, inputs: Record<string, string> = {}): string {
     const lines = [`Skill folder (yours to read): ${skill.dir}`];
     if (skill.memoryAccess) {
       const memory = this.paths.memory;
@@ -418,6 +419,9 @@ export class SkillCatalog {
         `  daily journal: ${path.join(memory, "journal")}${path.sep}YYYY-MM-DD.md`,
         "Local API for the memory routes only: the environment variables MORDOMO_URL (base address) and MORDOMO_RUN_TOKEN (credential of this run only, sent as the header x-mordomo-token). If they are not set, there is no API for this run: use the files above and skip what needs the API, and say so. There is no other token and no other file to read: never look in the config folder of the home.",
       );
+      // A folder of the user handed to read only (cerebro-organizar, door 5); the engine checks it when the run starts.
+      const folder = takesFolder(skill) ? askedFolder(inputs) : null;
+      if (folder !== null) lines.push(`Folder to organize (read-only): ${realpathLenient(path.resolve(folder))}`);
     } else if (defaultSettings().memorySkills.includes(skill.slug)) {
       // A built-in memory skill the owner took out of the list: it is told why it has no memory, and how to get it.
       lines.push(
@@ -446,7 +450,7 @@ export class SkillCatalog {
       contextBlock ?? "",
       `You are executing the "${skill.name}" skill from this machine's MordomoOS skill catalog.`,
       `Read the skill definition at: ${skill.skillFile}`,
-      this.locationsBlock(skill),
+      this.locationsBlock(skill, inputs),
       skill.resources.length > 0
         ? `The skill folder contains extra resource files; read ONLY the ones the skill's router points you to for this task.`
         : "",

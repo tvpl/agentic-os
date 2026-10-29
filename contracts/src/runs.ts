@@ -32,7 +32,11 @@ export interface RunFailure {
     | "cancelled"
     | "interrupted"
     | "provider"
-    | "unknown";
+    | "unknown"
+    /** The run's folder (door 5 of cerebro-organizar) stopped being one a run may be handed before it launched. */
+    | "folder_not_indexed"
+    /** The run's provider cannot keep a folder read-only (door 5 of cerebro-organizar). */
+    | "folder_protection_unsupported";
   message: string;
   recoverable: boolean;
   effectsUncertain: boolean;

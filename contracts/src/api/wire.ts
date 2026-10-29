@@ -51,6 +51,8 @@ export const RunFailureSchema = z.object({
     "interrupted",
     "provider",
     "unknown",
+    "folder_not_indexed",
+    "folder_protection_unsupported",
   ]),
   message: z.string(),
   recoverable: z.boolean(),
@@ -216,6 +218,11 @@ export const ProviderCapabilitiesSchema = z.object({
   resume: z.enum(["flag", "subcommand", "none"]),
   writeConfinement: z.enum(["broker", "sandbox", "none"]),
   readConfinement: z.enum(["workdir", "none"]),
+  /**
+   * The provider keeps a folder handed to a run read-only (cerebro-organizar, door 5). Optional in a manifest (absent
+   * reads `false`); `GET /api/providers` always says it.
+   */
+  protectsDirs: z.boolean().optional(),
 });
 
 export const TestedVersionsSchema = z.object({ min: z.string(), max: z.string() });

@@ -20,6 +20,7 @@ import {
   insideContext,
 } from "../memory/contexts.js";
 import { realpathLenient } from "../security/paths.js";
+import { askedFolder, assertProtectsDirs, folderVerdict, takesFolder } from "../runs/protectedFolder.js";
 import { launchPromptRun, launchSkillRun } from "./launch.js";
 import type { PromptRunInput, SkillRunInput } from "./inputs.js";
 import {
@@ -116,11 +117,32 @@ export class ExecutionService implements Execution {
       }
     }
 
-    const cwd =
-      body.contextId !== undefined ? this.contextCwd(body.contextId, body.cwd) : engine.resolveCwd(body.cwd);
+    // A memory skill handed a folder of the user (cerebro-organizar, doors 5 and 9): the folder only to read, and the
+    // run in <home>/workspace; with a work context and no folder, the context's first ok path is the folder.
+    let inputs = body.inputs;
+    let cwd: string;
+    const context = body.contextId !== undefined ? this.requireContext(body.contextId) : null;
+    const asked = takesFolder(skill) ? (askedFolder(body.inputs) ?? context?.ok[0] ?? null) : null;
+    if (asked !== null) {
+      assertProtectsDirs(engine.providers.manifest(provider), provider);
+      const real = folderVerdict({ paths: engine.paths, settings }, asked);
+      if (context && !insideContext(context.env, context.context, real)) {
+        throw new ContextValidationError(
+          "validation",
+          `The folder ${asked} is not inside a path of the work context ${context.context.id}.`,
+        );
+      }
+      inputs = { ...body.inputs, folder: asked };
+      cwd = engine.resolveCwd(null);
+    } else {
+      cwd =
+        body.contextId !== undefined
+          ? this.contextCwd(body.contextId, body.cwd)
+          : engine.resolveCwd(body.cwd);
+    }
     const skillInput: SkillRunInput = {
       slug: body.slug,
-      inputs: body.inputs,
+      inputs,
       provider,
       model:
         body.model !== undefined ? body.model : (skill.recommendedModel ?? providerSettings.defaultModel),
@@ -411,14 +433,7 @@ export class ExecutionService implements Execution {
    */
   private contextCwd(contextId: string, given: string | undefined, kept?: string | null): string {
     const engine = this.engine;
-    const settings = engine.settings();
-    const context = settings.contexts.find((c) => c.id === contextId);
-    if (!context) throw new ContextNotFoundError(`No work context is called ${contextId}.`);
-    const env = { paths: engine.paths, settings };
-    const ok = contextOkPaths(env, context);
-    if (ok.length === 0) {
-      throw new ContextUnavailableError(`None of the paths of the work context ${contextId} is ok.`);
-    }
+    const { context, env, ok } = this.requireContext(contextId);
     if (given !== undefined) {
       if (!insideContext(env, context, realpathLenient(given))) {
         throw new ContextValidationError(
@@ -430,6 +445,20 @@ export class ExecutionService implements Execution {
     }
     if (kept && insideContext(env, context, realpathLenient(kept))) return engine.resolveCwd(kept);
     return engine.resolveCwd(ok[0]!);
+  }
+
+  /** The work context an id names, with its `ok` paths: `404 context_not_found`, or `409 context_unavailable` with none. */
+  private requireContext(contextId: string) {
+    const engine = this.engine;
+    const settings = engine.settings();
+    const context = settings.contexts.find((c) => c.id === contextId);
+    if (!context) throw new ContextNotFoundError(`No work context is called ${contextId}.`);
+    const env = { paths: engine.paths, settings };
+    const ok = contextOkPaths(env, context);
+    if (ok.length === 0) {
+      throw new ContextUnavailableError(`None of the paths of the work context ${contextId} is ok.`);
+    }
+    return { context, env, ok };
   }
 
   // ------------------------------------------------------------ approving --

@@ -24,7 +24,8 @@ import { TicketStore } from "./tickets.js";
 export interface ProviderSnapshot {
   id: ProviderId;
   displayName: string;
-  capabilities: ProviderCapabilities;
+  /** The manifest's capabilities, `protectsDirs` always said (absent in a manifest reads `false`). */
+  capabilities: ProviderCapabilities & { protectsDirs: boolean };
   installHint: string;
   /** What a person runs in a terminal to sign the CLI in (from the manifest). */
   loginCommand: string;
@@ -232,7 +233,8 @@ export class AppContext extends MordomoEngine {
       out.push({
         id,
         displayName: manifest.displayName,
-        capabilities: manifest.capabilities,
+        // A manifest from before `protectsDirs` says nothing: it does not protect a folder (cerebro-organizar, door 5).
+        capabilities: { ...manifest.capabilities, protectsDirs: manifest.capabilities.protectsDirs === true },
         installHint: manifest.installHint,
         loginCommand: manifest.loginCommand,
         enabled: prefs.enabled,
