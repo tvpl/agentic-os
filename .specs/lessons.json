@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 31,
+  "next_id": 32,
   "lessons": [
     {
       "id": "L-001",
@@ -450,6 +450,20 @@
       ],
       "created": "2026-10-07T01:20:30Z",
       "last_seen": "2026-10-07T01:20:30Z"
+    },
+    {
+      "id": "L-031",
+      "key": "surviving_mutant::a fix that changes behaviour needs a test where the old and the new code answer differently otherwise reverting the fix leaves every proof green",
+      "text": "A fix that changes behaviour needs a test where the old and the new code answer differently; otherwise reverting the fix leaves every proof green.",
+      "signal": "surviving_mutant",
+      "scope": "fixes",
+      "status": "candidate",
+      "features": ["cerebro-correcoes"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["verification.md M8 - core/src/memory/recall.ts:437 (C8) (fixes)"],
+      "created": "2026-10-29T17:53:41Z",
+      "last_seen": "2026-10-29T17:53:41Z"
     }
   ]
 }

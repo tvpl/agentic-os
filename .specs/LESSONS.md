@@ -224,6 +224,13 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: provedores-plugaveis round 3 MA2: approval guard proven only on prompt payloads (checks)
 - last seen: 2026-10-07T01:20:30Z
 
+### L-031 - A fix that changes behaviour needs a test where the old and the new code answer differently; otherwise reverting the fix leaves every proof green.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `fixes` · harmful: 0
+- features: cerebro-correcoes
+- evidence: verification.md M8 - core/src/memory/recall.ts:437 (C8) (fixes)
+- last seen: 2026-10-29T17:53:41Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
