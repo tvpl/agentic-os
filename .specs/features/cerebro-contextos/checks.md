@@ -246,4 +246,4 @@ The estimate exceeds the 150k budget, so the build stops here for the mechanism 
   - **A** (core and API reads): S1 + S2 + S4 ≈ 76k + tests ≈ 30k = ≈ 106k
   - **B** (execution, CLI and MCP): S3 + S6 ≈ 59k + tests ≈ 20k = ≈ 79k
   - **C** (the interface and the cross-cutting checks): S5 + C46, C47 ≈ 65k + tests ≈ 25k = ≈ 90k
-- Mechanism: pending the owner (handoff | one builder)
+- Mechanism: handoff (the owner chose it on 2026-10-29: three batches A, B, C, sequential, each only on green)
