@@ -55,6 +55,14 @@
       "jsGzip": 505228,
       "cssRaw": 329795,
       "cssGzip": 70310
+    },
+    {
+      "feature": "cerebro-contextos",
+      "reason": "the work contexts in the interface: the context selector in both shells, the New context dialog, Settings > Memory > Contexts, the chip in the composer, the two palette commands, the menu primitive's checked items, separators and lines of text, and their strings in two languages (about 3.2 KB more JS gzip than cerebro-v2's ceiling); measured on the build of batch C",
+      "jsRaw": 1571334,
+      "jsGzip": 511418,
+      "cssRaw": 334705,
+      "cssGzip": 71378
     }
   ]
 }
