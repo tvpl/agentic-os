@@ -18,6 +18,7 @@ import {
   type EmbeddingSettings,
 } from "../core/src/memory/embeddings.js";
 import { STOPWORDS } from "../core/src/memory/recall.js";
+import { strictWordsSearch } from "../core/src/memory/search.js";
 import { SemanticSearch, fuse } from "../core/src/memory/semantic.js";
 import { VectorIndex } from "../core/src/memory/vectors.js";
 import { makeTempHome } from "./helpers.js";
@@ -217,14 +218,14 @@ describe("S4 semantic search, off by default", () => {
     expect(names(both)[0]).toBe("refund-policy");
     const via = new Map(both.map((h) => [h.name.replace(/\.md$/, ""), h.via]));
     expect(via.get("refund-policy")).toBe("both");
-    // a file only the vectors found (its words are not all in it) and one only the words found
-    const semanticOnly = (
-      await r.ctx.semantic.search(
-        { query: "what is the process when a customer wants a refund for a damaged item" },
-        "auto",
-      )
-    )[0]!;
-    expect([semanticOnly.name, semanticOnly.via]).toEqual(["refund-policy.md", "semantic"]);
+    // a file only the vectors found and one only the words found. Since AD-037 a file that holds some of the words is
+    // found by the words, and porter joins the English forms on both sides ("copy" finds "copies"), so the file only the
+    // vectors find is a Portuguese plural asked in the singular: "ação" against the "ações" of reuniao-semanal, which
+    // porter indexes apart and the hash provider stems to the same "acao".
+    const pt = rig({ enabled: true, provider: "hash" }, morphology.notes);
+    await pt.ctx.indexer.indexAllAsync();
+    const semanticOnly = (await pt.ctx.semantic.search({ query: "ação" }, "auto"))[0]!;
+    expect([semanticOnly.name, semanticOnly.via]).toEqual(["reuniao-semanal.md", "semantic"]);
     const textOnly = (await r.ctx.semantic.search({ query: "damaged" }, "auto")).find(
       (h) => h.name === "refund-policy.md",
     )!;
@@ -251,12 +252,15 @@ describe("S4 semantic search, off by default", () => {
       names(hits).slice(0, 3).includes(expected);
     const found = {
       and: [] as string[],
+      text: [] as string[],
       or: [] as string[],
       vectors: [] as string[],
       hybrid: [] as string[],
     };
     for (const q of corpus.questions) {
-      if (hit(await r.ctx.semantic.search({ query: q.q }, "text"), q.expected)) found.and.push(q.q);
+      // AD-037: the strict query (every word as typed) is the baseline; `mode=text` is now the relaxed words search
+      if (hit(strictWordsSearch(r.ctx.db, { query: q.q }), q.expected)) found.and.push(q.q);
+      if (hit(await r.ctx.semantic.search({ query: q.q }, "text"), q.expected)) found.text.push(q.q);
       if (hit(wordsAnyOf(r.ctx, q.q), q.expected)) found.or.push(q.q);
       if (hit(await r.ctx.semantic.search({ query: q.q }, "semantic"), q.expected)) found.vectors.push(q.q);
       if (hit(await r.ctx.semantic.search({ query: q.q }, "auto"), q.expected)) found.hybrid.push(q.q);
@@ -274,6 +278,8 @@ describe("S4 semantic search, off by default", () => {
     // add no question to the words; the gain over the strict search comes from not requiring every word.
     expect(found.or).toHaveLength(11);
     expect(found.or).toEqual(found.hybrid);
+    // AD-037: the words search of the screen is the relaxed one, and it finds the same eleven
+    expect(found.text.length).toBeGreaterThanOrEqual(11);
     expect(found.vectors.length).toBeGreaterThan(0);
   });
 
@@ -286,7 +292,8 @@ describe("S4 semantic search, off by default", () => {
     for (const q of morphology.questions) {
       rows.push([
         q.kind,
-        hit(await r.ctx.semantic.search({ query: q.q }, "text"), q.expected),
+        // AD-037: the strict query is the "words AND" column
+        hit(strictWordsSearch(r.ctx.db, { query: q.q }), q.expected),
         hit(wordsAnyOf(r.ctx, q.q), q.expected),
         hit(await r.ctx.semantic.search({ query: q.q }, "semantic"), q.expected),
         hit(await r.ctx.semantic.search({ query: q.q }, "auto"), q.expected),

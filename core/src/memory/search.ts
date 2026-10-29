@@ -1,5 +1,6 @@
 import type { Db } from "../db/db.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
+import { extractKeywords } from "./recall.js";
 
 export interface SearchFilters {
   query: string;
@@ -23,19 +24,24 @@ export interface SearchHit extends FileRow {
   via: SearchVia;
 }
 
-/**
- * Escape user input for FTS5: quote each term so no query syntax leaks through. A NUL byte is dropped with the quote
- * and the star (FTS5 fails on it): a query that is only that is an empty query.
- */
-function toFtsQuery(input: string): string {
+/** A word for FTS5: quoted, so no query syntax leaks through, as a prefix. A NUL byte is dropped (FTS5 fails on it). */
+const ftsWord = (word: string): string => `"${word.replace(/["*\0]/g, "")}"*`;
+
+/** The words as typed, every one required, at most 8: the strict query of `cerebro-v2` (AD-037). */
+function strictQuery(input: string): string {
   const terms = input
     .split(/\s+/)
     .map((t) => t.replace(/["*\0]/g, "").trim())
-    .filter((t) => t.length > 0)
+    // a term with no letter or digit holds no token for FTS5: it is not a word to require
+    .filter((t) => /[\p{L}\p{N}]/u.test(t))
     .slice(0, 8);
-  if (terms.length === 0) return "";
-  return terms.map((t) => `"${t}"*`).join(" ");
+  return terms.map(ftsWord).join(" ");
 }
+
+/** Rows read past the first page of matches before a search gives up filling `limit` with allowed ones. */
+const SCAN_CAP = 5000;
+/** How many rows of the "any word" query are ranked by how many words they hold. */
+const ANY_DEPTH = 500;
 
 /** The `WHERE` clauses the facets of a search add, over `files f`: shared by the words and the vectors. */
 export function searchFilters(filters: Omit<SearchFilters, "query">): { clauses: string[]; params: unknown[] } {
@@ -64,41 +70,92 @@ export function searchFilters(filters: Omit<SearchFilters, "query">): { clauses:
   return { clauses, params };
 }
 
-export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
-  const limit = Math.min(filters.limit ?? 50, 200);
-  const fts = toFtsQuery(filters.query);
+type Row = Record<string, unknown>;
+
+const hitOf = (r: Row): SearchHit => ({
+  ...fileRowFromDb(r),
+  snippet: (r.snip as string | null | undefined) ?? null,
+  score: (r.score as number | undefined) ?? 0,
+  via: "text" as const,
+});
+
+/** The rows of one FTS query in BM25 order, today's policy applied before the cut (`allow`), at most `limit`. */
+function matches(db: Db, fts: string, filters: SearchFilters, limit: number, skip?: ReadonlySet<number>): SearchHit[] {
   const { clauses, params } = searchFilters(filters);
-
-  if (!fts) {
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const rows = db
-      .prepare(`SELECT f.* FROM files f ${where} ORDER BY f.mtime DESC LIMIT ?`)
-      .all(...params, limit) as Array<Record<string, unknown>>;
-    return rows
-      .map((r) => ({ ...fileRowFromDb(r), snippet: null, score: 0, via: "text" as const }))
-      .filter((hit) => filters.allow?.(hit) ?? true);
-  }
-
   const where = clauses.length ? `AND ${clauses.join(" AND ")}` : "";
-  const rows = db
+  const out: SearchHit[] = [];
+  let read = 0;
+  for (const row of db
     .prepare(
       `SELECT f.*, bm25(files_fts) AS score,
               snippet(files_fts, 2, '<mark>', '</mark>', '…', 12) AS snip
        FROM files_fts
        JOIN files f ON f.id = files_fts.rowid
        WHERE files_fts MATCH ? ${where}
-       ORDER BY score
-       LIMIT ?`,
+       ORDER BY score`,
     )
-    .all(fts, ...params, limit) as Array<Record<string, unknown>>;
-  return rows
-    .map((r) => ({
-      ...fileRowFromDb(r),
-      snippet: (r.snip as string | null) ?? null,
-      score: r.score as number,
-      via: "text" as const,
-    }))
-    .filter((hit) => filters.allow?.(hit) ?? true);
+    .iterate(fts, ...params) as IterableIterator<Row>) {
+    if (++read > SCAN_CAP || out.length >= limit) break;
+    const hit = hitOf(row);
+    if (skip?.has(hit.id) || !(filters.allow?.(hit) ?? true)) continue;
+    out.push(hit);
+  }
+  return out;
+}
+
+/** No words: the most recent rows, today's policy applied before the cut. */
+function recent(db: Db, filters: SearchFilters, limit: number): SearchHit[] {
+  const { clauses, params } = searchFilters(filters);
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const out: SearchHit[] = [];
+  let read = 0;
+  for (const row of db
+    .prepare(`SELECT f.* FROM files f ${where} ORDER BY f.mtime DESC`)
+    .iterate(...params) as IterableIterator<Row>) {
+    if (++read > SCAN_CAP || out.length >= limit) break;
+    const hit = hitOf(row);
+    if (filters.allow?.(hit) ?? true) out.push(hit);
+  }
+  return out;
+}
+
+/**
+ * The words as typed, every one required (the search of `cerebro-v2`). Kept as the first half of `searchFiles` and as
+ * the baseline the semantic corpus is measured against (AD-037).
+ */
+export function strictWordsSearch(db: Db, filters: SearchFilters): SearchHit[] {
+  const limit = Math.min(filters.limit ?? 50, 200);
+  const fts = strictQuery(filters.query);
+  return fts ? matches(db, fts, filters, limit) : recent(db, filters, limit);
+}
+
+/**
+ * The words that matter (`extractKeywords`: no stopwords, folded), every one first, then any of them
+ * (.specs/features/cerebro-correcoes, door 3): the files that hold every word come first in BM25 order, then the ones
+ * that hold some, more words first and BM25 after. A question that is only stopwords is searched as typed; one with no
+ * word at all is the listing of the most recent files. Each file once.
+ */
+export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
+  const limit = Math.min(filters.limit ?? 50, 200);
+  const keywords = extractKeywords(filters.query);
+  if (keywords.length === 0) return strictWordsSearch(db, filters);
+
+  const all = matches(db, keywords.map(ftsWord).join(" "), filters, limit);
+  if (all.length >= limit || keywords.length === 1) return all;
+
+  const seen = new Set(all.map((hit) => hit.id));
+  const some = matches(db, keywords.map(ftsWord).join(" OR "), filters, ANY_DEPTH, seen);
+  if (some.length === 0) return all;
+  const ids = some.map((hit) => hit.id);
+  const marks = ids.map(() => "?").join(",");
+  const count = new Map<number, number>();
+  const holds = db.prepare(`SELECT rowid AS id FROM files_fts WHERE files_fts MATCH ? AND rowid IN (${marks})`);
+  for (const word of keywords) {
+    for (const { id } of holds.all(ftsWord(word), ...ids) as Array<{ id: number }>) count.set(id, (count.get(id) ?? 0) + 1);
+  }
+  // Array.prototype.sort is stable: rows with the same count keep the BM25 order of the query.
+  some.sort((a, b) => (count.get(b.id) ?? 0) - (count.get(a.id) ?? 0));
+  return [...all, ...some].slice(0, limit);
 }
 
 export function listFacets(db: Db): {
