@@ -96,11 +96,12 @@ export class SyncCompiler {
   /** Compute the desired file set for the enabled providers in targetDir, driven by the provider manifests. */
   private desiredFiles(
     targetDir: string,
+    routerFile: string,
   ): Array<{ filePath: string; content: string; provider: SyncAction["provider"] }> {
     const settings = this.getSettings();
     const skills = this.listSkills().filter((s) => s.enabled);
     const files: Array<{ filePath: string; content: string; provider: SyncAction["provider"] }> = [];
-    const routerBody = this.routerBody();
+    const routerBody = this.routerBody(routerFile);
     const enabled = this.getManifests().filter((m) => settings.providers[m.id]?.enabled);
 
     // Instructions files: one per distinct file name; shared when several providers use it.
@@ -163,13 +164,17 @@ export class SyncCompiler {
     return files;
   }
 
-  plan(targetDir: string): SyncPlan {
+  /**
+   * `routerFile` is the map the instructions carry: the master router, or the map of a work context
+   * (`memory/contexts/<id>.md`, .specs/features/cerebro-contextos AC 30), whose body takes the master router's place.
+   */
+  plan(targetDir: string, routerFile: string = path.join(this.paths.memory, "ROUTER.md")): SyncPlan {
     const manifest = this.loadManifest();
     const actions: SyncAction[] = [];
     // The files already in the target are read through the safe-read primitive: one of them may be a link
     // to the owner's token, and the plan shows its content as a diff.
     const scope = grantedReadScope(this.getSettings(), this.paths.home);
-    for (const desired of this.desiredFiles(targetDir)) {
+    for (const desired of this.desiredFiles(targetDir, routerFile)) {
       let current: string | null = null;
       try {
         current = readWorkspaceText(scope, desired.filePath, {
@@ -298,8 +303,7 @@ export class SyncCompiler {
     return { written, skippedConflicts, backupDir };
   }
 
-  private routerBody(): string {
-    const routerPath = path.join(this.paths.memory, "ROUTER.md");
+  private routerBody(routerPath: string): string {
     try {
       return readWorkspaceText(homeReadScope(this.paths.home, [this.paths.memory]), routerPath, {
         maxBytes: MAX_SYNC_FILE_BYTES,

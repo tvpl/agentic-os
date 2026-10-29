@@ -127,6 +127,15 @@ export function contextPathStates(env: ContextEnv, context: WorkContext): Array<
   });
 }
 
+/**
+ * Where the sync of a context writes and the map it carries in the master router's place (AC 30): its first `ok` path
+ * and `memory/contexts/<id>.md`; `null` when none of its paths is `ok`.
+ */
+export function contextSyncTarget(env: ContextEnv, context: WorkContext): { target: string; map: string } | null {
+  const main = contextPathStates(env, context).find((p) => p.state === "ok");
+  return main ? { target: main.path, map: contextMapFile(env.paths, context.id) } : null;
+}
+
 /** A real path as the platform compares names: case-folded on macOS and Windows (the rule of `grantedReadScope`). */
 const comparable = (env: ContextEnv, real: string): string[] => comparableSegments(real, env.platform ?? process.platform);
 

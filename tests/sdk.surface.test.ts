@@ -120,6 +120,7 @@ describe("S5 the surface is a closed list", () => {
         // cerebro-contextos: the work contexts the routes define and read by
         "changedContext",
         "contextMembership",
+        "contextSyncTarget",
         "describeContexts",
         "findContext",
         "newContext",

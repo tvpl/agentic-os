@@ -29,6 +29,9 @@ import {
   type WorkspaceFile,
   dailyPoints,
   isStartupServiceInstalled,
+  contextSyncTarget,
+  generateRouters,
+  type SyncPlan,
 } from "@mordomo/core/internal";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { bind } from "../contract.js";
@@ -56,6 +59,7 @@ function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: s
   }
 }
 import { httpError, principalName, requireAdapter, requireProvider, startedByOf } from "./common.js";
+import { requireContext } from "./contexts.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -138,6 +142,23 @@ function assertIndexableFolder(ctx: AppContext, folderPath: string): void {
 }
 
 /** A sync target must live inside the home or an enabled indexed folder. */
+/**
+ * The plan of the sync: into `target` (or the home) with the master router; with a work context, into the context's
+ * first `ok` path with the context's map in the master router's place (.specs/features/cerebro-contextos, AC 30). The
+ * map is brought up to date first, as a regeneration of the routers would.
+ */
+function syncPlan(ctx: AppContext, target: string | undefined, contextId: string | undefined): SyncPlan {
+  const context = contextId === undefined ? null : requireContext(ctx, contextId);
+  if (!context) return ctx.sync.plan(resolveSyncTarget(ctx, target));
+  const settings = ctx.settings();
+  const into = contextSyncTarget({ paths: ctx.paths, settings }, context);
+  if (!into) {
+    throw httpError(409, `None of the paths of the context ${context.id} is ok.`, "context_unavailable");
+  }
+  generateRouters(ctx.db, ctx.paths, settings);
+  return ctx.sync.plan(resolveSyncTarget(ctx, into.target), into.map);
+}
+
 function resolveSyncTarget(ctx: AppContext, target: string | undefined): string {
   if (!target) return ctx.paths.home;
   // Granted folders, on the real path, outside the home's config/ and logs/ (PathAccessError → 403).
@@ -671,11 +692,11 @@ export function registerSystemRoutes(
   });
 
   // ---- Sync ------------------------------------------------------------------
-  bind(app, "sync.plan", async ({ query: { target } }) => {
-    return ctx.sync.plan(resolveSyncTarget(ctx, target));
+  bind(app, "sync.plan", async ({ query: { target, context } }) => {
+    return syncPlan(ctx, target, context);
   });
   bind(app, "sync.apply", async ({ body }) => {
-    const plan = ctx.sync.plan(resolveSyncTarget(ctx, body.target));
+    const plan = syncPlan(ctx, body.target, body.context);
     return ctx.sync.apply(plan, body.approvedConflicts);
   });
 

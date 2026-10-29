@@ -51,8 +51,9 @@ de comandos (AD-014); nenhuma segunda política de caminhos, de escrita ou de co
 5. Recall da execução → a rota de recall, chamada com a credencial de uma execução que tem contexto e sem `context`, usa o
    contexto da execução (door 7).
 6. Mapa → `generateRouters` (exists) escreve `memory/contexts/<id>.md` por contexto (door 2), sob o orçamento em tokens, e apaga
-   o mapa de um contexto que não existe mais; o `SyncCompiler` (exists) ganha `context` em `sync.plan`/`sync.apply` e compila
-   esse mapa, em vez do `ROUTER.md`, no `CLAUDE.md`/`AGENTS.md` da pasta principal.
+   o mapa de um contexto que não existe mais; as rotas `sync.plan`/`sync.apply` (exist) ganham `context`, atualizam o mapa e
+   pedem ao `SyncCompiler` (exists) que compile esse mapa, em vez do `ROUTER.md`, no `CLAUDE.md`/`AGENTS.md` do primeiro caminho
+   `ok` do contexto.
 7. Interface → o seletor de contexto (design.md) nos dois shells, o chip no chat, "Novo contexto…" e Configurações › Memória ›
    Contextos chamam as rotas por `apiCall` (exists); o comando "Trocar de contexto" entra no registro (exists).
 
@@ -94,6 +95,7 @@ estrangeira, porque um contexto vive em `settings.json` e uma execução antiga 
 | `GET /api/memory/search`, `recall`, `graph`, `related`, `status` (mudam)                  | query `context?` (`<id>` ou `all`) | as mesmas respostas, só com arquivos do contexto                                                                        | os de hoje, mais `404`        |
 | `POST /api/runs`, `POST /api/skills/:slug/run`, `POST /api/sessions/:id/continue` (mudam) | `contextId?`                       | a execução; `RunRecord.contextId`                                                                                       | os de hoje, mais `404`, `409` |
 | `GET /api/sync/plan`, `POST /api/sync/apply` (mudam)                                      | `context?`                         | o plano e o resultado de hoje, com o mapa do contexto                                                                   | os de hoje, mais `404`        |
+| `GET /api/sync/plan`, `POST /api/sync/apply`, contexto sem caminho `ok` (nova)            | `context`                          | —                                                                                                                       | `409 context_unavailable`     |
 
 ## Landing
 

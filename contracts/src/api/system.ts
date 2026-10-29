@@ -3,6 +3,13 @@ import { z } from "zod";
 import { UI_PREFERENCE_KEYS, UiPreferencesSchema } from "../preferences.js";
 import { EffortLevel, ProviderId, ProviderSettingsSchema, SettingsSchema } from "../settings.js";
 import { BackupNameParams, UuidParams, err, notFound, settingsWriteErrors } from "./common.js";
+import { ContextQuery, contextNotFound } from "./contexts.js";
+
+const contextUnavailable = err(
+  409,
+  "context_unavailable",
+  "None of the work context's paths is ok: there is no folder to write into",
+);
 import { binary, route } from "./route.js";
 import {
   ApprovalSchema,
@@ -574,21 +581,29 @@ export const systemRoutes = {
   "sync.plan": route({
     method: "GET",
     path: "/api/sync/plan",
-    summary: "What the config compiler would write into each provider's native files",
+    summary:
+      "What the config compiler would write into each provider's native files; with context, into its first ok path, with its map in the place of the master router",
     tag: "sync",
     scope: "owner",
-    query: z.object({ target: z.string().optional() }),
+    query: z.object({ target: z.string().optional(), context: ContextQuery }),
     responses: { 200: SyncPlanSchema },
+    errors: [contextNotFound, contextUnavailable],
   }),
   "sync.apply": route({
     method: "POST",
     path: "/api/sync/apply",
-    summary: "Write the plan; a hand-edited file is written only when listed in approvedConflicts",
+    summary:
+      "Write the plan; a hand-edited file is written only when listed in approvedConflicts; context as in the plan",
     tag: "sync",
     scope: "owner",
-    body: z.object({ target: z.string().optional(), approvedConflicts: z.array(z.string()).default([]) }),
+    body: z.object({
+      target: z.string().optional(),
+      approvedConflicts: z.array(z.string()).default([]),
+      context: ContextQuery,
+    }),
     bodyOptional: true,
     responses: { 200: SyncApplyResultSchema },
+    errors: [contextNotFound, contextUnavailable],
   }),
   "artifacts.list": route({
     method: "GET",

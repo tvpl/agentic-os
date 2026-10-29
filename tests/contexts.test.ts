@@ -761,4 +761,80 @@ describe("S4 the map of a context", () => {
     expect(errorCode(save)).toBe("note_not_editable");
     expect(fs.readFileSync(file).equals(before)).toBe(true);
   });
+
+  it("C30 the sync plan with a context targets its first ok path with the map in the router's place, and apply writes it with a backup and per-file approval", async () => {
+    const restore = withSettings((s) => {
+      for (const id of ["claude", "codex", "cursor"] as const)
+        s.providers[id] = { ...s.providers[id], enabled: true };
+    });
+    try {
+      const gone = dir("sync-sumiu");
+      const project = dir("sync-projeto");
+      put(path.join(project, "leia.md"), "# Leia\n");
+      await ctx.indexer.indexAllAsync();
+      const id = (await create({ name: "Projeto sincronizado", paths: [gone, project] })).body.id as string;
+      fs.rmSync(gone, { recursive: true });
+      generateRouters(ctx.db, ctx.paths, ctx.settings());
+      const routerBody = fs
+        .readFileSync(path.join(temp.paths.memory, "ROUTER.md"), "utf8")
+        .replace(/^<!--.*?-->\n?/s, "")
+        .trim();
+      const mapBody = fs
+        .readFileSync(mapOf(id), "utf8")
+        .replace(/^<!--.*?-->\n?/s, "")
+        .trim();
+      expect(mapBody).toContain("Projeto sincronizado");
+
+      const plan = await get(`/api/sync/plan?context=${id}`);
+      expect(plan.status, JSON.stringify(plan.body)).toBe(200);
+      expect(plan.body.targetDir).toBe(project);
+      const actions = plan.body.actions as Json[];
+      for (const name of ["CLAUDE.md", "AGENTS.md"]) {
+        const action = actions.find((a) => a.filePath === path.join(project, name));
+        expect(action, name).toBeDefined();
+        expect(action!.newContent, name).toContain(mapBody);
+        expect(action!.newContent, name).not.toContain(routerBody);
+      }
+      const rules = actions.find((a) => a.filePath === path.join(project, ".cursor", "rules", "mordomo.mdc"));
+      expect(rules!.newContent).toContain(mapBody);
+
+      const applied = await call("POST", "/api/sync/apply", { context: id });
+      expect(applied.status, JSON.stringify(applied.body)).toBe(200);
+      const claudeMd = path.join(project, "CLAUDE.md");
+      expect(applied.body.written).toContain(claudeMd);
+      expect(fs.readFileSync(claudeMd, "utf8")).toContain(mapBody);
+
+      // a file changed by hand is a conflict: skipped without approval, written with it, and backed up first
+      fs.writeFileSync(claudeMd, "# meu texto\n");
+      const again = await get(`/api/sync/plan?context=${id}`);
+      expect((again.body.actions as Json[]).find((a) => a.filePath === claudeMd)!.kind).toBe("conflict");
+      const skipped = await call("POST", "/api/sync/apply", { context: id });
+      expect(skipped.body.skippedConflicts).toContain(claudeMd);
+      expect(fs.readFileSync(claudeMd, "utf8")).toBe("# meu texto\n");
+      const approved = await call("POST", "/api/sync/apply", { context: id, approvedConflicts: [claudeMd] });
+      expect(approved.status).toBe(200);
+      expect(approved.body.written).toContain(claudeMd);
+      expect(approved.body.backupDir).not.toBeNull();
+      const backups: string[] = [];
+      const walk = (d: string) => {
+        for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+          if (e.isDirectory()) walk(path.join(d, e.name));
+          else backups.push(path.join(d, e.name));
+        }
+      };
+      walk(approved.body.backupDir);
+      expect(backups.map((f) => fs.readFileSync(f, "utf8"))).toContain("# meu texto\n");
+      expect(fs.readFileSync(claudeMd, "utf8")).toContain(mapBody);
+
+      for (const res of [
+        await get("/api/sync/plan?context=nao-existe"),
+        await call("POST", "/api/sync/apply", { context: "nao-existe" }),
+      ]) {
+        expect(res.status).toBe(404);
+        expect(errorCode(res)).toBe("context_not_found");
+      }
+    } finally {
+      restore();
+    }
+  });
 });

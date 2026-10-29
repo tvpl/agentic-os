@@ -252,3 +252,5 @@ Status of batch A (updated in the commit that closes each piece):
 
 - S1 (C1-C9), S2 (C10-C16) and the S4 map with its notes rule (C26-C29): closed, every proof green in
   `tests/contexts.test.ts`
+- the S4 sync into the context's folder (C30): closed, its proof green in `tests/contexts.test.ts`; batch A (C1-C16,
+  C26-C30) is closed

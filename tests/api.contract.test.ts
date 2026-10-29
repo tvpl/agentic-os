@@ -1030,8 +1030,8 @@ describe("S2 the real answer is checked", () => {
       .map(([pair, where]) => `${pair} (${where})`);
     expect(undocumented).toEqual([]);
     // The set the scan reads today, pinned: a raise that appears or disappears is a change to the contract of some route.
-    // cerebro-contextos: three more (context_path_not_indexed, context_exists, context_not_found).
-    expect(raised.size).toBe(63);
+    // cerebro-contextos: four more (context_path_not_indexed, context_exists, context_not_found, context_unavailable).
+    expect(raised.size).toBe(64);
     expect([...raised.keys()].filter((pair) => pair.includes("<unresolved>"))).toEqual([]);
     expect(raised.has("409 approval_resolved")).toBe(true);
     // The other way: every pair an entry lists as its own is raised somewhere in the tree. A documented answer no code
