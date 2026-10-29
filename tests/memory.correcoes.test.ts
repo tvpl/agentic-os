@@ -259,6 +259,30 @@ describe("S1 one truth about links", () => {
     expect(none.answerContext.some((c) => c.path === target)).toBe(false);
   });
 
+  it("C8 with a name two files share, the recall follows the one it may read, even when the other ranks first", async () => {
+    const dir = area();
+    const src = put(path.join(dir, "rota-mooca8.md"), "# Rota mooca\n\nVer [[Alvo8p]] sobre a rota mooca.\n");
+    // the shorter path ranks first, and its folder is excluded after the pass; the longer one is readable
+    put(
+      path.join(dir, "privado8p", "alvo8p.md"),
+      "# Notas\n\nrota mooca, rota mooca, rota mooca, rota mooca da praça.\n",
+    );
+    const readable = put(
+      path.join(dir, "aa", "bb", "cc", "dd", "ee", "alvo8p.md"),
+      "# Notas\n\n## Rota mooca completa\n\nrota mooca, rota mooca, rota mooca: a rota mooca sai da praça da mooca.\n",
+    );
+    await ctx.indexer.indexAllAsync();
+    const restore = exclude("privado8p");
+    try {
+      const { recall } = await import("../core/src/memory/recall.js");
+      const answer = recall(ctx.db, ctx.paths, ctx.settings(), "rota mooca", { k: 1 });
+      expect(answer.candidates[0]!.path).toBe(src);
+      expect(answer.answerContext.some((c) => c.path === readable && c.via === src)).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
   it("C9 migration 22 drops file_links and the pending map, keeps files and note_links byte for byte, and runs on a database without them", () => {
     const home = makeTempHome("mordomo-m22-");
     try {
@@ -401,7 +425,7 @@ describe("S1 one truth about links", () => {
 });
 
 describe("S2 today's policy on every read", () => {
-  it("C13 an excluded row and a stale row under the home's config/ are no node, touch no edge and are not counted", async () => {
+  it("C13 an excluded row, stale rows under the home's config/ and logs/ and a secret name are no node, touch no edge and are not counted", async () => {
     const dir = area();
     const open = put(path.join(dir, "aberta13.md"), "# Aberta\n\n[[Fechada13]]\n");
     const closed = put(path.join(dir, "privado13", "fechada13.md"), "# Fechada\n");

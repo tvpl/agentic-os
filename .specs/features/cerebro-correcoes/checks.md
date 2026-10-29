@@ -34,7 +34,7 @@ Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C6 "`
 **C7** - `GET /api/memory/related?id=A` lists B with `why` `"Connected by a wikilink."` for a wikilink and `"Connected by a markdown link."` for a Markdown link (AC 7)
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C7 "`
 
-**C8** - A recall whose winning section holds `[[B]]` returns B's section with `via` = the source path, and with `pointerLimit: 0` it follows nothing (AC 8)
+**C8** - A recall whose winning section holds `[[B]]` returns B's section with `via` = the source path, and with `pointerLimit: 0` it follows nothing; with a name two files share, it follows the one it may read even when the other ranks first (AC 8)
 Proof: `npx vitest run tests/memory.correcoes.test.ts -t "C8 "`
 
 **C9** - Migration 22 on a database with `file_links` rows and `meta.index.pending_links` drops the table and the key, leaves the `files` and `note_links` rows byte for byte, and succeeds on a database without them; `user_version` is 22 (AC 9)
@@ -224,5 +224,7 @@ in C14; the reader's guard in C25):
   `4xx` and the placement, C13 covers the home's `logs/` and a secret name, the new branches have own-layer proofs, C27
   runs through the worker and on a fresh home, and the recall resolves wikilinks within its readable scope; AD-037 is back
   to its approved text and the build amendments are AD-038
+- **Round 2 of the verification (FAIL, 1 gap), fixed:** the recall's scoped wikilink resolution has its own proof in C8
+  (an ambiguous name whose first-ranked file is excluded); the C13 title says what it covers
 - **Abandoned:** regenerating the routers from the route and the sentinel themselves (the plan's first `Flow` hop 6):
   the announcement `index.finished` is made inside the pass, so only a hook before it can keep AC 27
