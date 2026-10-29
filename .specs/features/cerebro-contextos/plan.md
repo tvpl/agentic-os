@@ -45,8 +45,9 @@ de comandos (AD-014); nenhuma segunda política de caminhos, de escrita ou de co
    `allow` da busca, e como `within` ao lado do `allow` no grafo, nos relacionados, no recall e nas facetas de `core/src/memory`
    (exist), para que os links continuem resolvidos como no índice inteiro e só os arquivos do contexto saiam.
 4. Executar com escopo → `POST /api/runs` (exists), `POST /api/skills/:slug/run` (exists) e `POST /api/sessions/:id/continue` (exists) recebem
-   `contextId` (door 3); o `RunManager` (exists) resolve o `cwd` para o caminho principal do contexto pelo `resolveCwd` (exists),
-   soma os outros caminhos e a pasta de notas do contexto aos `readDirs`, guarda `context_id` na execução e na sessão (door 4) e o
+   `contextId` (door 3); o serviço de execução (`core/src/execution/service.ts`, exists) resolve o `cwd` para o caminho principal
+   do contexto pelo `resolveCwd` (exists) do `RunManager`; o `RunManager` (exists) soma os outros caminhos e a pasta de notas
+   do contexto aos `readDirs`, guarda `context_id` na execução e na sessão (door 4) e o
    `SkillCatalog.buildRunPrompt` (exists) põe o bloco do contexto antes do resto.
 5. Recall da execução → as rotas de recall e de busca, chamadas com a credencial de uma execução que tem contexto e sem
    `context`, usam o contexto da execução (door 7); a credencial lê `memory/` e os caminhos `ok` do contexto dela (door 8).
@@ -272,6 +273,23 @@ do acervo inteiro.
 | document mapa do contexto `memory/contexts/<id>.md`    | structure, what the reader does next     | AC 26, AC 27                                                                       |
 | document bloco do contexto no prompt                   | structure, what the reader does next     | AC 21                                                                              |
 | collection contextos                                   | naming, ordering, duplicates, exceptions | AC 1, AC 2, AC 4 (ordem: a de `settings.contexts`); caminho que sumiu: AC 7, AC 16 |
+
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+O texto aprovado acima fica como foi aprovado, exceto `Flow` e `Impact`, que se mantêm verdadeiros, e as linhas que
+`Landing` e `Surface` ganharam na construção (doors 8 e 9; as rotas de sync sem caminho `ok`, `PATCH` com `brief` e
+`PUT /api/ui-preferences`), que só acrescentam. O que estreita um texto aprovado fica aqui, com a decisão (AD-040(d)) e a
+pergunta ao dono (`.specs/STATE.md`, "Perguntas ao dono", cerebro-contextos, 1).
+
+- **AC 22 e door 7, `context=all` com a credencial de uma execução.** O texto aprovado diz que, com `context=all`, a
+  resposta "SHALL be for the whole index" (AC 22) e que "`context=all` volta ao acervo inteiro" (door 7). A door 8,
+  acrescentada na construção (`322d74d`), estreita isso para a credencial de uma execução: a busca e o recall leem só
+  `memory/` e os caminhos `ok` do contexto da execução, e `context=all` é tudo o que essa credencial pode ler, nunca as
+  outras pastas do dono; a credencial de uma execução sem contexto lê `memory/`, como já lia o recall. Com o token do dono
+  nada muda (AC 15: sem `context` ou com `all`, o acervo inteiro). O C22 afirma a leitura estreita. Padrão: vale a
+  emenda, porque o contrário ampliaria a AD-012 (o agente leria pela API pastas que a execução não recebeu). Reverter:
+  tirar o escopo de leitura da credencial em `runReach` (`apps/api/src/routes/memory.ts`), o que devolve o acervo inteiro
+  a `context=all`, e o texto do C22 com a sua prova (`tests/contexts.runs.test.ts`, "C22 ...").
 
 ## Sources
 

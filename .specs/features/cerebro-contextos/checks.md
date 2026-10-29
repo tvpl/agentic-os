@@ -3,7 +3,9 @@
 Profile: ui
 Plan: `.specs/features/cerebro-contextos/plan.md`
 
-47 checks in 6 slices + cross-cutting · 7 one-way doors · 0 open questions (as duas foram respondidas pelo dono em 29/10/2026).
+47 checks in 6 slices + cross-cutting · 9 one-way doors (doors 8 and 9
+added mid-build) · 0 open questions of the plan (as duas foram respondidas pelo dono em 29/10/2026); one owner question
+from the build, `.specs/STATE.md` "Perguntas ao dono", cerebro-contextos 1 (C22).
 
 Every proof is `npx vitest run <file> -t "<C-id> "` from the repository root (root tests) or
 `npm run test -w apps/command-centre -- <file> -t "<C-id> "` (UI tests); a test title starts with its check id. `E2E`
@@ -80,7 +82,7 @@ Proof: `npx vitest run tests/contexts.runs.test.ts -t "C20 "`
 **C21** - The prompt of a run with a context starts with a block holding `Work context: <name>`, the paths, the path of `memory/contexts/<id>.md`, the first 2 000 characters of `_resumo.md` (and not the 2 001st), and the line naming `memory/ROUTER.md` for anything outside the context (AC 21)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C21 "`
 
-**C22** - With a run credential of a run that has a context, `GET /api/memory/recall` and `GET /api/memory/search` without `context` answer only files of the context, and with `context=all` files of the whole index; with a run credential of a run without a context, the whole index (AC 22, door 7)
+**C22** - With a run credential of a run that has a context, `GET /api/memory/recall` and `GET /api/memory/search` without `context` answer only files of the context, and with `context=all` everything that credential reads (the context's files and the notes of `memory/`); a run credential of a run without a context finds the notes of `memory/`; neither ever answers a file of an indexed folder outside its run, which the owner token without `context` still finds (AC 22 and door 7 as narrowed by door 8: `plan.md`, "Emendas depois da aprovação"; owner question cerebro-contextos 1)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C22 "`
 
 **C23** - `POST /api/sessions/:id/continue` of a session whose first run had a context records the new run with the same `contextId`; a different `contextId` in the body answers `409 context_unavailable` (AC 23)
@@ -228,7 +230,8 @@ Evidence:
 - validation: C3, C4, C19
 - failure modes: C16 (a path gone or not indexed), C20 (no `ok` path), C37 (the list fails to load)
 - idempotency: C2 (an id that exists), C25 (migration twice), C28 (map rewritten on rename)
-- authorization: C9 (owner-only writes), C22 (the run credential stays inside its context unless it asks `all`)
+- authorization: C9 (owner-only writes), C22 (the run credential reads `memory/` and its context's `ok` paths, `all`
+  included, never the owner's other folders)
 - concurrency: n/a - a context write goes through the `SettingsStore`, whose writes are already atomic and serialized (AD-013); no new shared state
 - data lifecycle: C6 (deleting keeps the notes, removes the map), C24 (a run keeps a deleted context's id), C28
 - dependency failure: C16, C38 (the active context disappears)
