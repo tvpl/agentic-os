@@ -294,7 +294,7 @@ describe("S3 runs in a work context", () => {
     expect((await promptRun({})).agent.prompt.startsWith("Work context:")).toBe(false);
   });
 
-  it("C22 a run credential of a run with a context recalls and searches only the context without context, the whole index with all; without a context, the whole index", async () => {
+  it("C22 a run credential of a run with a context recalls and searches only the context without context, and with all everything the credential may read (memory/ and the run's folders); without a context, the same", async () => {
     const inside = dir("contexto-c22");
     const outside = dir("fora-c22");
     const contextNote = put(
@@ -367,7 +367,7 @@ describe("S3 runs in a work context", () => {
     const allRecalled = await recallPaths(scoped, "&context=all");
     expect(allRecalled.candidates).toEqual(expect.arrayContaining([contextNote, memoryNote]));
 
-    // A run without a context: the whole index, as before.
+    // A run without a context: everything its credential may read (memory/ and its folders), as before (AD-040(d)).
     const whole = await searchPaths(plain);
     expect(whole).toContain(memoryNote);
     expect((await recallPaths(plain)).candidates).toContain(memoryNote);

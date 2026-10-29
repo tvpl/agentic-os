@@ -47,7 +47,7 @@
 
 ## Handoff
 
-**Feature**: cerebro-correcoes (C1 do roteiro do cérebro) construída e verificada em três rodadas (FAIL, FAIL, FAIL estreito), escalonada ao dono com o resíduo da rodada 3 provado pelo construtor (AD-037 a AD-039); próxima: cerebro-contextos (C2), plano escrito, à espera da vez
+**Feature**: cerebro-contextos (C2) construída em três lotes e verificada (rodada 1 FAIL, rodada 2 PASS, dependente da pergunta cerebro-contextos 1); cerebro-correcoes (C1) fechada; próxima: cerebro-organizar (C3), plano escrito
 **Where**: na branch `chore/tlc-spec-lean-skill`, integradas e com `verification.md` (as que usaram as três rodadas fecharam com escalonamento ao dono, nota no fim de cada relatório): seguranca-p0, ci-gate, motor-composicao, capacidades-aplicadas, contratos, preferencias-ui, provedores-plugaveis, api-v1, adaptadores-tipados, moldura-app, seguranca-p1, dados-v2, comandos-atalhos, design-system, escopos-dispositivo. Também integradas e fechadas com escalonamento: primitivas e sdk-core (três rodadas FAIL). Integradas e ainda em verificação: contratos-rest (rodadas 1 e 2 FAIL, correções integradas), licenca-comercial (rodada 1 FAIL, correção integrada; todo texto jurídico é minuta para o dono), limpeza-legado (integrada, rodada 1). Aceites pendentes do dono: "Perguntas ao dono" (AD-014, AD-018 a AD-025).
 **In progress**: nada em worktree; resta a decisão do dono sobre os FAIL residuais (ver o fim de cada `verification.md`)
 **Next step**: o dono responde "Perguntas ao dono", cerebro-correcoes 1 e 2 (padrões valem enquanto isso); escrever os checks de `cerebro-contextos` e construir; as perguntas anteriores (limpeza-legado 1, distribuicao 16-20, cerebro-v2 13-19, licenca-comercial 10-11) seguem
