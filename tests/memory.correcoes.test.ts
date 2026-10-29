@@ -8,8 +8,9 @@ import { buildServer } from "../apps/api/src/server.js";
 import { openDb } from "../core/src/db/db.js";
 import { MIGRATIONS } from "../core/src/db/migrations.js";
 import { linkEdges } from "../core/src/memory/links.js";
+import { relatedFiles } from "../core/src/memory/graph.js";
 import { generateRouters } from "../core/src/memory/routers.js";
-import { strictWordsSearch } from "../core/src/memory/search.js";
+import { searchFiles, strictWordsSearch } from "../core/src/memory/search.js";
 import { IndexWorkerHost } from "../core/src/memory/indexHost.js";
 import { FsWatchSentinel } from "../core/src/sentinels/fsWatch.js";
 import { openApiDocument } from "../apps/api/src/openapi.js";
@@ -109,6 +110,21 @@ describe("S1 one truth about links", () => {
     await ctx.indexer.indexAllAsync();
     const edges = between(await graphEdges(), idOf(a), idOf(b));
     expect(edges).toEqual([{ source: idOf(a), target: idOf(b), kind: "wikilink", why: expect.any(String) }]);
+  });
+
+  it("C1 at its own layer: linkEdges gives a resolved wikilink, nothing for an unresolved one, nothing to a file the policy refuses", async () => {
+    const dir = area();
+    const a = put(path.join(dir, "a1b.md"), "# A\n\n[[Bee1b]] [[Ninguem1b]] [[Oculta1b]]\n");
+    const b = put(path.join(dir, "bee1b.md"), "# B\n");
+    const hidden = put(path.join(dir, "oculta1b.md"), "# O\n");
+    await ctx.indexer.indexAllAsync();
+    const from = (allow: (row: { root: string; rel: string }) => boolean) =>
+      linkEdges(ctx.db, allow, new Set([idOf(a)])).map((e) => [e.target, e.kind]);
+    expect(from(() => true)).toEqual([
+      [idOf(b), "wikilink"],
+      [idOf(hidden), "wikilink"],
+    ]);
+    expect(from((row) => !row.rel.endsWith("oculta1b.md"))).toEqual([[idOf(b), "wikilink"]]);
   });
 
   it("C2 a Markdown link with a fragment is one edge, written twice still one", async () => {
@@ -402,19 +418,41 @@ describe("S2 today's policy on every read", () => {
         Date.now() + 1e9,
       );
     const staleId = idOf(path.join(temp.paths.home, "config", "stale13.md"));
+    // a row under the home's logs/ and one with a secret name, indexed before the policy refused them
+    const extra = ctx.db.prepare(
+      "INSERT INTO files (root, path, rel, name, ext, dir, area, size, mtime, indexed_at, title, tags) VALUES (?, ?, ?, ?, ?, ?, NULL, 1, ?, 1, NULL, '[]')",
+    );
+    const logsId = Number(
+      extra.run(
+        temp.paths.home,
+        path.join(temp.paths.home, "logs", "api13.md"),
+        "logs/api13.md",
+        "api13.md",
+        ".md",
+        path.join(temp.paths.home, "logs"),
+        Date.now() + 1e9,
+      ).lastInsertRowid,
+    );
+    const secretId = Number(
+      extra.run(
+        dir,
+        path.join(dir, "chave13.pem"),
+        "chave13.pem",
+        "chave13.pem",
+        ".pem",
+        dir,
+        Date.now() + 1e9,
+      ).lastInsertRowid,
+    );
+    const refused = [closedId, staleId, logsId, secretId];
     const restore = exclude("privado13");
     try {
       const res = await get("/api/memory/graph?maxNodes=4000&related=0");
       const body = res.json() as { nodes: Array<{ id: number }>; edges: Edge[]; totalFiles: number };
       const ids = new Set(body.nodes.map((n) => n.id));
-      expect(ids.has(closedId)).toBe(false);
-      expect(ids.has(staleId)).toBe(false);
+      for (const id of refused) expect(ids.has(id), String(id)).toBe(false);
       expect(ids.has(idOf(open))).toBe(true);
-      expect(
-        body.edges.some(
-          (e) => [closedId, staleId].includes(e.source) || [closedId, staleId].includes(e.target),
-        ),
-      ).toBe(false);
+      expect(body.edges.some((e) => refused.includes(e.source) || refused.includes(e.target))).toBe(false);
       const allowed = ctx.indexer.rowFilter();
       const rows = ctx.db.prepare("SELECT root, rel FROM files").all() as Array<{
         root: string;
@@ -423,7 +461,7 @@ describe("S2 today's policy on every read", () => {
       expect(body.totalFiles).toBe(rows.filter((r) => allowed(r)).length);
     } finally {
       restore();
-      ctx.db.prepare("DELETE FROM files WHERE id = ?").run(staleId);
+      for (const id of [staleId, logsId, secretId]) ctx.db.prepare("DELETE FROM files WHERE id = ?").run(id);
     }
   });
 
@@ -446,6 +484,11 @@ describe("S2 today's policy on every read", () => {
       const paths = (ok.json() as Array<{ file: { path: string } }>).map((r) => r.file.path);
       expect(paths).toContain(visible);
       expect(paths).not.toContain(hidden);
+      // at its own layer: null for a refused id and for a missing one, no refused file for an allowed one
+      const allow = ctx.indexer.rowFilter();
+      expect(relatedFiles(ctx.db, idOf(hidden), allow)).toBeNull();
+      expect(relatedFiles(ctx.db, 987654, allow)).toBeNull();
+      expect(relatedFiles(ctx.db, idOf(a), allow)!.map((r) => r.file.path)).not.toContain(hidden);
     } finally {
       restore();
     }
@@ -508,9 +551,15 @@ describe("S3 a question in words finds notes", () => {
   it("C17 the stopwords of a question are not searched and a note with some of the words is found", async () => {
     const dir = area();
     put(path.join(dir, "verba17.md"), "# Verba\n\nO orçamento17 do trimestre foi fechado em março.\n");
+    // a note made only of the question's stopwords: found only if the stopwords were searched
+    put(path.join(dir, "vazia17.md"), "o que sobre o que sobre\n");
     await ctx.indexer.indexAllAsync();
     const names = await searchNames("o que decidimos sobre o orçamento17");
     expect(names).toContain("verba17.md");
+    expect(names).not.toContain("vazia17.md");
+    const own = searchFiles(ctx.db, { query: "o que decidimos sobre o orçamento17" }).map((h) => h.name);
+    expect(own[0]).toBe("verba17.md");
+    expect(own).not.toContain("vazia17.md");
     // the question as typed, every word required, finds nothing
     expect(strictWordsSearch(ctx.db, { query: "o que decidimos sobre o orçamento17" })).toEqual([]);
   });
@@ -523,7 +572,13 @@ describe("S3 a question in words finds notes", () => {
     await ctx.indexer.indexAllAsync();
     const names = await searchNames("goiaba18 caju18 pitanga18");
     expect(names[0]).toBe("todas18.md");
-    expect(names.slice(1)).toEqual(expect.arrayContaining(["duas18.md", "uma18.md"]));
+    expect([...names.slice(1)].sort()).toEqual(["duas18.md", "uma18.md"]);
+    // at its own layer, the same order: every word, then more words
+    expect(searchFiles(ctx.db, { query: "goiaba18 caju18 pitanga18" }).map((h) => h.name)).toEqual([
+      "todas18.md",
+      "duas18.md",
+      "uma18.md",
+    ]);
   });
 
   it("C19 with no note holding every word, more words come first, then BM25", async () => {
@@ -539,6 +594,9 @@ describe("S3 a question in words finds notes", () => {
     // nobody holds the fourth word
     const names = await searchNames("manga19 kiwi19 lima19 melancia19");
     expect(names).toEqual(["tres19.md", "duas19a.md", "duas19b.md", "uma19.md"]);
+    expect(searchFiles(ctx.db, { query: "manga19 kiwi19 lima19 melancia19" }).map((h) => h.name)).toEqual(
+      names,
+    );
   });
 
   it("C20 with the semantic search off the words find the expected note in the first three for at least 11 of 12 questions", async () => {
@@ -573,9 +631,14 @@ describe("S3 a question in words finds notes", () => {
 
   it("C21 a question of stopwords is searched as typed; one of punctuation only is the listing of the most recent files", async () => {
     const dir = area();
-    put(path.join(dir, "frase21.md"), "# Frase\n\no que é isso\n");
+    put(path.join(dir, "frase21.md"), "# Frase\n\nsobre entre\n");
+    put(path.join(dir, "metade21.md"), "# Metade\n\nsobre apenas\n");
     await ctx.indexer.indexAllAsync();
-    expect(await searchNames("o que é")).toContain("frase21.md");
+    // only stopwords: every word as typed is required, so the note with one of them is not an answer
+    const strict = await searchNames("sobre entre");
+    expect(strict).toContain("frase21.md");
+    expect(strict).not.toContain("metade21.md");
+    expect(searchFiles(ctx.db, { query: "sobre entre" }).map((h) => h.name)).toEqual(strict);
     const punctuation = await get("/api/memory/search?q=%3F!&limit=5");
     expect(punctuation.statusCode).toBe(200);
     const recent = await get("/api/memory/search?q=&limit=5");
@@ -588,6 +651,12 @@ describe("S3 a question in words finds notes", () => {
     put(path.join(dir, "outra22.md"), "# outra\n\nameixa22\n");
     await ctx.indexer.indexAllAsync();
     const once = (ids: number[]) => expect(new Set(ids).size).toBe(ids.length);
+    // a file that holds every word is also a match of the "any word" query: it is still listed once
+    const both = await get(`/api/memory/search?q=${encodeURIComponent("ameixa22 pera22")}&limit=50`);
+    const bothIds = (both.json() as Array<{ id: number; name: string }>).map((h) => h.id);
+    expect(bothIds.length).toBe(2);
+    once(bothIds);
+    once(searchFiles(ctx.db, { query: "ameixa22 pera22", limit: 50 }).map((h) => h.id));
     const ids = async (mode: string) =>
       (
         (
@@ -684,6 +753,62 @@ describe("S5 the routers follow the index", () => {
       expect(fs.statSync(router()).mtimeMs).toBe(quiet);
     } finally {
       off();
+    }
+  });
+
+  it("C27 in the worker (the installed service's path): a pass that changed a file rewrites ROUTER.md before index.finished", async () => {
+    const { appendJournal } = await import("../core/src/memory/journal.js");
+    const script = await bundleIndexWorker();
+    const home = makeTempHome("mordomo-c27-worker-");
+    const local = new AppContext(home.paths.home);
+    try {
+      put(path.join(home.paths.memory, "notes", "uma27w.md"), "# Uma\n");
+      await local.indexer.indexAllAsync();
+      generateRouters(local.db, local.paths, local.settings());
+      local.indexer.attachRunner(
+        new IndexWorkerHost({
+          paths: local.paths,
+          db: local.db,
+          bus: local.events,
+          getSettings: () => local.settings(),
+          indexer: local.indexer,
+          workerEntry: script,
+        }),
+      );
+      const marker = "marcador27-worker";
+      appendJournal(local.paths, { text: marker, section: "Today" });
+      let atFinish = "";
+      let mode = "";
+      const off = local.events.subscribe((event) => {
+        if (event.type === "index.started") mode = (event.payload as { mode: string }).mode;
+        if (event.type === "index.finished")
+          atFinish = fs.readFileSync(path.join(home.paths.memory, "ROUTER.md"), "utf8");
+      });
+      try {
+        await local.indexer.indexAllAsync();
+      } finally {
+        off();
+      }
+      expect(mode).toBe("worker");
+      expect(atFinish).toContain(marker);
+    } finally {
+      local.close();
+      home.cleanup();
+    }
+  }, 120_000);
+
+  it("C27 on a home with no routers yet a pass that changed files creates none", async () => {
+    const home = makeTempHome("mordomo-c27-fresh-");
+    const local = new AppContext(home.paths.home);
+    try {
+      put(path.join(home.paths.memory, "notes", "uma27f.md"), "# Uma\n");
+      const stats = await local.indexer.indexAllAsync();
+      expect(stats.added).toBeGreaterThan(0);
+      expect(fs.existsSync(path.join(home.paths.memory, "ROUTER.md"))).toBe(false);
+      expect(fs.existsSync(path.join(home.paths.memory, "areas"))).toBe(false);
+    } finally {
+      local.close();
+      home.cleanup();
     }
   });
 
