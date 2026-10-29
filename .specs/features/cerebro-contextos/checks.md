@@ -347,3 +347,5 @@ Status of batch C (updated in the commit that closes each piece):
 - S5 in rendered components (C33-C39, and the component half of C31): closed, every proof green in
   `apps/command-centre/src/contexts/*.test.tsx` and `contextCommands.test.ts`; with them the copy of C24 and C36
   follows design.md ("Deleted context", "Folder is gone"), and `settings.changed` refreshes the list of contexts
+- S5 in a real browser (C31, C32, C40): closed, every proof green in `tests/e2e/contexts.spec.ts` (and C40's
+  stylelint line); with them S5 is closed (C31-C40) and batch C is closed (C31-C40, C46, C47)
