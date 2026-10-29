@@ -349,3 +349,42 @@ Status of batch C (updated in the commit that closes each piece):
   follows design.md ("Deleted context", "Folder is gone"), and `settings.changed` refreshes the list of contexts
 - S5 in a real browser (C31, C32, C40): closed, every proof green in `tests/e2e/contexts.spec.ts` (and C40's
   stylelint line); with them S5 is closed (C31-C40) and batch C is closed (C31-C40, C46, C47)
+
+- **Boundary (batch C):** C31-C40, C46 and C47 closed; with them every check of the feature is closed (C1-C47). The
+  brief and the strict `activeContext` with C46 at `cd86075`, S5 in rendered components at `4d1e242`, the browser
+  proofs (C31, C32, C40) at `7222df0`, the feature's bundle entry at `dd504ec`, which closes the batch. On the tree of
+  `dd504ec`: `npm run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0, `npx vitest run`
+  at the root is green (130 files, 1740 tests, 1 skipped) and `npm run test -w apps/command-centre` too (140 files,
+  1120 tests); each of the 52 `Proof:` lines of batches A, B and C exits 0 and runs only its check's tests;
+  `tests/e2e/contexts.spec.ts` (7) and `tests/e2e/a11y.spec.ts` (57) pass, and so do `moldura`, `console-context`,
+  `brain-errors` and `note-editor`. `nucleo-shell`'s "the spine travels…" times out at its 30 s on this machine: its
+  run measured 30.2 s and 30.7 s on a build of `231a455` (before batch C) and 27.1-32.8 s on `dd504ec`, so it sits on
+  its budget on both trees; it passed with a longer timeout and is not changed here.
+- **Settled mid-build:** by the orchestrator: C24's English is design.md's "Deleted context" (the check said "Context
+  deleted"; the check's wording, the key and its test follow the binding table now), `settings.changed` invalidates
+  `["contexts"]`, and `PUT /api/ui-preferences` refuses an `activeContext` that is not an id with `400 validation`
+  while a stored unreadable one still reads `null`. By the builder, on the same ground as C24: C36's "Folder gone" is
+  design.md's "Folder is gone" (`context.state.missing`), check wording aligned. Builder decisions inside the
+  approved shape: (a) door 9, a `Landing` and a `Surface` row added in `cd86075`: "Edit brief" is `PATCH
+/api/contexts/:id` with `brief: true`, which makes `_resumo.md` from design.md's template in `create` mode (never
+  over one that exists) and, without `name` or `paths`, does not write `settings.json`; the probe's PATCH scenario
+  sends it, so the route now declares `403 forbidden_path` (`FORBIDDEN_PATH_ROUTES`) and `ensureContextBrief` joins
+  the core barrel (`sdk.surface` C38); (b) the primitives' `DropdownMenu` gains checked items (`menuitemcheckbox`
+  with a `Check` mark), separators, lines of text (`Label`), `keepOpen` and a controlled `open`; (c) `useWorkContext`
+  (`contexts/useWorkContext.ts`) keeps the stored id only while `GET /api/contexts` lists it, judges a context gone
+  only when the list is settled (not refetching), sends the stored id when the list cannot be read, and the selector
+  says "The active context no longer exists." once and writes `activeContext: null`; reads wait (`enabled: ready`)
+  while a stored id awaits the list; (d) only a new conversation sends `contextId`; a continued one sends none and
+  its chip reads the context of the session's runs; (e) "New context…" takes subfolders from the whole index's
+  graph (`maxNodes=3000`, two levels) and judges "not indexed" against the enabled indexed folders and
+  `<home>/memory` (`GET /api/system/info`); (f) "Manage contexts" goes to `/settings?tab=memory`; "Switch context"
+  (`action:switch-context`) opens the selector's menu 220 ms after the palette closes, "Whole brain"
+  (`action:whole-brain`) is always listed; (g) the Núcleo selector sits right of the spine (`left: calc(var(--nu-spine)
+  - 8px)`), above the line below 1300 px; (h) pins moved the way the repo moves them: `legacy.graph`C1 lists the
+specs'`contexts/testkit.tsx`and`contexts/testnet.ts`, and `scripts/bundle-baseline.json`gains the`cerebro-contextos`entry (pixel.plugin C28). Left open, out of this batch:`POST /api/runs/:id/retry`and`/children`carry no`contextId`; `PUT /api/settings`can write`contexts` without the path checks; the Núcleo's
+universal search (`useUniversalSearch`), the Second Brain's facets (`GET /api/memory/status`) and the desktop's
+    700-node graph still read the whole index.
+- **Abandoned:** a fifth route `POST /api/contexts/:id/brief` (the pins of four routes would all move and C46 counts
+  four); making the brief through `POST /api/memory/notes` (it cannot name `memory/notes/<id>/_resumo.md`); an Enter
+  handler on the dialog's typed path (the form's submit adds the typed path instead, so no key listener is added);
+  the Núcleo selector at the shell's gutter (it covered the spine's Settings module).
