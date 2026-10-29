@@ -231,6 +231,20 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: verification.md M8 - core/src/memory/recall.ts:437 (C8) (fixes)
 - last seen: 2026-10-29T17:53:41Z
 
+### L-032 - When the plan says two readers share one resolver, a check must assert that both return the same answer on an ambiguous input; a check that only one reader picks correctly lets the other diverge.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `resolution` · harmful: 0
+- features: cerebro-correcoes
+- evidence: verification.md M8c - core/src/memory/recall.ts:437 (C8) (resolution)
+- last seen: 2026-10-29T18:03:56Z
+
+### L-033 - A check about following a name that several files share must say which file wins, not only which files are refused.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `resolution` · harmful: 0
+- features: cerebro-correcoes
+- evidence: C8 - several readable homonyms (resolution)
+- last seen: 2026-10-29T18:03:56Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

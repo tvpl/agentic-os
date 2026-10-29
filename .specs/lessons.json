@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 32,
+  "next_id": 34,
   "lessons": [
     {
       "id": "L-001",
@@ -464,6 +464,34 @@
       "evidence": ["verification.md M8 - core/src/memory/recall.ts:437 (C8) (fixes)"],
       "created": "2026-10-29T17:53:41Z",
       "last_seen": "2026-10-29T17:53:41Z"
+    },
+    {
+      "id": "L-032",
+      "key": "surviving_mutant::when the plan says two readers share one resolver a check must assert that both return the same answer on an ambiguous input a check that only one reader picks correctly lets the other diverge",
+      "text": "When the plan says two readers share one resolver, a check must assert that both return the same answer on an ambiguous input; a check that only one reader picks correctly lets the other diverge.",
+      "signal": "surviving_mutant",
+      "scope": "resolution",
+      "status": "candidate",
+      "features": ["cerebro-correcoes"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["verification.md M8c - core/src/memory/recall.ts:437 (C8) (resolution)"],
+      "created": "2026-10-29T18:03:56Z",
+      "last_seen": "2026-10-29T18:03:56Z"
+    },
+    {
+      "id": "L-033",
+      "key": "spec_precision_gap::a check about following a name that several files share must say which file wins not only which files are refused",
+      "text": "A check about following a name that several files share must say which file wins, not only which files are refused.",
+      "signal": "spec_precision_gap",
+      "scope": "resolution",
+      "status": "candidate",
+      "features": ["cerebro-correcoes"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C8 - several readable homonyms (resolution)"],
+      "created": "2026-10-29T18:03:56Z",
+      "last_seen": "2026-10-29T18:03:56Z"
     }
   ]
 }
