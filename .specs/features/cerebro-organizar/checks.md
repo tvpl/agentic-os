@@ -327,4 +327,4 @@ The estimate exceeds the 150k budget, so the build stops here for the mechanism 
   - **B** (index, maps route, routers, compiler and the screen, then the cross-cutting pins): S3 + S4 ≈ 68k + 30k = ≈ 98k,
     plus tests (`organize.maps`, the other half of `organize.layer`, `organize.sync`, `AgentStance.test.tsx`, the e2e spec)
     ≈ 67 KB → ≈ 17k = ≈ 115k; C24-C43, C49, C50
-- Mechanism: pending the owner (handoff | one builder)
+- Mechanism: handoff (the owner chose it on 2026-10-29: two batches A, B, sequential, each only on green)
