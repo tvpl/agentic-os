@@ -289,3 +289,5 @@ Status of batch B (updated in the commit that closes each piece):
   `tests/contexts.runs.test.ts`
 - the interface half of C24 (the run detail shows a deleted context's id with "Context deleted"): closed, its proof
   green in `apps/command-centre/src/contexts/RunContext.test.tsx`; with it S3 is closed (C17-C25)
+- S6, the CLI and the MCP tools (C41-C45): closed, every proof green in `tests/contexts.cli.test.ts`; with it batch B
+  is closed (C17-C25 and C41-C45)

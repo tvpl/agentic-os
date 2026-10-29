@@ -25,6 +25,11 @@ import {
   planStartupService,
   recall,
   recordRecall,
+  contextMembership,
+  describeContexts,
+  findContext,
+  homeReadScope,
+  readWorkspaceText,
   DEFAULT_EXCLUDES,
   detectTimezone,
   EffortLevel,
@@ -96,6 +101,7 @@ const COMMANDS = [
   "service",
   "recall",
   "note",
+  "context",
   "mcp",
   "skills",
   "version",
@@ -133,6 +139,8 @@ const OPTION_SPECS = {
   "front-matter": { type: "boolean" },
   tag: { type: "string", multiple: true },
   base: { type: "string" },
+  context: { type: "string" },
+  none: { type: "boolean" },
 } as const satisfies ParseArgsConfig["options"];
 type OptionName = keyof typeof OPTION_SPECS;
 
@@ -149,10 +157,11 @@ const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   uninstall: ["purge", "yes"],
   index: ["json"],
   sync: ["apply", "approve", "diff"],
-  run: ["provider", "model", "effort", "input", "json"],
+  run: ["provider", "model", "effort", "input", "json", "context"],
   service: ["yes"],
-  recall: ["json"],
+  recall: ["json", "context"],
   note: ["json", "area", "front-matter", "tag", "base"],
+  context: ["none", "json"],
   mcp: [],
   skills: ["out", "base-url", "name", "unsigned", "json"],
   version: [],
@@ -191,6 +200,10 @@ export interface CliArgs {
   frontMatter: boolean;
   tags: string[];
   base: string | undefined;
+  /** `recall`, `run`: the work context (`<id>` or `all`); absent, the machine's active context. */
+  context: string | undefined;
+  /** `context use --none`: no active context (the whole brain). */
+  none: boolean;
 }
 
 class UsageError extends Error {}
@@ -306,6 +319,8 @@ export function parseCliArgs(argv: readonly string[], env: NodeJS.ProcessEnv = p
     frontMatter: values["front-matter"] === true,
     tags: (values.tag as string[] | undefined) ?? [],
     base: values.base as string | undefined,
+    context: values.context as string | undefined,
+    none: values.none === true,
     provider,
     model: values.model as string | undefined,
     effort,
@@ -345,6 +360,8 @@ function emptyArgs(command: Command): CliArgs {
     frontMatter: false,
     tags: [],
     base: undefined,
+    context: undefined,
+    none: false,
   };
 }
 
@@ -551,6 +568,8 @@ async function main(): Promise<void> {
       return cmdRecall(args);
     case "note":
       return cmdNote(args);
+    case "context":
+      return cmdContext(args);
     case "mcp":
       return cmdMcp(args);
     case "skills":
@@ -580,8 +599,11 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
                            Build a signed skill registry (index.json + files) from a skills folder
   mordomo skills key       Print this machine's registry signing public key
   mordomo run <skill>      Run a skill headlessly (--provider ${PROVIDER_IDS.join("|")}, --model <m>,
-                           --effort ${EffortLevel.options.join("|")}, --input k=v ...)
-  mordomo recall <question>  Layered memory retrieval: only the sections worth reading (--json)
+                           --effort ${EffortLevel.options.join("|")}, --input k=v ..., --context <id|all>)
+  mordomo recall <question>  Layered memory retrieval: only the sections worth reading (--json,
+                           --context <id|all>; without it, the active context of this machine)
+  mordomo context list       The work contexts (* marks the active one); mordomo context use <id> | use --none
+                           sets the active context; mordomo context show <id> prints its map
   mordomo note new <title>   Create a note under memory/notes (--area <a>, --front-matter, --tag <t> ..., --json)
   mordomo note show <path>   Print a note (--json: text and version); mordomo note save <path> --base <version>
                            saves the text on stdin if the note is still that version
@@ -1492,7 +1514,11 @@ async function cmdRecall(args: CliArgs): Promise<void> {
   }
   const ctx = new AppContext();
   try {
-    const result = recall(ctx.db, ctx.paths, ctx.settings(), question);
+    const settings = ctx.settings();
+    const chosen = chosenContext(ctx, args);
+    if (chosen === undefined) return;
+    const within = chosen ? contextMembership({ paths: ctx.paths, settings }, chosen) : undefined;
+    const result = recall(ctx.db, ctx.paths, settings, question, within ? { within } : {});
     recordRecall(ctx.db, result);
     if (args.json) {
       console.log(JSON.stringify(result));
@@ -1513,6 +1539,102 @@ async function cmdRecall(args: CliArgs): Promise<void> {
           .join("\n"),
       );
     }
+  } finally {
+    ctx.close();
+  }
+}
+
+// -------------------------------------------------------------- context ----
+
+/** The message of a work context id that names none: the stable code first, as the API answers it. */
+const contextNotFound = (id: string) => `context_not_found: no work context is called ${id}`;
+
+/**
+ * The work context of `mordomo recall` and `mordomo run` (cerebro-contextos, AC 44): `--context <id>`, `--context all`
+ * for the whole index, or, without the flag, the active context of this machine (`UiPreferences.activeContext`, the
+ * one the interface uses). Null for the whole index; undefined after printing `context_not_found` for an id given
+ * that names none. An active context that no longer exists is the whole index, as on the screens.
+ */
+function chosenContext(ctx: AppContext, args: CliArgs): Settings["contexts"][number] | null | undefined {
+  const settings = ctx.settings();
+  if (args.context !== undefined) {
+    const named = findContext(settings, args.context);
+    if (named === undefined) {
+      console.error(contextNotFound(args.context));
+      process.exitCode = 1;
+    }
+    return named;
+  }
+  const active = ctx.uiPreferences.load().activeContext;
+  return (active ? findContext(settings, active) : null) ?? null;
+}
+
+/** `mordomo context list|use|show`: the work contexts of this machine, offline, by the functions the routes use. */
+async function cmdContext(args: CliArgs): Promise<void> {
+  const [sub, id, ...extra] = args.positionals;
+  const usage = (): void => {
+    console.error(
+      pc.red(
+        "Usage: mordomo context list [--json] | mordomo context use <id> | --none | mordomo context show <id>",
+      ),
+    );
+    process.exitCode = EXIT_USAGE;
+  };
+  const valid =
+    extra.length === 0 &&
+    ((sub === "list" && id === undefined) ||
+      (sub === "use" && (args.none ? id === undefined : id !== undefined)) ||
+      (sub === "show" && id !== undefined));
+  if (!valid) return usage();
+  const ctx = new AppContext();
+  try {
+    const settings = ctx.settings();
+    const env = { paths: ctx.paths, settings };
+    if (sub === "list") {
+      const active = ctx.uiPreferences.load().activeContext;
+      const views = describeContexts(ctx.db, env);
+      if (args.json) {
+        console.log(JSON.stringify({ active, contexts: views }));
+        return;
+      }
+      if (views.length === 0) console.log(pc.dim("No work contexts yet."));
+      for (const view of views) {
+        const states = view.paths.map((p) => `${p.path} (${p.state})`).join(", ");
+        console.log(
+          `${view.id === active ? "*" : " "} ${view.id}  ${view.name}  ${view.files} files  ${states}`,
+        );
+      }
+      return;
+    }
+    if (sub === "use") {
+      if (!args.none && !settings.contexts.some((c) => c.id === id)) {
+        console.error(contextNotFound(id!));
+        process.exitCode = 1;
+        return;
+      }
+      const prefs = ctx.uiPreferences.load();
+      ctx.uiPreferences.save({ ...prefs, activeContext: args.none ? null : id! });
+      console.log(args.none ? "Active context: none (the whole brain)" : `Active context: ${id}`);
+      return;
+    }
+    const context = settings.contexts.find((c) => c.id === id);
+    if (!context) {
+      console.error(contextNotFound(id!));
+      process.exitCode = 1;
+      return;
+    }
+    // The map is generated with the routers; a context made since the last pass gets it now.
+    const map = describeContexts(ctx.db, env, context)[0]!.map;
+    const scope = homeReadScope(ctx.paths.home, [ctx.paths.memory]);
+    const read = () => readWorkspaceText(scope, map, { maxBytes: 64 * 1024 }).text;
+    let body: string;
+    try {
+      body = read();
+    } catch {
+      generateRouters(ctx.db, ctx.paths, settings);
+      body = read();
+    }
+    process.stdout.write(body.endsWith("\n") ? body : `${body}\n`);
   } finally {
     ctx.close();
   }
@@ -1650,6 +1772,11 @@ async function cmdRun(args: CliArgs): Promise<void> {
     ctx.close();
     process.exit(EXIT_USAGE);
   }
+  const chosen = chosenContext(ctx, args);
+  if (chosen === undefined) {
+    ctx.close();
+    process.exit(1);
+  }
   // The same write policy and the same rules as the Command Centre: refuse, park for approval, or run.
   let started;
   try {
@@ -1657,6 +1784,7 @@ async function cmdRun(args: CliArgs): Promise<void> {
       slug,
       inputs: args.inputs,
       provider,
+      ...(chosen ? { contextId: chosen.id } : {}),
       ...(args.model !== undefined ? { model: args.model } : {}),
       ...(args.effort !== undefined ? { effort: args.effort } : {}),
       startedBy: null,

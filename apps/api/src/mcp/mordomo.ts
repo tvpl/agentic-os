@@ -32,23 +32,32 @@ const str = (v: unknown, name: string): string => {
   return v.trim();
 };
 
+/** An optional text argument: absent (or empty) is undefined, anything else must be text. */
+const optional = (v: unknown, name: string): string | undefined => {
+  if (v === undefined || v === null || v === "") return undefined;
+  if (typeof v !== "string") throw new Error(`${name} must be a string`);
+  return v.trim() || undefined;
+};
+
 export function mordomoTools(api: McpApi): McpTool[] {
   return [
     {
       name: "recall",
       description:
-        "Layered memory retrieval: the sections of the indexed workspace worth reading for a question.",
+        "Layered memory retrieval: the sections of the indexed workspace worth reading for a question. context: a work context id to recall only its files (all, or none, for the whole index).",
       inputSchema: {
         type: "object",
-        properties: { question: { type: "string" }, k: { type: "number" } },
+        properties: { question: { type: "string" }, k: { type: "number" }, context: { type: "string" } },
         required: ["question"],
       },
       handler: async (a) => {
         const q = encodeURIComponent(str(a.question, "question"));
         const k = typeof a.k === "number" ? `&k=${Math.max(1, Math.min(10, Math.round(a.k)))}` : "";
+        const context = optional(a.context, "context");
+        const c = context !== undefined ? `&context=${encodeURIComponent(context)}` : "";
         const r = await api.get<{
           answerContext: Array<{ path: string; section: string; excerpt?: string; score: number }>;
-        }>(`/api/v1/memory/recall?q=${q}${k}`);
+        }>(`/api/v1/memory/recall?q=${q}${k}${c}`);
         if (r.answerContext.length === 0) return "No indexed section matched.";
         return r.answerContext
           .map((c) => `## ${c.path} § ${c.section} (score ${c.score})\n${c.excerpt ?? ""}`)
@@ -75,16 +84,18 @@ export function mordomoTools(api: McpApi): McpTool[] {
     {
       name: "skills_run",
       description:
-        "Run a skill headlessly (subject to the security profile; write runs may park for approval). Returns the run id.",
+        "Run a skill headlessly (subject to the security profile; write runs may park for approval). Returns the run id. context: a work context id to run it in (all, or none, for no context).",
       inputSchema: {
         type: "object",
-        properties: { slug: { type: "string" }, inputs: { type: "object" } },
+        properties: { slug: { type: "string" }, inputs: { type: "object" }, context: { type: "string" } },
         required: ["slug"],
       },
       handler: async (a) => {
         const slug = encodeURIComponent(str(a.slug, "slug"));
+        const context = optional(a.context, "context");
         const r = await api.post<{ runId: string | null; status: string }>(`/api/v1/skills/${slug}/run`, {
           inputs: (a.inputs ?? {}) as object,
+          ...(context !== undefined && context !== "all" ? { contextId: context } : {}),
         });
         return JSON.stringify(r);
       },
