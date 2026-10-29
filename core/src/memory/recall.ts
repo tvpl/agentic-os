@@ -424,14 +424,17 @@ function excerptOf(section: Section, max: number): string {
 
 /**
  * The files the links of one section lead to (`[x](y)` and `[[wikilink]]`, outside code), as absolute paths, at most
- * `limit`: read by the same parser as `note_links` and resolved by the same rule as the links panel.
+ * `limit`: read by the same parser as `note_links` and resolved by the same rule as the links panel, over the files
+ * this recall may read (so an ambiguous name never ranks first a file it would then refuse to open).
  */
-function pointerTargets(db: Db, section: Section, from: FileRow, limit: number): string[] {
+function pointerTargets(db: Db, scope: ReadScope, section: Section, from: FileRow, limit: number): string[] {
   const out: string[] = [];
   for (const link of extractLinks(section.body, from.path)) {
     if (out.length >= limit) break;
     const target =
-      link.kind === "markdown-link" ? link.target : resolveWikilink(db, from, link.target, () => true)[0]?.path;
+      link.kind === "markdown-link"
+        ? link.target
+        : resolveWikilink(db, from, link.target, (row) => isReadable(scope, path.join(row.root, row.rel)))[0]?.path;
     if (target && target !== from.path && !out.includes(target)) out.push(target);
   }
   return out;
@@ -481,7 +484,7 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
       why,
     });
     // (d) one level of pointers out of the chosen section.
-    for (const target of pointerTargets(db, best.section, cand.file, pointerLimit)) {
+    for (const target of pointerTargets(db, scope, best.section, cand.file, pointerLimit)) {
       if (openedPaths.has(target)) continue;
       const row = lookup.get(target) as Record<string, unknown> | undefined;
       if (!row) continue; // only indexed files — same exclusion policy as the index
