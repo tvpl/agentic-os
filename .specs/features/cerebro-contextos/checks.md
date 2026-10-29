@@ -287,3 +287,5 @@ Status of batch B (updated in the commit that closes each piece):
 
 - S3 in the API and the core (C17-C23, C25, and the API half of C24): closed, every proof green in
   `tests/contexts.runs.test.ts`
+- the interface half of C24 (the run detail shows a deleted context's id with "Context deleted"): closed, its proof
+  green in `apps/command-centre/src/contexts/RunContext.test.tsx`; with it S3 is closed (C17-C25)

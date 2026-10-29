@@ -34,6 +34,7 @@ export const qk = {
   artifacts: ["artifacts"] as const,
   connectors: ["connectors"] as const,
   memoryStatus: ["memory", "status"] as const,
+  contexts: ["contexts"] as const,
   memoryGraph: (params?: Record<string, string | number | undefined>) =>
     ["memory", "graph", params ?? {}] as const,
   approvals: ["approvals"] as const,
@@ -130,6 +131,9 @@ export const useOsMeta = (o?: ApiQueryOptions<Result<"GET /api/meta">>) =>
   useRouteQuery(qk.meta, "GET /api/meta", undefined, o);
 export const useOsProviders = (o?: ApiQueryOptions<Result<"GET /api/providers">>) =>
   useRouteQuery(qk.providers, "GET /api/providers", undefined, o);
+/** The work contexts (.specs/features/cerebro-contextos), with the state of each path and their file counts. */
+export const useOsContexts = (o?: ApiQueryOptions<Result<"GET /api/contexts">>) =>
+  useRouteQuery(qk.contexts, "GET /api/contexts", undefined, o);
 export const useOsSkills = (o?: ApiQueryOptions<Result<"GET /api/skills">>) =>
   useRouteQuery(qk.skills, "GET /api/skills", undefined, o);
 export const useOsRoutines = (o?: ApiQueryOptions<Result<"GET /api/routines">>) =>

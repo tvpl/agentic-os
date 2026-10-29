@@ -111,6 +111,7 @@ export const en = {
   "note.copySuffix": "(copy)",
   "note.loadFailed": "Could not open the note.",
   "note.noArea": "No area",
+  "context.deleted": "Context deleted",
 } as const;
 
 export const ptBR = {
@@ -221,4 +222,5 @@ export const ptBR = {
   "note.copySuffix": "(cópia)",
   "note.loadFailed": "Não foi possível abrir a nota.",
   "note.noArea": "Sem área",
+  "context.deleted": "Contexto apagado",
 } satisfies Record<keyof typeof en, string>;
