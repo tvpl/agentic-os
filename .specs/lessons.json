@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 34,
+  "next_id": 40,
   "lessons": [
     {
       "id": "L-001",
@@ -492,6 +492,90 @@
       "evidence": ["C8 - several readable homonyms (resolution)"],
       "created": "2026-10-29T18:03:56Z",
       "last_seen": "2026-10-29T18:03:56Z"
+    },
+    {
+      "id": "L-034",
+      "key": "ac_gap::when the test policy asks for an own layer proof of a decision table name a unit test per table row against the module boundary tests alone leave the row unmet",
+      "text": "When the Test policy asks for an own-layer proof of a decision table, name a unit test per table row against the module; boundary tests alone leave the row unmet.",
+      "signal": "ac_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["cerebro-contextos"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["verification.md Test policy row 1; core/src/memory/contexts.ts:215 (checks)"],
+      "created": "2026-10-29T22:08:22Z",
+      "last_seen": "2026-10-29T22:08:22Z"
+    },
+    {
+      "id": "L-035",
+      "key": "ac_gap::every status a surface row gains mid build needs a check whose proof drives that status not only a test that the route declares it",
+      "text": "Every status a Surface row gains mid-build needs a check whose proof drives that status, not only a test that the route declares it.",
+      "signal": "ac_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["cerebro-contextos"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["verification.md Coverage; apps/api/src/routes/system.ts:156 (checks)"],
+      "created": "2026-10-29T22:08:22Z",
+      "last_seen": "2026-10-29T22:08:22Z"
+    },
+    {
+      "id": "L-036",
+      "key": "ac_gap::give every variant a design draws for a component its own rendered component check including the variant shown only for a continued session",
+      "text": "Give every variant a design draws for a component its own rendered-component check, including the variant shown only for a continued session.",
+      "signal": "ac_gap",
+      "scope": "ui",
+      "status": "candidate",
+      "features": ["cerebro-contextos"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/command-centre/src/contexts/ContextChip.tsx:18 (ui)"],
+      "created": "2026-10-29T22:08:22Z",
+      "last_seen": "2026-10-29T22:08:22Z"
+    },
+    {
+      "id": "L-037",
+      "key": "spec_deviation::a landing row added mid build that narrows an approved row is a renegotiation get the owner s sign off and reword every check that quotes the old shape in the same commit",
+      "text": "A Landing row added mid-build that narrows an approved row is a renegotiation: get the owner's sign-off and reword every check that quotes the old shape in the same commit.",
+      "signal": "spec_deviation",
+      "scope": "build",
+      "status": "candidate",
+      "features": ["cerebro-contextos"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C22; tests/contexts.runs.test.ts:376 (build)"],
+      "created": "2026-10-29T22:08:22Z",
+      "last_seen": "2026-10-29T22:08:22Z"
+    },
+    {
+      "id": "L-038",
+      "key": "spec_precision_gap::prove that no new raw fs read was added with the sweep that audits the code not with the length of the test s own allowlist",
+      "text": "Prove that no new raw fs read was added with the sweep that audits the code, not with the length of the test's own allowlist.",
+      "signal": "spec_precision_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["cerebro-contextos"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C47; tests/security-reads.test.ts:2325 (checks)"],
+      "created": "2026-10-29T22:08:22Z",
+      "last_seen": "2026-10-29T22:08:22Z"
+    },
+    {
+      "id": "L-039",
+      "key": "spec_precision_gap::each case of a refused kind table must be refused for its own reason alone a case another rule also refuses stays green when its rule is removed",
+      "text": "Each case of a refused-kind table must be refused for its own reason alone; a case another rule also refuses stays green when its rule is removed.",
+      "signal": "spec_precision_gap",
+      "scope": "validation",
+      "status": "candidate",
+      "features": ["cerebro-contextos"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C3; tests/contexts.test.ts:169 (validation)"],
+      "created": "2026-10-29T22:08:22Z",
+      "last_seen": "2026-10-29T22:08:22Z"
     }
   ]
 }

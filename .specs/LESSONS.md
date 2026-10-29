@@ -245,6 +245,48 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C8 - several readable homonyms (resolution)
 - last seen: 2026-10-29T18:03:56Z
 
+### L-034 - When the Test policy asks for an own-layer proof of a decision table, name a unit test per table row against the module; boundary tests alone leave the row unmet.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: cerebro-contextos
+- evidence: verification.md Test policy row 1; core/src/memory/contexts.ts:215 (checks)
+- last seen: 2026-10-29T22:08:22Z
+
+### L-035 - Every status a Surface row gains mid-build needs a check whose proof drives that status, not only a test that the route declares it.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: cerebro-contextos
+- evidence: verification.md Coverage; apps/api/src/routes/system.ts:156 (checks)
+- last seen: 2026-10-29T22:08:22Z
+
+### L-036 - Give every variant a design draws for a component its own rendered-component check, including the variant shown only for a continued session.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `ui` · harmful: 0
+- features: cerebro-contextos
+- evidence: apps/command-centre/src/contexts/ContextChip.tsx:18 (ui)
+- last seen: 2026-10-29T22:08:22Z
+
+### L-037 - A Landing row added mid-build that narrows an approved row is a renegotiation: get the owner's sign-off and reword every check that quotes the old shape in the same commit.
+
+- signal: `spec_deviation` · recurrence: 1 feature(s) · scope: `build` · harmful: 0
+- features: cerebro-contextos
+- evidence: C22; tests/contexts.runs.test.ts:376 (build)
+- last seen: 2026-10-29T22:08:22Z
+
+### L-038 - Prove that no new raw fs read was added with the sweep that audits the code, not with the length of the test's own allowlist.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: cerebro-contextos
+- evidence: C47; tests/security-reads.test.ts:2325 (checks)
+- last seen: 2026-10-29T22:08:22Z
+
+### L-039 - Each case of a refused-kind table must be refused for its own reason alone; a case another rule also refuses stays green when its rule is removed.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `validation` · harmful: 0
+- features: cerebro-contextos
+- evidence: C3; tests/contexts.test.ts:169 (validation)
+- last seen: 2026-10-29T22:08:22Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
