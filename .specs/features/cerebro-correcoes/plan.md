@@ -55,8 +55,12 @@ o `rowFilter` do `MemoryIndexer`, as palavras vazias e a dobra de `extractKeywor
    `OR` (door 3), aplica o `allow` antes de cortar no `limit`; `SemanticSearch.search` (exists) recebe as linhas já filtradas.
 5. Rotas `memory.graph` e `memory.related` (exists, `apps/api/src/routes/memory.ts`) passam `ctx.indexer.rowFilter()`;
    `memory.related` responde `404 not_found` para um id que a política recusa ou que não existe (door 4).
-6. Fim de passada → `memory.index` (exists) e `FsWatchSentinel.flush` (exists) chamam `generateRouters` (exists) quando a
-   passada mudou alguma linha; `generateRouters` grava um arquivo só quando os bytes diferem.
+6. Fim de passada → `MemoryIndexer` (exists) chama, antes de anunciar `index.finished`, o gancho que o motor (`engine.ts`,
+   exists) liga a `generateRouters` (exists) quando a passada mudou alguma linha e os roteadores já existem; os três lugares
+   que anunciam uma passada (a passada na thread do serviço, a passada de caminhos e o `IndexWorkerHost`, exists) chamam o
+   mesmo `finishPass`, então a rota `memory.index`, o sentinela `fsWatch` e o salvamento de uma nota ficam cobertos sem
+   código próprio. `generateRouters` grava um arquivo só quando os bytes diferem e não lista os próprios roteadores nos
+   índices de área; uma falha vai ao log `logs/memory.jsonl` com `routers_failed`.
 7. Interface → `SecondBrain.tsx` (exists) e `BrainScene.tsx` (exists) guardam o erro da busca e dos relacionados e o mostram no lugar
    da lista, com "Tentar de novo".
 
@@ -70,7 +74,7 @@ o `rowFilter` do `MemoryIndexer`, as palavras vazias e a dobra de `extractKeywor
 | domain        | existing term: órfã da higiene significava "sem link `[x](y)` nos dois sentidos"; agora significa "sem link de `note_links` que resolva, nos dois sentidos" — quem lê hoje: `GET /api/memory/hygiene` (a interface calcula as próprias órfãs em `brain/engine/graph.ts:106-126` e não muda)                                                                                                                                              |
 | stored data   | migração 22 apaga `file_links` e a chave `index.pending_links` de `meta`; nada a reconstruir: `note_links` já tem todo link desde a migração 20 e o preenchimento sem reler o disco (`indexer.ts:874-898`). Um banco que volte a uma versão anterior do código não acha `file_links` (ver `Landing`, door 1)                                                                                                                             |
 | contrato REST | `GET /api/memory/related` passa a declarar `404`; `GET /api/memory/graph` passa a ter arestas `wikilink`; nenhuma rota nova                                                                                                                                                                                                                                                                                                              |
-| arquivos      | `ROUTER.md` e `areas/*.md` passam a ser regravados ao fim de uma passada que mudou linhas, e só quando mudam; o `mtime` deles deixa de mudar a cada clique em "Atualizar"                                                                                                                                                                                                                                                                |
+| arquivos      | `ROUTER.md` e `areas/*.md` passam a ser regravados ao fim de uma passada que mudou linhas (só quando já existem: os primeiros continuam vindo do setup, de `mordomo index` ou de "Atualizar"), e só quando mudam; o `mtime` deles deixa de mudar a cada clique em "Atualizar"; os índices de área deixam de listar `ROUTER.md` e os próprios `areas/*.md`                                                                                |
 
 ## Relations
 
