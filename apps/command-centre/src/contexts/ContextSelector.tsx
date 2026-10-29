@@ -6,7 +6,7 @@
  * it registers the two commands of the palette.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronsUpDown, Crosshair, Plus, RefreshCw, Settings2 } from "lucide-react";
+import { AlertTriangle, Crosshair, Plus, RefreshCw, Settings2 } from "lucide-react";
 import { useT, useLocale } from "../i18n";
 import { qk, useRouteQuery } from "../queries";
 import { useToast } from "../components/ui";
@@ -155,7 +155,6 @@ export function ContextSelector({ variant, collapsed = false }: ContextSelectorP
         <span className="ctx-sel-name">{name}</span>
         {variant === "frame" && files !== undefined && <span className="ctx-sel-count">{count(files)}</span>}
       </span>
-      <ChevronsUpDown aria-hidden className="ctx-sel-chev" />
     </button>
   );
   return (

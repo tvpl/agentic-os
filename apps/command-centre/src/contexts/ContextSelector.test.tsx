@@ -47,6 +47,8 @@ describe("C31 the selector lists the whole brain first, then each context, and t
     // The button names the active context and its count.
     const button = await screen.findByRole("button", { name: /Zeta do cliente/ });
     expect(button.textContent).toContain("1,240 files");
+    // The button draws the Crosshair, the name and the count: no other mark (design.md, the selector).
+    expect(button.querySelectorAll("svg")).toHaveLength(1);
     await openMenu(/Zeta do cliente/);
     const list = rows();
     expect(list.map((r) => r.role)).toEqual([
@@ -251,5 +253,23 @@ describe("C38 the active context no longer exists", () => {
     );
     await tick(50);
     expect(screen.queryByText("The active context no longer exists.")).toBeNull();
+  });
+});
+
+describe("C53 the frame selector's file count sits below the name", () => {
+  it("C53 in the frame the name comes first and the count after it, in the button's text column; the Núcleo shows the name only", async () => {
+    net.contexts = [CONTEXT("zeta", "Zeta do cliente", { files: 1240 })];
+    net.prefs.activeContext = "zeta";
+    const { unmount } = renderWith(<ContextSelector variant="frame" />);
+    const button = await screen.findByRole("button", { name: /Zeta do cliente/ });
+    const column = button.querySelector(".ctx-sel-text")!;
+    expect([...column.children].map((el) => [el.className, el.textContent])).toEqual([
+      ["ctx-sel-name", "Zeta do cliente"],
+      ["ctx-sel-count", "1,240 files"],
+    ]);
+    unmount();
+    renderWith(<ContextSelector variant="nucleo" />);
+    const compact = await screen.findByRole("button", { name: /Zeta do cliente/ });
+    expect(compact.querySelector(".ctx-sel-count")).toBeNull();
   });
 });

@@ -1,7 +1,8 @@
 /**
- * Work contexts in a real browser (.specs/features/cerebro-contextos, C31, C32, C40; design.md): where the selector
- * sits in each shell and what its menu lists, what the screens send once a context is chosen, and axe, the sizes and
- * the state marks over the selector, the dialog and the settings section in both themes and both shells.
+ * Work contexts in a real browser (.specs/features/cerebro-contextos, C31, C32, C40, C52, C53; design.md): where the
+ * selector sits in each shell and what its menu lists, what the screens send once a context is chosen, axe, the sizes
+ * and the state marks over the selector, the dialog and the settings section in both themes and both shells, where the
+ * Contexts section sits on Settings › Memory, and the file count below the name in the frame's selector.
  *
  * The contexts and the active one are real state of the isolated e2e home, made through the API with the page's own
  * token and taken away after each test, so the other specs keep the whole brain. The interface and the theme are fed
@@ -298,8 +299,11 @@ for (const theme of THEMES) {
       const dialog = page.getByRole("dialog", { name: "New context" });
       await expect(dialog).toBeVisible();
       await dialog.getByRole("textbox", { name: "Name" }).fill("Axe");
+      // Enter in the field adds the typed path (there is no "Add" button beside it).
       await dialog.getByRole("textbox", { name: "or type a path" }).fill("/nowhere/at/all");
-      await dialog.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
+      await dialog.getByRole("textbox", { name: "or type a path" }).press("Enter");
+      await expect(dialog.locator(".ctx-folder-path")).toHaveText(["/nowhere/at/all"]);
       const warn = dialog.locator(".ctx-folder-warn");
       await expect(warn).toContainText("This folder is not indexed.");
       await expect(warn.locator("svg")).toHaveCount(1);
@@ -330,3 +334,47 @@ for (const theme of THEMES) {
     });
   }
 }
+
+test("C52 on Settings › Memory the Contexts section sits below the indexed folders and the field that adds one", async ({
+  page,
+}) => {
+  await open(page, "moldura", "dark", "/");
+  await cleanUp(page);
+  const { first } = await makeContexts(page);
+  await page.goto("/#/settings?tab=memory");
+  await page.reload();
+  await expect(page.locator(".boot-screen")).toHaveCount(0);
+  const section = page.locator(".ctx-settings");
+  await expect(section).toContainText(first.name);
+  const lastFolder = (await page.locator(".folder-row").last().boundingBox())!;
+  const addFolder = (await page.locator("#st-newfolder").boundingBox())!;
+  const box = (await section.boundingBox())!;
+  expect(addFolder.y).toBeGreaterThanOrEqual(lastFolder.y + lastFolder.height - 1);
+  expect(box.y).toBeGreaterThanOrEqual(addFolder.y + addFolder.height - 1);
+  // ...and above the next setting (the areas).
+  const areas = (await page.locator("#st-areas").boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(areas.y + 1);
+});
+
+test("C53 in the frame the selector's file count sits below the name, the name at 13px and the count at 12px", async ({
+  page,
+}) => {
+  await open(page, "moldura", "dark", "/");
+  await cleanUp(page);
+  const { first } = await makeContexts(page);
+  await api(page, "PUT", "/api/v1/ui-preferences", { activeContext: first.id });
+  await page.reload();
+  await expect(page.locator(".boot-screen")).toHaveCount(0);
+  const name = selector(page).locator(".ctx-sel-name");
+  const count = selector(page).locator(".ctx-sel-count");
+  await expect(name).toHaveText(first.name);
+  await expect(count).toHaveText(/\d+ files/);
+  const n = (await name.boundingBox())!;
+  const c = (await count.boundingBox())!;
+  expect(c.y).toBeGreaterThanOrEqual(n.y + n.height - 1);
+  // In one column: the count starts where the name starts.
+  expect(Math.abs(c.x - n.x)).toBeLessThanOrEqual(1);
+  const px = (sel: string) => page.locator(sel).evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  expect(await px("button.ctx-sel .ctx-sel-name")).toBe(13);
+  expect(await px("button.ctx-sel .ctx-sel-count")).toBe(12);
+});

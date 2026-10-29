@@ -37,12 +37,6 @@
   width: 16px;
   height: 16px;
 }
-.ctx-sel .ctx-sel-chev {
-  width: 14px;
-  height: 14px;
-  margin-left: auto;
-  color: var(--text-dim);
-}
 .ctx-sel-text {
   display: grid;
   min-width: 0;

@@ -2,17 +2,20 @@
 /**
  * The chip above the composer (.specs/features/cerebro-contextos, C33; design.md "Tela - Chip no chat"), in the real
  * Console: "In this context: <name>" with an `X` ("Use the whole brain") that turns the context off for the machine,
- * a new run that carries `contextId`, and nothing at all without an active context. The network is `./testnet`.
+ * a new run that carries `contextId`, and nothing at all without an active context; and (C51) a continued
+ * conversation, which shows its own context, "Conversation in the context <name>", not the active one. The network
+ * is `./testnet`.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type * as ApiModule from "../api";
 import { qk } from "../queries";
-import { installPage } from "../ui/testkit";
+import { installPage, tick } from "../ui/testkit";
 import { DesktopActionsProvider, type DesktopActions } from "../desktop/actions";
 import Console from "../desktop/console/Console";
-import { CONTEXT, net, resetNet } from "./testnet";
+import { RUN } from "../commands/testserver";
+import { CONTEXT, net, resetNet, WORK } from "./testnet";
 import { renderWith } from "./testkit";
 
 vi.mock("../api", async (importOriginal) =>
@@ -124,5 +127,66 @@ describe("C33 the chip of the active context in the composer", () => {
     mountConsole("pt-BR");
     expect(await screen.findByText("Neste contexto: App do cliente X")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Usar todo o cérebro" })).toBeTruthy();
+  });
+});
+
+/** A conversation the Console continues (the one it keeps in its storage), whose runs ran in `contextId`. */
+function continued(contextId: string | null) {
+  const runs = [
+    { ...RUN, id: "r-1", origin: "manual", skillSlug: null, status: "done", sessionId: "s-1", contextId },
+    { ...RUN, id: "r-2", origin: "manual", skillSlug: null, status: "done", sessionId: "s-1", contextId },
+  ];
+  net.sessions.set("s-1", {
+    session: {
+      id: "s-1",
+      provider: "claude",
+      cwd: `${WORK}/cliente-x`,
+      title: "a conversa",
+      createdAt: Date.now() - 60_000,
+      updatedAt: Date.now() - 30_000,
+    },
+    runs,
+  });
+  localStorage.setItem("mordomo.console.session", "s-1");
+}
+
+describe("C51 the chip of a continued conversation", () => {
+  it("C51 a continued conversation shows its own context, Conversation in the context <name>, and not the active one", async () => {
+    net.contexts = [CONTEXT("cliente-x", "App do cliente X"), CONTEXT("outro", "Outro projeto")];
+    net.prefs.activeContext = "outro";
+    continued("cliente-x");
+    mountConsole();
+    const chip = await screen.findByText("Conversation in the context App do cliente X");
+    expect(chip.closest(".ctx-chip")).not.toBeNull();
+    // Above the field, like the chip of the active context.
+    const row = document.querySelector(".cons-row")!;
+    expect(
+      chip.closest(".ctx-chip")!.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // The active context is not what this conversation runs in: its chip is not shown.
+    expect(screen.queryByText(/In this context/)).toBeNull();
+    expect(screen.queryByText(/Outro projeto/)).toBeNull();
+    expect(document.querySelectorAll(".ctx-chip")).toHaveLength(1);
+  });
+
+  it("C51 the copy in pt-BR: Conversa no contexto <nome>", async () => {
+    net.contexts = [CONTEXT("cliente-x", "App do cliente X"), CONTEXT("outro", "Outro projeto")];
+    net.prefs.activeContext = "outro";
+    continued("cliente-x");
+    mountConsole("pt-BR");
+    expect(await screen.findByText("Conversa no contexto App do cliente X")).toBeTruthy();
+    expect(screen.queryByText(/Neste contexto/)).toBeNull();
+  });
+
+  it("C51 a continued conversation without a context shows no chip, even with a context active", async () => {
+    net.contexts = [CONTEXT("outro", "Outro projeto")];
+    net.prefs.activeContext = "outro";
+    continued(null);
+    mountConsole();
+    await waitFor(() => expect(net.calls.some((c) => c.url === "/api/sessions/s-1")).toBe(true));
+    await waitFor(() => expect(net.calls.some((c) => c.url === "/api/contexts")).toBe(true));
+    await tick();
+    expect(document.querySelector(".ctx-chip")).toBeNull();
+    expect(screen.queryByText(/In this context|Conversation in the context/)).toBeNull();
   });
 });

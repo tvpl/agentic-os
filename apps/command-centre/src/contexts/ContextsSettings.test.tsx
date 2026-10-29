@@ -11,6 +11,8 @@ import userEvent from "@testing-library/user-event";
 import type * as ApiModule from "../api";
 import { installPage } from "../ui/testkit";
 import { OPEN_NOTE_EVENT, type NoteEditorRequest } from "../brain/noteEvents";
+import { MemoryTab } from "../views/settings/memory";
+import type { SettingsShape } from "../views/settings/shared";
 import { ContextsSettings } from "./ContextsSettings";
 import { CONTEXT, HOME, net, resetNet } from "./testnet";
 import { renderWith } from "./testkit";
@@ -55,6 +57,8 @@ describe("C36 Settings › Memory › Contexts", () => {
     ]);
     for (const name of ["Edit", "Edit brief", "Delete"])
       expect(within(r).getByRole("button", { name })).toBeTruthy();
+    // With contexts, the section draws no "New context…" (design.md draws it in the empty state; the selector has it).
+    expect(screen.queryByRole("button", { name: "New context…" })).toBeNull();
   });
 
   it("C36 the states in pt-BR: Ok, Pasta sumiu, Fora das pastas indexadas, and Editar, Editar resumo, Apagar", async () => {
@@ -136,5 +140,32 @@ describe("C36 Settings › Memory › Contexts", () => {
     renderWith(<ContextsSettings />);
     expect(await screen.findByText("No contexts yet.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "New context…" })).toBeTruthy();
+  });
+});
+
+describe("C52 the Contexts section on Settings › Memory", () => {
+  it("C52 the section comes after the indexed folders (their rows and the field that adds one) and before the next setting", async () => {
+    const s = {
+      indexedFolders: [{ path: "/work", area: null, enabled: true }],
+      areas: ["Projetos"],
+      excludes: [],
+      marketplace: { registries: [] },
+    } as unknown as SettingsShape;
+    renderWith(<MemoryTab s={s} put={vi.fn()} />);
+    const section = (await screen.findByText("App do cliente X")).closest(".ctx-settings")!;
+    expect(section).not.toBeNull();
+    const folderRow = screen.getByText("/work", { selector: ".folder-row span" });
+    const addFolder = document.getElementById("st-newfolder")!;
+    const areas = document.getElementById("st-areas")!;
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(folderRow, section)).toBe(true);
+    expect(follows(addFolder, section)).toBe(true);
+    expect(follows(section, areas)).toBe(true);
+    // The first field after the indexed folders' block is the section itself.
+    const fields = [...document.querySelectorAll(".card > .field, .card > section")];
+    const at = fields.indexOf(section);
+    expect(at).toBeGreaterThan(0);
+    expect(fields[at - 1]!.contains(addFolder)).toBe(true);
   });
 });

@@ -69,11 +69,6 @@ export function ContextsSettings() {
         <span className="label" id="ctx-settings-t">
           {t("context.section")}
         </span>
-        {work.contexts.length > 0 && (
-          <Button size="sm" icon={<Plus aria-hidden />} onClick={() => setDialog({})}>
-            {t("context.new")}
-          </Button>
-        )}
       </div>
       {work.list.isPending ? (
         <p className="ctx-settings-note">

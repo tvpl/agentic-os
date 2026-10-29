@@ -56,6 +56,8 @@ export const net = {
   settings: { indexedFolders: [{ path: WORK, area: null, enabled: true }] } as Record<string, unknown>,
   graphDirs: [] as string[],
   total: 42,
+  /** What `GET /api/sessions/:id` answers, by id (`{ session, runs }`); an id not here never answers. */
+  sessions: new Map<string, unknown>(),
   /** Every request, in order. */
   calls: [] as Call[],
   /** A write's answer, by "METHOD url"; the default is what the route answers to a good request. */
@@ -69,6 +71,7 @@ export function resetNet(): void {
   net.settings = { indexedFolders: [{ path: WORK, area: null, enabled: true }] };
   net.graphDirs = [];
   net.total = 42;
+  net.sessions = new Map();
   net.calls = [];
   net.answers.clear();
 }
@@ -94,6 +97,9 @@ function read(url: string): Promise<unknown> {
     });
   if (u === "/api/settings") return Promise.resolve(structuredClone(net.settings));
   if (u === "/api/system/info") return Promise.resolve({ home: HOME });
+  const session = /^\/api\/sessions\/([^/?]+)$/.exec(u);
+  if (session && net.sessions.has(decodeURIComponent(session[1]!)))
+    return Promise.resolve(structuredClone(net.sessions.get(decodeURIComponent(session[1]!))));
   return new Promise(() => undefined);
 }
 

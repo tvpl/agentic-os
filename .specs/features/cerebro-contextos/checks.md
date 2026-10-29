@@ -3,7 +3,7 @@
 Profile: ui
 Plan: `.specs/features/cerebro-contextos/plan.md`
 
-50 checks in 6 slices + cross-cutting (C48-C50 added after the verification, round 1) · 9 one-way doors (doors 8 and 9
+53 checks in 6 slices + cross-cutting (C48-C53 added after the verification, round 1) · 9 one-way doors (doors 8 and 9
 added mid-build) · 0 open questions of the plan (as duas foram respondidas pelo dono em 29/10/2026); one owner question
 from the build, `.specs/STATE.md` "Perguntas ao dono", cerebro-contextos 1 (C22).
 
@@ -196,6 +196,17 @@ Proof: `npx vitest run tests/contexts.test.ts -t "C49 "`
 **C50** - `PUT /api/ui-preferences` with an `activeContext` that is not in the shape of an id (`"Cliente X"`, `""`, `"-x"`, 41 characters, a number, `"../config"`) answers `400 validation` and leaves `ui-preferences.json` byte for byte; an id or `null` is stored (door 5, Surface row of `PUT /api/ui-preferences`, S5)
 Proof: `npx vitest run tests/contexts.test.ts -t "C50 "`
 
+**C51** - A conversation the composer continues shows its own context, the session's, as the chip "Conversation in the context <name>" / "Conversa no contexto <nome>" above the field, and not the chip of the active context; a continued conversation without a context shows no chip (design.md, "Tela - Chip no chat", S5)
+Proof: `npm run test -w apps/command-centre -- src/contexts/ContextChip.test.tsx -t "C51 "`
+
+**C52** - On Settings › Memory the Contexts section comes after the indexed folders (their rows and the field that adds one) and before the next setting, in the page's order and drawn below them (design.md, "Tela - Configurações › Memória › Contextos", S5)
+Proof: `npm run test -w apps/command-centre -- src/contexts/ContextsSettings.test.tsx -t "C52 "`
+Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts contexts.spec.ts -g "C52 "`
+
+**C53** - In the frame the selector's file count sits below the name, in one column, the name at 13px and the count at 12px; the Núcleo's compact selector shows the name only (design.md, "Tela - Seletor de contexto", S5)
+Proof: `npm run test -w apps/command-centre -- src/contexts/ContextSelector.test.tsx -t "C53 "`
+Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts contexts.spec.ts -g "C53 "`
+
 ## Coverage
 
 | Set (size)                                              | Member -> proof                                                                                                                        | Unproven |
@@ -216,6 +227,8 @@ Proof: `npx vitest run tests/contexts.test.ts -t "C50 "`
 | doors (9)                                               | 1 C1, C2, C8 · 2 C26, C29 · 3 C46 · 4 C25 · 5 C6, C32, C42, C50 · 6 C10 · 7 C22 · 8 C22 · 9 C49                                        | -        |
 | entities of Relations (4)                               | contexto C1 · runs C17, C25 · sessions C23, C25 · mapa C26                                                                             | -        |
 | selector states (4)                                     | empty C37 · loading C37 · error C37 · gone C38                                                                                         | -        |
+| chip variants (3)                                       | active context C33 · none C33 · continued conversation C51                                                                             | -        |
+| arrangements design.md draws (2)                        | Contexts after the indexed folders C52 · the frame count below the name C53                                                            | -        |
 | shells with the selector (2)                            | moldura C31, C32 · Núcleo C31, C32                                                                                                     | -        |
 | CLI subcommands and flags (5)                           | `list` C41 · `use` C42 · `use --none` C42 · `show` C43 · `--context` C44                                                               | -        |
 | MCP tools (2)                                           | `recall` C45 · `skills_run` C45                                                                                                        | -        |
@@ -223,18 +236,18 @@ Proof: `npx vitest run tests/contexts.test.ts -t "C50 "`
 
 - Claims naming a status code, route or response shape: C1-C7, C9-C20, C22-C24, C29, C30, C46, C48-C50 - each proven
   through `app.inject` against `buildServer`; C3, C7, C10, C17-C21 and C23 also at their own layer, with no HTTP
-- Claims about the screens: C31-C40 in rendered components; C31, C32, C40 also in a real browser
+- Claims about the screens: C31-C40 and C51-C53 in rendered components; C31, C32, C40, C52, C53 also in a real browser
 
 ## Binding sources
 
-| Source                                                     | Checked by        |
-| ---------------------------------------------------------- | ----------------- |
-| `cerebro-contextos/design.md` (the four surfaces and copy) | C31, C33-C38, C40 |
-| `design-system/design.md`                                  | C40               |
-| `primitivas/design.md` (Menu, Modal, Tooltip)              | C31, C34, C36     |
-| `comandos-atalhos/design.md`                               | C39               |
-| `moldura-app/design.md` (place in the sidebar)             | C31               |
-| `cerebro-v2/design.md` (editor, error and loading pattern) | C36, C37          |
+| Source                                                     | Checked by                 |
+| ---------------------------------------------------------- | -------------------------- |
+| `cerebro-contextos/design.md` (the four surfaces and copy) | C31, C33-C38, C40, C51-C53 |
+| `design-system/design.md`                                  | C40                        |
+| `primitivas/design.md` (Menu, Modal, Tooltip)              | C31, C34, C36              |
+| `comandos-atalhos/design.md`                               | C39                        |
+| `moldura-app/design.md` (place in the sidebar)             | C31                        |
+| `cerebro-v2/design.md` (editor, error and loading pattern) | C36, C37                   |
 
 ## Test policy
 

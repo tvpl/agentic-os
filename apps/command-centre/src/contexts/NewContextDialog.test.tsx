@@ -91,8 +91,15 @@ describe("C34 New context… asks for a name and folders, and makes the context 
   it("C34 Create makes the context with POST /api/contexts and then makes it active", async () => {
     const { user, dialog } = await openDialog();
     await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "App do cliente X");
-    await user.type(within(dialog).getByRole("textbox", { name: "or type a path" }), `${WORK}/clientes/x`);
-    await user.click(within(dialog).getByRole("button", { name: "Add" }));
+    const typed = within(dialog).getByRole("textbox", { name: "or type a path" });
+    await user.type(typed, `${WORK}/clientes/x`);
+    // Enter in the field adds the path, while Create is still disabled (no folder yet); there is no Add button.
+    expect((within(dialog).getByRole("button", { name: "Create" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(dialog).queryByRole("button", { name: "Add" })).toBeNull();
+    await user.keyboard("{Enter}");
+    expect(within(dialog).getByText(`${WORK}/clientes/x`)).toBeTruthy();
+    expect((typed as HTMLInputElement).value).toBe("");
+    expect(writes()).toEqual([]);
     await user.click(within(dialog).getByRole("button", { name: "Create" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(writes()).toEqual(["POST /api/contexts", "PUT /api/ui-preferences"]);
@@ -114,7 +121,7 @@ describe("C34 New context… asks for a name and folders, and makes the context 
     await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "Dois");
     for (const p of [`${WORK}/a`, `${WORK}/b`]) {
       await user.type(within(dialog).getByRole("textbox", { name: "or type a path" }), p);
-      await user.click(within(dialog).getByRole("button", { name: "Add" }));
+      await user.keyboard("{Enter}");
     }
     await user.click(within(dialog).getByRole("button", { name: `More for ${WORK}/b` }));
     await tick();
@@ -134,7 +141,7 @@ describe("C35 a folder outside the indexed ones is indexed first", () => {
     const { user, dialog } = await openDialog();
     await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "Fora");
     await user.type(within(dialog).getByRole("textbox", { name: "or type a path" }), "/fora/projeto");
-    await user.click(within(dialog).getByRole("button", { name: "Add" }));
+    await user.keyboard("{Enter}");
     expect(within(dialog).getByText("This folder is not indexed.")).toBeTruthy();
     expect(within(dialog).queryByRole("button", { name: "Create" })).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Index and create" }));
@@ -160,7 +167,7 @@ describe("C35 a folder outside the indexed ones is indexed first", () => {
   it("C35 a folder inside an indexed one, or inside memory/, needs no index pass; pt-BR says Esta pasta não está indexada.", async () => {
     const { user, dialog } = await openDialog("pt-BR");
     await user.type(within(dialog).getByRole("textbox", { name: "ou digite um caminho" }), "/fora/b");
-    await user.click(within(dialog).getByRole("button", { name: "Adicionar" }));
+    await user.keyboard("{Enter}");
     expect(within(dialog).getByText("Esta pasta não está indexada.")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Indexar e criar" })).toBeTruthy();
     await user.click(within(dialog).getByRole("button", { name: "Tirar /fora/b" }));
@@ -168,7 +175,7 @@ describe("C35 a folder outside the indexed ones is indexed first", () => {
       within(dialog).getByRole("textbox", { name: "ou digite um caminho" }),
       "/home/me/.mordomo/memory/notas",
     );
-    await user.click(within(dialog).getByRole("button", { name: "Adicionar" }));
+    await user.keyboard("{Enter}");
     await waitFor(() => expect(within(dialog).queryByText("Esta pasta não está indexada.")).toBeNull());
     expect(within(dialog).getByRole("button", { name: "Criar" })).toBeTruthy();
   });

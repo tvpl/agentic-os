@@ -5,9 +5,9 @@
  * indexed folders says so, and "Index and create" adds it to the indexed folders, runs an index pass and then creates
  * the context (AC 35). The route's refusal is shown in the dialog, which stays open.
  */
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, FolderPlus, MoreHorizontal, Plus, X } from "lucide-react";
+import { AlertTriangle, FolderPlus, MoreHorizontal, X } from "lucide-react";
 import { api, type SystemInfo } from "../api";
 import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
@@ -62,7 +62,9 @@ export function NewContextDialog({ onClose, editing }: { onClose: () => void; ed
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const addRef = useRef<HTMLButtonElement>(null);
-  const typedRef = useRef<HTMLInputElement>(null);
+  // The typed path is a field of its own little form, so Enter in it adds the path (the browser's implicit
+  // submission) even while "Create" is disabled, with no key listener.
+  const typedForm = useId();
 
   const roots = useMemo(
     () => (settings.data?.indexedFolders ?? []).filter((f) => f.enabled).map((f) => trimSlash(f.path)),
@@ -142,9 +144,7 @@ export function NewContextDialog({ onClose, editing }: { onClose: () => void; ed
         className="ctx-form"
         onSubmit={(e) => {
           e.preventDefault();
-          // Enter in the typed path adds it; anywhere else it is the footer's action.
-          if (typed.trim() && document.activeElement === typedRef.current) addTyped();
-          else if (ready && !busy) void submit();
+          if (ready && !busy) void submit();
         }}
       >
         <label className="field" htmlFor="ctx-name">
@@ -225,22 +225,14 @@ export function NewContextDialog({ onClose, editing }: { onClose: () => void; ed
               {t("context.addFolder")}
             </Button>
             <input
-              ref={typedRef}
+              form={typedForm}
               className="input sm mono"
               aria-label={t("context.typePath")}
               placeholder={t("context.typePath")}
+              enterKeyHint="enter"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
             />
-            <Button
-              type="button"
-              size="sm"
-              icon={<Plus aria-hidden />}
-              disabled={!isAbsolutePath(typed)}
-              onClick={addTyped}
-            >
-              {t("context.addTyped")}
-            </Button>
           </div>
           <Popover
             open={picking}
@@ -292,6 +284,17 @@ export function NewContextDialog({ onClose, editing }: { onClose: () => void; ed
             {editing ? t("common.save") : indexFirst ? t("context.indexAndCreate") : t("context.create")}
           </Button>
         </div>
+      </form>
+      <form
+        id={typedForm}
+        hidden
+        onSubmit={(e) => {
+          e.preventDefault();
+          addTyped();
+        }}
+      >
+        {/* The default button of this form: Enter in the typed path presses it. */}
+        <button type="submit" />
       </form>
     </Modal>
   );

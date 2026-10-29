@@ -146,7 +146,6 @@ export const en = {
   "context.more": "More for {path}",
   "context.searchFolders": "Search folders",
   "context.noMatch": "No folder matches.",
-  "context.addTyped": "Add",
 } as const;
 
 export const ptBR = {
@@ -292,5 +291,4 @@ export const ptBR = {
   "context.more": "Mais para {path}",
   "context.searchFolders": "Buscar pastas",
   "context.noMatch": "Nenhuma pasta encontrada.",
-  "context.addTyped": "Adicionar",
 } satisfies Record<keyof typeof en, string>;
