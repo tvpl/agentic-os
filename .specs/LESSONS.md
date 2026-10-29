@@ -287,6 +287,13 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C3; tests/contexts.test.ts:169 (validation)
 - last seen: 2026-10-29T22:08:22Z
 
+### L-040 - When a check is reworded, rename its proof's test title and comments in the same commit, or the test name keeps stating the old claim its assertions now contradict.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-contextos
+- evidence: tests/contexts.runs.test.ts:297 (tests)
+- last seen: 2026-10-29T23:05:57Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
