@@ -852,32 +852,52 @@ describe("S4 nothing removes a user file", () => {
     args: string;
     pos: number;
   }
-  /** Every call whose callee ends in a name that removes a directory entry, with the function it sits in. */
+  /**
+   * Every call whose callee ends in a name that removes a directory entry, with the function it sits in. With `only`, the
+   * walk is that one function's body and, through it, the body of each module-private function of the same file it calls
+   * (transitively, round 1): a removal reached that way is reported with the call that leads to it
+   * (`via` = `removeIfStillOurs(realTo, copy.stat)`), so the helper is read with the arguments it is given here.
+   */
   function removals(file: string, text: string, only?: string): Removal[] {
     const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
     const out: Removal[] = [];
-    const visit = (node: ts.Node, fn: string | null) => {
+    const exported = (n: ts.FunctionDeclaration) =>
+      (ts.getCombinedModifierFlags(n) & ts.ModifierFlags.Export) !== 0;
+    const privateFns = new Map<string, ts.FunctionDeclaration>();
+    sf.forEachChild((n) => {
+      if (ts.isFunctionDeclaration(n) && n.name && !exported(n)) privateFns.set(n.name.text, n);
+    });
+    const callee = (node: ts.CallExpression) =>
+      ts.isIdentifier(node.expression)
+        ? node.expression.text
+        : ts.isPropertyAccessExpression(node.expression)
+          ? node.expression.name.text
+          : null;
+    const visit = (node: ts.Node, fn: string | null, via: string[], seen: Set<string>) => {
       let here = fn;
-      if (ts.isFunctionDeclaration(node) && node.name) here = node.name.text;
+      if (ts.isFunctionDeclaration(node) && node.name && via.length === 0) here = node.name.text;
       if (ts.isCallExpression(node) && (only === undefined || here === only)) {
-        const callee = node.expression;
-        const name = ts.isIdentifier(callee)
-          ? callee.text
-          : ts.isPropertyAccessExpression(callee)
-            ? callee.name.text
-            : null;
+        const name = callee(node);
         if (name && REMOVERS.has(name))
           out.push({
             file,
-            fn: here ?? "",
+            fn: [here ?? "", ...via].join(" > "),
             name,
             args: node.arguments.map((a) => a.getText(sf)).join(", "),
             pos: node.getStart(sf),
           });
+        const helper =
+          only !== undefined && ts.isIdentifier(node.expression)
+            ? privateFns.get(node.expression.text)
+            : undefined;
+        if (helper?.body && !seen.has(helper.name!.text)) {
+          const call = `${helper.name!.text}(${node.arguments.map((a) => a.getText(sf)).join(", ")})`;
+          visit(helper.body, here, [...via, call], new Set([...seen, helper.name!.text]));
+        }
       }
-      ts.forEachChild(node, (child) => visit(child, here));
+      ts.forEachChild(node, (child) => visit(child, here, via, seen));
     };
-    visit(sf, null);
+    visit(sf, null, [], new Set());
     return out;
   }
 
@@ -901,9 +921,27 @@ describe("S4 nothing removes a user file", () => {
       "rm(p)",
       "unlink(p)",
     ]);
+    // Round 1: walking one function follows the module-private helpers it calls, with their arguments, and not an
+    // exported function (a primitive with proofs of its own) nor a helper it does not call.
+    const helpers = [
+      'import fs from "node:fs";',
+      "function gone(p: string) { fs.unlinkSync(p); }",
+      "function deeper(p: string) { gone(p); }",
+      "function unused(p: string) { fs.rmSync(p); }",
+      "export function primitive(p: string) { fs.rmdirSync(p); }",
+      "export function walked(a: string, b: string) {",
+      "  deeper(a);",
+      "  gone(b);",
+      "  primitive(a);",
+      "}",
+    ].join("\n");
+    expect(removals("helpers.ts", helpers, "walked").map((r) => `${r.fn} ${r.name}(${r.args})`)).toEqual([
+      "walked > deeper(a) > gone(p) unlinkSync(p)",
+      "walked > gone(b) unlinkSync(p)",
+    ]);
   });
 
-  it("C50 in the new cleanup modules and moveWorkspaceFile, the only removals are one unlink of from after the copy's hash check, and one rmdir of an empty archive folder in the undo", () => {
+  it("C50 in the new cleanup modules and moveWorkspaceFile (with the private helpers it calls), the only removals are one unlink of from after the copy's hash check, the unconfirmed copy this call made at to (by device and inode, through removeIfStillOurs), and one rmdir of an empty archive folder in the undo", () => {
     const read = (rel: string) => fs.readFileSync(path.join(repoRoot, rel), "utf8");
     const modules = [
       "core/src/memory/cleanup.ts",
@@ -922,11 +960,28 @@ describe("S4 nothing removes a user file", () => {
     ];
     expect(found.map((r) => `${r.file} ${r.fn} ${r.name}(${r.args})`)).toEqual([
       "core/src/memory/cleanupApply.ts removeEmptyArchive rmdirSync(dir)",
+      "core/src/security/safeWrite.ts moveWorkspaceFile > removeIfStillOurs(realTo, copy.stat) unlinkSync(real)",
       "core/src/security/safeWrite.ts moveWorkspaceFile unlinkSync(realFrom)",
     ]);
+    // Round 1: the one other removal is of the copy this same call made at `to`, and only if the name is still that
+    // file by device and inode: `copy` is `to` opened right after it was written, and the helper unlinks only a match.
+    const sw = read("core/src/security/safeWrite.ts");
+    const body = sw.slice(sw.indexOf("export function moveWorkspaceFile"));
+    expect(body).toMatch(/writeWorkspaceFile\(scope, realTo, bytes, \{ mode: "create"/);
+    expect(body).toMatch(/const copy = openWorkspaceFile\(scope, realTo\);/);
+    expect(body.indexOf("const copy = openWorkspaceFile(scope, realTo);")).toBeLessThan(
+      body.indexOf("removeIfStillOurs(realTo, copy.stat)"),
+    );
+    const helper = sw.slice(
+      sw.indexOf("function removeIfStillOurs"),
+      sw.indexOf("function removeIfStillOurs") + 400,
+    );
+    expect(helper).toMatch(
+      /named\.isFile\(\) && named\.ino === ours\.ino && named\.dev === ours\.dev\) fs\.unlinkSync\(real\)/,
+    );
     // the unlink comes after the copy is hashed and compared, in the same function
     const safeWrite = read("core/src/security/safeWrite.ts");
-    const unlinkAt = found.find((r) => r.name === "unlinkSync")!.pos;
+    const unlinkAt = found.find((r) => r.name === "unlinkSync" && r.args === "realFrom")!.pos;
     const checkAt = safeWrite.indexOf("copy.sha256() !== sha256");
     expect(checkAt).toBeGreaterThan(safeWrite.indexOf("export function moveWorkspaceFile"));
     expect(checkAt).toBeLessThan(unlinkAt);

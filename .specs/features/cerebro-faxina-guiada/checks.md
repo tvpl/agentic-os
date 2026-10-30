@@ -196,7 +196,7 @@ Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C48 "`
 Proof: `npx vitest run tests/cleanup.apply.test.ts -t "C49 "`
 Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C49 "`
 
-**C50** - Walking the TypeScript syntax tree of the new cleanup modules and of `moveWorkspaceFile`, the only calls that remove a name are one `unlink` of `from` inside `moveWorkspaceFile`, reached only after the copy's hash check, and one `rmdir` of an empty archive folder in the undo; the walker's self-tests find `fs.unlinkSync`, `fs.rmSync`, `fs.promises.rm` and a destructured `unlink`, and ignore the word in a comment or a string (AC 33)
+**C50** - Walking the TypeScript syntax tree of the new cleanup modules, and of `moveWorkspaceFile` with each module-private function of `safeWrite.ts` it calls (followed transitively, a removal reported with the call that leads to it), the only calls that remove a name are one `unlink` of `from` inside `moveWorkspaceFile`, reached only after the copy's hash check; one `unlink` of the copy that same call has just written at `to`, when its hash differs, through `removeIfStillOurs(realTo, copy.stat)`, which unlinks only a name that is still that file by device and inode; and one `rmdir` of an empty archive folder in the undo; the walker's self-tests find `fs.unlinkSync`, `fs.rmSync`, `fs.promises.rm` and a destructured `unlink`, ignore the word in a comment or a string, and follow a private helper with its arguments but not an exported function (AC 33; changed in round 1)
 Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C50 "`
 
 ### S5 - o assistente na tela (plan S1, S3, S4, S5) · 15 files · 205 KB · ~51k
@@ -348,6 +348,15 @@ change to an approved check is listed with what it was. The approved text of eve
   that names neither (`400 scope_required`, as C9), so a dropped or a wrong scope fails C54; both faults were injected
   and failed it. The step no longer asks `GET /api/memory/search`. The search's own `dir` prefix
   (`core/src/memory/search.ts:58-60`) is older than this feature and is left as it is.
+
+- **C50 (changed, finding 4).** Was: "Walking the TypeScript syntax tree of the new cleanup modules and of
+  `moveWorkspaceFile`, the only calls that remove a name are one `unlink` of `from` inside `moveWorkspaceFile`, reached
+  only after the copy's hash check, and one `rmdir` of an empty archive folder in the undo; the walker's self-tests find
+  … and ignore the word in a comment or a string (AC 33)". Now the claim names the third removal the code has and C40
+  requires (the unconfirmed copy at `to`, by device and inode), and the walker follows the module-private helpers of
+  the walked function, reporting the call with its arguments; the verifier's fault F1 (the helper pointed at
+  `realFrom, file.stat`) now fails C50 itself. No code changed. Exported primitives (`writeWorkspaceFile`'s own removal
+  of a file it created and refused) are not followed: they are other features' approved code with their own proofs.
 
 **C86** - `POST /api/memory/cleanup/undo` for a manifest of this feature answers `409 undo_conflict`, one asserted case per reason the undo has (Handoff batch B, (g)): text that is not JSON, `v` other than 1, an entry whose `from` is outside `memory/`, an entry whose `from` is inside `memory/archive/`, and an entry whose `to` is outside its own archive folder; none moves or writes a file; the same five at the undo's own layer throw `CleanupUndoConflictError` (finding 2; added in round 1)
 Proof: `npx vitest run tests/cleanup.apply.test.ts -t "C86 "`
