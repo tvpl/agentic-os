@@ -11,7 +11,7 @@
  * `frame-layer` show the same primitives inside the two interfaces, each with
  * the stylesheet that dresses them there (luz.css, moldura.css).
  */
-import { StrictMode, useMemo, useRef, useState, type ReactNode } from "react";
+import { StrictMode, Suspense, lazy, useMemo, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -52,6 +52,9 @@ import AttentionWidget from "../desktop/widgets/AttentionWidget";
 import NowPanel from "../desktop/NowPanel";
 import EventTimeline from "../runs/EventTimeline";
 import type { RunEventView } from "../runs/useRunStream";
+
+/** The notes view (cerebro-vista-notas, C78): a chunk of its own, as the view is in the app. */
+const NotesStory = lazy(() => import("./notesStory"));
 
 /* ---------- fixtures (plainly synthetic; the gallery never talks to the API) ---------- */
 const NOW = Date.UTC(2026, 8, 2, 14, 30);
@@ -855,6 +858,12 @@ function Gallery() {
 
       <Story id="timeline" title="Run event timeline">
         <EventTimeline events={events} live={false} height={320} />
+      </Story>
+
+      <Story id="notes" title="Notes view">
+        <Suspense fallback={null}>
+          <NotesStory />
+        </Suspense>
       </Story>
     </main>
   );

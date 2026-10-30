@@ -7,6 +7,10 @@ import { useCallback } from "react";
 import type { ApiCallResult } from "@mordomo/contracts";
 import { useOsContexts, useOsUiPreferences, useSaveUiPreferences } from "../queries";
 
+/** The registry's names for the selector's two commands (AC 39); the shell's `ContextSelector` registers them. */
+export const SWITCH_CONTEXT_ID = "action:switch-context";
+export const WHOLE_BRAIN_ID = "action:whole-brain";
+
 export type ContextList = ApiCallResult<"GET /api/contexts">["contexts"];
 export type WorkContextView = ContextList[number];
 

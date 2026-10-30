@@ -15,7 +15,7 @@ import { DropdownMenu, type MenuEntry } from "../ui";
 import { errorMessage } from "../views/shared";
 import { useCommands, type Command } from "../commands/registry";
 import { NewContextDialog } from "./NewContextDialog";
-import { useWorkContext } from "./useWorkContext";
+import { SWITCH_CONTEXT_ID, WHOLE_BRAIN_ID, useWorkContext } from "./useWorkContext";
 import "./contexts.css";
 
 export interface ContextSelectorProps {
@@ -24,9 +24,8 @@ export interface ContextSelectorProps {
   collapsed?: boolean;
 }
 
-/** The registry's names for the two commands (AC 39). */
-export const SWITCH_CONTEXT_ID = "action:switch-context";
-export const WHOLE_BRAIN_ID = "action:whole-brain";
+/** The registry's names for the two commands (AC 39), beside `useWorkContext` so a reader of them needs no selector. */
+export { SWITCH_CONTEXT_ID, WHOLE_BRAIN_ID };
 
 export function ContextSelector({ variant, collapsed = false }: ContextSelectorProps) {
   const t = useT();

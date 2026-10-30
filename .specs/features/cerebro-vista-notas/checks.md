@@ -539,3 +539,9 @@ Status of batch C (updated in the commit that closes each piece):
 - the properties table and editing in place (S6: C56-C67), and creating a note or a folder in the tree (S7: C68-C71):
   closed, every proof green in `apps/command-centre/src/brain/notes/PropertiesTable.test.tsx`,
   `NoteEditInPlace.test.tsx` and `NoteCreate.test.tsx`
+- the copy table (C81), the gallery's entry (C78), the type floor, the state marks and axe in both shells and both
+  themes (C77), and the weight (C79): closed, every proof green in `apps/command-centre/src/brain/notes/notesCopy.test.ts`,
+  `tests/e2e/notes-view.spec.ts`, `tests/notesview.contract.test.ts`, the CSS lint of `brain/notes/*.css` and
+  `npm run bundle:check`; `scripts/bundle-baseline.json`'s `cerebro-vista-notas` entry is this build's (534 932 B JS
+  gzip, 23.0 KB above `cerebro-contextos`; 74 679 B CSS gzip, 3.2 KB above it); with it batch C is closed (C56-C71,
+  C77-C79, C81)

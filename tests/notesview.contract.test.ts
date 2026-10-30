@@ -6,10 +6,12 @@ import { API, type RouteDefinition } from "@mordomo/contracts";
 import { buildWorld, SCENARIOS } from "./helpers/contractWorld.js";
 import { notesViewWorld, sha, type Json, type NotesViewWorld } from "./helpers/notesViewWorld.js";
 import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
+import { ENTRIES, edgesOf, loadTree, reachable } from "../apps/command-centre/src/testing/sourceGraph.js";
 
 /**
  * .specs/features/cerebro-vista-notas, the cross-cutting checks of batch A: the two new routes in the contract, the
- * document, the scope list, docs/security.md and the refusal probe (C75), and who may call them (C76).
+ * document, the scope list, docs/security.md and the refusal probe (C75), and who may call them (C76); and of batch C,
+ * the weight of the notes view (C79).
  */
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -146,5 +148,65 @@ describe("cross-cutting: who may call the routes", () => {
       set: { status: "done" },
     });
     expect(owner.status, JSON.stringify(owner.body)).toBe(200);
+  });
+});
+
+describe("cross-cutting: the weight of the notes view", () => {
+  type Entry = {
+    feature: string;
+    reason: string;
+    jsRaw: number;
+    jsGzip: number;
+    cssRaw: number;
+    cssGzip: number;
+  };
+
+  it("C79 the notes view is reached from the entries only by a dynamic import(); the baseline's cerebro-vista-notas entry follows cerebro-contextos with a reason of more than 40 characters and the four numbers, at most 24 KB JS gzip and 4.5 KB CSS gzip above it", () => {
+    const tree = loadTree(path.join(repoRoot, "apps", "command-centre", "src"));
+    // What each page loads without anyone asking: its entry and what that imports statically.
+    for (const entry of ENTRIES) {
+      const seen = new Set<string>([entry]);
+      const queue = [entry];
+      while (queue.length > 0)
+        for (const edge of edgesOf(tree, queue.pop()!)) {
+          if (edge.how === "dynamic" || edge.how === "url" || seen.has(edge.to)) continue;
+          seen.add(edge.to);
+          queue.push(edge.to);
+        }
+      expect(
+        [...seen].filter((f) => f.startsWith("brain/notes/")),
+        entry,
+      ).toEqual([]);
+    }
+    expect(reachable(tree).has("brain/notes/NotesView.tsx")).toBe(true);
+    // The two ways in are dynamic: the brain's view switch, and the gallery's notes story (C78), itself an import().
+    const importers = [...tree.keys()].filter(
+      (f) => !/\.test\./.test(f) && edgesOf(tree, f).some((e) => e.to === "brain/notes/NotesView.tsx"),
+    );
+    expect(importers.sort()).toEqual(["brain/BrainViewSwitch.tsx", "gallery/notesStory.tsx"]);
+    const how = (from: string, to: string) => edgesOf(tree, from).find((e) => e.to === to)?.how;
+    expect(how("brain/BrainViewSwitch.tsx", "brain/notes/NotesView.tsx")).toBe("dynamic");
+    expect(
+      [...tree.keys()].filter(
+        (f) => !/\.test\./.test(f) && edgesOf(tree, f).some((e) => e.to === "gallery/notesStory.tsx"),
+      ),
+    ).toEqual(["gallery/main.tsx"]);
+    expect(how("gallery/main.tsx", "gallery/notesStory.tsx")).toBe("dynamic");
+
+    const baseline = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, "scripts", "bundle-baseline.json"), "utf8"),
+    ) as {
+      after: Entry[];
+    };
+    const i = baseline.after.findIndex((e) => e.feature === "cerebro-vista-notas");
+    expect(i, "the entry exists").toBeGreaterThan(0);
+    const entry = baseline.after[i]!;
+    const before = baseline.after[i - 1]!;
+    expect(before.feature).toBe("cerebro-contextos");
+    expect(entry.reason.length).toBeGreaterThan(40);
+    for (const k of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
+      expect(Number.isInteger(entry[k]) && entry[k] > 0, k).toBe(true);
+    expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(24 * 1024);
+    expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(4.5 * 1024);
   });
 });

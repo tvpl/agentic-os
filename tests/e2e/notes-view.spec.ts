@@ -1,8 +1,9 @@
 /**
- * The notes view of the Second Brain in a real browser (.specs/features/cerebro-vista-notas, C29, C42, C46, C54;
- * design.md "Tela - Vista de notas"): "Grafo | Notas" in both shells and the graph's selection and camera on the way
- * back, the three columns and their widths, what a reload reopens, and "Exportar Markdown", "Abrir no editor do
- * sistema" and "Copiar caminho".
+ * The notes view of the Second Brain in a real browser (.specs/features/cerebro-vista-notas, C29, C42, C46, C54, C77,
+ * C78; design.md "Tela - Vista de notas"): "Grafo | Notas" in both shells and the graph's selection and camera on the
+ * way back, the three columns and their widths, what a reload reopens, "Exportar Markdown", "Abrir no editor do
+ * sistema" and "Copiar caminho", the type floor, the state marks and axe in both themes and both shells, and the
+ * gallery's entry.
  *
  * The notes are real files of the isolated e2e home, written through the API with the page's own token, indexed, and
  * taken away after each test with the view's preferences, so the other specs keep the home they expect. The interface
@@ -11,6 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { test, expect, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { E2E_HOME } from "./home.mjs";
 
 type Shell = "moldura" | "nucleo";
@@ -318,3 +320,164 @@ test("C54 Exportar Markdown downloads the note's bytes; Abrir no editor do siste
   await page.getByRole("menuitem", { name: "Copy path" }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(made.alfa);
 });
+
+/* ---------------- C77, C78: the type floor, the state marks and axe ---------------- */
+
+type Theme = "dark" | "light";
+const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
+
+async function serious(page: Page, include?: string) {
+  const builder = new AxeBuilder({ page }).withTags(WCAG_TAGS);
+  if (include) builder.include(include);
+  const result = await builder.analyze();
+  return result.violations
+    .filter((v) => v.impact === "serious" || v.impact === "critical")
+    .map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target) }));
+}
+
+/** Every element with text of its own under `scope`: what it says and the size it is drawn at. */
+async function sizesUnder(page: Page, scope: string) {
+  return page.evaluate((sel) => {
+    const out: Array<{ text: string; px: number; cls: string }> = [];
+    for (const root of document.querySelectorAll(sel))
+      for (const el of [root, ...root.querySelectorAll("*")] as HTMLElement[]) {
+        if (el.closest("svg, [aria-hidden='true'], .sr-only")) continue;
+        const own = [...el.childNodes]
+          .filter((n) => n.nodeType === Node.TEXT_NODE)
+          .map((n) => n.textContent ?? "")
+          .join("")
+          .trim();
+        const rect = el.getBoundingClientRect();
+        if (!own || !rect.width || !rect.height) continue;
+        out.push({
+          text: own.slice(0, 50),
+          px: parseFloat(getComputedStyle(el).fontSize),
+          cls: String(el.className),
+        });
+      }
+    return out;
+  }, scope);
+}
+/** Nothing under 12px, and the lines that are sentences at 13px or more. */
+async function sized(page: Page, scope: string, prose: string[]) {
+  const sizes = await sizesUnder(page, scope);
+  expect(sizes.length, `${scope} has text`).toBeGreaterThan(0);
+  expect(sizes.filter((s) => s.px < 12)).toEqual([]);
+  for (const line of prose) {
+    const found = sizes.filter((s) => s.text.startsWith(line));
+    expect(found.length, `${line} on screen`).toBeGreaterThan(0);
+    for (const s of found) expect(s.px, line).toBeGreaterThanOrEqual(13);
+  }
+}
+
+/** A note with properties (written through their route) and the five callouts, in the folder of the test. */
+async function makeRichNote(page: Page): Promise<string> {
+  const title = `Natureza ${stamp}`;
+  const made = await api(page, "POST", "/api/v1/memory/notes", {
+    title,
+    folder: FOLDER,
+    frontMatter: true,
+    content: [
+      "A sentence of the body, drawn at the size of running text.",
+      "> [!fato] The office is on street A.",
+      "> [!opiniao] The plan is good.",
+      "> [!plano] Open in March.",
+      "> [!hipotese] The price falls.",
+      "> [!relato] Ana told us yesterday.",
+      "## A section",
+      "More text.",
+    ].join("\n\n"),
+  });
+  expect(made.status, JSON.stringify(made.json)).toBe(201);
+  const set = await api(page, "PUT", "/api/v1/memory/notes/properties", {
+    path: made.json.path,
+    baseVersion: made.json.version,
+    set: {
+      type: "projeto",
+      status: "active",
+      tags: ["alfa", "beta"],
+      natureza: "plano",
+      review_every: "30d",
+    },
+  });
+  expect(set.status, JSON.stringify(set.json)).toBe(200);
+  const indexed = await api(page, "POST", "/api/v1/memory/index");
+  expect(indexed.status, JSON.stringify(indexed.json)).toBe(200);
+  return title;
+}
+
+for (const theme of ["dark", "light"] as const satisfies readonly Theme[]) {
+  for (const shell of ["moldura", "nucleo"] as const satisfies readonly Shell[]) {
+    test(`C77 the notes view of the ${shell} reads at 12px or more (13px for sentences), marks its states with an icon and text, and passes axe (${theme})`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      await page.route("**/api/v1/meta", async (route) => {
+        const response = await route.fetch();
+        await route.fulfill({ response, json: { ...(await response.json()), theme } });
+      });
+      await open(page, shell, "/brain/notes");
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      const title = await makeRichNote(page);
+      // The conversation column is the person's to fold; folded, the frame's view has the room for its panel.
+      const close = page.getByRole("button", { name: "Close chat" });
+      if (await close.isVisible()) await close.click();
+      await page.reload();
+      await expect(page.locator(".notes-view")).toBeVisible();
+      await openFromTree(page, title);
+      const view = page.locator(".notes-view");
+      await expect(view.locator(".notes-props-table")).toBeVisible();
+      await expect(view.locator(".md-callout")).toHaveCount(5);
+      await expect(view.locator(".notes-panel")).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForLoadState("networkidle");
+
+      // the type floor: the sidebar, the tabs, the properties, the body with its callouts, the panel
+      await sized(page, ".notes-view", ["A sentence of the body", "The office is on street A."]);
+      // the states, each with an icon and a text
+      const index = view.locator(".notes-index-line");
+      await expect(index).toHaveText(/\S/);
+      await expect(index.locator("svg")).toHaveCount(1);
+      const labels = view.locator(".md-callout-label");
+      await expect(labels).toHaveText(["Fact", "Opinion", "Plan", "Hypothesis", "Account"]);
+      for (const label of await labels.all()) await expect(label.locator("svg")).toHaveCount(1);
+      for (const lock of await view.locator(".notes-lock").all()) {
+        await expect(lock).toHaveAttribute("aria-label", /\S/);
+        await expect(lock.locator("svg")).toHaveCount(1);
+      }
+      expect(await serious(page)).toEqual([]);
+
+      // editing in place: the state line, the tab's mark and the properties' lock
+      await view.getByRole("button", { name: "Edit", exact: true }).click();
+      const state = view.locator(".notes-editor .note-state");
+      await expect(state).toHaveText("Saved");
+      await expect(state.locator("svg")).toHaveCount(1);
+      await view.getByRole("textbox", { name: "Note text" }).press("End");
+      await view.getByRole("textbox", { name: "Note text" }).pressSequentially(" More.");
+      await expect(state).toHaveText("Unsaved changes");
+      await expect(state.locator("svg")).toHaveCount(1);
+      await expect(page.getByRole("tab", { name: new RegExp(title) })).toContainText("unsaved changes");
+      await expect(view.locator(".notes-props")).toContainText("Save the text to edit the properties.");
+      await sized(page, ".notes-view", ["Save the text to edit the properties."]);
+      expect(await serious(page)).toEqual([]);
+    });
+  }
+}
+
+for (const theme of ["dark", "light"] as const satisfies readonly Theme[]) {
+  test(`C78 the gallery has a notes-view entry (tree, tabs, properties table, callouts) with no serious axe violation (${theme})`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`/gallery.html?theme=${theme}`);
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForLoadState("networkidle");
+    const story = page.locator("#story-notes");
+    await expect(story.getByRole("tree")).toBeVisible();
+    await expect(story.getByRole("treeitem").first()).toBeVisible();
+    await expect(story.getByRole("tab")).toHaveCount(2);
+    await expect(story.locator(".notes-props-table")).toBeVisible();
+    await expect(story.locator(".md-callout")).toHaveCount(5);
+    expect(await serious(page, "#story-notes")).toEqual([]);
+  });
+}

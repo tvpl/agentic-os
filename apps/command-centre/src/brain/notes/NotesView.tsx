@@ -27,11 +27,15 @@ import { NotePanel } from "./NotePanel";
 import { NoteReader } from "./NoteReader";
 import { NoteSearch } from "./NoteSearch";
 import { NoteTabs, useCloseTab } from "./NoteTabs";
+import { NotesTree } from "./NotesTree";
 import { useNotesCommands } from "./notesCommands";
 import { NotesSidebar } from "./NotesSidebar";
 import { useMemoryRoot, useNoteIdentity, useTreeLevel } from "./notesData";
 import { useNotesState, type NoteMeta } from "./useNotesState";
 import "./notes.css";
+
+/** The parts the component gallery shows (C78), from this module so the two pages share the view's one chunk. */
+export { NoteReader, NoteTabs, NotesTree };
 
 export const SIDEBAR = { initial: 260, min: 200, max: 400, step: 16 } as const;
 /** Below this useful width the note panel is closed (design.md). */
