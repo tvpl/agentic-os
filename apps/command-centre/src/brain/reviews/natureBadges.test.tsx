@@ -102,23 +102,57 @@ describe("C74 the badges, one case per row of design.md's table", () => {
       expect(badge.textContent).toBe(text);
     });
 
-  it("C74 the tone classes are drawn from the existing tokens, never a colour of their own, tone-muted included", async () => {
+  /**
+   * Every `color` a stylesheet declares on a rule that names the badge (`.nb`, a `tone-` class) or `.badge.meta`, at any
+   * depth: inside `@media`, `@supports`, `@layer` and `@container` too, each with the at-rules around it (round 2).
+   */
+  async function colourRules(css: string) {
+    const postcss = (await import("postcss")).default;
+    const out: Array<{ selector: string; colour: string; within: string[] }> = [];
+    postcss.parse(css).walkRules((r) => {
+      const within: string[] = [];
+      for (let p = r.parent; p && p.type !== "root"; p = p.parent)
+        if (p.type === "atrule")
+          within.unshift(`@${(p as { name: string }).name} ${(p as { params: string }).params}`.trim());
+      for (const selector of r.selectors)
+        if (/\.nb(?![\w-])|tone-|^\.badge\.meta$/.test(selector))
+          r.each((d) => {
+            if (d.type === "decl" && d.prop === "color") out.push({ selector, colour: d.value, within });
+          });
+    });
+    return out;
+  }
+
+  it("C74 the stylesheet reader finds a tone colour at the root and inside @media, @supports, @layer and @container", async () => {
+    expect(await colourRules(".nb.tone-ok { color: var(--ok); }")).toEqual([
+      { selector: ".nb.tone-ok", colour: "var(--ok)", within: [] },
+    ]);
+    for (const at of [
+      "@media (prefers-contrast: more)",
+      "@supports (color: red)",
+      "@layer badges",
+      "@container (min-width: 1px)",
+    ])
+      expect(await colourRules(`${at} { .nb.tone-muted { color: var(--ok); } }`), at).toEqual([
+        { selector: ".nb.tone-muted", colour: "var(--ok)", within: [at] },
+      ]);
+    expect(
+      await colourRules("@media print { @supports (x: y) { [data-theme] .nb.tone-muted { color: red; } } }"),
+    ).toEqual([
+      {
+        selector: "[data-theme] .nb.tone-muted",
+        colour: "red",
+        within: ["@media print", "@supports (x: y)"],
+      },
+    ]);
+    expect(await colourRules(".nb-filter { color: var(--text-dim); }")).toEqual([]);
+  });
+
+  it("C74 the tone classes are drawn from the existing tokens, never a colour of their own, tone-muted included, at any depth of the stylesheet", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const postcss = (await import("postcss")).default;
-    /** The `color` each selector of a stylesheet declares, top-level rules only. */
-    const colours = (file: string) => {
-      const out = new Map<string, string>();
-      postcss.parse(readFileSync(file, "utf8")).walkRules((r) => {
-        if (r.parent?.type !== "root") return;
-        r.walkDecls("color", (d) => {
-          for (const sel of r.selectors) out.set(sel, d.value);
-        });
-      });
-      return out;
-    };
-    const badges = colours(join(__dirname, "..", "natureza.css"));
-    const theme = colours(join(__dirname, "..", "..", "theme.css"));
+    const badges = await colourRules(readFileSync(join(__dirname, "..", "natureza.css"), "utf8"));
+    const theme = await colourRules(readFileSync(join(__dirname, "..", "..", "theme.css"), "utf8"));
     const tones: Array<[string, string]> = [
       ["tone-ok", "var(--ok)"],
       ["tone-info", "var(--info)"],
@@ -126,18 +160,20 @@ describe("C74 the badges, one case per row of design.md's table", () => {
       ["tone-accent", "var(--accent-text)"],
       ["tone-muted", "var(--text-dim)"],
     ];
-    // Every badge is `.badge.meta.nb`: a tone with no rule of its own takes the colour of `.badge.meta`.
-    expect(theme.get(".badge.meta")).toBe("var(--text-dim)");
-    expect(badges.has(".nb"), "no colour on every badge").toBe(false);
+    // Every badge is `.badge.meta.nb`: a tone with no rule of its own takes the colour of `.badge.meta`, which only
+    // `theme.css`'s one top-level rule colours.
+    const meta = theme.filter((c) => c.selector === ".badge.meta");
+    expect(meta).toEqual([{ selector: ".badge.meta", colour: "var(--text-dim)", within: [] }]);
+    // The badges' stylesheet colours a badge only by a top-level `.nb.<tone>` rule, with that tone's token: no rule on
+    // every `.nb`, no other selector, and nothing nested in an at-rule.
+    for (const c of badges) {
+      const tone = tones.find(([t]) => c.selector === `.nb.${t}`);
+      expect(tone, c.selector).toBeDefined();
+      expect(c.within, c.selector).toEqual([]);
+      expect(c.colour, c.selector).toBe(tone![1]);
+    }
     for (const [tone, colour] of tones)
-      expect(badges.get(`.nb.${tone}`) ?? theme.get(".badge.meta"), tone).toBe(colour);
-    // Nothing else of the badges' stylesheet colours a tone.
-    for (const sel of badges.keys())
-      if (/tone-/.test(sel))
-        expect(
-          tones.some(([t]) => sel === `.nb.${t}`),
-          sel,
-        ).toBe(true);
+      expect(badges.find((c) => c.selector === `.nb.${tone}`)?.colour ?? meta[0]!.colour, tone).toBe(colour);
     // And the badge in the DOM carries those classes: `badge meta nb tone-muted` for relato and none.
     renderWith(createElement(NatureBadge, { n: "relato" }), { lang: "pt-BR" });
     expect(document.querySelector(".nb")!.className).toBe("badge meta nb tone-muted");
