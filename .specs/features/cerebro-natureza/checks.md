@@ -125,7 +125,9 @@ Proof: `npx vitest run tests/natureza.layer.test.ts -t "C15 "`
 → `fato`, `## Open loops` → `plano`, `## Reflections` → `opiniao`, `## Superseded` → `fato`; in
 `<home>/memory/journal/2026-10-29.md`, `## Decisions` → `fato`, `## Open loops` → `plano`, `## Today` → `relato`, `## Runs` →
 `relato`; `## Notas` in `MEMORY.md` → `null`; `## Facts` in `memory/notes/x.md` (not a generated file) → `null`; `### Facts`
-(level 3) in `MEMORY.md` → `null` (door 3, AC 16, amendment 14)
+(level 3) in `MEMORY.md` → `null`; and the place rule, only `<home>/memory/MEMORY.md` and `<home>/memory/journal/AAAA-MM-DD.md`:
+`## Facts` in a user's `memory/notes/MEMORY.md` → `null`, `## Today` in `memory/journal/notas.md` → `null`, `## Today` in
+`memory/journal/2026/2026-10-29.md` → `null` (round 3) (door 3, AC 16, amendment 14)
 Proof: `npx vitest run tests/natureza.layer.test.ts -t "C16 "`
 
 **C17** - A `natureza: fato` note whose best section `## Preço` holds the line `O plano anual custa R$ 900.` and, after
@@ -190,16 +192,21 @@ Proof: `npx vitest run tests/natureza.agents.test.ts -t "C26 "`
 
 **C27** - A note with `natureza: opiniao`, no `review_every`, no `type` and `last_reviewed` 91 days ago is an item of
 `GET /api/memory/reviews?kind=due` with `dueSince` = the day before today; at 90 days it is an item with `dueSince` = today;
-at 89 days it is not an item (AC 17, amendment 6)
+at 89 days it is not an item; "today" is the local day: at 23:30 of 2026-10-30 in `America/Sao_Paulo` (02:30 of 2026-10-31 in
+UTC), a note last reviewed 2026-08-01 is due since 2026-10-30 and one last reviewed 2026-08-02 is not due, at the route and at
+the layer (round 3) (AC 17, amendment 6)
 Proof: `npx vitest run tests/natureza.reviews.test.ts -t "C27 "`
 Proof: `npx vitest run tests/natureza.layer.test.ts -t "C27 "`
+Proof: `npx vitest run tests/natureza.localday.test.ts -t "C27 "` (the file pins `TZ=America/Sao_Paulo` itself)
 
 **C28** - The base of the due date, one asserted case per row: no `last_reviewed` and `mtime` 91 days ago → due, by the
 `mtime`; `last_reviewed: ontem` and `mtime` 91 days ago → due, by the `mtime`; `last_reviewed` 100 days ago and a
-`review_state.last_reviewed` (stored by a `keep`, C46) 10 days ago → not due, and `lastReviewed` is that later day (AC 18,
-amendment 6)
+`review_state.last_reviewed` (stored by a `keep`, C46) 10 days ago → not due, and `lastReviewed` is that later day; the
+`mtime`'s day is its local day: an `mtime` at 23:30 of 2026-08-01 in `America/Sao_Paulo` (2026-08-02 in UTC) is due since
+2026-10-30 at 23:30 of 2026-10-30 there, at the route and at the layer (round 3) (AC 18, amendment 6)
 Proof: `npx vitest run tests/natureza.layer.test.ts -t "C28 "`
 Proof: `npx vitest run tests/natureza.reviews.test.ts -t "C28 "`
+Proof: `npx vitest run tests/natureza.localday.test.ts -t "C28 "` (the file pins `TZ=America/Sao_Paulo` itself)
 
 **C29** - A `natureza: opiniao` note last reviewed 400 days ago with `review_every: never` is not due; the same note with no
 `review_every` and a `review_state.never = 1` stored by `action: "never"` on a copy outside `memory/` (C49) is not due; one
@@ -305,9 +312,11 @@ Proof: `npx vitest run tests/events.contract.test.ts -t "C29 docs/events.md equa
 **C45** - `POST /api/memory/reviews {path:"<home>/memory/notes/a.md", action:"keep", baseVersion}` on a due `natureza:
 opiniao` note answers `200` with `version` = the SHA-256 of the new bytes and `previous: null`; the file's bytes are the
 old ones with only `last_reviewed: <today>` changed (or added before the closing `---`), written bare; the next
-`GET /api/memory/reviews?kind=due` (read back, never seeded) does not list it; `review_state` has no row for it (AC 27,
-L-051)
+`GET /api/memory/reviews?kind=due` (read back, never seeded) does not list it; `review_state` has no row for it; `<today>`
+is the local day: a `keep` at 23:30 of 2026-10-30 in `America/Sao_Paulo` (2026-10-31 in UTC) writes `last_reviewed:
+2026-10-30`, through the route and at the layer (round 3) (AC 27, L-051, amendment 6)
 Proof: `npx vitest run tests/natureza.decisions.test.ts -t "C45 "`
+Proof: `npx vitest run tests/natureza.localday.test.ts -t "C45 "` (the file pins `TZ=America/Sao_Paulo` itself)
 
 **C46** - `action: "keep"` on a due file of an indexed folder outside `memory/` answers `200` with no `version`, stores
 `review_state.last_reviewed` = now (read back from `GET`'s `lastReviewed` = today and from the table), leaves the file's
@@ -1114,3 +1123,43 @@ to deeply equal [ [ …(2) ], 2 ]`. Reverted.
   `npm run build`, so a failing suite would break CI. A build inside the tests would race with the other suites that
   read the same `dist`. Instead their `Proof:` lines now build first: `npm run build:server && npx vitest run …`. Run
   as written, a proof cannot pass by skipping.
+
+## Correções depois da rodada 3
+
+Written after the last round of verification (round 3, FAIL at `4d28032`, closed by escalation). The owner chose "write
+the tests and close": these tests and claims were accepted by the owner **without re-verification**. No product code
+changed: the code was right in every gap, and no new test exposed a bug.
+
+- **C16, door 3's place rule (T3, T4).** Three layer cases in `tests/natureza.layer.test.ts` (`-t "C16 "`, now 15
+  tests). Each gives `null`: `## Facts` in a user's `memory/notes/MEMORY.md`, `## Today` in `memory/journal/notas.md`, and
+  `## Today` in `memory/journal/2026/2026-10-29.md`. The code's rule is `generatedFileKind`: only `<memory>/MEMORY.md`,
+  and `<memory>/journal/<AAAA-MM-DD>.md` one level under `journal/`. The claim names them. T4 was re-injected (any
+  `MEMORY.md` under `memory/` is the generated one, `recall.ts:451`), and the `memory/notes/MEMORY.md` case fails. T3 was
+  re-injected (any `.md` under `journal/` is a journal, `recall.ts:453`), and the `notas.md` and the `2026/2026-10-29.md`
+  cases fail. Both were reverted.
+- **C80, the dialog's local midnight (D1).** `BecameFactDialog.test.tsx` sets `process.env.TZ = "America/Sao_Paulo"`
+  before any date is built. It also asserts that the zone holds: the offset is 180 minutes, and local midnight of
+  2026-03-15 is 3 h after `Date.UTC(2026, 2, 15)`. The proof line needs no TZ of its own, since the file pins it. D1 was
+  re-injected (`Date.UTC(y!, m! - 1, d!)` at `BecameFactDialog.tsx:47`). C80, run as its `Proof:` line is written, fails:
+  `validFrom` `1773532800000` is not `1773543600000`. Reverted.
+- **C27, C28 and C45, the queue's local day (L1).** A new file, `tests/natureza.localday.test.ts`, pins
+  `TZ=America/Sao_Paulo` itself. It runs at 23:30 of 2026-10-30 there (`movingClock`), which is 02:30 of 2026-10-31 in UTC,
+  and first asserts that the zone holds. Each case runs at the route (`app.inject`) and at the layer (`reviewsDue`,
+  `decideReview`):
+  - C27: last reviewed 2026-08-01 is due since 2026-10-30; last reviewed 2026-08-02 is not due.
+  - C28: an `mtime` at 23:30 of 2026-08-01 local is due since 2026-10-30.
+  - C45: a `keep` writes `last_reviewed: 2026-10-30`.
+
+  The three claims say so, and each gains the `Proof:` line of that file. L1 was re-injected (`localDay` returns
+  `new Date(at).toISOString().slice(0, 10)`, `reviews.ts:84`), and all 6 cases fail (route and layer of C27, C28 and
+  C45). Only the zone assertion stays green. Reverted. With this, the Test policy rows "Decides, reached across a boundary"
+  (the queue's day, at both levels) and "not reached" (door 3's place rule) have their cases.
+
+- **C74, a token redefined on a badge (G19c).** The stylesheet reader, `badgeDecls`, now takes the custom properties
+  (`--*`) declared on a rule that names `.nb`, a `tone-` class or `.badge.meta`, at any depth, as well as `color`. A new
+  C74 case proves the reader: one property at the root, one inside each of `@media`, `@supports`, `@layer` and
+  `@container`, and none taken from `.nb-filter` or `.rv`. The tone assertion now also requires that neither
+  `natureza.css` nor `theme.css` declares a custom property on those rules. Its selector runs 10 tests. G19c was
+  re-injected (`.nb.tone-muted { --text-dim: var(--ok); }` in `natureza.css`), and it fails: `expected [ Array(1) ] to
+deeply equal []`. So does `@media (prefers-contrast: more) { .badge.meta { --text-dim: var(--ok); } }`. Both were
+  reverted.
