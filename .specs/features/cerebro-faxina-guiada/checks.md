@@ -374,6 +374,15 @@ src/commands/commands.source.test.ts -t "C16 the reader sees every way to listen
 - **`moldura-app/design.md` (note only).** The binding table cites its "Tela do Segundo Cérebro", which that file does
   not have (Tela 1-4); the brain's action row rests on design.md and amendment 11. No check changes.
 
+- **Gates of round 1, at `5b0f772`.** `npm run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check`
+  exit 0 (JS gzip 546 409 B, 11 477 B above `cerebro-vista-notas`; CSS gzip 76 471 B, 1 792 B above it); `npx vitest
+run` at the root is green (148 files, 1948 tests, 1 skipped) and the UI suite too (161 files, 1326 tests); every
+  touched `Proof:` line passes alone; the six specs together (`cleanup`, `a11y`, `notes-view`, `contexts`, `gallery`,
+  `gallery-contrast`) pass, 119 tests. `notes-view.spec.ts` fails now and then with "apiResponse.json: Response has been
+  disposed" in its own route handler (a request the page abandons on a reload), a different test each run; the same
+  unchanged spec fails the same way with the sources of `81f331d` and of `0310db6` (before any screen of this feature),
+  so it is that spec's harness, not this feature, and it was left as it is.
+
 **C86** - `POST /api/memory/cleanup/undo` for a manifest of this feature answers `409 undo_conflict`, one asserted case per reason the undo has (Handoff batch B, (g)): text that is not JSON, `v` other than 1, an entry whose `from` is outside `memory/`, an entry whose `from` is inside `memory/archive/`, and an entry whose `to` is outside its own archive folder; none moves or writes a file; the same five at the undo's own layer throw `CleanupUndoConflictError` (finding 2; added in round 1)
 Proof: `npx vitest run tests/cleanup.apply.test.ts -t "C86 "`
 Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C86 "`
