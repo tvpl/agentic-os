@@ -253,7 +253,15 @@ describe("S3 what fell due", () => {
       const q = aged(world, path.join(world.memory, "notes", "q.md"), "plano", 40, { escopo: "pessoal" });
       const r = aged(world, path.join(world.memory, "notes", "r.md"), "opiniao", 100, { escopo: "equipe" });
       const u = note(world, path.join(world.memory, "notes", "u.md"), {}, "# Sem natureza\n");
+      // Due with no nature: `type: status` (30 days by default) reviewed 40 days ago, outside memory/notes (round 2).
+      const st = note(world, path.join(root, "status.md"), { type: "status", last_reviewed: day(-40) });
       await world.index();
+      const unfiltered = await list(world, "kind=due");
+      expect(unfiltered.items.find((i) => i.path === st)).toMatchObject({
+        natureza: null,
+        type: "status",
+        dueSince: day(-10),
+      });
       const plano = await list(world, "kind=due&natureza=plano");
       expect([plano.items.map((i) => i.path), plano.total]).toEqual([[p, q], 2]);
       const equipe = await list(world, "kind=due&escopo=equipe");

@@ -268,6 +268,38 @@ describe("S2 the recall by nature", () => {
   });
 });
 
+for (const [label, kept, left, filter] of [
+  ["escopo", ["fato", "equipe"], ["fato", "pessoal"], "escopo=equipe"],
+  ["natureza", ["fato", "equipe"], ["plano", "equipe"], "natureza=fato"],
+] as const)
+  it(`C19 a pointer target outside the ${label} filter is left out: a ${kept.join("/")} note linking to a higher-scoring ${left.join("/")} note answers only itself under ${filter} (round 2)`, async () => {
+    const root = w.indexedRoot(`c19-ptr-${label}-${++seq}`);
+    const target = w.put(
+      path.join(root, "alvo.md"),
+      note(
+        left[0],
+        left[1],
+        "Alvo",
+        "## Jabuticaba\n\nA jabuticaba madura, jabuticaba doce, jabuticaba do quintal, jabuticaba.",
+      ),
+    );
+    const from = w.put(
+      path.join(root, "origem.md"),
+      note(kept[0], kept[1], "Origem", "## Jabuticaba\n\nSobre a jabuticaba, ver [o alvo](alvo.md)."),
+    );
+    await w.index();
+    // Without the filter the target is reached, and it scores higher than the note that points at it.
+    const all = (await recallOf("q=jabuticaba&k=1")).filter((c) => c.path.startsWith(root));
+    const reached = all.find((c) => c.path === target);
+    expect(reached, "the target is answered without a filter").toBeDefined();
+    expect(reached!.score).toBeGreaterThan(all.find((c) => c.path === from)?.score ?? 0);
+    // Under the filter the origin is the only candidate, and its pointer to the target is not followed.
+    const only = (await recallOf(`q=jabuticaba&k=10&${filter}`)).filter((c) => c.path.startsWith(root));
+    expect(only.map((c) => [c.path, c.via ?? null, c.natureza, c.escopo])).toEqual([
+      [from, null, kept[0], kept[1]],
+    ]);
+  });
+
 describe("C20 what the recall answered before keeps its keys and values", () => {
   /**
    * The answer of this fixture at `aa687ed` (the base of the feature, run there by the same steps), paths relative to
