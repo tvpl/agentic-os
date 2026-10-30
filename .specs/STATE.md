@@ -52,7 +52,7 @@
 **Feature**: cerebro-faxina-guiada (C5) fechada com escalonamento (rodada 3 FAIL, testes escritos depois, AD-042; 90 checks); C1 a C5 fechadas; a próxima é cerebro-natureza (C6)
 **Where**: na branch `chore/tlc-spec-lean-skill`, integradas e com `verification.md` (as que usaram as três rodadas fecharam com escalonamento ao dono, nota no fim de cada relatório): seguranca-p0, ci-gate, motor-composicao, capacidades-aplicadas, contratos, preferencias-ui, provedores-plugaveis, api-v1, adaptadores-tipados, moldura-app, seguranca-p1, dados-v2, comandos-atalhos, design-system, escopos-dispositivo. Também integradas e fechadas com escalonamento: primitivas e sdk-core (três rodadas FAIL). Integradas e ainda em verificação: contratos-rest (rodadas 1 e 2 FAIL, correções integradas), licenca-comercial (rodada 1 FAIL, correção integrada; todo texto jurídico é minuta para o dono), limpeza-legado (integrada, rodada 1). Aceites pendentes do dono: "Perguntas ao dono" (AD-014, AD-018 a AD-025).
 **In progress**: nada em worktree; resta a decisão do dono sobre os FAIL residuais (ver o fim de cada `verification.md`)
-**Next step**: reconciliar o plano de `cerebro-natureza` com o que C1-C5 construíram, escrever os checks e construir; o dono responde cerebro-contextos 1 e cerebro-vista-notas 1 e 2 (padrões valem enquanto isso); as perguntas anteriores (limpeza-legado 1, distribuicao 16-20, cerebro-v2 13-19, licenca-comercial 10-11) seguem
+**Next step**: construir `cerebro-natureza` (93 checks em `d2303a1`, estimativa ≈386k, corte em quatro lotes A-D); o dono responde cerebro-contextos 1 e cerebro-vista-notas 1 e 2 (padrões valem enquanto isso); as perguntas anteriores (limpeza-legado 1, distribuicao 16-20, cerebro-v2 13-19, licenca-comercial 10-11) seguem
 **Blockers**: dependem do dono: segredos de assinatura e chave do atualizador (nenhum release assinado sem eles), revisão jurídica (EULA, PRIVACY, NOTICE, titular do LICENSE), publicação npm, F2 do limpeza-legado
 **Dependências**: as da fechamento anterior seguem (token do dono em disco, `rc_`/`brk_` no ambiente, agente com shell aprovado). Nova: a raiz já é a minuta FSL (`licenca-comercial`) e os pacotes `core` e `contracts` levam cópia byte a byte dela, com `license` `FSL-1.1-ALv2`; o titular segue `[A PREENCHER PELO DONO]`.
 **Uncommitted**: nenhum
@@ -339,6 +339,18 @@ Decisões de produto e de processo que a feature `cerebro-v2` tomou com o padrã
 7. **(open) "Cancelar" durante a varredura para a varredura no servidor (rota nova), como o desenho mostra (emenda 17)?** Padrão: a regra do plano (fecha o assistente e diz "Varredura cancelada." uma vez).
 8. **(open) A door 7, acrescentada na construção do lote A sem pergunta: a chave de um `broken-link` leva o alvo e a linha do link, e a de um `empty-folder` o caminho da pasta, além dos membros.** Sem isso dois links quebrados da mesma nota (ou todas as pastas vazias) teriam a mesma chave e uma decisão valeria para todos. Padrão: manter. Alternativa: uma chave por nota com todos os seus links. Reverter: `core/src/memory/cleanupScan.ts` (a chave) e a door 7 do `plan.md`; o check que a prova entra no lote B.
 9. **(open) A door 8, acrescentada na construção do lote B sem pergunta: um desfazer completo move o `manifest.json` para `artifacts/cleanup/<dia>-<id>.manifest.json` e tira as pastas vazias do arquivo com `rmdir`.** Sem isso a pasta do arquivo ficaria só com o manifesto, contra o AC 32 (a pasta some), e o AC 33 proíbe apagar arquivo; um desfazer parcial deixa os dois onde estão. Padrão: manter (C85). Alternativa: deixar a pasta com o manifesto, contra o AC 32. Reverter: `core/src/memory/cleanupApply.ts` (o fim do desfazer), a door 8 do `plan.md` e o C85.
+
+### cerebro-natureza
+
+1. **(open) O vocabulário das naturezas e dos escopos.** Padrão: o do `plan.md` (pergunta 1 do plano).
+2. **(open) A revisão diária vem ligada?** Padrão: ligada, no máximo uma notificação por dia (pergunta 2 do plano; C38, C40, C41).
+3. **(open) Acrescentar à faxina (C5) os achados "plano antigo" e "nota sem natureza" e os cartões de natureza do inventário?** Padrão: não; as Revisões cobrem a mesma necessidade (emenda 19).
+4. **(open) Um trecho do recall que contém uma passagem de plano, hipótese ou opinião leva a natureza da passagem?** Padrão: a do AC 11 aprovado (a natureza da nota); o planejador recomenda sim.
+5. **(open) Aceitar `action: "restore"` e o campo `previous` em toda resposta de POST (door nova, emenda 7)?** Padrão: entra como escrito; recusado, o desfazer só vale onde a decisão escreveu a nota.
+6. **(open) Um campo `since?` para o "Desde" também gravar `became_fact`?** Padrão: não.
+7. **(open) Dar à ferramenta MCP `recall` os filtros `natureza`/`escopo` e os rótulos?** Padrão: sem mudança; recomendado como feature pequena própria.
+8. **(open) O teto de peso: 12 KB de JS gzip e 2 KB de CSS gzip acima de `cerebro-faxina-guiada` (emenda 21)?** Padrão: esse teto; a construção para e pergunta se passar.
+9. **(open) Acrescentar `status` e `conceito` ao vocabulário de `type` do guia de `organize-brain` (emenda 18)?** Padrão: não.
 
 ### distribuicao
 
