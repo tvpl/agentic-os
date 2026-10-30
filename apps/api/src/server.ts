@@ -242,6 +242,8 @@ const RUN_API_READ_ROUTES = new Set([
   "GET /api/memory/recall/stats",
   "GET /api/memory/journal",
   "GET /api/memory/facts",
+  // cerebro-organizar, door 10: the folder map, read as memory/notes/ and the folders the run was handed.
+  "GET /api/memory/maps",
 ]);
 const RUN_API_WRITE_ROUTES = new Set(["POST /api/memory/journal/append", "POST /api/memory/facts"]);
 

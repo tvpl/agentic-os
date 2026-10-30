@@ -705,6 +705,57 @@ describe("S3 the API and the CLI start nothing of their own", () => {
         '      "GET /api/memory/journal",',
       ],
     },
+    // cerebro-organizar added one route (the folder map, for content and for a run's credential): only the totals the
+    // suite pins moved, and the run credential's list of reads gained it.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-organizar: one route more under /api",
+      base: ["    expect(routes).toHaveLength(134);"],
+      head: ["    expect(routes).toHaveLength(135);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-organizar: owners and scoped routes",
+      base: ["    expect([owners, scoped]).toEqual([69, 65]);"],
+      head: ["    expect([owners, scoped]).toEqual([69, 66]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-organizar: the registered routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(134);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(135);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-organizar: the routes of each scope, in the router and in the document",
+      times: 2,
+      base: ["toEqual({ owner: 69, monitor: 33, content: 25, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 69, monitor: 33, content: 26, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-organizar: the routes after the pairing passes",
+      base: ["    expect(apiRoutes()).toHaveLength(134);"],
+      head: ["    expect(apiRoutes()).toHaveLength(135);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-organizar: the operations of the route document",
+      base: ["    expect(operations).toBe(136);"],
+      head: ["    expect(operations).toBe(137);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-organizar: the run credential reaches the folder map (door 10)",
+      base: ['      "GET /api/memory/facts",', "    ];", "    const WRITES"],
+      head: [
+        '      "GET /api/memory/facts",',
+        "      // cerebro-organizar, door 10: the folder map, read as memory/notes/ and the run's folders",
+        '      "GET /api/memory/maps",',
+        "    ];",
+        "    const WRITES",
+      ],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

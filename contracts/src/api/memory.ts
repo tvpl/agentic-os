@@ -258,6 +258,38 @@ const memoryScopeNote = "A run's own credential recalls from the memory folder o
 const contextNote =
   "context=<id> limits it to the files of that work context, context=all (or none) is the whole index";
 
+/**
+ * A folder of the map (.specs/features/cerebro-organizar, doors 4 and 8): what the index knows of its direct children
+ * and the state of its index note.
+ */
+const FolderMapSchema = z.object({
+  /** The folder, absolute. */
+  path: z.string(),
+  /** Relative to its root, with `/` (`""` for an indexed root itself, `notes/<…>` under memory/). */
+  rel: z.string(),
+  /** Direct children the index knows, without `_index.md` and names starting with `.`. */
+  children: z.number().int().min(0),
+  /** `sha256:` of the sorted, newline-joined `d:<folder>` / `f:<file>` list of those children. */
+  digest: NoteVersionSchema,
+  /** The index note (`_index.md`), or null when there is none. */
+  index: z.string().nullable(),
+  /** The note's front matter `children-digest`, or null. */
+  indexDigest: z.string().nullable(),
+  /** `missing`: no index note; `fresh`: its `children-digest` is `digest`; `stale`: another one, or none. */
+  state: z.enum(["missing", "stale", "fresh"]),
+  /** Where the index note is or will be: inside the folder under memory/notes/, under memory/maps/<root slug>/ else. */
+  indexPath: z.string(),
+});
+
+/** `memory`, or an absolute path (POSIX, or a Windows drive or share). */
+const MapsRootQuery = z
+  .string()
+  .min(1)
+  .max(4096)
+  .refine((v) => v === "memory" || /^(\/|[A-Za-z]:[\\/]|\\\\)/.test(v), {
+    message: "root: memory, or an absolute path",
+  });
+
 // ---- routes ----------------------------------------------------------------------------------------------------
 
 export const memoryRoutes = {
@@ -492,6 +524,17 @@ export const memoryRoutes = {
       err(409, "edit_conflict", "The file changed after it was read; nothing was written"),
       err(413, "note_too_large", "The note is larger than the editing limit"),
     ],
+  }),
+  "memory.maps": route({
+    method: "GET",
+    path: "/api/memory/maps",
+    summary:
+      "The folders of the indexed roots and of memory/notes/ with the digest of their children and the state of their index note (missing, stale, fresh); a run's own credential sees only memory/notes/ and the folders the run was handed",
+    tag: "memory",
+    scope: "content",
+    query: z.object({ root: MapsRootQuery.optional() }),
+    responses: { 200: z.object({ folders: z.array(FolderMapSchema) }) },
+    errors: [notFound("The indexed root (or, for a run's credential, a folder the run was handed)")],
   }),
   "memory.routers": route({
     method: "POST",

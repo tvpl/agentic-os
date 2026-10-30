@@ -249,7 +249,7 @@ describe("S4 the bus and the document", () => {
       const entry = EVENT_ENVELOPES.find((e) => e.type === type && e.v === sent.v)!;
       expect(checkBody(entry.schema, sent), type).toEqual([]);
     }
-    expect(Object.keys(SCENARIOS)).toHaveLength(136);
+    expect(Object.keys(SCENARIOS)).toHaveLength(137);
   });
 
   it("C53 docs/events.md describes the two events of the index worker and the phases of its progress, and equals the generated text", () => {

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +9,9 @@ import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { AppContext } from "../apps/api/src/context.js";
 import { defaultSettings, type Settings } from "../core/src/config/schema.js";
 import { FolderNotIndexedError, folderVerdict } from "../core/src/runs/protectedFolder.js";
+import { childrenDigest, folderDigests, rootSlug } from "../core/src/memory/maps.js";
+import { parseFrontMatter } from "../core/src/memory/frontMatter.js";
+import { fileRowFromDb } from "../core/src/memory/indexer.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
 import { repoRoot } from "./helpers/organizeWorld.js";
 
@@ -15,7 +19,9 @@ import { repoRoot } from "./helpers/organizeWorld.js";
  * .specs/features/cerebro-organizar, the decisions at their own layer (checks.md, Test policy rows 1 and 2), with no
  * HTTP. Batch A: the folder verdict of door 5 (`folderVerdict`), the folders the `RunManager` hands a run with a
  * protected folder (door 9), and where a run of a work context gets its folder (`Execution.startSkill`). The HTTP side
- * of each claim is in `organize.runs.test.ts`.
+ * of each claim is in `organize.runs.test.ts`. Batch B: the digest of door 4 (`childrenDigest`), the state of an index
+ * note (`folderDigests`), the root slug of door 8 (`rootSlug`), the front matter of door 6 (`parseFrontMatter` and the
+ * indexer's `fields`) and the goals of door 7; their HTTP side is in `organize.maps.test.ts` and `organize.sync.test.ts`.
  */
 
 const POSIX = process.platform !== "win32";
@@ -218,3 +224,188 @@ describe.skipIf(!POSIX)("doors 5 and 9 at their own layer: the run's folders, wi
     expect(agent.prompt.split("\n")).toContain(`Folder to organize (read-only): ${real(second)}`);
   });
 });
+
+const sha256 = (text: string) => crypto.createHash("sha256").update(text).digest("hex");
+
+describe("door 4 at its own layer: the digest of a folder's children", () => {
+  it("C25 own layer: childrenDigest is sha256: of the sorted d:/f: names, whatever order they come in", () => {
+    const want = `sha256:${sha256("d:sub\nf:a.md\nf:b.md")}`;
+    expect(childrenDigest(["sub"], ["b.md", "a.md"])).toBe(want);
+    expect(childrenDigest(new Set(["sub"]), new Set(["a.md", "b.md"]))).toBe(want);
+    // A folder and a file of the same name are two children, the folder first.
+    expect(childrenDigest(["x"], ["x"])).toBe(`sha256:${sha256("d:x\nf:x")}`);
+    expect(childrenDigest([], [])).toBe(`sha256:${sha256("")}`);
+  });
+});
+
+describe("door 8 at its own layer: the slug of a root", () => {
+  it("C32 own layer: rootSlug is the folded name, cut at 40, or pasta, then the first 8 hex of the root's SHA-256", () => {
+    const cliente = "/srv/dono/Projetos Cliente";
+    expect(rootSlug(cliente)).toBe(`projetos-cliente-${sha256(cliente).slice(0, 8)}`);
+    const one = "/srv/a/Projetos";
+    const two = "/srv/b/Projetos";
+    expect(rootSlug(one)).toBe(`projetos-${sha256(one).slice(0, 8)}`);
+    expect(rootSlug(two)).toBe(`projetos-${sha256(two).slice(0, 8)}`);
+    expect(rootSlug(one)).not.toBe(rootSlug(two));
+    const hashes = "/srv/###";
+    expect(rootSlug(hashes)).toBe(`pasta-${sha256(hashes).slice(0, 8)}`);
+    const long = `/srv/${"a".repeat(60)}`;
+    expect(rootSlug(long)).toBe(`${"a".repeat(40)}-${sha256(long).slice(0, 8)}`);
+    const accents = "/srv/Organização Útil";
+    expect(rootSlug(accents)).toBe(`organizacao-util-${sha256(accents).slice(0, 8)}`);
+  });
+});
+
+describe.skipIf(!POSIX)(
+  "doors 3, 4 and 6 at their own layer: the state of an index note, and the fields",
+  () => {
+    let home: ReturnType<typeof makeTempHome>;
+    let ctx: AppContext;
+    let root: string;
+    beforeAll(() => {
+      home = makeTempHome("mordomo-organize-layer-maps-");
+      root = real(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-organize-layer-root-")));
+      ctx = new AppContext(home.paths.home);
+      const s = ctx.settings();
+      s.indexedFolders = [{ path: root, area: null, enabled: true }];
+      ctx.settingsStore.save(s);
+    });
+    afterAll(() => {
+      ctx.close();
+      home.cleanup();
+      fs.rmSync(root, { recursive: true, force: true });
+    });
+    const insert = (base: string, rel: string) => {
+      const full = path.join(base, rel);
+      ctx.db
+        .prepare(
+          "INSERT OR IGNORE INTO files (root, path, rel, name, ext, dir, area, size, mtime, indexed_at, title, tags, fields) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          base,
+          full,
+          rel,
+          path.basename(full),
+          path.extname(full),
+          path.dirname(full),
+          null,
+          1,
+          1,
+          1,
+          null,
+          "[]",
+          "{}",
+        );
+    };
+    const note = (file: string, header: string[]) => {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, ["---", ...header, "---", "", "# Índice", ""].join("\n"));
+    };
+
+    it("C27 own layer: folderDigests says missing with no note, fresh when children-digest is the digest, stale with another or none", () => {
+      for (const folder of ["sem-nota", "certa", "errada", "vazia-de-digest"])
+        insert(root, path.join(folder, "a.md"));
+      const memory = path.resolve(ctx.paths.memory);
+      insert(memory, path.join("notes", "projeto", "n.md"));
+      const env = { paths: ctx.paths, settings: ctx.settings() };
+      const digest = childrenDigest([], ["a.md"]);
+      const slugDir = path.join(ctx.paths.memory, "maps", rootSlug(root));
+      note(path.join(slugDir, "certa", "_index.md"), ["type: index", `children-digest: ${digest}`]);
+      note(path.join(slugDir, "errada", "_index.md"), [
+        "type: index",
+        `children-digest: sha256:${"1".repeat(64)}`,
+      ]);
+      note(path.join(slugDir, "vazia-de-digest", "_index.md"), ["type: index"]);
+      note(path.join(memory, "notes", "projeto", "_index.md"), [
+        `children-digest: ${childrenDigest([], ["n.md"])}`,
+      ]);
+
+      const map = folderDigests(ctx.db, env)!;
+      const at = (p: string) => map.find((f) => f.path === p)!;
+      expect(at(path.join(root, "sem-nota"))).toMatchObject({
+        state: "missing",
+        index: null,
+        indexDigest: null,
+      });
+      expect(at(path.join(root, "certa"))).toMatchObject({
+        state: "fresh",
+        index: path.join(slugDir, "certa", "_index.md"),
+        indexDigest: digest,
+        digest,
+      });
+      expect(at(path.join(root, "errada"))).toMatchObject({
+        state: "stale",
+        indexDigest: `sha256:${"1".repeat(64)}`,
+      });
+      expect(at(path.join(root, "vazia-de-digest"))).toMatchObject({ state: "stale", indexDigest: null });
+      expect(at(path.join(memory, "notes", "projeto"))).toMatchObject({
+        state: "fresh",
+        indexPath: path.join(memory, "notes", "projeto", "_index.md"),
+      });
+      // The root itself: four folders, no file of its own; its note would be at the top of its slug folder.
+      expect(at(root)).toMatchObject({
+        rel: "",
+        children: 4,
+        state: "missing",
+        indexPath: path.join(slugDir, "_index.md"),
+      });
+      // memory/notes/ itself is no entry (nothing is written at its top, door 2), nor anything outside notes/.
+      expect(map.some((f) => f.path === path.join(memory, "notes") || f.path === memory)).toBe(false);
+      // A root nobody may ask for is null.
+      expect(folderDigests(ctx.db, env, { root: path.join(root, "certa") })).toBeNull();
+      expect(
+        folderDigests(ctx.db, env, {
+          root: path.join(root, "certa"),
+          reach: [path.join(root, "certa")],
+        })!.map((f) => f.path),
+      ).toEqual([path.join(root, "certa")]);
+    });
+
+    it("C33 own layer: parseFrontMatter reads the seven keys up to 64 characters, and the indexer stores them in fields with the inline value winning", async () => {
+      const v64 = "x".repeat(64);
+      const header = parseFrontMatter(
+        [
+          "---",
+          "title: Nota",
+          "type: index",
+          "status: active",
+          "updated: 2026-10-29",
+          "last_reviewed: '2026-10-29'",
+          'natureza: "plano"',
+          "escopo: equipe",
+          `review_every: ${v64}y`,
+          "children-digest: sha256:abc",
+          "outra: coisa",
+          "---",
+          "",
+        ].join("\n"),
+      )!;
+      expect(header.fields).toEqual({
+        type: "index",
+        status: "active",
+        updated: "2026-10-29",
+        last_reviewed: "2026-10-29",
+        natureza: "plano",
+        escopo: "equipe",
+      });
+      expect(header.childrenDigest).toBe("sha256:abc");
+      expect(header.title).toBe("Nota");
+      expect(parseFrontMatter(`---\nescopo: ${v64}\n---\n`)!.fields).toEqual({ escopo: v64 });
+
+      const file = path.join(root, "campos", "n.md");
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(
+        file,
+        "---\ntype: guide\nstatus: active\nnatureza: fato\n---\n\n# N\n\nstatus:: draft\ndono:: Ana\n",
+      );
+      await ctx.indexer.indexAllAsync();
+      const row = ctx.db.prepare("SELECT * FROM files WHERE path = ?").get(file) as Record<string, unknown>;
+      expect(fileRowFromDb(row).fields).toEqual({
+        type: "guide",
+        status: "draft",
+        natureza: "fato",
+        dono: "Ana",
+      });
+    });
+  },
+);

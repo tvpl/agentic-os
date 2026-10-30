@@ -1,14 +1,35 @@
 /**
- * The YAML-ish header a note may start with (`---` … `---`). Only what the index uses is read - `title` and `tags` -
- * by a reader that is deliberately small: a header it does not understand is no header (the file is indexed as if it
- * had none), never an error.
+ * The YAML-ish header a note may start with (`---` … `---`). Only what the index uses is read - `title`, `tags`, the
+ * vocabulary keys of `FRONT_MATTER_FIELDS` and the `children-digest` of an index note - by a reader that is
+ * deliberately small: a header it does not understand is no header (the file is indexed as if it had none), never an
+ * error.
  */
 export interface FrontMatter {
   title?: string;
   tags: string[];
+  /** The keys of `FRONT_MATTER_FIELDS` the header holds, each a one-line text of at most 64 characters. */
+  fields: Record<string, string>;
+  /** `children-digest` of an index note (`_index.md`, .specs/features/cerebro-organizar door 3). */
+  childrenDigest?: string;
 }
 
+/**
+ * The front-matter keys that enter a file's `fields` (.specs/features/cerebro-organizar, door 6): the vocabulary of the
+ * organize-brain guide. A value longer than `FRONT_MATTER_FIELD_MAX` characters is not one of these and is left out.
+ */
+export const FRONT_MATTER_FIELDS = [
+  "type",
+  "status",
+  "updated",
+  "last_reviewed",
+  "natureza",
+  "escopo",
+  "review_every",
+] as const;
+export const FRONT_MATTER_FIELD_MAX = 64;
+
 const MAX_HEADER_BYTES = 4096;
+const FIELD_KEYS: ReadonlySet<string> = new Set(FRONT_MATTER_FIELDS);
 
 function unquote(raw: string): string {
   const value = raw.trim();
@@ -40,14 +61,24 @@ export function parseFrontMatter(content: string): FrontMatter | null {
   const lines = head.split(/\r?\n/);
   const end = lines.findIndex((line, i) => i > 0 && /^---[ \t]*$/.test(line));
   if (end === -1) return null;
-  const out: FrontMatter = { tags: [] };
+  const out: FrontMatter = { tags: [], fields: {} };
   for (let i = 1; i < end; i++) {
-    const match = /^(title|tags)[ \t]*:[ \t]*(.*)$/.exec(lines[i]!);
+    const match = /^([a-z][a-z_-]*)[ \t]*:[ \t]*(.*)$/.exec(lines[i]!);
     if (!match) continue;
     const value = match[2]!;
-    if (match[1] === "title") {
+    if (FIELD_KEYS.has(match[1]!)) {
+      const text = unquote(value);
+      if (text !== "" && text.length <= FRONT_MATTER_FIELD_MAX && !(match[1]! in out.fields)) {
+        out.fields[match[1]!] = text;
+      }
+    } else if (match[1] === "children-digest") {
+      const digest = unquote(value);
+      if (digest !== "" && out.childrenDigest === undefined) out.childrenDigest = digest;
+    } else if (match[1] === "title") {
       const title = unquote(value);
       if (title !== "") out.title = title;
+    } else if (match[1] !== "tags") {
+      continue;
     } else if (value.trim() !== "") {
       out.tags.push(...tagList(value));
     } else {

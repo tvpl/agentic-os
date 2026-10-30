@@ -129,6 +129,9 @@ describe("S5 the surface is a closed list", () => {
         "findContext",
         "newContext",
         "removeContextMap",
+        // cerebro-organizar: the folder map the route answers, and what a run's credential sees on it (doors 4, 10)
+        "folderDigests",
+        "runMapReach",
       ].sort(),
     );
   });

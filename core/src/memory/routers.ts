@@ -22,6 +22,7 @@ import {
 import { fileRowFromDb, storedRowFilter, type FileRow } from "./indexer.js";
 import { ensureJournal, journalSections, localDateString, readJournal, shiftDate, type JournalDay } from "./journal.js";
 import { linkEdges } from "./links.js";
+import { folderDigests, type FolderMap } from "./maps.js";
 
 /**
  * Memory routers (ARMS Memory L2): a short master router plus one index per
@@ -139,6 +140,7 @@ export function generateRouters(
     lines.push("", `Long-term memory: [MEMORY.md](./MEMORY.md) — consolidated facts and reflections (read its section index first).`);
   }
   lines.push("", `Retrieval: ask \`mordomo recall "<question>"\` (or GET /api/memory/recall) before opening files by hand.`);
+  lines.push(...folderIndexLines(paths, folderDigests(db, { paths, settings }) ?? []));
   // Journal: today (created on first access) + yesterday, under the token budget.
   const today = localDateString();
   // A day that is a link out of memory/ is left out; it must not stop the routers from being written.
@@ -182,6 +184,39 @@ export function generateRouters(
 
   written.push(...writeContextMaps(db, { paths, settings }, scope, isRouter));
   return { written };
+}
+
+// ---- the index notes of the folders (.specs/features/cerebro-organizar, AC 26) --------------------------------------
+
+/** The most folders "Folders without an index" lists. */
+export const FOLDERS_WITHOUT_INDEX_MAX = 20;
+
+/**
+ * The two sections of the master router about the index notes: each index note that exists (`fresh` or `stale`) as a
+ * link with its folder, and up to 20 folders whose note is missing or stale, the ones with most children first. A
+ * section with nothing to list is left out.
+ */
+export function folderIndexLines(paths: MordomoPaths, folders: FolderMap[]): string[] {
+  const lines: string[] = [];
+  const link = (file: string) => `./${path.relative(paths.memory, file).split(path.sep).join("/")}`;
+  const indexed = folders.filter((f) => f.index !== null);
+  if (indexed.length > 0) {
+    lines.push("", "## Folder indexes", "", "Read the index note of a folder before opening its files:");
+    for (const f of indexed) {
+      const mark = f.state === "stale" ? " (stale)" : "";
+      lines.push(`- [${path.basename(f.path)}](${link(f.index!)}) → \`${f.path}\`${mark}`);
+    }
+  }
+  // Array.prototype.sort is stable: folders with as many children keep the order of the map (by path).
+  const waiting = folders
+    .filter((f) => f.state !== "fresh")
+    .sort((a, b) => b.children - a.children)
+    .slice(0, FOLDERS_WITHOUT_INDEX_MAX);
+  if (waiting.length > 0) {
+    lines.push("", "## Folders without an index", "", "Run the organize-brain skill (etapa indexar) to write these:");
+    for (const f of waiting) lines.push(`- \`${f.path}\` (${f.children} children, ${f.state})`);
+  }
+  return lines;
 }
 
 // ---- the map of each work context (.specs/features/cerebro-contextos, S4) ------------------------------------------

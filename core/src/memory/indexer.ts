@@ -783,7 +783,8 @@ export class MemoryIndexer {
         title = header?.title ?? content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
         const inline = [...content.matchAll(/(?:^|\s)#([\p{L}\d_-]{2,30})\b/gu)].map((m) => m[1]!);
         tags = [...new Set([...(header?.tags ?? []), ...inline])].slice(0, 20);
-        fields = parseInlineFields(content);
+        // The vocabulary keys of the header (cerebro-organizar, door 6), then the inline fields, which win on a key.
+        fields = { ...header?.fields, ...parseInlineFields(content) };
       }
     }
     const name = path.basename(full);

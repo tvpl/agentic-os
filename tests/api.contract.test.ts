@@ -159,7 +159,7 @@ describe("S1 the route table and the registration", () => {
   });
 
   it("C53 the table holds the five routes of the second brain with scope, what they read, a schema per success status and their declared errors", () => {
-    expect(entries).toHaveLength(136);
+    expect(entries).toHaveLength(137);
     for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
       const entry = API[want.id];
       expect(entry, key).toBeDefined();
@@ -191,10 +191,10 @@ describe("S1 the route table and the registration", () => {
     try {
       const router = app.apiRoutes.map((r) => `${r.method} ${r.url}`).sort();
       const table = entries.map(([, e]) => routeKey(e)).sort();
-      expect(router).toHaveLength(136);
+      expect(router).toHaveLength(137);
       expect(table).toEqual(router);
-      expect(new Set(table).size).toBe(136);
-      expect(new Set(entries.map(([id]) => id)).size).toBe(136);
+      expect(new Set(table).size).toBe(137);
+      expect(new Set(entries.map(([id]) => id)).size).toBe(137);
       for (const [id, entry] of entries) {
         expect(id, id).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)+$/);
         expect(entry.summary.length, `${id} summary`).toBeGreaterThan(8);
@@ -223,7 +223,7 @@ describe("S1 the route table and the registration", () => {
         const k = e.public ? "public" : e.scope!;
         counts[k] = (counts[k] ?? 0) + 1;
       }
-      expect(counts).toEqual({ owner: 69, monitor: 33, content: 25, run: 6, approve: 1, public: 2 });
+      expect(counts).toEqual({ owner: 69, monitor: 33, content: 26, run: 6, approve: 1, public: 2 });
       expect(entries.filter(([, e]) => e.public && e.scope !== undefined)).toEqual([]);
 
       expect(
@@ -757,7 +757,7 @@ describe("S2 the real answer is checked", () => {
     // A route with no scenario, or a scenario for no route: both are a hole in this proof.
     expect(Object.keys(SCENARIOS).sort()).toEqual(router);
     expect(Object.keys(SCENARIOS).sort()).toEqual(tabled);
-    expect(results).toHaveLength(136);
+    expect(results).toHaveLength(137);
     const problems: string[] = [];
     for (const { key, entry, answer, id } of results) {
       const scenario = SCENARIOS[key]!;

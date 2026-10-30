@@ -370,3 +370,9 @@ Status of batch A (updated in the commit that closes each piece):
   `@mordomo/core/internal` (sdk C38 pins that barrel): the catalog reads `defaultSettings()` and the CLI the error's
   `code`; making `protectsDirs` required as `readConfinement` is (every manifest written before it would stop
   compiling, while absent already fails closed).
+
+Status of batch B (updated in the commit that closes each piece):
+
+- the folder map, the index notes and the router (S3: C24-C34) with the route's place in the contract (C49) and the
+  readers it keeps (C50): closed, every proof green in `tests/organize.maps.test.ts`, `tests/organize.layer.test.ts`,
+  `tests/api.openapi.test.ts`, `tests/security-reads.test.ts` and `tests/sdk.instances.test.ts`

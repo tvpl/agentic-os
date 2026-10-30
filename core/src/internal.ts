@@ -136,6 +136,7 @@ export {
 } from "./memory/related.js";
 export { previewFile, type PreviewResult } from "./memory/preview.js";
 export { generateRouters, checkRouters, areaSlug, type RouterIssue } from "./memory/routers.js";
+export { folderDigests, runMapReach } from "./memory/maps.js";
 export {
   changedContext,
   contextMembership,

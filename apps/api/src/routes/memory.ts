@@ -10,6 +10,7 @@ import {
   createNote,
   ensureJournal,
   factStats,
+  folderDigests,
   generateRouters,
   homeReadScope,
   inspectPath,
@@ -31,6 +32,7 @@ import {
   relatedFiles,
   resolveOpenablePath,
   retractFact,
+  runMapReach,
   saveNote,
   statWorkspacePath,
   workspaceScope,
@@ -241,6 +243,26 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     const written = saveNote(noteContext(), body);
     reindex(written.path);
     return written;
+  });
+
+  /**
+   * The folders and the state of their index notes (.specs/features/cerebro-organizar, doors 4 and 10). A run's own
+   * credential sees `memory/notes/` and the folders the run was handed; a root outside them is `404`.
+   */
+  bind(app, "memory.maps", async ({ query: q }, req) => {
+    const env = { paths: ctx.paths, settings: ctx.settings() };
+    let reach: string[] | undefined;
+    if (req.principal?.kind === "run") {
+      const run = ctx.runs.get(req.principal.runId);
+      const skill = run?.skillSlug ? ctx.skills.load(run.skillSlug) : null;
+      reach = run ? runMapReach(env, run, skill) : [];
+    }
+    const folders = folderDigests(ctx.db, env, {
+      ...(q.root !== undefined ? { root: q.root } : {}),
+      ...(reach ? { reach } : {}),
+    });
+    if (!folders) throw httpError(404, `No indexed root this caller may read is ${q.root}.`, "not_found");
+    return { folders };
   });
 
   bind(app, "memory.routers", async () => {

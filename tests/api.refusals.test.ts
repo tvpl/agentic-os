@@ -13,7 +13,7 @@ import { CEREBRO_V2_ROUTES } from "./helpers/routeScopes.js";
  * The refusals of the path filter and of the safe reader, and of a settings file the engine will not replace
  * (.specs/features/contratos-rest, the fixes after round 3): the routes that may answer `403 forbidden_path`, `404
  * not_a_file`, `413 file_too_large`, `409 settings_newer` and `409 settings_unpreserved` are not listed by hand and
- * trusted. Each of the 136 routes is called as its scenario calls it. For the file refusals the call is made once for
+ * trusted. Each of the 137 routes is called as its scenario calls it. For the file refusals the call is made once for
  * each kind of read the scenario makes, and in each call one kind of read (`core/src/security/safeFs.ts`, the only
  * place those errors come from) refuses in the way a hostile file would: outside the granted folders, a folder or a
  * link out in place of a file, a file past its cap. For the settings refusals the whole table runs over a
@@ -269,8 +269,8 @@ describe("S1 the refusals of the file readers", () => {
   }, 900_000);
 
   it("C45 the probe runs one scenario for each route, and the refusals reach the routes", () => {
-    expect(Object.keys(SCENARIOS)).toHaveLength(136);
-    expect(scenariosSeen).toBe(136);
+    expect(Object.keys(SCENARIOS)).toHaveLength(137);
+    expect(scenariosSeen).toBe(137);
     for (const fault of FAULTS) {
       expect(injected[fault], `${fault} injected`).toBeGreaterThan(20);
       // A probe that finds nothing would pass every comparison below.
@@ -396,7 +396,7 @@ describe("S1 real hostile files answer what the contract declares", () => {
 
 describe("S1 the refusals of a settings file the engine will not replace", () => {
   /**
-   * The 136 routes, called as their scenarios call them, against a `config/settings.json` that cannot be replaced: one
+   * The 137 routes, called as their scenarios call them, against a `config/settings.json` that cannot be replaced: one
    * written by a newer version, and one that holds values this version drops with every name for the copy that must be
    * kept aside taken by something else. The routes that answer `409 settings_newer` and `409 settings_unpreserved`
    * are the routes that list them, both ways.

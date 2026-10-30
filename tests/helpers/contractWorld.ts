@@ -427,6 +427,8 @@ export const SCENARIOS: Record<string, Scenario> = {
       w.call("GET", `/api/memory/preview?p=${encodeURIComponent(path.join(w.workspace, "plan.md"))}`),
   },
   [key("GET", "/api/memory/routers/check")]: { run: (w) => w.call("GET", "/api/memory/routers/check") },
+  // cerebro-organizar, door 4: the folder map over the indexed workspace and memory/notes/.
+  [key("GET", "/api/memory/maps")]: { run: (w) => w.call("GET", "/api/memory/maps") },
   [key("GET", "/api/memory/recall")]: { run: (w) => w.call("GET", "/api/memory/recall?q=Alfa&record=false") },
   [key("GET", "/api/memory/recall/stats")]: { run: (w) => w.call("GET", "/api/memory/recall/stats") },
   [key("GET", "/api/memory/journal")]: { run: (w) => w.call("GET", "/api/memory/journal") },
