@@ -8,10 +8,10 @@ import { errorMessage } from "./shared";
  * (`useBrainState`) and the panels. This file loads the data, owns the
  * selection, translates canvas hits into navigation and lays the pieces out.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, type GraphData, type IndexProgressPayload, type RunSummary } from "../api";
 import { apiCall } from "../apiCall";
-import { useToast } from "../components/ui";
+import { Skeleton, useToast } from "../components/ui";
 import { useLang, useT, type TKey } from "../i18n";
 import { useOsEvent } from "../hooks/useEventStream";
 import { useOsNavigate } from "../hooks/useViewTransition";
@@ -60,6 +60,7 @@ import { graphRequest, useBrainSearch } from "../brain/memoryData";
 import { useWorkContext } from "../contexts/useWorkContext";
 import { useCommands, type Command } from "../commands/registry";
 import { openNoteEditor } from "../brain/noteEvents";
+import { BrainViewSwitch, NotesView, useBrainMode, useBrainViewCommands } from "../brain/BrainViewSwitch";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
 /**
@@ -93,7 +94,29 @@ const LAYOUT_KEYS: Record<
   rings: "brain.layout.rings",
 };
 
+/**
+ * The brain of the frame (and the Núcleo's classic map): the row "Grafo | Notas" (.specs/features/cerebro-vista-notas,
+ * AC 1), then the graph at `/brain` or the notes view at `/brain/notes`. Leaving the graph keeps its selection and
+ * camera for the way back (the navigation snapshot of `useBrainState`).
+ */
 export default function SecondBrain() {
+  const brain = useBrainMode();
+  useBrainViewCommands(brain);
+  return (
+    <div className="brain-app" data-mode={brain.mode}>
+      <BrainViewSwitch mode={brain.mode} onChoose={(mode) => brain.go(mode)} />
+      {brain.mode === "notes" ? (
+        <Suspense fallback={<Skeleton lines={6} />}>
+          <NotesView onShowInGraph={(id) => brain.go("graph", `?sel=${id}&local=1&hops=1`)} />
+        </Suspense>
+      ) : (
+        <SecondBrainGraph />
+      )}
+    </div>
+  );
+}
+
+function SecondBrainGraph() {
   const t = useT();
   const lang = useLang();
   const toast = useToast();

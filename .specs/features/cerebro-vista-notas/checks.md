@@ -486,3 +486,5 @@ Status of batch B (updated in the commit that closes each piece):
 
 - the notes view's preferences, `UiPreferences.brain.notes` with its caps on read (door 4: C47): closed, the proof green
   in `tests/notesview.layer.test.ts`
+- the notes sidebar and its tree (S4: C31-C41): closed, every proof green in
+  `apps/command-centre/src/brain/notes/NotesSidebar.test.tsx` and `NotesTree.test.tsx`

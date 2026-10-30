@@ -13,8 +13,16 @@
  */
 import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { useT } from "../i18n";
-import type { Block, Inline } from "../brain/markdown";
+import {
+  BookOpen,
+  CheckCircle2,
+  FlaskConical,
+  Map as MapIcon,
+  MessageCircle,
+  type LucideIcon,
+} from "lucide-react";
+import { useT, type TKey } from "../i18n";
+import type { Block, CalloutKind, Inline } from "../brain/markdown";
 import { parseMarkdown } from "../brain/markdown";
 
 export type MarkdownShape = "page" | "panel" | "scene";
@@ -31,9 +39,20 @@ export interface MarkdownRefs {
   onPeek?: (id: number | null) => void;
   /** The icon before a resolved link. `scene` only. */
   iconOf?: (id: number) => ReactNode;
-  /** Heading ids by block index (the outline's). `scene` only. */
+  /** Heading ids by block index (the outline's). `scene`, and `panel` when given. */
   headingIds?: ReadonlyMap<number, string>;
+  /** How a link that names no note is drawn, instead of the shape's plain text. `panel` only (the notes view). */
+  brokenLink?: (key: string, label: ReactNode, href: string) => ReactNode;
 }
+
+/** The callouts of the nature of a piece of information (.specs/features/cerebro-vista-notas, AC 57): an icon and a word. */
+const CALLOUTS: Record<CalloutKind, { Icon: LucideIcon; label: TKey }> = {
+  fato: { Icon: CheckCircle2, label: "notes.callout.fato" },
+  opiniao: { Icon: MessageCircle, label: "notes.callout.opiniao" },
+  plano: { Icon: MapIcon, label: "notes.callout.plano" },
+  hipotese: { Icon: FlaskConical, label: "notes.callout.hipotese" },
+  relato: { Icon: BookOpen, label: "notes.callout.relato" },
+};
 
 export interface MarkdownProps {
   /** The text; parsed here. Give `blocks` instead when the caller has parsed it already. */
@@ -151,6 +170,7 @@ export function Markdown({ source, blocks, shape, className, refs }: MarkdownPro
           if (shape === "page") return href ? anchor(key, href, n.text) : <code key={key}>{n.text}</code>;
           const id = r.resolve(n.href);
           if (id !== null) return note(key, id, n.text, n.href);
+          if (!href && shape === "panel" && r.brokenLink) return r.brokenLink(key, n.text, n.href);
           if (href)
             return anchor(
               key,
@@ -181,7 +201,11 @@ export function Markdown({ source, blocks, shape, className, refs }: MarkdownPro
           {inline(b.children, `h${i}`)}
         </Tag>
       );
-    return <Tag key={i}>{inline(b.children, `h${i}`)}</Tag>;
+    return (
+      <Tag key={i} id={r.headingIds?.get(i)}>
+        {inline(b.children, `h${i}`)}
+      </Tag>
+    );
   };
 
   const code = (b: Extract<Block, { type: "code" }>, i: number): ReactNode =>
@@ -280,6 +304,18 @@ export function Markdown({ source, blocks, shape, className, refs }: MarkdownPro
         return <p key={i}>{inline(b.children, `p${i}`)}</p>;
       case "quote":
         return <blockquote key={i}>{inline(b.children, `q${i}`)}</blockquote>;
+      case "callout": {
+        const { Icon, label } = CALLOUTS[b.kind];
+        return (
+          <aside key={i} className="md-callout" data-kind={b.kind}>
+            <div className="md-callout-label">
+              <Icon aria-hidden size={14} />
+              {t(label)}
+            </div>
+            <p>{inline(b.children, `c${i}`)}</p>
+          </aside>
+        );
+      }
       case "hr":
         return <hr key={i} />;
       case "code":

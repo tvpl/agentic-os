@@ -21,6 +21,8 @@ export type Block =
   | { type: "list"; ordered: boolean; items: ListItem[] }
   | { type: "code"; text: string; lang: string | null }
   | { type: "quote"; children: Inline[] }
+  /** A quote that opens with `[!fato]`, `[!opiniao]`, `[!plano]`, `[!hipotese]` or `[!relato]` (cerebro-vista-notas, AC 57). */
+  | { type: "callout"; kind: CalloutKind; children: Inline[] }
   | { type: "hr" }
   /** A pipe table: header cells and rows, each cell parsed inline (refino item 24). */
   | { type: "table"; header: Inline[][]; rows: Inline[][][] };
@@ -39,6 +41,11 @@ const SKILL_RE = /^\/[a-z0-9][a-z0-9-]*$/i;
 const FILE_EXT_RE = /\.[a-z0-9]{1,8}$/i;
 
 /** `<!-- … -->` is for the file, not the reader: dropped before parsing. */
+/** The callouts of the nature of a piece of information (.specs/features/cerebro-vista-notas, AC 57); any other `[!x]` is a quote. */
+export const CALLOUT_KINDS = ["fato", "opiniao", "plano", "hipotese", "relato"] as const;
+export type CalloutKind = (typeof CALLOUT_KINDS)[number];
+const CALLOUT = /^\[!(fato|opiniao|plano|hipotese|relato)\][ \t]*/i;
+
 export function stripHtmlComments(src: string): string {
   return src.replace(/<!--[\s\S]*?-->/g, "");
 }
@@ -105,7 +112,15 @@ export function parseMarkdown(src: string): Block[] {
         parts.push(lines[i]!.trim().replace(/^>\s?/, ""));
         i++;
       }
-      blocks.push({ type: "quote", children: parseInline(parts.join(" ")) });
+      const text = parts.join(" ");
+      const callout = CALLOUT.exec(text);
+      if (callout)
+        blocks.push({
+          type: "callout",
+          kind: callout[1]!.toLowerCase() as CalloutKind,
+          children: parseInline(text.slice(callout[0].length)),
+        });
+      else blocks.push({ type: "quote", children: parseInline(text) });
       continue;
     }
     const listMatch = listLine(line);
@@ -312,7 +327,8 @@ export function collectReferences(blocks: Block[]): string[] {
     }
   };
   for (const b of blocks) {
-    if (b.type === "heading" || b.type === "paragraph" || b.type === "quote") walk(b.children);
+    if (b.type === "heading" || b.type === "paragraph" || b.type === "quote" || b.type === "callout")
+      walk(b.children);
     else if (b.type === "list") for (const item of b.items) walk(item.children);
   }
   return [...new Set(refs)];

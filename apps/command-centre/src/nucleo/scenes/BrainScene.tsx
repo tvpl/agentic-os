@@ -18,7 +18,7 @@
  * hygiene. What the sky does not show — layouts, pins, hubs, minimap, query
  * groups — stays one click away in the classic 2D map, behind "⋯".
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   type Connector,
@@ -30,7 +30,7 @@ import {
 } from "../../api";
 import { apiCall } from "../../apiCall";
 import { escapeLayerOpen, getDialogDepth, keyLayerOpen, Popover, Tooltip } from "../../ui";
-import { timeAgo, useToast } from "../../components/ui";
+import { Skeleton, timeAgo, useToast } from "../../components/ui";
 import { useWorkspace } from "../../components/Workspace";
 import { useLang, useT, type TKey } from "../../i18n";
 import { useOsEvent } from "../../hooks/useEventStream";
@@ -116,6 +116,13 @@ import "./brainScene.css";
 import { RequestFailed } from "../../brain/RequestFailed";
 import { graphRequest, useBrainSearch, useRelatedFiles } from "../../brain/memoryData";
 import { useWorkContext } from "../../contexts/useWorkContext";
+import {
+  BrainViewSwitch,
+  NotesView,
+  useBrainMode,
+  useBrainViewCommands,
+  type BrainModeState,
+} from "../../brain/BrainViewSwitch";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
 const NO_SKILLS: Skill[] = [];
@@ -208,8 +215,24 @@ export default function BrainScene({ onMetaChanged }: SceneViewProps) {
       /* the choice lasts for this visit */
     }
   }, []);
+  const brain = useBrainMode();
+  // The classic map is the frame's brain, which has the row and the commands of its own.
+  useBrainViewCommands(brain);
+  if (brain.mode === "notes") return <NotesMode brain={brain} />;
   if (classic) return <ClassicMap onBack={() => setClassic(false)} onMetaChanged={onMetaChanged} />;
-  return <Constellation onClassic={() => setClassic(true)} />;
+  return <Constellation onClassic={() => setClassic(true)} view={brain} />;
+}
+
+/** The scene's "Notas" mode (.specs/features/cerebro-vista-notas, AC 1): the same notes view as the frame's, under the HUD. */
+function NotesMode({ brain }: { brain: BrainModeState }) {
+  return (
+    <div className="bs-notes">
+      <BrainViewSwitch mode="notes" onChoose={(mode) => brain.go(mode)} />
+      <Suspense fallback={<Skeleton lines={6} />}>
+        <NotesView onShowInGraph={(id) => brain.go("graph", `?sel=${id}&local=1&hops=1`)} />
+      </Suspense>
+    </div>
+  );
 }
 
 /** The production Second Brain, full screen, with a way back to the sky. */
@@ -232,7 +255,7 @@ interface TourState {
   playing: boolean;
 }
 
-function Constellation({ onClassic }: { onClassic: () => void }) {
+function Constellation({ onClassic, view }: { onClassic: () => void; view: BrainModeState }) {
   const t = useT();
   const lang = useLang();
   const toast = useToast();
@@ -1488,6 +1511,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
       data-narrow={narrow ? "" : undefined}
       data-dim={dim}
     >
+      <BrainViewSwitch mode="graph" onChoose={(mode) => view.go(mode)} />
       {graph && !empty && (
         <BrainSceneCanvas
           stage={stage}

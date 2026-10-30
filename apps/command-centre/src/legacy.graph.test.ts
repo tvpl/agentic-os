@@ -38,6 +38,8 @@ const UNREACHED: Record<string, string> = {
   // cerebro-contextos, batch C: the work-context specs' providers and their stub of the network
   "contexts/testkit.tsx": "test material: imported by specs only",
   "contexts/testnet.ts": "test material: imported by specs only",
+  // cerebro-vista-notas, batch B: the notes-view specs' stub of the network
+  "brain/notes/testnet.ts": "test material: imported by specs only",
   "commands/listenersAllowlist.ts":
     "the list of key listeners outside the registry, read by the registry's source check and probe (C16)",
   "testing/canvasText.ts": "a reader of the design-system guards: specs only",
