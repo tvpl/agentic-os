@@ -494,3 +494,5 @@ Status of batch B (updated in the commit that closes each piece):
 - one data layer for the three screens (S8: C72-C74): closed, every proof green in
   `apps/command-centre/src/brain/memoryData.test.ts`; "Grafo | Notas" and its commands and key (C30) closed in
   `notesCommands.test.ts`; C29 has its unit proof green in `NotesView.test.tsx` and closes with its browser proof
+- in a real browser (C29, C42, C46, C54): closed, every proof green in `tests/e2e/notes-view.spec.ts`; with it S4
+  (C29-C42) and S5 (C43-C55) are closed
