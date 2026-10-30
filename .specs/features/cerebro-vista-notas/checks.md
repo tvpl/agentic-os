@@ -540,8 +540,47 @@ Status of batch C (updated in the commit that closes each piece):
   closed, every proof green in `apps/command-centre/src/brain/notes/PropertiesTable.test.tsx`,
   `NoteEditInPlace.test.tsx` and `NoteCreate.test.tsx`
 - the copy table (C81), the gallery's entry (C78), the type floor, the state marks and axe in both shells and both
-  themes (C77), and the weight (C79): closed, every proof green in `apps/command-centre/src/brain/notes/notesCopy.test.ts`,
+  themes (C77), and the weight (C79): closed, every proof green in `brain/notes/notesCopy.test.ts`,
   `tests/e2e/notes-view.spec.ts`, `tests/notesview.contract.test.ts`, the CSS lint of `brain/notes/*.css` and
-  `npm run bundle:check`; `scripts/bundle-baseline.json`'s `cerebro-vista-notas` entry is this build's (534 932 B JS
-  gzip, 23.0 KB above `cerebro-contextos`; 74 679 B CSS gzip, 3.2 KB above it); with it batch C is closed (C56-C71,
-  C77-C79, C81)
+  `npm run bundle:check`; the `cerebro-vista-notas` entry of `scripts/bundle-baseline.json` is this build's (534 932 B
+  of JS gzip, 23.0 KB above `cerebro-contextos`; 74 679 B of CSS gzip, 3.2 KB above it); with it batch C is closed
+
+- **Boundary (batch C):** C56-C71, C77-C79 and C81 closed. S6 and S7 (C56-C71) at `1cd4a41`; C77, C78, C79 and C81
+  at `6adb1f9`, which closes the batch and the last batch of the feature. On the tree of `6adb1f9`: `npm run build`,
+  `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0, and the build measures exactly the recorded
+  entry (534 932 B JS gzip, 74 679 B CSS gzip); `npx vitest run` at the root is green (141 files, 1853 tests, 1
+  skipped) and `npm run test -w apps/command-centre` too (153 files, 1222 tests); each of the 22 `Proof:` lines of the
+  batch passes and runs only its check's tests; `tests/e2e/notes-view.spec.ts`, `a11y.spec.ts`, `contexts.spec.ts`
+  and `brain-errors.spec.ts` pass together (90 tests; in the first of two full runs notes-view C29 in the frame timed
+  out once at 30.9 s, and it passed alone, in its spec alone and in the next full run), and `gallery.spec.ts` with
+  `gallery-contrast.spec.ts` pass (27). The Verifier has not run: it is the orchestrator's, over every check.
+- **Settled mid-build:** nothing by the owner (C79's bound is amendment 15; question cerebro-vista-notas 1 in
+  `.specs/STATE.md` stays the owner's). Builder decisions inside the approved shape: (a) the create dialog of
+  cerebro-v2 takes `folder` and `onCreated` in its request (`brain/noteEvents.ts`): "Pasta" is read-only with
+  "Trocar" (which makes it a field), the area is hidden while a folder is chosen (door 7), and the caller's
+  `onCreated` opens the note in a tab in edit mode instead of the dialog's editor; "Nova pasta" sends the name as
+  typed (the service makes each level a name); (b) with the structure fixed, "Nova pasta" is disabled everywhere (a
+  new folder is always refused) and "Nova nota" wherever no folder of `memory/notes` is selected, both `aria-disabled`
+  so their `Tooltip` shows; (c) the heading's two controls are hidden while the root is empty or nothing is indexed,
+  where the tree's own "Nova nota" stands (C37 asks for one such button), under the same rule; (d) the editor in place
+  is the view's own (`brain/notes/NoteEditInPlace.tsx`) on the classes, strings and stylesheet of cerebro-v2's,
+  because cerebro-v2 C23 keeps `brain/NoteEditor.tsx` imported only by its host; a tab's draft is kept by path while
+  the tab is in the background (and "Ler" keeps it with the tab's mark) and dropped when the tab closes; an unchanged
+  editor follows the disk (a property write is a new version); ⌘S / Ctrl+S is `brain.notes.save` in `view:brain`; the
+  index note of a folder edits in its own tab; (e) over the properties, "Salvar como cópia" writes the note as it was
+  read, plus the change, into a copy and opens it; a date read that is not `AAAA-MM-DD` is text with no field; a
+  `status`/`select` value outside its list is an extra option; a list grows by a field "Acrescentar a <chave>"; (f)
+  the `[[` list asks the brain's search (20 hits, in the active context) and keeps the first 8 whose title or name
+  holds the text, accent-folded; (g) the gallery story is an `import()` of the gallery and takes `NoteReader`,
+  `NoteTabs` and `NotesTree` from `NotesView.tsx` (re-exported there), so both pages fetch the view's one chunk, and
+  `SWITCH_CONTEXT_ID` / `WHOLE_BRAIN_ID` moved to `contexts/useWorkContext.ts` (`ContextSelector` re-exports them), so
+  the view no longer pulls the selector and the New context dialog in: without both the gallery split chunks and the
+  build measured 24 916 B above `cerebro-contextos`, over the bound; (h) the specs' network (`brain/notes/testnet.ts`)
+  answers a note's `properties`, `otherProperties`, `version` and `reason` from its table and `GET /api/settings` with
+  `fixedStructure`, and its search folds accents as the index's `unicode61` does; C79's test reads the static closure
+  of both entries (`main.tsx`, `gallery/main.tsx`) and the two `import()` ways in; (i) no pinned registry or allowlist
+  test changed; plan.md's Impact interface row is kept true in `1cd4a41`.
+- **Abandoned:** importing `StateBadge` or the dialog's parts from `brain/NoteEditor.tsx` into the view (cerebro-v2
+  C23); the gallery story importing the parts from their own files (it split the view's chunk: 25 142 B above
+  `cerebro-contextos`); the kinds' labels as template keys `notes.props.kind.${kind}` (i18n orphans C7 counts only
+  spelled keys); a disabled "+ Adicionar propriedade" while the text is unsaved (the table only reads, C61).
