@@ -226,6 +226,14 @@ test("C42 three columns: the sidebar 260 px (200 to 400 by its edge), the readin
   await page.setViewportSize({ width: 1180, height: 900 });
   await expect.poll(async () => (await view.boundingBox())!.width).toBeLessThan(1100);
   await expect(page.locator(".notes-panel")).toHaveCount(0);
+
+  // The sidebar folds (design.md: "recolhível"), and the reading area takes its room.
+  const before = (await page.locator(".notes-main").boundingBox())!.width;
+  await page.getByRole("button", { name: "Notes sidebar", exact: true }).click();
+  await expect(page.locator(".notes-sidebar")).toBeHidden();
+  expect((await page.locator(".notes-main").boundingBox())!.width).toBeGreaterThan(before + 200);
+  await page.getByRole("button", { name: "Notes sidebar", exact: true }).click();
+  await expect(page.locator(".notes-sidebar")).toBeVisible();
 });
 
 test("C46 a reload reopens the root, the tabs in their order, the active tab, the sort and the open folders; a deleted note says so with Fechar aba", async ({

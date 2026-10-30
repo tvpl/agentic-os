@@ -51,7 +51,12 @@ const PREFS = {
   activeContext: null as string | null,
 };
 
-type Answer = (url: URL) => Promise<unknown> | undefined;
+/** A request as the table reads it: its path and its query (a relative address; no host is made up). */
+export interface Asked {
+  pathname: string;
+  searchParams: URLSearchParams;
+}
+type Answer = (url: Asked) => Promise<unknown> | undefined;
 
 export const net = {
   prefs: structuredClone(PREFS),
@@ -139,6 +144,8 @@ export function fileRow(f: FileDef) {
   };
 }
 
+const strip = (url: string) => url.replace(/^\/api\/v1\//, "/api/");
+
 export class NetError extends Error {
   constructor(
     public status: number,
@@ -149,7 +156,7 @@ export class NetError extends Error {
   }
 }
 
-function tree(u: URL): unknown {
+function tree(u: Asked): unknown {
   const context = u.searchParams.get("context");
   const roots = context ? (net.contextRoots[context] ?? []) : net.roots;
   const asked = u.searchParams.get("root");
@@ -197,7 +204,8 @@ function tree(u: URL): unknown {
 }
 
 function read(url: string): Promise<unknown> {
-  const u = new URL(url.replace(/^\/api\/v1\//, "/api/"), "http://x");
+  const [pathname, query] = strip(url).split("?");
+  const u: Asked = { pathname: pathname!, searchParams: new URLSearchParams(query ?? "") };
   for (const o of net.overrides) {
     const given = o(u);
     if (given) return given;

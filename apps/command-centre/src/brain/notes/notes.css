@@ -21,6 +21,15 @@
   grid-template-columns: var(--notes-side, 260px) 6px minmax(0, 1fr) var(--notes-panel);
 }
 
+/* The sidebar folded: the reading area takes its room. */
+.notes-view[data-folded] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.notes-view[data-folded][data-panel] {
+  grid-template-columns: minmax(0, 1fr) var(--notes-panel);
+}
+
 .notes-sidebar,
 .notes-panel {
   min-height: 0;
@@ -369,6 +378,7 @@
   align-items: center;
   min-height: 36px;
   padding-right: 40px;
+  padding-left: 36px;
   overflow-x: auto;
   scrollbar-width: thin;
   border-bottom: 1px solid var(--border);
@@ -505,10 +515,16 @@
   height: 14px;
 }
 
-.notes-panel-toggle {
+.notes-panel-toggle,
+.notes-side-toggle {
   position: absolute;
   top: 4px;
   right: var(--s-2);
+}
+
+.notes-side-toggle {
+  right: auto;
+  left: var(--s-1);
 }
 
 .notes-reading {

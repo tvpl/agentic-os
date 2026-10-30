@@ -14,7 +14,7 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { PanelRight } from "lucide-react";
+import { PanelLeft, PanelRight } from "lucide-react";
 import { ApiError } from "../../api";
 import { useT } from "../../i18n";
 import { Tooltip } from "../../ui";
@@ -101,6 +101,7 @@ export default function NotesView({ onShowInGraph }: NotesViewProps) {
   const [side, setSide] = useState<number>(SIDEBAR.initial);
   const [width, setWidth] = useState(0);
   const [panelClosed, setPanelClosed] = useState(false);
+  const [sideOpen, setSideOpen] = useState(true);
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
@@ -139,9 +140,10 @@ export default function NotesView({ onShowInGraph }: NotesViewProps) {
       ref={rootRef}
       className="notes-view"
       data-panel={panelOpen ? "" : undefined}
+      data-folded={sideOpen ? undefined : ""}
       style={{ "--notes-side": `${side}px` } as CSSProperties}
     >
-      <aside className="notes-sidebar" aria-label={t("notes.view.notes")}>
+      <aside className="notes-sidebar" aria-label={t("notes.view.notes")} hidden={!sideOpen}>
         <NotesSidebar
           state={state}
           work={work}
@@ -158,10 +160,22 @@ export default function NotesView({ onShowInGraph }: NotesViewProps) {
         type="button"
         className="notes-edge"
         aria-label={t("notes.sidebar.resize")}
+        hidden={!sideOpen}
         onPointerDown={drag}
         onKeyDown={nudge}
       />
       <section className="notes-main" aria-label={t("notes.tab.list")}>
+        <Tooltip label={t("notes.sidebar.toggle")}>
+          <button
+            type="button"
+            className="notes-icon-btn notes-side-toggle"
+            aria-label={t("notes.sidebar.toggle")}
+            aria-pressed={sideOpen}
+            onClick={() => setSideOpen((v) => !v)}
+          >
+            <PanelLeft aria-hidden />
+          </button>
+        </Tooltip>
         <NoteTabs state={state} context={work.query} value={state.folder ? null : active}>
           {state.folder ? (
             <FolderView

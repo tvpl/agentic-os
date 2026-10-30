@@ -63,6 +63,14 @@
       "jsGzip": 511418,
       "cssRaw": 334705,
       "cssGzip": 71378
+    },
+    {
+      "feature": "cerebro-vista-notas",
+      "reason": "the notes view of the Second Brain as a chunk of its own (NotesView, about 10.5 KB JS gzip, fetched the first time Notas is chosen), the Grafo | Notas row and its commands in both shells, the one data module of the brain screens, the callouts of the one Markdown renderer, and the view's strings in two languages; measured on the build of batch B (S4, S5, S8), and measured again by batch C, which owns this entry's bound (C79)",
+      "jsRaw": 1619933,
+      "jsGzip": 526977,
+      "cssRaw": 346083,
+      "cssGzip": 74288
     }
   ]
 }
