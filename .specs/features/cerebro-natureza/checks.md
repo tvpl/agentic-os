@@ -969,3 +969,66 @@ response_contract_violation` with the key in the message, from a `notesViewWorld
 - **Abandoned:** changing product code to make a response leave a key out for C65 (a debug switch in the route would
   be code no check asks for); a test-only route registered beside the real ones for C65 (it would prove the check of a
   synthetic entry, not of `memory.search` and `memory.recall`)
+
+Status of batch D (updated in the commit that closes each piece):
+
+- the screens (S5: C70-C89, C93) and their cross-cutting checks (C90-C92): closed, every proof green, in
+  `src/brain/reviews/reviewsEntries.test.tsx` (C70, C71), `src/commands/commands.source.test.ts` (C71),
+  `src/brain/reviews/ReviewsScreen.test.tsx` (C72, C73, C75-C79, C81-C85), `src/brain/reviews/natureBadges.test.tsx`
+  (C74, C86, C87), `src/brain/reviews/BecameFactDialog.test.tsx` (C80), `src/hooks/notificationText.test.ts` and
+  `src/views/settings/sentinels.test.tsx` (C88), `src/brain/reviews/reviewsMotion.test.ts` (C89, C90),
+  `src/brain/reviews/reviewsCopy.test.ts` (C93), `tests/e2e/reviews.spec.ts` (C70, C90, C91) and
+  `tests/natureza.contract.test.ts` (C92), with `tests/bundle-size.test.ts` C31 and `npm run bundle:check` green
+
+- **Boundary (batch D):** C70-C93 closed at `fdac240` (the screens, their tests and the weight) and `f1756b3` (the
+  browser proofs and the gallery's entry). On the tree of `f1756b3`: `npm run build`, `npm run typecheck`, `npm run lint`
+  and `npm run bundle:check` exit 0, `npx vitest run` at the root is green (157 files, 2140 tests, 1 skipped) and
+  `npm run test -w apps/command-centre` too (168 files, 1404 tests); each of the 30 `Proof:` lines of C70-C93 passes and runs only its
+  check's tests; `reviews.spec.ts`, `cleanup.spec.ts`, `a11y.spec.ts`, `notes-view.spec.ts`, `gallery.spec.ts` and
+  `gallery-contrast.spec.ts` run together: 118 passed (a first run had 117 and one failure, `notes-view.spec.ts` C85 in the moldura, the known "Response has been disposed" race of that spec's own `ui-preferences` handler at its line 30 during `page.reload()`; that test alone then passed 10 of 11 runs at `f1756b3` and 6 of 6 at `b0c9c6d`; the spec was not edited). Weight, measured on the final build: 556 121 B of JS gzip
+  (+9 712 B over `cerebro-faxina-guiada`, under the 12 288 B cap) and 77 763 B of CSS gzip (+1 292 B, under the
+  2 048 B cap), recorded as the `cerebro-natureza` entry of `scripts/bundle-baseline.json`. No route, scope, event,
+  settings leaf or migration was added. Pinned files edited, each by addition only: `src/legacy.graph.test.ts`
+  (`brain/reviews/testkit.tsx` joins the closed list of files no entry reaches, as C5's testkit did),
+  `src/commands/commands.source.test.ts` (C71's case beside C5's C52), `src/hooks/notificationText.test.ts` (C88's
+  case). No allowlist of listeners, raw `fs` or module state moved. With this batch every check of the feature has a
+  closing commit; the Verifier is the coordinator's.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape, none a new one-way door:
+  (a) the light, shared half is `brain/natureza.tsx` and `brain/natureza.css` (the readers of `fields` through the
+  closed lists, the badges, the filter rows, the search's "Filtros", `useReviewsDue` and `REVIEWS_PATH`); the screen,
+  the dialog and their stylesheet are `brain/reviews/` (`ReviewsScreen.tsx`, `BecameFactDialog.tsx`, `reviews.css`), one
+  chunk reached by `ReviewsView = lazyRoute(import("./reviews/ReviewsScreen"))` in `BrainViewSwitch.tsx`, whose
+  `BrainMode` gains `"reviews"` for `/brain/reviews` (the frame's `SecondBrain` and the Núcleo's brain scene render it
+  where they render the notes view); (b) design.md's tokens `--tone-ok`, `--tone-info`, `--tone-warn`, `--tone-muted`
+  do not exist in `theme.css`: each badge carries a class of that name (`tone-ok`, `tone-info`, `tone-warn`,
+  `tone-muted`, and `tone-accent` for `--accent`) coloured by the existing token it names (`--ok`, `--info`, `--warn`,
+  `--text-dim`, `--accent-text`), which is how C74 reads "the `--tone-ok` class"; (c) the short name of a nature (the
+  dense badge, "Sugestão: {natureza}", "Classificado como {natureza}.") is the badge's text, but "Plano" for `plano`
+  (`notes.callout.plano`); (d) the nature filters do not apply to "Sem classificação" (its notes have no nature), the
+  scope filters and the context do; (e) the list's `role="status"` reads `reviews.notification` ("N itens para
+  revisar") for the active tab; the undo notice is a second `role="status"`, 8 s, and a partial undo stays until it is
+  retried; the item returns to the list when every part of its undo succeeded; (f) a decision on a note reads the note
+  (`GET /api/memory/note`) for its version and its properties when the detail has not read it yet, and the undo puts
+  back the keys door 4 writes for that action (`last_reviewed`; `review_every`; `status`, `abandoned`; `natureza`;
+  `natureza`, `was` when the note had a nature, `became_fact`, `last_reviewed`) from those properties; a snooze never
+  sends `baseVersion`; (g) the list's path is relative to the home (`GET /api/system/info`), as the cleanup wizard
+  shows it; (h) the detail's passages are the `> [!nature]` lines of the note's body, outside fences; (i) "Confirmar"
+  of the dialog waits while "Registrar como fato" is open with a field empty; (j) the scene menu takes
+  `reviewsDue`/`onReviews` from `BrainScene` (the primitives' C23 renders the menu with no query client); (k) every
+  Markdown file's preview shows the nature badge ("Não classificado" with none), the scope and abandoned badges only
+  when set; every search hit shows its dense badge, "Não classificado" included; (l) the brain's "Ver grafo" keeps no
+  `v` in "Revisões" (there `v` is "Ainda vale"), and the shortcuts sheet titles the `view:reviews` block "Revisões"
+  (`ShortcutsHelp.tsx`); the two keys `reviews.cmd.next` / `reviews.cmd.prev` ("Próximo item" / "Item anterior") name
+  `j` and `k`, beyond the design's table; (m) the pt-BR body of the `reviewDue` inbox row is fixed text in
+  `notificationText.ts`, its title `reviews.notification` with `display`; (n) proof readings: C70's moldura half
+  renders `BrainChrome` (the order) and the shell (the way in); the Núcleo's runs the scene in the shell; the inbox row
+  is the bell's row of a `GET /api/notifications` the kit (and, in the browser, a route) answers; the kit answers any
+  other query of `GET /api/memory/reviews` with a different list (99 for the count), so a dropped context fails; C72's
+  "on the right" and "list left, detail right" are the DOM order and the stylesheet's rules in jsdom, the boxes in the
+  browser (C90); C76's other notices and C77's three sides run on the screen with `userEvent`; C80's dialog is opened
+  from the screen; C86's three screens are the moldura's shell (canvas mocked), the Núcleo's shell and the notes view;
+  C88's "sends `PUT /api/settings`" is the patch handed to `api.putSettings`, the Settings screen's save; C90's empty
+  list is the filters "Hipótese" and "Externo" over the test's notes
+- **Abandoned:** the scene menu asking for the count itself (the primitives' C23 renders it bare); a gallery story
+  with the dialog open at load (it would cover the gallery): the story opens it from "Virou realidade"; a sixth
+  "Não classificado" filter button (amendment 15: the routes take five natures)
