@@ -8,7 +8,16 @@ import { seedHome } from "@mordomo/core/internal";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { AppContext } from "../apps/api/src/context.js";
 import { defaultSettings, type Settings } from "../core/src/config/schema.js";
-import { FolderNotIndexedError, folderVerdict } from "../core/src/runs/protectedFolder.js";
+import { claudeManifest } from "@mordomo/adapter-claude";
+import { codexManifest } from "@mordomo/adapter-codex";
+import { cursorManifest } from "@mordomo/adapter-cursor";
+import {
+  FolderNotIndexedError,
+  FolderProtectionUnsupportedError,
+  assertProtectsDirs,
+  folderVerdict,
+  takesFolder,
+} from "../core/src/runs/protectedFolder.js";
 import { childrenDigest, folderDigests, rootSlug } from "../core/src/memory/maps.js";
 import { parseFrontMatter } from "../core/src/memory/frontMatter.js";
 import { fileRowFromDb } from "../core/src/memory/indexer.js";
@@ -106,6 +115,42 @@ describe.skipIf(!POSIX)("door 5 at its own layer: the folder verdict", () => {
     const notes = path.join(temp.paths.memory, "notes", "projetos");
     fs.mkdirSync(notes, { recursive: true });
     expect(folderVerdict(env, notes)).toBe(real(notes));
+  });
+});
+
+describe("door 5 at its own layer: the provider capability and the memory-skill test", () => {
+  it("C16 own layer: assertProtectsDirs lets only a manifest declaring protectsDirs true through, and refuses false, absent and an unknown provider with folder_protection_unsupported", () => {
+    expect(() => assertProtectsDirs(claudeManifest, "claude")).not.toThrow();
+    const refused: Array<[string, Parameters<typeof assertProtectsDirs>[0], string, string]> = [
+      ["codex, protectsDirs false", codexManifest, "codex", codexManifest.displayName],
+      ["cursor, protectsDirs false", cursorManifest, "cursor", cursorManifest.displayName],
+      [
+        "a manifest without the field",
+        { displayName: "Sem campo", capabilities: {} },
+        "sem-campo",
+        "Sem campo",
+      ],
+      ["no manifest at all", undefined, "fantasma", "fantasma"],
+    ];
+    for (const [what, manifest, provider, named] of refused) {
+      const err = thrown(() => assertProtectsDirs(manifest, provider));
+      expect(err, what).toBeInstanceOf(FolderProtectionUnsupportedError);
+      expect(err.code, what).toBe("folder_protection_unsupported");
+      expect(err.statusCode, what).toBe(409);
+      expect(err.message, what).toContain(named);
+    }
+  });
+
+  it("C18 own layer: takesFolder is true only for a memory skill that declares the input folder", () => {
+    const folder = { name: "folder" };
+    const etapa = { name: "etapa" };
+    const rows: Array<[string, { memoryAccess: boolean; inputs: Array<{ name: string }> }, boolean]> = [
+      ["memory skill with folder", { memoryAccess: true, inputs: [etapa, folder] }, true],
+      ["memory skill without folder", { memoryAccess: true, inputs: [etapa] }, false],
+      ["not a memory skill, with folder", { memoryAccess: false, inputs: [etapa, folder] }, false],
+      ["not a memory skill, without folder", { memoryAccess: false, inputs: [] }, false],
+    ];
+    for (const [what, skill, expected] of rows) expect(takesFolder(skill), what).toBe(expected);
   });
 });
 

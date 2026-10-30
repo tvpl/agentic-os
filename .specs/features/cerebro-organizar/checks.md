@@ -3,7 +3,8 @@
 Profile: ui
 Plan: `.specs/features/cerebro-organizar/plan.md`
 
-50 checks in 5 slices + cross-cutting · 10 one-way doors (doors 8-10 added while deriving these checks) · 0 open
+53 checks in 5 slices + cross-cutting (C51-C53 added in round 1 of the verification) · 13 one-way doors (doors 8-10
+added while deriving these checks, 11 and 12 during the build, 13 in round 1 of the verification) · 0 open
 questions of the plan (as duas foram respondidas pelo dono em 29/10/2026: postura padrão `neutral`, a skill sob
 `controlled_write` em `memory/`). Twelve amendments are recorded in `plan.md`, "Emendas depois da aprovação": every
 check names the real routes, files and names `cerebro-contextos` (C2) shipped, and the `Coverage` row "amendments (12)"
@@ -29,7 +30,7 @@ takes a prompt, no skill and no `inputs`, and does not change.
 **C1** - `GET /api/skills/organize-brain` answers `200` with `mode` `write`, `providers` `["claude"]`, the inputs `etapa` (`type` `select`, `options` `["entrevista","aplicar","indexar"]`, `required` `false`, `placeholder` `entrevista`) then `folder` (`type` `path`, `required` `false`), and `i18n["pt-BR"].name` `Organizar o Cérebro` (AC 1, door 1, amendment 12)
 Proof: `npx vitest run tests/organize.skill.test.ts -t "C1 "`
 
-**C2** - The catalog's `resources` for `organize-brain` are exactly `["resources/guia.md","resources/perguntas.md"]`, and `GET /api/skills/organize-brain/resource?path=resources/guia.md` and `…perguntas.md` each answer `200` with the file's text (AC 2, door 1)
+**C2** - The catalog's `resources` for `organize-brain` are exactly `["resources/guia.md","resources/perguntas.md"]`, and `GET /api/skills/organize-brain/resource?rel=resources/guia.md` and `…?rel=resources/perguntas.md` each answer `200` with the file's text (AC 2, door 1)
 Proof: `npx vitest run tests/organize.skill.test.ts -t "C2 "`
 
 **C3** - `resources/guia.md` names each of the 11 `type` values `context`, `guide`, `project`, `decision`, `reference`, `log`, `goals`, `profile`, `index`, `inbox`, `brief`; the 5 `status` values `active`, `draft`, `paused`, `done`, `archived`; the 5 `natureza` values `fato`, `opiniao`, `plano`, `hipotese`, `relato` and that an absent one is not classified; the 3 `escopo` values `pessoal`, `equipe`, `externo`; `review_every` with `30d`, `90d`, `never`; the 5 callouts `> [!fato]`, `> [!opiniao]`, `> [!plano]`, `> [!hipotese]`, `> [!relato]`; and a sentence saying the owner may add `type` and `status` values in the interview (AC 3, amendment 6)
@@ -78,12 +79,14 @@ Proof: `npx vitest run tests/organize.layer.test.ts -t "C15 own layer"`
 
 **C16** - A memory skill fixture with a `folder` input and `providers: [claude, codex, cursor]` run with `provider` `codex`, and with `cursor`, and a `folder` answers `409 folder_protection_unsupported` and records no run; the same request without `folder` answers `200`; `organize-brain` with `codex` answers `400 bad_request` (the skill declares only Claude) (AC 13)
 Proof: `npx vitest run tests/organize.runs.test.ts -t "C16 "`
+Proof: `npx vitest run tests/organize.layer.test.ts -t "C16 own layer"`
 
 **C17** - `ClaudeAdapter.buildInvocation` of that run, in `read_only` and in `write` (`controlled_write`), holds `--add-dir <real folder>` and, in `--disallowedTools`, `Edit(/<real folder>/**)`, `Write(/<real folder>/**)` and `MultiEdit(/<real folder>/**)` (AC 14)
 Proof: `npx vitest run tests/organize.runs.test.ts -t "C17 "`
 
 **C18** - With `organize-brain` removed from `memorySkills`, a run with `folder` keeps the folder only as the prompt line `- … (folder): <folder>`, and its `readDirs` and `protectedDirs` are exactly the skill folder (AC 15)
 Proof: `npx vitest run tests/organize.runs.test.ts -t "C18 "`
+Proof: `npx vitest run tests/organize.layer.test.ts -t "C18 own layer"`
 
 **C19** - The manifests declare `capabilities.protectsDirs` `true` for `claude` and `false` for `codex` and `cursor`, and `GET /api/providers` carries the field for each (AC 16, Impact contract)
 Proof: `npx vitest run tests/organize.runs.test.ts -t "C19 "`
@@ -166,7 +169,7 @@ Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.
 **C42** - When `PUT /api/settings` answers `500` the group shows the error text beside an icon and the previous option stays checked (AC 32)
 Proof: `npm run test -w apps/command-centre -- src/views/settings/AgentStance.test.tsx -t "C42 "`
 
-**C43** - On `/settings?tab=memory` in the light and the dark theme the group's text computes to 12px or more, axe reports no violation at WCAG A/AA, and the CSS lint over the interface's stylesheets (raw colours refused, tokens only) exits 0 (AC 33)
+**C43** - On `/settings?tab=memory` in the light and the dark theme the group's text computes to 12px or more, axe at WCAG A/AA reports no violation of any impact inside the group (`fieldset.stance`) and no `serious` or `critical` violation on the whole page (the convention of `design-system` C8 and `tests/e2e/a11y.spec.ts`), and the CSS lint over the interface's stylesheets (raw colours refused, tokens only) exits 0 (AC 33)
 Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts organize.spec.ts -g "C43 "`
 Proof: `npm run lint:css`
 
@@ -199,56 +202,64 @@ Proof: `npx vitest run tests/security-reads.test.ts -t "C55 the list holds 70 ro
 Proof: `npx vitest run tests/security-reads.test.ts -t "C32 every raw fs read in core/src and apps/api/src is on the reviewed list finds nothing outside the list"`
 Proof: `npx vitest run tests/sdk.instances.test.ts -t "C30 the module-level mutable state"`
 
-### Added in round 1 of the verification (never renumbered; C1-C50 unchanged)
+### Added in round 1 of the verification (C1-C50 keep their numbers)
 
 **C51** - With `memory` stored as `journalBudgetTokens` 1500 and `embeddings` `{enabled:false, provider:"http", endpoint:"https://a.example/v1/embeddings", apiKeyEnv:"OPENAI_API_KEY", sendRemote:true}`, `PUT /api/settings {memory:{agentStance:"contest-conflicts"}}` answers `200`, stores the stance and keeps `journalBudgetTokens` 1500 and `embeddings` exactly as stored; then `PUT /api/settings {memory:{embeddings:{enabled:false, provider:"http", endpoint:"https://b.example/v1/embeddings", sendRemote:true}}}` (no `apiKeyEnv`) answers `200`, and the settings read and `settings.json` hold the endpoint `https://b.example/v1/embeddings` and no `apiKeyEnv`, with `journalBudgetTokens` 1500 and the stance kept (doors 12 and 13, Impact contract)
 Proof: `npx vitest run tests/organize.sync.test.ts -t "C51 "`
 
+**C52** - A retry (`POST /api/runs/:id/retry`) of a finished run of `organize-brain` with `folder` = an indexed subfolder, and an objective's step running `organize-brain` with that kind of `folder` dispatched (`POST /api/objectives/:id/dispatch`) with the folder itself as `cwd`, each give the `AgentRun` `cwd` `<home>/workspace`, `readDirs` holding the skill folder, `<home>/memory` and the real path of the folder, and `protectedDirs` holding the skill folder and that real path (door 5 read at launch, door 9; the two ways a run of the skill starts without `Execution.startSkill`)
+Proof: `npx vitest run tests/organize.runs.test.ts -t "C52 "`
+
+**C53** - A routine of a memory skill with a `folder` input, run on `codex` with `inputs.folder` = an indexed subfolder and fired under `approved_automation`, ends `failed` with `failure.code` `folder_protection_unsupported` and `failure.recoverable` `false`, and the Codex adapter is never called (door 11, the code only the launch can raise)
+Proof: `npx vitest run tests/organize.runs.test.ts -t "C53 "`
+
 ## Coverage
 
-| Set (size)                                                 | Member -> proof                                                                                                                        | Unproven |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `POST /api/skills/:slug/run` statuses (5)                  | 200 C12, C13 · 202 C12 · 400 C14, C15, C16, C45 · 404 C46 · 409 C16, C46                                                               | -        |
-| `GET /api/memory/maps` statuses (4)                        | 200 C24, C31 · 400 C29 · 403 C31 · 404 C29, C31                                                                                        | -        |
-| `PUT /api/settings` with `memory.agentStance` statuses (2) | 200 C39 · 400 C39                                                                                                                      | -        |
-| new error codes (2)                                        | `folder_not_indexed` C14, C15, C20, C22 · `folder_protection_unsupported` C16                                                          | -        |
-| `etapa` values (3)                                         | `entrevista` C6, C7, C12 · `aplicar` C6 · `indexar` C6                                                                                 | -        |
-| `type` values of the guide (11)                            | C3, table-driven over all 11                                                                                                           | -        |
-| `status` values (5)                                        | C3, table-driven over all 5                                                                                                            | -        |
-| `natureza` values (5)                                      | C3, table-driven over all 5 (absent = not classified, C3)                                                                              | -        |
-| callouts (5)                                               | C3, table-driven over all 5                                                                                                            | -        |
-| `escopo` values (3)                                        | C3, table-driven over all 3                                                                                                            | -        |
-| guide rules (8)                                            | C4, table-driven over all 8 (the 7 of AC 4 and the `_resumo.md` exception)                                                             | -        |
-| question themes (15)                                       | C5, table-driven over all 15                                                                                                           | -        |
-| question section with a context (1)                        | `contexto` C5, C47                                                                                                                     | -        |
-| business notes of door 2 (12)                              | C5, table-driven over all 12                                                                                                           | -        |
-| refused folder kinds (7)                                   | outside C14 · disabled indexed folder C14 · `config/` C15 · `logs/` C15 · user exclude C15 · secret name C15 · link into `config/` C15 | -        |
-| provider manifests (3)                                     | `claude` C17, C19 · `codex` C16, C19 · `cursor` C16, C19                                                                               | -        |
-| run modes for the deny rules (2)                           | `read_only` C17 · `write` C17                                                                                                          | -        |
-| ways a run of the skill starts (5 places)                  | route C13 · CLI C22 · MCP `skills_run` C22 · routine C23 · approval of a parked run C20                                                | -        |
-| where a folder comes from (3)                              | the `folder` input C13 · the context's first `ok` path C44 · a folder under `memory/` C21                                              | -        |
-| index states (3)                                           | `missing` C26 · `stale` C27, C28 · `fresh` C27, C28                                                                                    | -        |
-| `indexPath` locations (3)                                  | folder of `memory/notes/` C26 · user subfolder C26 · user root C26                                                                     | -        |
-| digest exclusions (3)                                      | `_index.md` C25 · name starting with `.` C25 · folder hidden by policy C30                                                             | -        |
-| `root` values (5)                                          | absent C24 · `memory` C29 · indexed root C24 · unknown absolute C29 · relative C29                                                     | -        |
-| callers of the maps route (4)                              | owner C24 · device with `content` C31 · device with `monitor` C31 · run credential (folder, context) C31                               | -        |
-| front-matter keys into `fields` (7)                        | C33, table-driven over all 7                                                                                                           | -        |
-| `fields` value bound (2 edges)                             | 64 C33 · 65 C33                                                                                                                        | -        |
-| ROUTER sections (2)                                        | `Folder indexes` C34 · `Folders without an index` C34                                                                                  | -        |
-| goals bounds (3)                                           | 10 of 12 items C35 · 160 characters C35 · nested items left out C35                                                                    | -        |
-| goals absent cases (3)                                     | `metas.md` missing C37 · no `## Metas` C37 · link out of `memory/` C37                                                                 | -        |
-| `memory.agentStance` values (3)                            | `neutral` C38, C39 · `contest-conflicts` C38, C39 · unreadable C39                                                                     | -        |
-| compile targets (2)                                        | the home's sync C35, C37 · a context's sync C36                                                                                        | -        |
-| compiled files (2)                                         | `AGENTS.md` C35, C36, C38 · `CLAUDE.md` C35, C36, C38                                                                                  | -        |
-| stance setting states (3)                                  | loaded C40 · error C42 · themes C43                                                                                                    | -        |
-| doors (10)                                                 | 1 C1, C2 · 2 C5, C6 · 3 C6, C27 · 4 C25, C49 · 5 C13, C16 · 6 C33 · 7 C35, C38, C39 · 8 C26, C32 · 9 C13, C21, C44 · 10 C31            | -        |
-| owner answers of the plan (2)                              | `neutral` by default C39 · `controlled_write` C12                                                                                      | -        |
-| startup config: default `memorySkills` read (2 assemblies) | the service (`AppContext`, `GET /api/skills`) C9 · the CLI (`mordomo run`) C22                                                         | -        |
-| amendments (12)                                            | 1 C12 · 2 C13, C44 · 3 C21 · 4 C31 · 5 C24, C26, C32 · 6 C3, C47 · 7 C4, C47 · 8 C6, C11 · 9 C47 · 10 C41 · 11 C36 · 12 C1, C6         | -        |
+| Set (size)                                                 | Member -> proof                                                                                                                                                                           | Unproven |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `POST /api/skills/:slug/run` statuses (5)                  | 200 C12, C13 · 202 C12 · 400 C14, C15, C16, C45 · 404 C46 · 409 C16, C46                                                                                                                  | -        |
+| `GET /api/memory/maps` statuses (4)                        | 200 C24, C31 · 400 C29 · 403 C31 · 404 C29, C31                                                                                                                                           | -        |
+| `PUT /api/settings` with `memory.agentStance` statuses (2) | 200 C39 · 400 C39                                                                                                                                                                         | -        |
+| new error codes (2)                                        | `folder_not_indexed` C14, C15, C20, C22 · `folder_protection_unsupported` C16                                                                                                             | -        |
+| `RunFailure` of a run refused at launch, door 11 (3)       | `folder_not_indexed` C20 · `folder_protection_unsupported` C53 · `recoverable: false` C20, C53                                                                                            | -        |
+| `etapa` values (3)                                         | `entrevista` C6, C7, C12 · `aplicar` C6 · `indexar` C6                                                                                                                                    | -        |
+| `type` values of the guide (11)                            | C3, table-driven over all 11                                                                                                                                                              | -        |
+| `status` values (5)                                        | C3, table-driven over all 5                                                                                                                                                               | -        |
+| `natureza` values (5)                                      | C3, table-driven over all 5 (absent = not classified, C3)                                                                                                                                 | -        |
+| callouts (5)                                               | C3, table-driven over all 5                                                                                                                                                               | -        |
+| `escopo` values (3)                                        | C3, table-driven over all 3                                                                                                                                                               | -        |
+| guide rules (8)                                            | C4, table-driven over all 8 (the 7 of AC 4 and the `_resumo.md` exception)                                                                                                                | -        |
+| question themes (15)                                       | C5, table-driven over all 15                                                                                                                                                              | -        |
+| question section with a context (1)                        | `contexto` C5, C47                                                                                                                                                                        | -        |
+| business notes of door 2 (12)                              | C5, table-driven over all 12                                                                                                                                                              | -        |
+| refused folder kinds (7)                                   | outside C14 · disabled indexed folder C14 · `config/` C15 · `logs/` C15 · user exclude C15 · secret name C15 · link into `config/` C15                                                    | -        |
+| provider manifests (3)                                     | `claude` C17, C19 · `codex` C16, C19 · `cursor` C16, C19                                                                                                                                  | -        |
+| run modes for the deny rules (2)                           | `read_only` C17 · `write` C17                                                                                                                                                             | -        |
+| ways a run of the skill starts (7 places)                  | route C13 · CLI C22 · MCP `skills_run` C22 · routine C23, C53 · approval of a parked run C20 · retry C52 · objective step C52                                                             | -        |
+| where a folder comes from (3)                              | the `folder` input C13 · the context's first `ok` path C44 · a folder under `memory/` C21                                                                                                 | -        |
+| index states (3)                                           | `missing` C26 · `stale` C27, C28 · `fresh` C27, C28                                                                                                                                       | -        |
+| `indexPath` locations (3)                                  | folder of `memory/notes/` C26 · user subfolder C26 · user root C26                                                                                                                        | -        |
+| digest exclusions (3)                                      | `_index.md` C25 · name starting with `.` C25 · folder hidden by policy C30                                                                                                                | -        |
+| `root` values (5)                                          | absent C24 · `memory` C29 · indexed root C24 · unknown absolute C29 · relative C29                                                                                                        | -        |
+| callers of the maps route (4)                              | owner C24 · device with `content` C31 · device with `monitor` C31 · run credential (folder, context) C31                                                                                  | -        |
+| front-matter keys into `fields` (7)                        | C33, table-driven over all 7                                                                                                                                                              | -        |
+| `fields` value bound (2 edges)                             | 64 C33 · 65 C33                                                                                                                                                                           | -        |
+| ROUTER sections (2)                                        | `Folder indexes` C34 · `Folders without an index` C34                                                                                                                                     | -        |
+| goals bounds (3)                                           | 10 of 12 items C35 · 160 characters C35 · nested items left out C35                                                                                                                       | -        |
+| goals absent cases (3)                                     | `metas.md` missing C37 · no `## Metas` C37 · link out of `memory/` C37                                                                                                                    | -        |
+| `memory.agentStance` values (3)                            | `neutral` C38, C39 · `contest-conflicts` C38, C39 · unreadable C39                                                                                                                        | -        |
+| compile targets (2)                                        | the home's sync C35, C37 · a context's sync C36                                                                                                                                           | -        |
+| compiled files (2)                                         | `AGENTS.md` C35, C36, C38 · `CLAUDE.md` C35, C36, C38                                                                                                                                     | -        |
+| stance setting states (3)                                  | loaded C40 · error C42 · themes C43                                                                                                                                                       | -        |
+| doors (13)                                                 | 1 C1, C2 · 2 C5, C6 · 3 C6, C27 · 4 C25, C49 · 5 C13, C16, C52 · 6 C33 · 7 C35, C38, C39 · 8 C26, C32 · 9 C13, C21, C44, C52 · 10 C31 · 11 C14, C16, C20, C53 · 12 C39, C40, C51 · 13 C51 | -        |
+| `PUT /api/settings` `memory` merge, doors 12 and 13 (3)    | journal budget kept C39, C51 · stored `embeddings` kept by a stance write C51 · `embeddings` replaced whole, `apiKeyEnv` dropped C51                                                      | -        |
+| owner answers of the plan (2)                              | `neutral` by default C39 · `controlled_write` C12                                                                                                                                         | -        |
+| startup config: default `memorySkills` read (2 assemblies) | the service (`AppContext`, `GET /api/skills`) C9 · the CLI (`mordomo run`) C22                                                                                                            | -        |
+| amendments (12)                                            | 1 C12 · 2 C13, C44 · 3 C21 · 4 C31 · 5 C24, C26, C32 · 6 C3, C47 · 7 C4, C47 · 8 C6, C11 · 9 C47 · 10 C41 · 11 C36 · 12 C1, C6                                                            | -        |
 
 - Claims naming a status code, route or response shape: C1, C2, C12-C16, C19-C22, C24-C31, C33, C35-C37, C39, C44-C46
   and C49, each proven through `app.inject` against `buildServer` (or the CLI and MCP entry points for C22); C13, C15,
-  C25, C27, C33, C35 and C44 also at their own layer, with no HTTP
+  C16, C18, C25, C27, C33, C35 and C44 also at their own layer, with no HTTP; C51-C53 through `app.inject` too
 - Claims about the skill's prose: C3-C7, C47 by parsing the shipped files of a seeded home; C8, C10, C12, C48 by a run
   against the fake CLI
 - Claims about the screen: C40-C42 in rendered components; C41 and C43 also in a real browser
@@ -293,9 +304,9 @@ state are proven only through the HTTP path that happens to reach them.
 ## Swept
 
 - validation: C14, C15, C29, C33 (the 64/65 bound), C39, C45
-- failure modes: C20 (the folder stops being indexed before the run launches), C37 (no goals file), C42 (saving fails)
+- failure modes: C20 (the folder stops being indexed before the run launches), C37 (no goals file), C42 (saving fails), C53 (a provider that cannot protect the folder, found only at launch)
 - idempotency: C25 (same index, same digest), C28 (an edit keeps `fresh`), C4 (the skill never overwrites a file it did not make)
-- authorization: C31 (the run credential sees only its folders; `content` device; `monitor` device `403`), C13 and C17 (the folder is read-only to the agent), C18 (no memory skill, no folder), existing - `PUT /api/settings` is `owner` (AD-015), so the stance is the owner's only
+- authorization: C31 (the run credential sees only its folders; `content` device; `monitor` device `403`), C51 (the key variable named for one embeddings endpoint never follows the setting to another), C52 (a retry and an objective's step keep the folder read-only), C13 and C17 (the folder is read-only to the agent), C18 (no memory skill, no folder), existing - `PUT /api/settings` is `owner` (AD-015), so the stance is the owner's only
 - concurrency: n/a - the maps route only reads the index; the stance is one field written through the `SettingsStore`, whose writes are atomic and serialized (AD-013)
 - data lifecycle: C9 (a stored `memorySkills` is kept), C4 (nothing outside the memory folder is moved or deleted), C28 (a new child ages the index)
 - dependency failure: C20, C37 (a goals file that is a link out), C46 (a context with no `ok` path)

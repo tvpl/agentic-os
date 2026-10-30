@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import crypto from "node:crypto";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@mordomo/core";
 import { ClaudeAdapter, claudeManifest } from "@mordomo/adapter-claude";
-import { codexManifest } from "@mordomo/adapter-codex";
+import { CodexAdapter, codexManifest } from "@mordomo/adapter-codex";
 import { cursorManifest } from "@mordomo/adapter-cursor";
 import { seedHome } from "@mordomo/core/internal";
 import { AppContext } from "../apps/api/src/context.js";
@@ -236,6 +237,7 @@ describe.skipIf(!POSIX)("S2 and S5 a folder of the user, only to read", () => {
       const { run, agent } = await w.finished(runId);
       expect(run.status).toBe("failed");
       expect(run.failure.code).toBe("folder_not_indexed");
+      expect(run.failure.recoverable, "door 11: nothing to retry").toBe(false);
       expect(agent, "the adapter was never called").toBeUndefined();
     } finally {
       w.update((s) => {
@@ -291,6 +293,103 @@ describe.skipIf(!POSIX)("S2 and S5 a folder of the user, only to read", () => {
       );
       expect(agent!.protectedDirs).toEqual(expect.arrayContaining([skillDir, real(pasta)]));
     } finally {
+      w.update((s) => {
+        s.securityProfile = "controlled_write";
+      });
+    }
+  });
+
+  it("C52 a retry of a run of organize-brain with a folder starts in <home>/workspace with the folder read-only, as C13", async () => {
+    const pasta = w.dir("repetir");
+    const { run: source } = await handedFor({ inputs: { etapa: "indexar", folder: pasta } });
+    expect(source.status, JSON.stringify(source)).toBe("done");
+    const retried = await w.call("POST", `/api/runs/${source.id as string}/retry`, {
+      submissionId: crypto.randomUUID(),
+    });
+    expect(retried.status, JSON.stringify(retried.body)).toBe(200);
+    const runId = retried.body.runId as string;
+    expect(runId).not.toBe(source.id);
+    const { agent } = await w.finished(runId);
+    expect(agent, "the agent was handed the retry").toBeDefined();
+    expect(agent!.cwd).toBe(workspace);
+    expect(agent!.readDirs).toEqual(
+      expect.arrayContaining([skillDir, real(w.ctx.paths.memory), real(pasta)]),
+    );
+    expect(agent!.protectedDirs).toEqual(expect.arrayContaining([skillDir, real(pasta)]));
+  });
+
+  it("C52 an objective's step running organize-brain with a folder, dispatched with that folder as cwd, starts in <home>/workspace with the folder read-only, as C13", async () => {
+    const pasta = w.dir("objetivo");
+    const created = await w.call("POST", "/api/objectives", {
+      title: "Organizar pelo objetivo",
+      steps: [
+        {
+          title: "Indexar a pasta",
+          request: {
+            version: 1,
+            kind: "skill",
+            skillSlug: SLUG,
+            inputs: { etapa: "indexar", folder: pasta },
+            mode: "write",
+          },
+        },
+      ],
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    const dispatched = await w.call("POST", `/api/objectives/${created.body.id as string}/dispatch`, {
+      provider: "claude",
+      cwd: pasta,
+    });
+    expect(dispatched.status, JSON.stringify(dispatched.body)).toBe(200);
+    const [step] = dispatched.body.dispatched as Json[];
+    expect(step?.status, JSON.stringify(dispatched.body)).toBe("queued");
+    const { agent } = await w.finished(step!.runId as string);
+    expect(agent, "the agent was handed the step's run").toBeDefined();
+    expect(agent!.cwd).toBe(workspace);
+    expect(agent!.readDirs).toEqual(
+      expect.arrayContaining([skillDir, real(w.ctx.paths.memory), real(pasta)]),
+    );
+    expect(agent!.protectedDirs).toEqual(expect.arrayContaining([skillDir, real(pasta)]));
+  });
+
+  it("C53 a routine of a memory skill with a folder on codex ends failed with folder_protection_unsupported and recoverable false, and codex is never called", async () => {
+    const pasta = w.dir("rotina-codex");
+    const id = "organizar-rotina-codex";
+    w.put(
+      path.join(w.ctx.paths.routines, `${id}.json`),
+      JSON.stringify({
+        id,
+        name: "Organizar pela rotina no Codex",
+        skillSlug: ANY,
+        prompt: null,
+        inputs: { folder: pasta },
+        kind: "cron",
+        schedule: "0 3 * * *",
+        timezone: "UTC",
+        provider: "codex",
+        profile: "approved_automation",
+        workingDir: pasta,
+        enabled: false,
+        createdAt: Date.now(),
+      }),
+    );
+    const codex = vi.spyOn(CodexAdapter.prototype, "execute");
+    w.update((s) => {
+      s.securityProfile = "approved_automation";
+    });
+    try {
+      const fired = await w.call("POST", `/api/routines/${id}/run`);
+      expect(fired.status, JSON.stringify(fired.body)).toBe(200);
+      const runId = fired.body.runId as string;
+      expect(runId).toBeTruthy();
+      const { run } = await w.finished(runId);
+      expect(run.provider).toBe("codex");
+      expect(run.status).toBe("failed");
+      expect(run.failure.code).toBe("folder_protection_unsupported");
+      expect(run.failure.recoverable).toBe(false);
+      expect(codex, "the codex adapter was never called").not.toHaveBeenCalled();
+    } finally {
+      codex.mockRestore();
       w.update((s) => {
         s.securityProfile = "controlled_write";
       });
