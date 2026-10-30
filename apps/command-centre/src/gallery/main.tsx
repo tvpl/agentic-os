@@ -57,6 +57,8 @@ import type { RunEventView } from "../runs/useRunStream";
 const NotesStory = lazy(() => import("./notesStory"));
 /** The guided cleanup (cerebro-faxina-guiada, C81): through the wizard's chunk, as it is in the app. */
 const CleanupStory = lazy(() => import("./cleanupStory"));
+/** "Revisões" (cerebro-natureza, C91): through the screen's chunk, as it is in the app. */
+const ReviewsStory = lazy(() => import("./reviewsStory"));
 
 /* ---------- fixtures (plainly synthetic; the gallery never talks to the API) ---------- */
 const NOW = Date.UTC(2026, 8, 2, 14, 30);
@@ -871,6 +873,12 @@ function Gallery() {
       <Story id="cleanup" title="Guided cleanup">
         <Suspense fallback={null}>
           <CleanupStory />
+        </Suspense>
+      </Story>
+
+      <Story id="reviews" title="Reviews">
+        <Suspense fallback={null}>
+          <ReviewsStory />
         </Suspense>
       </Story>
     </main>

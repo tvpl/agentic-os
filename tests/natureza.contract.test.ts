@@ -17,6 +17,7 @@ import {
 import type * as CoreInternal from "@mordomo/core/internal";
 import { SCENARIOS, buildWorld } from "./helpers/contractWorld.js";
 import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
+import { ENTRIES, edgesOf, loadTree, reachable } from "../apps/command-centre/src/testing/sourceGraph.js";
 import { notesViewWorld, sha, type Json, type NotesViewWorld } from "./helpers/notesViewWorld.js";
 
 /**
@@ -543,5 +544,75 @@ describe("the earlier features answer as before", () => {
       kind: "date",
       value: "2026-10-30",
     });
+  });
+});
+
+describe("C92 the screen's chunk and its weight (amendment 21, question 8)", () => {
+  it("C92 the screen and the dialog are reached from both entries only by a dynamic import(); the baseline's cerebro-natureza entry follows cerebro-faxina-guiada with a reason of more than 40 characters and the four numbers, at most 12 KB of JS gzip and 2 KB of CSS gzip above it (546 409 B and 76 471 B)", () => {
+    const tree = loadTree(path.join(repoRoot, "apps", "command-centre", "src"));
+    const screen = ["brain/reviews/ReviewsScreen.tsx", "brain/reviews/BecameFactDialog.tsx"];
+    // What each page loads without anyone asking: its entry and what that imports statically.
+    for (const entry of ENTRIES) {
+      const seen = new Set<string>([entry]);
+      const queue = [entry];
+      while (queue.length > 0)
+        for (const edge of edgesOf(tree, queue.pop()!)) {
+          if (edge.how === "dynamic" || edge.how === "url" || seen.has(edge.to)) continue;
+          seen.add(edge.to);
+          queue.push(edge.to);
+        }
+      expect(
+        [...seen].filter((f) => f.startsWith("brain/reviews/")),
+        entry,
+      ).toEqual([]);
+    }
+    for (const file of screen) expect(reachable(tree).has(file), file).toBe(true);
+    // The ways in: the brain's view switch (both shells) and the gallery's reviews story, itself an import().
+    const importers = (to: string) =>
+      [...tree.keys()]
+        .filter(
+          (f) =>
+            !/\.test\./.test(f) &&
+            f !== "brain/reviews/testkit.tsx" &&
+            edgesOf(tree, f).some((e) => e.to === to),
+        )
+        .sort();
+    const how = (from: string, to: string) => edgesOf(tree, from).find((e) => e.to === to)?.how;
+    expect(importers("brain/reviews/ReviewsScreen.tsx")).toEqual([
+      "brain/BrainViewSwitch.tsx",
+      "gallery/reviewsStory.tsx",
+    ]);
+    expect(how("brain/BrainViewSwitch.tsx", "brain/reviews/ReviewsScreen.tsx")).toBe("dynamic");
+    expect(importers("brain/reviews/BecameFactDialog.tsx")).toEqual([
+      "brain/reviews/ReviewsScreen.tsx",
+      "gallery/reviewsStory.tsx",
+    ]);
+    expect(importers("gallery/reviewsStory.tsx")).toEqual(["gallery/main.tsx"]);
+    expect(how("gallery/main.tsx", "gallery/reviewsStory.tsx")).toBe("dynamic");
+
+    type Entry = {
+      feature: string;
+      reason: string;
+      jsRaw: number;
+      jsGzip: number;
+      cssRaw: number;
+      cssGzip: number;
+    };
+    const baseline = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, "scripts", "bundle-baseline.json"), "utf8"),
+    ) as {
+      after: Entry[];
+    };
+    const i = baseline.after.findIndex((e) => e.feature === "cerebro-natureza");
+    expect(i, "the entry exists").toBeGreaterThan(0);
+    const entry = baseline.after[i]!;
+    const before = baseline.after[i - 1]!;
+    expect(before.feature).toBe("cerebro-faxina-guiada");
+    expect([before.jsGzip, before.cssGzip]).toEqual([546_409, 76_471]);
+    expect(entry.reason.length).toBeGreaterThan(40);
+    for (const k of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
+      expect(Number.isInteger(entry[k]) && entry[k] > 0, k).toBe(true);
+    expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(12 * 1024);
+    expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(2 * 1024);
   });
 });

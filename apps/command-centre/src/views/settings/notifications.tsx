@@ -218,13 +218,21 @@ function OutsideTabToggles() {
 }
 
 type SentinelKey =
-  "fsWatch" | "repeatedFailure" | "silentRoutine" | "connectorDelta" | "repeatDetector" | "triage";
+  | "fsWatch"
+  | "repeatedFailure"
+  | "silentRoutine"
+  | "connectorDelta"
+  | "repeatDetector"
+  | "reviewDue"
+  | "triage";
 const SENTINEL_KEYS: SentinelKey[] = [
   "repeatedFailure",
   "silentRoutine",
   "connectorDelta",
   "repeatDetector",
   "fsWatch",
+  // The reviews that fell due, once a day (cerebro-natureza, amendment 16).
+  "reviewDue",
   "triage",
 ];
 

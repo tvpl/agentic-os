@@ -28,6 +28,8 @@ export interface BrainHit {
   rel: string;
   path?: string;
   title?: string | null;
+  /** The file's nature (cerebro-natureza, AC 10): one of the five, or null. */
+  natureza?: string | null;
 }
 
 /**
@@ -39,10 +41,13 @@ export function useBrainSearch(
   limit = 8,
   /** The active work context (cerebro-contextos AC 32): the hits are its files only. */
   context?: string,
+  /** Only files of these natures (cerebro-natureza, design.md "Busca e preview"): sent as `natureza=a,b`. */
+  natureza: readonly string[] = [],
 ): { hits: BrainHit[]; failed: boolean; retry: () => void } {
   const [hits, setHits] = useState<BrainHit[]>([]);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const natures = natureza.join(",");
   useEffect(() => {
     const q = query.trim();
     if (!q) {
@@ -52,7 +57,9 @@ export function useBrainSearch(
     }
     let cancelled = false;
     const id = window.setTimeout(() => {
-      void apiCall("GET /api/memory/search", { query: { q, limit, ...(context ? { context } : {}) } })
+      void apiCall("GET /api/memory/search", {
+        query: { q, limit, ...(context ? { context } : {}), ...(natures ? { natureza: natures } : {}) },
+      })
         .then((res) => {
           if (cancelled) return;
           setHits(res);
@@ -68,7 +75,7 @@ export function useBrainSearch(
       cancelled = true;
       window.clearTimeout(id);
     };
-  }, [query, limit, context, attempt]);
+  }, [query, limit, context, natures, attempt]);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   return { hits, failed, retry };
 }

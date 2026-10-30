@@ -56,12 +56,16 @@ export interface BrainSceneMenuProps {
   onBake: () => void;
   /** The guided cleanup (cerebro-faxina-guiada, amendment 11): the last row of the actions; default, just open it. */
   onCleanup?: () => void;
+  /** "Revisões (N)" (cerebro-natureza, amendment 10): after "Faxina", only with N > 0 files due in the context. */
+  reviewsDue?: number;
+  onReviews?: () => void;
   onNote: (id: number) => void;
 }
 
 export function BrainSceneMenu(p: BrainSceneMenuProps) {
   const t = useT();
   const ids = useId();
+  const due = p.reviewsDue ?? 0;
   const { ui, patch } = p;
   const toggleIn = (list: string[], v: string) =>
     list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
@@ -93,6 +97,11 @@ export function BrainSceneMenu(p: BrainSceneMenuProps) {
         <button type="button" onClick={p.onCleanup ?? (() => openCleanup())}>
           {t("cleanup.open.button")}
         </button>
+        {due > 0 && (
+          <button type="button" onClick={p.onReviews}>
+            {t("reviews.button", { n: due })}
+          </button>
+        )}
       </section>
 
       <section aria-labelledby={`${ids}-view`}>

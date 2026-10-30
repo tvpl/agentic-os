@@ -57,10 +57,17 @@ import {
 import { saveLocalSettings, settingsFromUi } from "../brain/state";
 import "../brain/brain.css";
 import { graphRequest, useBrainSearch } from "../brain/memoryData";
+import type { Natureza } from "../brain/natureza";
 import { useWorkContext } from "../contexts/useWorkContext";
 import { useCommands, type Command } from "../commands/registry";
 import { openNoteEditor } from "../brain/noteEvents";
-import { BrainViewSwitch, NotesView, useBrainMode, useBrainViewCommands } from "../brain/BrainViewSwitch";
+import {
+  BrainViewSwitch,
+  NotesView,
+  ReviewsView,
+  useBrainMode,
+  useBrainViewCommands,
+} from "../brain/BrainViewSwitch";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
 /**
@@ -108,6 +115,10 @@ export default function SecondBrain() {
       {brain.mode === "notes" ? (
         <Suspense fallback={<Skeleton lines={6} />}>
           <NotesView onShowInGraph={(id) => brain.go("graph", `?sel=${id}&local=1&hops=1`)} />
+        </Suspense>
+      ) : brain.mode === "reviews" ? (
+        <Suspense fallback={<Skeleton lines={6} />}>
+          <ReviewsView />
         </Suspense>
       ) : (
         <SecondBrainGraph />
@@ -339,7 +350,8 @@ function SecondBrainGraph() {
   }, [ui.sel, version, world, dirty, centerOn, wantFocus, t]);
 
   /* ---------- search-as-you-type (server hits) ---------- */
-  const search = useBrainSearch(ui.query, 8, work.query);
+  const [natureza, setNatureza] = useState<Natureza[]>([]);
+  const search = useBrainSearch(ui.query, 8, work.query, natureza);
 
   /* ---------- timeline playback ---------- */
   const range = brain.range;
@@ -761,6 +773,8 @@ function SecondBrainGraph() {
           patch={patch}
           searchRef={searchRef}
           hits={search.hits}
+          natureza={natureza}
+          onNatureza={setNatureza}
           searchFailed={search.failed}
           onSearchRetry={search.retry}
           facets={brain.facets}

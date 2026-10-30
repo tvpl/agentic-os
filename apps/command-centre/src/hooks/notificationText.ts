@@ -1,3 +1,5 @@
+import { tf } from "../i18n";
+
 /** Translate persisted legacy system templates, preserving user-authored names and prompts. */
 export function notificationText(
   title: string,
@@ -64,6 +66,12 @@ export function notificationText(
         return {
           title: `${p.count ?? "?"} arquivos alterados`,
           body: `Alterações em ${p.folder ?? ""}. O índice de memória está sendo atualizado.`,
+        };
+      case "sentinel.reviewDue":
+        // cerebro-natureza, amendment 16: the server writes "N items to review", N shown as `display` ("20+").
+        return {
+          title: tf("pt-BR", "reviews.notification", { n: String(p.display ?? p.count ?? "?") }),
+          body: "Notas cuja revisão venceu esperam em Revisões: confirme, atualize, adie ou deixe para lá.",
         };
       case "sentinel.connectorDelta":
         return {

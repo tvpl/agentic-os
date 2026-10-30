@@ -9,6 +9,7 @@ import { useT } from "../../i18n";
 import { Popover } from "../../ui";
 import { RequestFailed } from "../RequestFailed";
 import { useBrainSearch, type BrainHit } from "../memoryData";
+import { NatureBadge, NatureSearchFilters, type Natureza } from "../natureza";
 
 export interface NoteSearchProps {
   open: boolean;
@@ -32,7 +33,8 @@ function NoteSearchBody({ context, label, onPick }: Pick<NoteSearchProps, "conte
   const t = useT();
   const [q, setQ] = useState("");
   const [at, setAt] = useState(0);
-  const search = useBrainSearch(q, 8, context);
+  const [natureza, setNatureza] = useState<Natureza[]>([]);
+  const search = useBrainSearch(q, 8, context, natureza);
   const list = useId();
   const input = useRef<HTMLInputElement>(null);
   const hits = search.hits;
@@ -67,6 +69,7 @@ function NoteSearchBody({ context, label, onPick }: Pick<NoteSearchProps, "conte
           }
         }}
       />
+      <NatureSearchFilters chosen={natureza} onChange={setNatureza} />
       {search.failed && <RequestFailed message={t("brain.search.failed")} onRetry={search.retry} />}
       <ul className="notes-search-hits" role="listbox" id={list} aria-label={label}>
         {hits.map((hit, i) => (
@@ -82,6 +85,7 @@ function NoteSearchBody({ context, label, onPick }: Pick<NoteSearchProps, "conte
           >
             <FileText aria-hidden size={14} />
             <span className="notes-search-title">{hit.title ?? hit.name}</span>
+            <NatureBadge n={(hit.natureza ?? null) as Natureza | null} dense />
             <span className="notes-search-rel">{hit.rel}</span>
           </li>
         ))}

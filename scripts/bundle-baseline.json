@@ -79,6 +79,14 @@
       "jsGzip": 546409,
       "cssRaw": 354978,
       "cssGzip": 76471
+    },
+    {
+      "feature": "cerebro-natureza",
+      "reason": "the Reviews screen of the Second Brain as a chunk of its own (ReviewsScreen, its list and detail, the Virou realidade dialog and its stylesheet, fetched the first time /brain/reviews is opened; the gallery's reviews story loads that same chunk), the nature badges and the search's nature filters in the three brain screens, the preview's badges and Revisar agora, the Revisões entries of both shells and the palette, the Settings row of the reviewDue sentinel and its inbox text, and the strings in two languages; measured on the build of batch D: 9.5 KB JS gzip and 1.3 KB CSS gzip above cerebro-faxina-guiada (C92, amendment 21)",
+      "jsRaw": 1704752,
+      "jsGzip": 556121,
+      "cssRaw": 358295,
+      "cssGzip": 77763
     }
   ]
 }

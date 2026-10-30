@@ -34,6 +34,7 @@ import {
 import { GROUP_PALETTE, MODIFIED_RANGES, SIZE_RANGES, type BrainUi } from "./state";
 import { Switch, Tooltip } from "../ui";
 import { RequestFailed } from "./RequestFailed";
+import { NatureBadge, NatureSearchFilters, type Natureza } from "./natureza";
 
 export interface TimelineState {
   range: [number, number] | null;
@@ -45,7 +46,10 @@ export interface BrainPanelProps {
   ui: BrainUi;
   patch: (p: Partial<BrainUi>) => void;
   searchRef: RefObject<HTMLInputElement>;
-  hits: Array<{ id: number; name: string; rel: string }>;
+  hits: Array<{ id: number; name: string; rel: string; natureza?: string | null }>;
+  /** The search's nature filters (cerebro-natureza, design.md "Busca e preview"). */
+  natureza: readonly Natureza[];
+  onNatureza: (next: Natureza[]) => void;
   /** The last search request failed: the hit list gives way to the error and its retry. */
   searchFailed: boolean;
   onSearchRetry: () => void;
@@ -164,6 +168,7 @@ export function BrainPanel(p: BrainPanelProps) {
         onChange={(e) => patch({ query: e.target.value })}
         aria-label={t("common.search")}
       />
+      <NatureSearchFilters chosen={p.natureza} onChange={p.onNatureza} />
       {p.searchFailed && <RequestFailed message={t("brain.search.failed")} onRetry={p.onSearchRetry} />}
       {!p.searchFailed && p.hits.length > 0 && (
         <div className="brain-hits" role="list">
@@ -175,7 +180,10 @@ export function BrainPanel(p: BrainPanelProps) {
                 onClick={() => p.onSelectId(h.id, true)}
               >
                 <span className="ma-text">
-                  <span className="ma-name truncate">{h.name}</span>
+                  <span className="brain-hit-name">
+                    <span className="ma-name truncate">{h.name}</span>
+                    <NatureBadge n={(h.natureza ?? null) as Natureza | null} dense />
+                  </span>
                   <span className="ma-desc truncate">{h.rel}</span>
                 </span>
               </button>

@@ -116,10 +116,12 @@ import { distanceForLevel } from "./brainZoom";
 import "./brainScene.css";
 import { RequestFailed } from "../../brain/RequestFailed";
 import { graphRequest, useBrainSearch, useRelatedFiles } from "../../brain/memoryData";
+import { NatureBadge, NatureSearchFilters, useReviewsDue, type Natureza } from "../../brain/natureza";
 import { useWorkContext } from "../../contexts/useWorkContext";
 import {
   BrainViewSwitch,
   NotesView,
+  ReviewsView,
   useBrainMode,
   useBrainViewCommands,
   type BrainModeState,
@@ -219,18 +221,25 @@ export default function BrainScene({ onMetaChanged }: SceneViewProps) {
   const brain = useBrainMode();
   // The classic map is the frame's brain, which has the row and the commands of its own.
   useBrainViewCommands(brain);
-  if (brain.mode === "notes") return <NotesMode brain={brain} />;
+  if (brain.mode !== "graph") return <NotesMode brain={brain} />;
   if (classic) return <ClassicMap onBack={() => setClassic(false)} onMetaChanged={onMetaChanged} />;
   return <Constellation onClassic={() => setClassic(true)} view={brain} />;
 }
 
-/** The scene's "Notas" mode (.specs/features/cerebro-vista-notas, AC 1): the same notes view as the frame's, under the HUD. */
+/**
+ * The scene's "Notas" mode (.specs/features/cerebro-vista-notas, AC 1) and its "Revisões" (cerebro-natureza, S5): the
+ * same notes view and the same reviews screen as the frame's, under the HUD.
+ */
 function NotesMode({ brain }: { brain: BrainModeState }) {
   return (
     <div className="bs-notes">
-      <BrainViewSwitch mode="notes" onChoose={(mode) => brain.go(mode)} />
+      <BrainViewSwitch mode={brain.mode} onChoose={(mode) => brain.go(mode)} />
       <Suspense fallback={<Skeleton lines={6} />}>
-        <NotesView onShowInGraph={(id) => brain.go("graph", `?sel=${id}&local=1&hops=1`)} />
+        {brain.mode === "reviews" ? (
+          <ReviewsView />
+        ) : (
+          <NotesView onShowInGraph={(id) => brain.go("graph", `?sel=${id}&local=1&hops=1`)} />
+        )}
       </Suspense>
     </div>
   );
@@ -792,7 +801,9 @@ function Constellation({ onClassic, view }: { onClassic: () => void; view: Brain
   }, [railGroups, nearby, need]);
 
   /* ---------- search: the sky's matches + the server's content hits ---------- */
-  const search = useBrainSearch(ui.query, 8, work.query);
+  const [natureza, setNatureza] = useState<Natureza[]>([]);
+  const reviewsDue = useReviewsDue();
+  const search = useBrainSearch(ui.query, 8, work.query, natureza);
   const hits = search.hits;
   const [searchFocus, setSearchFocus] = useState(false);
 
@@ -1662,6 +1673,7 @@ function Constellation({ onClassic, view }: { onClassic: () => void; view: Brain
               </button>
             </Tooltip>
           </div>
+          <NatureSearchFilters chosen={natureza} onChange={setNatureza} />
           {q && (
             <div className="bs-results" data-open={searchFocus || !sheetOpen ? "" : undefined}>
               <p className="bs-eyebrow" role="status">
@@ -1680,6 +1692,7 @@ function Constellation({ onClassic, view }: { onClassic: () => void; view: Brain
                         }}
                       >
                         <span className="bs-link-name">{h.name}</span>
+                        <NatureBadge n={(h.natureza ?? null) as Natureza | null} dense />
                         <small className="mono">{h.rel}</small>
                       </button>
                     </li>
@@ -1747,6 +1760,11 @@ function Constellation({ onClassic, view }: { onClassic: () => void; view: Brain
             onCleanup={() => {
               setMenuOpen(false);
               openCleanup();
+            }}
+            reviewsDue={reviewsDue}
+            onReviews={() => {
+              setMenuOpen(false);
+              view.go("reviews");
             }}
             onNote={(id) => {
               setMenuOpen(false);

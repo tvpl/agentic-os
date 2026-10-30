@@ -20,6 +20,8 @@ import {
 } from "../desktop/consoleDraft";
 import { useT } from "../i18n";
 import { LinksSection } from "./LinksSection";
+import { useBrainMode } from "./BrainViewSwitch";
+import { AbandonedBadge, NatureBadge, ScopeBadge, abandonedOf, escopoOf, natureOf } from "./natureza";
 import { openNoteEditor } from "./noteEvents";
 import { relationsOf } from "./engine/graph";
 import type { EdgeKind, FileNode, World } from "./engine/world";
@@ -106,6 +108,9 @@ export function PreviewPanel({
   };
   const { node } = preview;
   const isMarkdown = MD_EXT.has(node.ext.toLowerCase());
+  const reviews = useBrainMode();
+  const scope = escopoOf(node.fields);
+  const abandoned = abandonedOf(node.fields);
   const blocks = useMemo<Block[] | null>(
     () => (isMarkdown && preview.kind === "text" && preview.content ? parseMarkdown(preview.content) : null),
     [isMarkdown, preview.kind, preview.content],
@@ -161,7 +166,20 @@ export function PreviewPanel({
             <Pin aria-hidden /> {t("brain.pinned")}
           </button>
         )}
+        {/* What the note is, whose, and whether it was let go (cerebro-natureza, amendment 10). */}
+        {isMarkdown && <NatureBadge n={natureOf(node.fields)} />}
+        {isMarkdown && scope && <ScopeBadge s={scope} />}
+        {isMarkdown && abandoned && <AbandonedBadge date={abandoned} />}
       </div>
+      {isMarkdown && (
+        <button
+          type="button"
+          className="btn sm"
+          onClick={() => reviews.go("reviews", `?path=${encodeURIComponent(node.path)}`)}
+        >
+          {t("reviews.reviewNow")}
+        </button>
+      )}
       <div className="brain-preview-actions">
         <button
           className="btn sm"

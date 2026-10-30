@@ -13,13 +13,16 @@ import "./viewSwitch.css";
 import { lazyRoute } from "../lazyRoute";
 import { AppRouteContext } from "../desktop/appRoute";
 import { useCommands, type Command } from "../commands/registry";
+import { REVIEWS_PATH } from "./natureza";
 
-export type BrainMode = "graph" | "notes";
+export type BrainMode = "graph" | "notes" | "reviews";
 export const GRAPH_PATH = "/brain";
 export const NOTES_PATH = "/brain/notes";
 
 /** The notes view, its own chunk: fetched the first time "Notas" is chosen (AC 51). */
 export const NotesView = lazyRoute(() => import("./notes/NotesView"));
+/** "Revisões" (.specs/features/cerebro-natureza, S5), its own chunk: fetched the first time it is opened (C92). */
+export const ReviewsView = lazyRoute(() => import("./reviews/ReviewsScreen"));
 
 export interface BrainModeState {
   mode: BrainMode;
@@ -33,11 +36,15 @@ export function useBrainMode(): BrainModeState {
   const location = useLocation();
   const navigate = useNavigate();
   const pathname = panel?.pathname ?? location.pathname;
-  const mode: BrainMode = pathname.startsWith(NOTES_PATH) ? "notes" : "graph";
+  const mode: BrainMode = pathname.startsWith(NOTES_PATH)
+    ? "notes"
+    : pathname.startsWith(REVIEWS_PATH)
+      ? "reviews"
+      : "graph";
   const setLocation = panel?.setLocation;
   const go = useCallback(
     (next: BrainMode, search = "") => {
-      const path = next === "notes" ? NOTES_PATH : GRAPH_PATH;
+      const path = next === "notes" ? NOTES_PATH : next === "reviews" ? REVIEWS_PATH : GRAPH_PATH;
       if (setLocation) setLocation({ pathname: path, search });
       else navigate(`${path}${search}`);
     },
@@ -73,7 +80,8 @@ export function useBrainViewCommands({ mode, go }: BrainModeState): void {
               icon: Network,
               keywords: ["graph", "grafo", "map", "mapa"],
               palette: true,
-              keys: ["v"],
+              // In "Revisões", `v` is "Ainda vale" (cerebro-natureza, C71).
+              ...(mode === "reviews" ? {} : { keys: ["v"] }),
               run: () => go("graph"),
             },
           ],

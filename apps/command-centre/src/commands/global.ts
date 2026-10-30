@@ -11,6 +11,7 @@ import {
   Archive,
   BrainCircuit,
   CalendarClock,
+  CircleCheck,
   FilePlus,
   Grid3x3,
   Keyboard,
@@ -39,6 +40,7 @@ import { errorMessage } from "../views/shared";
 import { openOnboarding } from "../onboarding/state";
 import { openNoteEditor } from "../brain/noteEvents";
 import { openCleanup } from "../brain/cleanupEvents";
+import { REVIEWS_PATH } from "../brain/natureza";
 import { useCommands, type Command } from "./registry";
 
 /** Opens the palette (and closes it: the palette registers the same keys in its own `modal` scope). */
@@ -225,6 +227,18 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["cleanup", "faxina", "limpeza", "arquivar"],
         palette: true,
         run: () => openCleanup(),
+      },
+      {
+        // "Revisões" (cerebro-natureza, AC 37, amendment 10): the screen at /brain/reviews, the frame's page and the
+        // Núcleo's brain panel.
+        id: "action:reviews",
+        title: "reviews.title",
+        group: "actions",
+        scope: "global",
+        icon: CircleCheck,
+        keywords: ["reviews", "revisoes", "revisões", "revisar", "review", "natureza"],
+        palette: true,
+        run: go(REVIEWS_PATH),
       },
       {
         id: "action:now",
