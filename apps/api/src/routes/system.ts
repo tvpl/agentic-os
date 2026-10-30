@@ -107,16 +107,29 @@ function mergeObjects(
   return out;
 }
 
+/** One level only: each field the patch names replaces the current one whole, an object included. */
+function mergeFields(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(patch)) if (value !== undefined) out[key] = value;
+  return out;
+}
+
 /**
- * Merge a partial settings patch over the current settings. `providers.*`,
- * `limits` and `memory` merge field by field so `{providers:{claude:{enabled:true}}}`
- * keeps `binaryPath`; arrays and every other key replace wholesale.
+ * Merge a partial settings patch over the current settings. `providers.*`
+ * and `limits` merge field by field so `{providers:{claude:{enabled:true}}}`
+ * keeps `binaryPath`; `memory` merges its own fields only (cerebro-organizar,
+ * doors 12 and 13), so `{memory:{agentStance}}` keeps the journal budget while
+ * a `memory.embeddings` the patch carries replaces the stored one whole: an
+ * `apiKeyEnv` it leaves out is dropped, never carried to a new `endpoint`.
+ * Arrays and every other key replace wholesale.
  */
 export function deepMergeSettings(current: Settings, patch: SettingsPatch): Settings {
   const merged: Record<string, unknown> = { ...current };
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
-    if ((key === "providers" || key === "limits" || key === "memory") && isPlainObject(value)) {
+    if (key === "memory" && isPlainObject(value)) {
+      merged[key] = mergeFields(merged[key] as Record<string, unknown>, value);
+    } else if ((key === "providers" || key === "limits") && isPlainObject(value)) {
       merged[key] = mergeObjects(merged[key] as Record<string, unknown>, value);
     } else {
       merged[key] = value;

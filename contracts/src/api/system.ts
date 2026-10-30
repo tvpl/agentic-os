@@ -23,7 +23,8 @@ import { RoutineStatusSchema } from "../routines.js";
 export const SettingsPatchSchema = SettingsSchema.partial().extend({
   providers: z.record(ProviderId, ProviderSettingsSchema.partial()).optional(),
   limits: SettingsSchema.shape.limits.removeDefault().partial().optional(),
-  // Field by field, as limits: `{memory:{agentStance}}` must not reset the journal budget or the embeddings.
+  // memory's own fields, one level (cerebro-organizar, doors 12 and 13): `{memory:{agentStance}}` keeps the journal
+  // budget and the embeddings, and a `memory.embeddings` the patch carries replaces the stored one whole.
   memory: SettingsSchema.shape.memory.removeDefault().partial().optional(),
 });
 

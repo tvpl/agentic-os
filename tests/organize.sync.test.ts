@@ -226,4 +226,46 @@ describe("S4 the stance setting", () => {
     expect(w.ctx.settings().memory.journalBudgetTokens).toBe(1500);
     expect((await w.call("GET", "/api/settings")).body.memory.agentStance).toBe("contest-conflicts");
   });
+
+  it("C51 PUT memory merges memory's own fields only: a stance keeps the journal budget and the embeddings, and embeddings with a new endpoint and no apiKeyEnv store no apiKeyEnv", async () => {
+    const A = "https://a.example/v1/embeddings";
+    const B = "https://b.example/v1/embeddings";
+    const stored = {
+      enabled: false,
+      provider: "http" as const,
+      endpoint: A,
+      apiKeyEnv: "OPENAI_API_KEY",
+      sendRemote: true,
+    };
+    w.update((s) => {
+      s.memory.agentStance = "neutral";
+      s.memory.journalBudgetTokens = 1500;
+      s.memory.embeddings = { ...stored };
+    });
+    try {
+      const stance = await w.call("PUT", "/api/settings", { memory: { agentStance: "contest-conflicts" } });
+      expect(stance.status, JSON.stringify(stance.body)).toBe(200);
+      expect(w.ctx.settings().memory.agentStance).toBe("contest-conflicts");
+      expect(w.ctx.settings().memory.journalBudgetTokens).toBe(1500);
+      expect(w.ctx.settings().memory.embeddings).toEqual(stored);
+
+      const moved = await w.call("PUT", "/api/settings", {
+        memory: { embeddings: { enabled: false, provider: "http", endpoint: B, sendRemote: true } },
+      });
+      expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+      const after = w.ctx.settings().memory;
+      expect(after.embeddings.endpoint).toBe(B);
+      expect(after.embeddings).not.toHaveProperty("apiKeyEnv");
+      expect(after.journalBudgetTokens).toBe(1500);
+      expect(after.agentStance).toBe("contest-conflicts");
+      const onDisk = JSON.parse(fs.readFileSync(w.ctx.paths.settingsFile, "utf8")) as Json;
+      expect(onDisk.memory.embeddings.endpoint).toBe(B);
+      expect(onDisk.memory.embeddings).not.toHaveProperty("apiKeyEnv");
+    } finally {
+      w.update((s) => {
+        s.memory.agentStance = "neutral";
+        s.memory.embeddings = { enabled: false, provider: "hash", sendRemote: false };
+      });
+    }
+  });
 });

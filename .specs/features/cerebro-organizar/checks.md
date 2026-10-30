@@ -199,6 +199,11 @@ Proof: `npx vitest run tests/security-reads.test.ts -t "C55 the list holds 70 ro
 Proof: `npx vitest run tests/security-reads.test.ts -t "C32 every raw fs read in core/src and apps/api/src is on the reviewed list finds nothing outside the list"`
 Proof: `npx vitest run tests/sdk.instances.test.ts -t "C30 the module-level mutable state"`
 
+### Added in round 1 of the verification (never renumbered; C1-C50 unchanged)
+
+**C51** - With `memory` stored as `journalBudgetTokens` 1500 and `embeddings` `{enabled:false, provider:"http", endpoint:"https://a.example/v1/embeddings", apiKeyEnv:"OPENAI_API_KEY", sendRemote:true}`, `PUT /api/settings {memory:{agentStance:"contest-conflicts"}}` answers `200`, stores the stance and keeps `journalBudgetTokens` 1500 and `embeddings` exactly as stored; then `PUT /api/settings {memory:{embeddings:{enabled:false, provider:"http", endpoint:"https://b.example/v1/embeddings", sendRemote:true}}}` (no `apiKeyEnv`) answers `200`, and the settings read and `settings.json` hold the endpoint `https://b.example/v1/embeddings` and no `apiKeyEnv`, with `journalBudgetTokens` 1500 and the stance kept (doors 12 and 13, Impact contract)
+Proof: `npx vitest run tests/organize.sync.test.ts -t "C51 "`
+
 ## Coverage
 
 | Set (size)                                                 | Member -> proof                                                                                                                        | Unproven |
