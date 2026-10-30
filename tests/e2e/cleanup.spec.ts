@@ -132,11 +132,14 @@ async function closeWizard(page: Page) {
   await expect(wizard(page)).toHaveCount(0);
 }
 async function palette(page: Page) {
-  await page.keyboard.press("Control+k");
-  const box = page.getByRole("combobox");
-  await expect(box).toBeVisible();
-  await box.fill("Faxina guiada");
-  await page
+  const launcher = page.locator(".launcher");
+  // The palette's own field, once it is open (the frame has other comboboxes of its own).
+  await expect(async () => {
+    if (!(await launcher.isVisible())) await page.keyboard.press("Control+k");
+    await expect(launcher.getByRole("combobox")).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 10_000 });
+  await launcher.getByRole("combobox").fill("Faxina guiada");
+  await launcher
     .getByRole("option", { name: /Faxina guiada/ })
     .first()
     .click();
