@@ -432,3 +432,31 @@ Status of batch B (updated in the commit that closes each piece):
   `missing` until the next pass, and door 6 names seven keys); `memory/notes/` as an entry (its `indexPath` would be a
   file at the top of `notes/`); door 5's verdict run again for the map's reach (the run passed it when it launched;
   the map only narrows the rows today's policy lets through).
+
+- **Round 1 of the verification (FAIL), fixed:** `verification.md` at `0d90aa3` ranked seven findings and two notes;
+  each is closed by a proof that runs, and C1-C50 keep their numbers. (1) C20 asserts `failure.recoverable` `false`
+  (`tests/organize.runs.test.ts`), and the mutant `{ code: folderCode }` at `runManager.ts` now fails it. (2) C52 (new)
+  proves the two starts that skip `Execution.startSkill`, a retry (`POST /api/runs/:id/retry`) and an objective's step
+  (`POST /api/objectives/:id/dispatch` with the folder as `cwd`): both start in `<home>/workspace` with the folder in
+  `readDirs` and `protectedDirs`; dropping the forced `cwd` or the folder read at launch fails it. (3) C53 (new): a
+  routine of a memory skill with a folder on `codex` ends `failed` with `folder_protection_unsupported` and
+  `recoverable` `false`, and the Codex adapter is never called; dropping `assertProtectsDirs` at launch fails it. (4)
+  Security fix at `52e4b43`: `PUT /api/settings` merges `memory` one level only, so a `memory.embeddings` in the body
+  replaces the stored one whole and an `apiKeyEnv` it leaves out is dropped. Door 12 was the builder's, not the
+  owner's; it stays as written, and door 13 (new Landing row) records the correction, with the Impact row made true.
+  C51 (new) was written first and was red on the old merge (`apiKeyEnv` `OPENAI_API_KEY` kept with the new endpoint),
+  then green; it also keeps `journalBudgetTokens` and the stored `embeddings` on a stance write. (5) C16 and C18 gain
+  an own-layer `Proof:` each, one case per row of `assertProtectsDirs` (true; false on codex and cursor; absent; no
+  manifest) and of `takesFolder` (memory skill with or without `folder`, other skill with or without); inverting
+  either decision fails its case. (6) The Coverage `doors` row lists all 13 doors, the ways a run starts are 7, and
+  new rows cover door 11's `RunFailure` and the `memory` merge of doors 12 and 13. (7) C2 names `?rel=`, the claim
+  unchanged. Notes: C30's fixture keeps `.ssh` and adds `node_modules/` (the one hard-blocked folder name without a
+  dot) and `servidor.pem` (a secret-file pattern), with the user excludes holding only the excluded folder, since the
+  default list repeats every secret name; removing the hard blocklist or the secret-file patterns from the workspace
+  filter now fails C30 (both survived before). C43's text says it counts every impact inside the group and
+  `serious`/`critical` on the whole page, the design-system convention; its test is unchanged. Door 10 still follows
+  the open owner question `cerebro-contextos` 1. Gate on the tree of the last fix: `npm run build`,
+  `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0; each of the 68 `Proof:` lines exits 0 and runs
+  only its check's tests; `npx vitest run` (136 files, 1810 passed, 1 skipped), `npm run test -w apps/command-centre`
+  (141 files, 1128 passed), and `tests/e2e/organize.spec.ts` with `tests/e2e/a11y.spec.ts` (60 passed). A scoped
+  re-verification is the orchestrator's.
