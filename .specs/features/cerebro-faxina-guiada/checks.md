@@ -4,7 +4,7 @@ Profile: ui
 Plan: `.specs/features/cerebro-faxina-guiada/plan.md`
 Design: `.specs/features/cerebro-faxina-guiada/design.md` (binding for the screens)
 
-89 checks in 5 slices + cross-cutting (C1-C83 approved, C84-C85 added in build, C86-C89 added in round 1) · 8 one-way
+90 checks in 5 slices + cross-cutting (C1-C83 approved, C84-C85 added in build, C86-C89 added in round 1, C90 after round 3) · 8 one-way
 doors (doors 7 and 8 added in build) · 2 open questions of the plan (1 `blocks go-live`, 2 `open`), both with their
 defaults in force, and 7 new ones (plan.md, "Emendas", questions 3-9: 3-7 from the reconciliation, 8 and 9 for the doors
 added in build), none blocking · 18 amendments (amendment 18 added in round 1) for what `cerebro-correcoes`, `cerebro-contextos`, `cerebro-organizar` and `cerebro-vista-notas` built after
@@ -174,7 +174,7 @@ Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C42 "`
 Proof: `npx vitest run tests/cleanup.apply.test.ts -t "C43 "`
 Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C43 "`
 
-**C44** - With `archive` answers on two files of an indexed folder outside `memory/`, the apply moves and writes nothing in that folder (a hash of every file and folder name under it is the same before and after), writes `<home>/artifacts/cleanup/<AAAA-MM-DD>-<id>.md` holding one line `- [ ] <path> — <decision> — <reason>` per file, returns its path in `proposals`, and creates or changes no file outside `memory/archive/` and `artifacts/cleanup/` (AC 30, amendment 9)
+**C44** - With `archive` answers on two files of an indexed folder outside `memory/`, the apply moves and writes nothing in that folder (a hash of every file and folder name under it is the same before and after), writes `<home>/artifacts/cleanup/<AAAA-MM-DD>-<id>.md` holding one line `- [ ] <path> — <decision> — <reason>` per file, returns its path in `proposals`, and creates or changes no file outside `memory/archive/` and `artifacts/cleanup/` ; one file outside `memory/` alone, and one empty folder alone, each get a list of one line, returned in `proposals` (AC 30, amendment 9; widened after round 3)
 Proof: `npx vitest run tests/cleanup.apply.test.ts -t "C44 "`
 Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C44 "`
 
@@ -190,7 +190,7 @@ Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C46 "`
 Proof: `npx vitest run tests/cleanup.apply.test.ts -t "C47 "`
 Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C47 "`
 
-**C48** - `POST /api/memory/cleanup/undo {manifest}` for a manifest of three moves, after one archived file got a byte appended, one was deleted from the archive and one is untouched, moves the untouched one back to `from` (its bytes intact), answers `restored` with it and `skipped` with `changed` and `missing`; with an untouched one whose `from` now exists the reason is `exists`; the archive folder is removed only when the undo leaves it empty (AC 32)
+**C48** - `POST /api/memory/cleanup/undo {manifest}` for a manifest of three moves, after one archived file got a byte appended, one was deleted from the archive and one is untouched, moves the untouched one back to `from` (its bytes intact), answers `restored` with it and `skipped` with `changed` and `missing`; with an untouched one whose `from` now exists the reason is `exists`; the archive folder is removed only when the undo leaves it empty; a partial undo leaves `manifest.json` (its bytes unchanged) and the folder in the archive with what it skipped, nothing of it under `artifacts/cleanup/`, and a second undo of that manifest, once the changed file is as it was archived, moves that one back and skips the one already home as `exists` (AC 32, door 8; widened after round 3)
 Proof: `npx vitest run tests/cleanup.apply.test.ts -t "C48 "`
 Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C48 "`
 
@@ -400,6 +400,10 @@ Proof: `npm run test -w apps/command-centre -- src/brain/cleanup/CleanupInventor
 Proof: `npm run test -w apps/command-centre -- src/brain/cleanup/CleanupWizard.test.tsx -t "C89 "`
 Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts cleanup.spec.ts -g "C89 "`
 
+**C90** - "Revisar depois" is stored and kept: `PUT /api/memory/cleanup/decisions` with `{ decision: "snooze", until }` stores the row with that `until` and a null `keep_file_id`, an `unsure` given an `until` stores none; at its own layer `saveCleanupDecisions` stores `until` for a `snooze` only and `keep_file_id` for a `merge` only (`keep` and `unsure` store neither), each with `decided_at` = now; the next scan before `until` does not report the snoozed finding (`decided` 1) and still reports the `unsure` one, and a scan after `until` reports it again (AC 21, AC 13; added after round 3)
+Proof: `npx vitest run tests/cleanup.decisions.test.ts -t "C90 "`
+Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C90 "`
+
 ### Correções da rodada 2
 
 Added after approval, in round 2 of the verification (`verification.md`, round 2): two checks changed, each listed with
@@ -427,6 +431,27 @@ what it was. No product code changed; the verifier found it correct.
 - **The header's counts (low).** Were "83 checks · 6 one-way doors · … 5 new ones (questions 3-7) · 17 amendments"; now
   89 checks, 8 doors, 7 new questions (3-9) and 18 amendments.
 
+### Correções depois da rodada 3
+
+Written after round 3, the last round the verification allows (`verification.md`, round 3, FAIL, escalated). The owner
+chose to have the missing tests written and the feature closed by escalation, with no fourth round: these changes are
+accepted by the owner **without re-verification**. Each change to a check is listed with what it was; no product code
+changed.
+
+- **C48 (widened, finding 1, R3-F7).** Was: "… the archive folder is removed only when the undo leaves it empty (AC
+  32)". Now it also says what door 8's partial branch leaves: `manifest.json` (same bytes) and the folder stay, nothing
+  goes to `artifacts/cleanup/`, and a second undo of the same manifest still works. New cases "C48 a partial undo
+  leaves manifest.json …" in `tests/cleanup.apply.test.ts` and `tests/cleanup.layer.test.ts` (same `Proof:` lines).
+  R3-F7 re-injected (`if (result.restored.length > 0)` at `cleanupApply.ts:433`) fails both.
+- **C90 (added, finding 2, R3-F3).** "Revisar depois" stores its `until` through the route and through
+  `saveCleanupDecisions` (with the upsert's other columns, one case per decision), and the next scans hide the finding
+  until then and report it after. This makes `Test policy` row 1 true for "the decision rules … the upsert". R3-F3
+  re-injected (`null` for `until` at `cleanupApply.ts:148`) fails both proofs.
+- **C44 (widened, finding 3, R3-F6).** Was: "… one line … per file, returns its path in `proposals` … (AC 30, amendment
+  9)". Now one file outside `memory/` alone, and one empty folder alone, each get a list of one line. New cases at the
+  route and the layer (same `Proof:` lines). R3-F6 re-injected (`if (proposals.length > 1)` at `cleanupApply.ts:307`)
+  fails both.
+
 ## Coverage
 
 | Set (size)                                                    | Member -> proof                                                                                                                                                                                                                                                                                                                                                                                                       | Unproven |
@@ -439,7 +464,7 @@ what it was. No product code changed; the verifier found it correct.
 | `POST /api/memory/cleanup/undo` statuses (4)                  | 200 C48 · 400 C49 · 404 C49 · 409 C49                                                                                                                                                                                                                                                                                                                                                                                 | -        |
 | named error codes, as (status, code) pairs (9)                | `400 scope_required` C8, C9 · `404 context_not_found` C9 · `400 validation` C9, C35, C49 · `404 not_found` C11, C36, C47, C49 · `409 scan_running` C28, C47 · `409 scan_stale` C36, C47 · `409 restore_in_progress` C29, C47, C49 · `409 undo_conflict` C49 · `403 scope_required` (device) C75                                                                                                                       | -        |
 | routes that take a `scanId` (3)                               | `GET /scans/:id` C11 · `PUT /decisions` C33, C36 · `POST /apply` C41, C47                                                                                                                                                                                                                                                                                                                                             | -        |
-| doors of Landing (8)                                          | 1 C38, C39, C40 · 2 C14, C15, C16 · 3 C17, C25, C33 · 4 C41, C48 · 5 C74 · 6 C10, C77 · 7 C84 (added in build) · 8 C85 (added in build)                                                                                                                                                                                                                                                                               | -        |
+| doors of Landing (8)                                          | 1 C38, C39, C40 · 2 C14, C15, C16 · 3 C17, C25, C33 · 4 C41, C48 · 5 C74 · 6 C10, C77 · 7 C84 (added in build) · 8 C85 (added in build), C48 (partial branch, after round 3)                                                                                                                                                                                                                                          | -        |
 | stored shapes (4)                                             | `file_minhash` C15 · `cleanup_decisions` C17 · `manifest.json` C41 · `settings.memory.cleanup` C32                                                                                                                                                                                                                                                                                                                    | -        |
 | startup config: `memory.cleanup` thresholds (1 assembly)      | the service (`AppContext`, behind every cleanup route) C18, C23, C32                                                                                                                                                                                                                                                                                                                                                  | -        |
 | scope kinds (7)                                               | context C1, C7 · `dir` in an indexed folder C8 · `dir` under `memory/` C8 · `dir` outside every root C8 · none C9 · `context=all` C9 · `context` and `dir` C9                                                                                                                                                                                                                                                         | -        |
@@ -450,7 +475,7 @@ what it was. No product code changed; the verifier found it correct.
 | rows refused by today's policy (2)                            | user exclude C6, C27 · secret name C6                                                                                                                                                                                                                                                                                                                                                                                 | -        |
 | finding kinds (8)                                             | `duplicate` C12, C59 · `near-duplicate` C13, C59 · `stale` C18, C19, C59 · `orphan` C20, C59 · `broken-link` C21, C59 · `empty-folder` C22, C59 · `large-file` C23, C59 · `untitled` C24, C59                                                                                                                                                                                                                         | -        |
 | stale sources (3)                                             | `mtime` C18 · `last_reviewed` C19 · `review_every` ignored C19                                                                                                                                                                                                                                                                                                                                                        | -        |
-| decisions (5)                                                 | `keep` C26, C33 · `archive` C26, C33, C41 · `merge` C26, C34, C45 · `snooze` C26, C63 · `unsure` C26, C63                                                                                                                                                                                                                                                                                                             | -        |
+| decisions (5)                                                 | `keep` C26, C33 · `archive` C26, C33, C41 · `merge` C26, C34, C45 · `snooze` C26, C63, C90 · `unsure` C26, C63                                                                                                                                                                                                                                                                                                        | -        |
 | decision refusals (7)                                         | unknown key C35 · decision outside five C35 · merge without id C35 · id outside finding C35 · merge on other kind C35 · snooze without until C35 · until past C35                                                                                                                                                                                                                                                     | -        |
 | places the scan ignores (5)                                   | `memory/archive/` C27 · `ROUTER.md` C27 · `areas/` C27 · `journal/` C27 · `contexts/` C27                                                                                                                                                                                                                                                                                                                             | -        |
 | scan phases (4)                                               | `inventory` C10, C57 · `signatures` C10, C30, C57 · `links` C10, C31, C57 · `findings` C10, C57                                                                                                                                                                                                                                                                                                                       | -        |

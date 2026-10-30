@@ -52,6 +52,49 @@ afterAll(async () => {
 });
 
 describe("S3 the decisions route", () => {
+  it("C90 Revisar depois: PUT /decisions stores a snooze with its until (and an unsure with none); the next scan hides the snoozed finding until then and reports it again after (AC 21, AC 13; round 3)", async () => {
+    const root = dirOf("c90");
+    aged(path.join(root, "depois.md"), "sem titulo depois\n");
+    aged(path.join(root, "nao-sei.md"), "sem titulo nao sei\n");
+    await w.index();
+    const scan = await scanned(root);
+    const keyOf = (name: string) =>
+      kinds(scan, "untitled").find((f) => (f.files as Json[])[0]!.path.endsWith(name))!.key as string;
+    const [later, unsure] = [keyOf("depois.md"), keyOf("nao-sei.md")];
+    const until = Date.now() + 30 * DAY;
+    const res = await decide({
+      scanId: scan.scanId,
+      decisions: [
+        { key: later, decision: "snooze", until },
+        { key: unsure, decision: "unsure", until },
+      ],
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const stored = new Map(rows(`dir:${root}`).map((r) => [r.key, r]));
+    expect([stored.get(later)!.decision, stored.get(later)!.until, stored.get(later)!.keep_file_id]).toEqual([
+      "snooze",
+      until,
+      null,
+    ]);
+    expect([stored.get(unsure)!.decision, stored.get(unsure)!.until]).toEqual(["unsure", null]);
+    const keys = (s: Json) => (s.findings as Json[]).map((f) => f.key as string);
+    // before until: the snooze hides its finding, the unsure does not
+    const hidden = await scanned(root);
+    expect(keys(hidden)).not.toContain(later);
+    expect(keys(hidden)).toContain(unsure);
+    expect(hidden.decided).toBe(1);
+    // after until: it is asked again
+    vi.useFakeTimers({ toFake: ["Date"], now: until + 60_000 });
+    let back: Json;
+    try {
+      back = await scanned(root);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(keys(back)).toContain(later);
+    expect(back.decided).toBe(0);
+  }, 60_000);
+
   it("C33 a keep answers 200 { saved: 1 } and stores one row with scope, key, keep, null keep_file_id and until, decided_at now; an archive for the same key replaces it", async () => {
     const root = dirOf("c33");
     aged(path.join(root, "sem.md"), "sem titulo\n");

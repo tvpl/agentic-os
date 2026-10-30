@@ -664,6 +664,64 @@ describe("S2 the scanner's finding rules at their own layer", () => {
     expect(next[0]!.key).not.toBe(dup.key);
   });
 
+  it("C90 saveCleanupDecisions stores a snooze's until, and only a snooze's (a merge's keep_file_id, and nothing of either on the other kinds); the next scan hides the snoozed finding until then and reports it again after (AC 21, AC 13; round 3, own layer)", async () => {
+    const dir = folder("adiar");
+    for (const name of ["depois", "nao-sei", "manter"])
+      put(path.join(dir, `${name}.md`), `sem titulo ${name}\n`);
+    put(path.join(dir, "igual-a.md"), "# Igual\nmesmo texto aqui\n", 3);
+    put(path.join(dir, "igual-b.md"), "# Igual\nmesmo texto aqui\n", 2);
+    index();
+    const scope = scopeOf(dir);
+    const env = envWith();
+    const at = (now: number) => scanCleanupScope(ctx.db, env, scope, { now });
+    const first = await at(NOW);
+    const of = (name: string) =>
+      ofKind(first.findings, "untitled").find((f) => f.files[0]!.path.endsWith(name))!;
+    const dup = ofKind(first.findings, "duplicate")[0]!;
+    const record: CleanupScanRecord = {
+      scanId: `c90-${++seq}`,
+      scope: { kind: "dir", path: dir },
+      scopeKey: scope.key,
+      status: "finished",
+      phase: "findings",
+      code: null,
+      startedAt: NOW,
+      finishedAt: NOW,
+      findings: first.findings,
+      decided: 0,
+    };
+    const until = NOW + 30 * DAY;
+    const keep = dup.files[1]!.id;
+    saveCleanupDecisions(
+      ctx.db,
+      record,
+      [
+        { key: of("depois.md").key, decision: "snooze", until },
+        { key: of("nao-sei.md").key, decision: "unsure", until, keepFileId: keep },
+        { key: of("manter.md").key, decision: "keep", until },
+        { key: dup.key, decision: "merge", keepFileId: keep, until },
+      ],
+      { now: NOW },
+    );
+    const stored = new Map(
+      (
+        ctx.db
+          .prepare(
+            "SELECT key, decision, keep_file_id, until, decided_at FROM cleanup_decisions WHERE scope = ?",
+          )
+          .all(scope.key) as Json[]
+      ).map((r) => [r.key, [r.decision, r.keep_file_id, r.until, r.decided_at]]),
+    );
+    expect(stored.get(of("depois.md").key)).toEqual(["snooze", null, until, NOW]);
+    expect(stored.get(of("nao-sei.md").key)).toEqual(["unsure", null, null, NOW]);
+    expect(stored.get(of("manter.md").key)).toEqual(["keep", null, null, NOW]);
+    expect(stored.get(dup.key)).toEqual(["merge", keep, null, NOW]);
+    const shown = async (now: number) =>
+      ofKind((await at(now)).findings, "untitled").map((f) => path.basename(f.files[0]!.path));
+    expect((await shown(until - DAY)).sort()).toEqual(["nao-sei.md"]);
+    expect((await shown(until + 1)).sort()).toEqual(["depois.md", "nao-sei.md"]);
+  });
+
   it("C26 a stored decision hides its finding by kind: keep, archive, merge and an unexpired snooze hide; an expired snooze and unsure do not; another scope's keep hides nothing; a changed member is asked again", async () => {
     const dir = folder("decisoes");
     const names = ["keep", "archive", "merge", "snooze-futuro", "snooze-passado", "unsure", "outro-escopo"];
@@ -1477,6 +1535,32 @@ describe("S4 the apply planner and the undo at their own layer", () => {
     ]);
   });
 
+  it("C44 one file outside memory/ alone gets a list of one line, and one empty folder alone gets one too (round 3, own layer)", () => {
+    const out = folder("c44-um");
+    const one = put(path.join(out, "so.md"), "layer so\n");
+    const alone = applyCleanup(deps(), decided([finding("untitled", [one])], [[0, "archive"]]), { now: NOW });
+    expect([alone.moved, alone.manifest]).toEqual([[], null]);
+    expect(alone.proposals).not.toBeNull();
+    const lines = (list: string) =>
+      fs
+        .readFileSync(list, "utf8")
+        .split("\n")
+        .filter((l) => l.startsWith("- [ ] "));
+    expect(lines(alone.proposals!)).toEqual([`- [ ] ${one} — archive — sem título`]);
+    const empty = path.join(folder("c44-vazia"), "vazia");
+    fs.mkdirSync(empty);
+    const folderOnly = applyCleanup(
+      deps(),
+      decided([finding("empty-folder", [], { folder: empty })], [[0, "archive"]]),
+      {
+        now: NOW,
+      },
+    );
+    expect(folderOnly.proposals).not.toBeNull();
+    expect(lines(folderOnly.proposals!)).toEqual([`- [ ] ${empty}${path.sep} — archive — pasta vazia`]);
+    expect(fs.existsSync(empty)).toBe(true);
+  });
+
   it("C45 a merge keeping the newest of three duplicates leaves it in place and moves the other two (own layer)", () => {
     const dir = notes("c45");
     const files = ["a", "b", "c"].map((n, i) => put(path.join(dir, `${n}.md`), "layer igual\n", 3 - i));
@@ -1541,6 +1625,34 @@ describe("S4 the apply planner and the undo at their own layer", () => {
     const again = undoCleanup(deps(), second.res.manifest!);
     expect([again.restored, again.skipped]).toEqual([[], [{ path: second.files[0], reason: "exists" }]]);
     expect(fs.existsSync(path.dirname(second.res.manifest!))).toBe(true);
+  });
+
+  it("C48 a partial undo leaves manifest.json and the folder in the archive with what it skipped, and a second undo of that manifest still moves back what it can then (door 8; round 3, own layer)", () => {
+    const { files, res, toOf } = archivedThree("c48p");
+    const folder = path.dirname(res.manifest!);
+    const manifestText = fs.readFileSync(res.manifest!, "utf8");
+    const original = fs.readFileSync(toOf(files[0]!));
+    fs.appendFileSync(toOf(files[0]!), "+");
+    fs.rmSync(toOf(files[1]!));
+    const first = undoCleanup(deps(), res.manifest!);
+    expect(first.restored.map((e) => e.from)).toEqual([files[2]]);
+    // the partial branch: the manifest and the folder stay where they are, and the skipped file with them
+    expect(fs.readFileSync(res.manifest!, "utf8")).toBe(manifestText);
+    expect(fs.existsSync(toOf(files[0]!))).toBe(true);
+    expect(
+      fs.existsSync(path.join(ctx.paths.artifacts, "cleanup", `${path.basename(folder)}.manifest.json`)),
+    ).toBe(false);
+    // the changed file is put back as it was archived: the same manifest undoes it now
+    fs.writeFileSync(toOf(files[0]!), original);
+    const second = undoCleanup(deps(), res.manifest!);
+    expect(second.restored).toEqual([{ from: files[0], to: toOf(files[0]!) }]);
+    expect(second.skipped).toEqual([
+      { path: files[1], reason: "missing" },
+      // the one the first undo moved back is home already: its origin exists
+      { path: files[2], reason: "exists" },
+    ]);
+    expect(fs.readFileSync(files[0]!)).toEqual(original);
+    expect(fs.readFileSync(res.manifest!, "utf8")).toBe(manifestText);
   });
 
   it("C49 the undo refuses a path outside memory/archive/, another file name and a path that climbs out (validation), a manifest that is not there (not_found), v 2 (undo_conflict) and works under no exclusive lock (restore_in_progress); none moves (own layer)", () => {

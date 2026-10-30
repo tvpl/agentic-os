@@ -234,6 +234,45 @@ describe("S4 apply", () => {
     expect(fs.existsSync(path.join(w.memory, "archive"))).toBe(false);
   });
 
+  it("C44 one file outside memory/ alone gets a proposal list of one line, and one empty folder alone gets one too (round 3)", async () => {
+    const w = await world();
+    const lines = (list: string) =>
+      fs
+        .readFileSync(list, "utf8")
+        .split("\n")
+        .filter((l) => l.startsWith("- [ ] "));
+    const root = w.indexedRoot("c44-um");
+    const one = w.put(path.join(root, "so.md"), "sem titulo so\n");
+    await w.index();
+    const scan = await scanned(w, root);
+    await answer(w, scan, [[one, "untitled", "archive"]]);
+    const res = await apply(w, scan.scanId);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect([res.body.moved, res.body.manifest]).toEqual([[], null]);
+    expect(res.body.proposals).not.toBeNull();
+    expect(lines(res.body.proposals)).toEqual([`- [ ] ${one} — archive — sem título`]);
+
+    const other = w.indexedRoot("c44-vazia");
+    const empty = path.join(other, "vazia");
+    fs.mkdirSync(empty);
+    await w.index();
+    const scan2 = await scanned(w, other);
+    const folderFinding = (scan2.findings as Json[]).filter((f) => f.kind === "empty-folder");
+    expect(folderFinding).toHaveLength(1);
+    const put = await w.call("PUT", "/api/memory/cleanup/decisions", {
+      scanId: scan2.scanId,
+      decisions: [{ key: folderFinding[0]!.key, decision: "archive" }],
+    });
+    expect(put.status, JSON.stringify(put.body)).toBe(200);
+    const res2 = await apply(w, scan2.scanId);
+    expect(res2.status, JSON.stringify(res2.body)).toBe(200);
+    expect(res2.body.proposals).not.toBeNull();
+    expect(lines(res2.body.proposals)).toEqual([
+      `- [ ] ${folderFinding[0]!.detail.folder}${path.sep} — archive — pasta vazia`,
+    ]);
+    expect(fs.existsSync(empty)).toBe(true);
+  }, 60_000);
+
   it("C45 a merge keeping the newest of three duplicates under memory/notes/ leaves it and moves the other two", async () => {
     const w = await world();
     const dir = path.join(w.memory, "notes", "c45");
@@ -419,6 +458,35 @@ describe("S4 undo", () => {
     expect(all.body.skipped).toEqual([]);
     for (const f of third.files) expect(fs.existsSync(f)).toBe(true);
     expect(fs.existsSync(path.dirname(third.res.manifest))).toBe(false);
+  }, 60_000);
+
+  it("C48 a partial undo leaves manifest.json and the folder in the archive with what it skipped, and a second undo of that manifest still moves back what it can then (door 8; round 3)", async () => {
+    const w = await world();
+    const { files, res } = await archived(w, "c48-parcial");
+    const [changed, missing, untouched] = files as [string, string, string];
+    const manifestText = fs.readFileSync(res.manifest, "utf8");
+    const name = path.basename(path.dirname(res.manifest));
+    const original = fs.readFileSync(toOf(res, changed));
+    fs.appendFileSync(toOf(res, changed), "+");
+    fs.rmSync(toOf(res, missing));
+    const first = await undo(w, res.manifest);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(first.body.restored.map((e: Json) => e.from)).toEqual([untouched]);
+    expect(fs.readFileSync(res.manifest, "utf8")).toBe(manifestText);
+    expect(fs.existsSync(toOf(res, changed))).toBe(true);
+    expect(fs.existsSync(path.join(w.home, "artifacts", "cleanup", `${name}.manifest.json`))).toBe(false);
+    fs.writeFileSync(toOf(res, changed), original);
+    const second = await undo(w, res.manifest);
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    expect(second.body).toEqual({
+      restored: [{ from: changed, to: toOf(res, changed) }],
+      skipped: [
+        { path: missing, reason: "missing" },
+        { path: untouched, reason: "exists" },
+      ],
+    });
+    expect(fs.readFileSync(changed)).toEqual(original);
+    expect(fs.readFileSync(res.manifest, "utf8")).toBe(manifestText);
   }, 60_000);
 
   it("C49 undo answers 400 validation for a path outside memory/archive/, another file name and a path that climbs out; 404 for a manifest that does not exist; 409 undo_conflict for v 2; 409 restore_in_progress under the lock; none moves a file", async () => {
