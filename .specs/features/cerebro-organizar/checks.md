@@ -380,3 +380,39 @@ Status of batch B (updated in the commit that closes each piece):
   `tests/organize.sync.test.ts`, `tests/organize.layer.test.ts`,
   `apps/command-centre/src/views/settings/AgentStance.test.tsx`, `tests/e2e/organize.spec.ts` and `npm run lint:css`;
   with it batch B is closed (C24-C43, C49, C50)
+
+- **Boundary (batch B):** C24-C43, C49 and C50 closed; with batch A every check of the feature (C1-C50) is closed. S3
+  with C49 and C50 at `ccff71b`; S4 at `d029682`, which closes the batch. On the tree of `d029682`: `npm run build`,
+  `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0, `npx vitest run` at the root is green (136
+  files, 1804 tests, 1 skipped), `npm run test -w apps/command-centre` too (141 files, 1128 tests), each of the 63
+  `Proof:` lines of batches A and B exits 0 and runs only its check's tests (C22 runs two, C43 one per theme), and
+  `tests/e2e/organize.spec.ts`, `tests/e2e/contexts.spec.ts` and `tests/e2e/a11y.spec.ts` pass (69 tests).
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) door 12 added in
+  `d029682` (`PUT /api/settings` merges `memory` field by field, as `limits`), with an Impact row: the request C40 fixes
+  would otherwise reset the journal budget and turn the semantic search off; the screen sends `{memory:{agentStance}}`
+  through a cast to the interface's `SettingsPatch`, whose text `tests/preferences.test.ts` C16 pins; (b) `memory/notes/`
+  itself is no entry of the map (door 2: nothing at its top), only the folders below it, with `rel` `notes/<…>`; a
+  folder whose only child is `_index.md` is no entry, and `children` counts what the digest names; (c) door 10 read as:
+  with a run's credential `root` is `memory` or a folder equal to or inside one the run was handed (the skill's prose
+  calls `?root=<pasta a organizar>`), never an indexed root that holds it; the reach is the `folder` input of a skill
+  that takes one plus the context's `ok` paths, without folders of `memory/` (`runMapReach`, from the run record and
+  the catalog's skill); (d) the index note is read at request time under `memory/` through the safe reader, so a note
+  the skill just wrote counts before the next pass; a note that exists and cannot be read is `stale` with
+  `indexDigest` null; (e) `ROUTER.md` lines are ``- [<folder name>](./<path under memory/>) → `<folder>` `` (with
+  `(stale)` after it) and ``- `<folder>` (<n> children, <state>)``; the map is ordered by path, and ties of `children` keep it;
+  (f) the goals section comes after the paragraph under the title (still the first `##`), so it ends before
+  `## Memory router`; an item is `-`, `*`, `+` or `1.` at column 0, a `## Metas` with no item gives no section, and
+  the stance line follows `Full goals:`; (g) the stance group is a `fieldset` with a `legend` and two radios, without
+  the `.field` class (`.field > label` would draw the options at 12px in capitals), styled in
+  `views/settings/agentStance.css`; (h) pins moved the way the repo moves them: 137 routes and 26 `content` routes in
+  the contract, OpenAPI, refusal, events and device-scope suites (each device-scope total with its amendment in
+  `tests/sdk.api-thin.test.ts`), the run credential's reads in `tests/device-scopes.test.ts` C9, `folderDigests` and
+  `runMapReach` in the internal barrel (`tests/sdk.surface.test.ts` C38), the `content` row and the run-credential
+  paragraph of `docs/security.md`, a scenario in `tests/helpers/contractWorld.ts`, `agentStance` in the v1
+  `settings.changed` fixture and `memory.agentStance` among the leaves that open nothing (`tests/data.settings.test.ts`
+  C46); (i) C49 proves `RUN_API_READ_ROUTES` by reading the set in `apps/api/src/server.ts`, and C31 by the call.
+- **Abandoned:** a partial `memory` in the interface's `SettingsPatch` type (preferences C16 pins its text); the index
+  state from the `files` rows alone, or `children-digest` stored in `fields` (a note the skill writes would read
+  `missing` until the next pass, and door 6 names seven keys); `memory/notes/` as an entry (its `indexPath` would be a
+  file at the top of `notes/`); door 5's verdict run again for the map's reach (the run passed it when it launched;
+  the map only narrows the rows today's policy lets through).
