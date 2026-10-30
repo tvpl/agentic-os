@@ -431,6 +431,11 @@ validation` sem ela) e não é lida nos outros arquivos (C47, C53, C55).
     / "Reviews due" e `apps.settings.sentinel.reviewDueHint` "Uma vez por dia, as notas que venceram a revisão." / "Once a
     day, the notes due for review." (C93).
 
+24. **C52 sem "o mesmo inode" (AC 32, emenda do check na construção, lote B).** O AC 32 não fala de inode; o check dizia "o
+    mesmo inode", mas a door 4 manda a decisão pela escrita guardada das propriedades (`saveProperties` →
+    `writeWorkspaceFile`), que grava num arquivo temporário e renomeia sobre a nota, e o inode muda sempre. O C52 passa a
+    dizer o mesmo caminho, sem nome criado nem removido sob a home (a listagem antes e depois). Pergunta cerebro-natureza 10.
+
 Perguntas novas ao dono, levantadas pela reconciliação; o padrão vale até a resposta:
 
 | #   | Kind | Question                                                                                                                                                                                                                                                                                                                       | Until answered                                                                                        |
@@ -442,6 +447,7 @@ Perguntas novas ao dono, levantadas pela reconciliação; o padrão vale até a 
 | 7   | open | A ferramenta MCP `recall` não rotula nem filtra por natureza, e o bloco para os agentes manda usar `natureza=fato` (emenda 11). Dar à ferramenta `natureza`/`escopo` e o rótulo da CLI? Recomendo sim, numa feature própria pequena: muda um contrato que clientes MCP leem.                                                   | a ferramenta fica como está; quem chama `GET /api/memory/recall` direto recebe os campos e o filtro   |
 | 8   | open | O teto de peso desta feature: 12 KB de JS gzip e 2 KB de CSS gzip acima de `cerebro-faxina-guiada` (emenda 21)?                                                                                                                                                                                                                | 12 KB e 2 KB; se a construção passar, para e pergunta                                                 |
 | 9   | open | O `byType` padrão usa `type: status` e `type: conceito`, que o guia da `organize-brain` não define (emenda 18). Acrescentar os dois ao vocabulário de `type` do guia? Recomendo sim, numa mudança da C3 com o check C3 dela atualizado.                                                                                        | o guia fica com os onze valores; só uma nota tipada à mão ganha as cadências de `status` e `conceito` |
+| 10  | open | O C52 não pede mais "o mesmo inode" ao abandonar uma nota (emenda 24): o AC 32 não fala de inode, e a escrita guardada da door 4 (`saveProperties`) troca o arquivo por renomeação. Aceitar? Recomendo sim: escrever no lugar só para `abandon`, fora da escrita guardada, perde a troca atômica.                              | o mesmo caminho, sem nome criado nem removido sob a home; reverter é o texto do C52 e a emenda 24     |
 
 ## Sources
 
@@ -454,8 +460,3 @@ Perguntas novas ao dono, levantadas pela reconciliação; o padrão vale até a 
 - `.specs/STATE.md` AD-037 a AD-042 e os `plan.md`, `checks.md` e `verification.md` de `cerebro-correcoes`, `cerebro-contextos`,
   `cerebro-organizar`, `cerebro-vista-notas` e `cerebro-faxina-guiada` — o que as cinco construíram antes desta ("Emendas
   depois da aprovação").
-
-24. **C52 sem "o mesmo inode" (AC 32, emenda do check na construção, lote B).** O AC 32 não fala de inode; o check dizia "o
-    mesmo inode", mas a door 4 manda a decisão pela escrita guardada das propriedades (`saveProperties` →
-    `writeWorkspaceFile`), que grava num arquivo temporário e renomeia sobre a nota, e o inode muda sempre. O C52 passa a
-    dizer o mesmo caminho, sem nome criado nem removido sob a home (a listagem antes e depois). Pergunta cerebro-natureza 10.
