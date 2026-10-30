@@ -440,3 +440,8 @@ The estimate exceeds the 150k budget, so the build stops here for the mechanism 
     C77, C78) ≈ 74 KB → ≈ 19k = ≈ 71k; C56-C71, C77-C79, C81
   - B + C together ≈ 178k is over the budget, so the three stay apart; A must land first because B and C call its routes
 - Mechanism: handoff (the owner chose it on 2026-10-30: three batches A, B, C, sequential, each only on green)
+
+Status of batch A (updated in the commit that closes each piece):
+
+- a new note's folder and the fixed structure through the API, the CLI and the MCP (S3: C24-C28): closed, every proof
+  green in `tests/notesview.create.test.ts` and `tests/notesview.layer.test.ts`

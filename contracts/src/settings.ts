@@ -427,6 +427,16 @@ export const SettingsSchema = z.object({
        */
       agentStance: z.enum(["neutral", "contest-conflicts"]).default("neutral"),
       /**
+       * The notes of `memory/notes/` (.specs/features/cerebro-vista-notas, door 5). `fixedStructure` on: a new note
+       * goes only into a folder that exists; one that would make a folder or go straight into `memory/notes/` is
+       * `409 structure_fixed`, from the API, the CLI and the MCP alike. Off by default; an unreadable value reads off.
+       */
+      notes: z
+        .object({
+          fixedStructure: z.boolean().default(false),
+        })
+        .default({}),
+      /**
        * Semantic search over the notes (.specs/features/cerebro-v2, S4). OFF by default: nothing is embedded, no
        * extension is loaded and no connection is made until the owner turns it on. `hash` is computed in this
        * process from the text alone (no model, no network); `http` sends the text of each note to `endpoint`

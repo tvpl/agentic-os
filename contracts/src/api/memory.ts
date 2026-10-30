@@ -489,6 +489,8 @@ export const memoryRoutes = {
     body: z.object({
       title: z.string().min(1).max(600),
       area: z.string().min(1).max(200).optional(),
+      /** A folder under memory/notes (up to 4 levels, each made a name as a note's title is); made when missing. */
+      folder: z.string().min(1).max(1000).optional(),
       content: z.string().max(2_000_000).optional(),
       frontMatter: z.boolean().optional(),
       tags: z.array(z.string().max(100)).max(100).optional(),
@@ -498,6 +500,11 @@ export const memoryRoutes = {
       err(400, "unknown_area", "The area is not one of the areas in the settings"),
       err(403, "forbidden_path", "A link on the way or a private file would be written through"),
       err(409, "note_exists", "Ninety-nine notes already have this name"),
+      err(
+        409,
+        "structure_fixed",
+        "memory.notes.fixedStructure is on and the note would make a folder or go straight into memory/notes/",
+      ),
       err(413, "note_too_large", "The note is larger than the editing limit"),
     ],
   }),

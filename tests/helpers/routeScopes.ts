@@ -186,7 +186,14 @@ export const CEREBRO_V2_ROUTES: Record<
     scope: "owner",
     success: [201],
     reads: "body",
-    errors: ["400 unknown_area", "403 forbidden_path", "409 note_exists", "413 note_too_large"],
+    // cerebro-vista-notas, door 5: a note the fixed structure refuses.
+    errors: [
+      "400 unknown_area",
+      "403 forbidden_path",
+      "409 note_exists",
+      "409 structure_fixed",
+      "413 note_too_large",
+    ],
   },
   "PUT /api/memory/notes": {
     id: "memory.notes.save",

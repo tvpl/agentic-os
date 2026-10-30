@@ -28,6 +28,8 @@ export const MAX_TAGS = 20;
 export const TAG_PATTERN = /^[\p{L}\d_-]{2,30}$/u;
 /** `-2` to `-99`: how many notes may share one title. */
 export const MAX_SAME_NAME = 99;
+/** How deep a `folder` of a new note may go under `memory/notes/` (.specs/features/cerebro-vista-notas, door 2). */
+export const MAX_FOLDER_LEVELS = 4;
 /** Folders of `memory/` the engine writes itself (the routers, the maps of the work contexts) or only appends to (the journal). */
 const GENERATED_DIRS = new Set(["areas", "journal", "contexts"]);
 const GENERATED_FILES = new Set(["router.md"]);
@@ -69,6 +71,15 @@ export class NoteExistsError extends Error {
     this.name = "NoteExistsError";
   }
 }
+/** `memory.notes.fixedStructure` is on and the note would make a folder or go straight into `memory/notes/` (door 5). */
+export class StructureFixedError extends Error {
+  readonly statusCode = 409;
+  readonly code = "structure_fixed";
+  constructor(message: string) {
+    super(message);
+    this.name = "StructureFixedError";
+  }
+}
 export class NoteTooLargeError extends Error {
   readonly statusCode = 413;
   readonly code = "note_too_large";
@@ -102,6 +113,8 @@ export interface NoteRead extends NoteWritten {
 export interface CreateNoteInput {
   title: string;
   area?: string | undefined;
+  /** A folder under `memory/notes/`, `/`-separated, each level made a name as a title is (door 2). */
+  folder?: string | undefined;
   content?: string | undefined;
   frontMatter?: boolean | undefined;
   tags?: string[] | undefined;
@@ -123,9 +136,9 @@ export function versionOf(bytes: Uint8Array | string): string {
   return `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
 }
 
-/** A file name (without extension) from a title. */
-export function slugify(title: string): string {
-  let slug = title
+/** What a title keeps as a name: no accents, lower case, `-` between runs of letters and digits; may be empty. */
+function slugBase(title: string): string {
+  return title
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
@@ -133,8 +146,35 @@ export function slugify(title: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 80)
     .replace(/-+$/g, "");
+}
+
+/** A file name (without extension) from a title. */
+export function slugify(title: string): string {
+  let slug = slugBase(title);
   if (slug === "") slug = "nota";
   return WINDOWS_DEVICE.test(slug) ? `${slug}-nota` : slug;
+}
+
+/**
+ * The folders of a new note's `folder` (door 2): up to four `/`-separated levels, each made a name by the rule of a
+ * note's title. An empty level (`a//b`, a leading `/`), `..`, `.` and a level that keeps no letter or digit are
+ * `400 validation`.
+ */
+export function folderSegments(folder: string): string[] {
+  const parts = folder.split("/");
+  if (parts.length > MAX_FOLDER_LEVELS) {
+    throw new NoteValidationError("validation", `folder: at most ${MAX_FOLDER_LEVELS} levels under memory/notes`);
+  }
+  return parts.map((part) => {
+    const slug = slugBase(part);
+    if (part.trim() === "" || part.trim() === "." || part.trim() === ".." || slug === "") {
+      throw new NoteValidationError(
+        "validation",
+        "folder: each level is a name with a letter or a digit (no empty level, no . or ..)",
+      );
+    }
+    return WINDOWS_DEVICE.test(slug) ? `${slug}-nota` : slug;
+  });
 }
 
 const memoryScope = (ctx: NoteContext): ReadScope =>
@@ -307,13 +347,26 @@ export function createNote(ctx: NoteContext, input: CreateNoteInput, now: Date =
   if (input.area !== undefined && !ctx.settings.areas.includes(input.area)) {
     throw new NoteValidationError("unknown_area", `Unknown area "${input.area}": use one of the areas in the settings.`);
   }
+  if (input.area !== undefined && input.folder !== undefined) {
+    throw new NoteValidationError("validation", "area and folder: name one of them");
+  }
+  const folders = input.folder !== undefined ? folderSegments(input.folder) : input.area ? [areaSlug(input.area) || "area"] : [];
   const text = newNoteText(input, title, now);
   const limit = noteLimitBytes(ctx.settings);
   if (Buffer.byteLength(text, "utf8") > limit) throw new NoteTooLargeError(limit);
 
-  const dir = path.join(ctx.paths.memory, NOTES_DIR, ...(input.area ? [areaSlug(input.area) || "area"] : []));
+  const dir = path.join(ctx.paths.memory, NOTES_DIR, ...folders);
   const slug = slugify(title);
   const scope = memoryScope(ctx);
+  // Door 5: with the structure fixed a note goes only into a folder that exists, never straight into memory/notes/.
+  if (ctx.settings.memory?.notes?.fixedStructure === true) {
+    if (folders.length === 0) {
+      throw new StructureFixedError("The structure is fixed: create the note inside an existing folder of memory/notes.");
+    }
+    if (!isFolder(scope, dir)) {
+      throw new StructureFixedError(`The structure is fixed: the folder ${dir} does not exist and is not made.`);
+    }
+  }
   for (let n = 1; n <= MAX_SAME_NAME; n++) {
     const name = `${n === 1 ? slug : `${slug}-${n}`}.md`;
     const target = path.join(dir, name);
@@ -327,6 +380,14 @@ export function createNote(ctx: NoteContext, input: CreateNoteInput, now: Date =
     return { path: target, name, version: versionOf(text), size: Buffer.byteLength(text, "utf8"), mtime: Math.floor(stat.mtimeMs) };
   }
   throw new NoteExistsError(`There are already ${MAX_SAME_NAME} notes named "${slug}".`);
+}
+
+function isFolder(scope: ReadScope, dir: string): boolean {
+  try {
+    return statWorkspacePath(scope, dir).stat.isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 /**
