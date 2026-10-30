@@ -267,20 +267,27 @@ describe.skipIf(!POSIX)("S3 the folder map", () => {
     w.put(path.join(root, "visivel.md"), "# V\n");
     w.put(path.join(root, "rascunhos", "r.md"), "# R\n");
     await index();
-    // Excluded after the pass: the rows stay in the index until a full pass, and today's policy hides them.
+    // Excluded after the pass: the rows stay in the index until a full pass, and today's policy hides them. The user
+    // excludes are only that folder here: the default list repeats the secret names, and would hide them on its own.
+    const saved = w.ctx.settings().excludes;
     w.update((s) => {
-      s.excludes = [...s.excludes, "rascunhos"];
-    });
-    row(root, path.join(".ssh", "id.md"));
-    const hidden = await maps(`?root=${encodeURIComponent(root)}`);
-    expect(hidden.map((f) => f.rel)).toEqual([""]);
-    expect(byPath(hidden, root)).toMatchObject({ children: 1, digest: digestOf(["f:visivel.md"]) });
-
-    // The home's config/, under a root that holds the home (a stale index of a folder granted before AD-011).
-    w.update((s) => {
-      s.indexedFolders = [...s.indexedFolders, { path: w.home, area: null, enabled: true }];
+      s.excludes = ["rascunhos"];
     });
     try {
+      row(root, path.join(".ssh", "id.md"));
+      // Names only the secret-name rules refuse (no leading dot, so the digest's dot-name rule cannot be what drops
+      // them, and no user exclude names them): the one hard-blocked folder name without a dot, and a file of the
+      // secret-file patterns.
+      row(root, path.join("node_modules", "pacote.md"));
+      row(root, "servidor.pem");
+      const hidden = await maps(`?root=${encodeURIComponent(root)}`);
+      expect(hidden.map((f) => f.rel)).toEqual([""]);
+      expect(byPath(hidden, root)).toMatchObject({ children: 1, digest: digestOf(["f:visivel.md"]) });
+
+      // The home's config/, under a root that holds the home (a stale index of a folder granted before AD-011).
+      w.update((s) => {
+        s.indexedFolders = [...s.indexedFolders, { path: w.home, area: null, enabled: true }];
+      });
       row(w.home, path.join("config", "segredo.md"));
       row(w.home, path.join("publica", "p.md"));
       const withHome = await maps(`?root=${encodeURIComponent(w.home)}`);
@@ -289,7 +296,7 @@ describe.skipIf(!POSIX)("S3 the folder map", () => {
     } finally {
       w.update((s) => {
         s.indexedFolders = s.indexedFolders.filter((f) => f.path !== w.home);
-        s.excludes = s.excludes.filter((e) => e !== "rascunhos");
+        s.excludes = saved;
       });
     }
   });
