@@ -96,7 +96,8 @@ describe("S1 the index knows the nature", () => {
       off();
     }
     expect(events.map((e) => e.type)).toEqual(["index.finished"]);
-    expect(stats.added).toBeGreaterThanOrEqual(Object.keys(files).length);
+    expect(Object.keys(files)).toHaveLength(7);
+    expect(stats.added).toBe(7);
     const hits = await search("q=guabiroba&mode=text&limit=50");
     for (const [name, [, key, read, stored]] of Object.entries(files)) {
       const hit = hits.find((h) => h.path === path.join(root, name));
