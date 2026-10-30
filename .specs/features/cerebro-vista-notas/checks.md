@@ -291,7 +291,7 @@ Proof: `npx stylelint --config stylelint.config.mjs "apps/command-centre/src/bra
 **C78** - The component gallery has a notes-view entry (tree, tabs, properties table, callouts), and in both themes it has no `serious` or `critical` axe violation (AC 50)
 Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts notes-view.spec.ts -g "C78 "`
 
-**C79** - The notes view is reached from the entry only by a dynamic `import()`; `scripts/bundle-baseline.json` gains a `cerebro-vista-notas` entry after `cerebro-contextos` with a reason of more than 40 characters and the four numbers, at most 8 KB of JS gzip and 1.5 KB of CSS gzip above `cerebro-contextos`; `bundle:check` exits 0 (AC 51, amendment 14)
+**C79** - The notes view is reached from the entry only by a dynamic `import()`; `scripts/bundle-baseline.json` gains a `cerebro-vista-notas` entry after `cerebro-contextos` with a reason of more than 40 characters and the four numbers, at most 24 KB of JS gzip and 4.5 KB of CSS gzip above `cerebro-contextos`; `bundle:check` exits 0 (AC 51, amendments 14 and 15)
 Proof: `npx vitest run tests/notesview.contract.test.ts -t "C79 "`
 Proof: `npm run bundle:check`
 

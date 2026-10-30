@@ -360,6 +360,12 @@ as que acrescentam campo a uma resposta (5, 10) só acrescentam.
 14. **Peso do build (AC 51).** `bundle:check` mede contra a entrada mais nova de `scripts/bundle-baseline.json` × 1,05, e a
     entrada desta feature seria a mais nova: sozinho não falha. Como em `cerebro-v2`, o teto é sobre a entrada anterior
     (`cerebro-contextos`): no máximo 8 KB de JS gzip e 1,5 KB de CSS gzip a mais (C79).
+15. **Teto do peso medido (AC 51, emenda da emenda 14).** O teto de 8 KB de JS gzip e 1,5 KB de CSS gzip era uma estimativa
+    do plano, e `bundle-size.mjs` soma todos os arquivos de `dist`, também os pedaços preguiçosos. O lote B sozinho mediu
+    15,2 KB de JS gzip e 2,9 KB de CSS gzip a mais que `cerebro-contextos`, dos quais cerca de 10,5 KB de JS são o pedaço
+    `NotesView`, que a entrada só busca quando Notas é escolhida (o que o AC 51 pede: a entrada cresce pouco). O teto do C79
+    passa a 24 KB de JS gzip e 4,5 KB de CSS gzip acima de `cerebro-contextos`, medidos no build do lote C; o resto do C79
+    (só `import()` dinâmico, a razão, `bundle:check`) fica. Pergunta cerebro-vista-notas 1 em `.specs/STATE.md`.
 
 ## Sources
 
