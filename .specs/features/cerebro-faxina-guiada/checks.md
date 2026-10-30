@@ -527,3 +527,46 @@ Status of batch B (updated in the commit that closes each piece):
   `tests/cleanup.decisions.test.ts`, `tests/cleanup.apply.test.ts`, `tests/cleanup.move.test.ts`,
   `tests/cleanup.contract.test.ts` and `tests/cleanup.layer.test.ts`, with the three routes of batch B in the contract
   (`PUT /api/memory/cleanup/decisions`, `POST /api/memory/cleanup/apply`, `POST /api/memory/cleanup/undo`)
+
+- **Boundary (batch B):** C33-C50, C74-C79, C84 and C85 closed at `5e3ce42`, which closes the batch. On that tree:
+  `npm run build`, `npm run typecheck` and `npm run lint` exit 0, `npx vitest run` at the root is green (148 files, 1934
+  tests, 1 skipped) and `npm run test -w apps/command-centre` too (154 files, 1227 tests); each of the 33 `Proof:` lines
+  of batch B passes and runs only its check's test (C50's selector runs its two tests, the walker's self-test and the
+  walk). S5 and C51-C73, C80-C83 are untouched (batch C): no screen, no locale key, no bundle entry. What batch C calls:
+  the six routes of door 5 as `contracts/src/api/memory.ts` declares them (`manifest` and `proposals` are `string |
+null`, `skipped[].reason` is one of `changed`, `missing`, `exists`, `forbidden_path`, the undo's `skipped[].path` is the
+  origin), with `until` of a snooze in milliseconds since the epoch.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) Landing row 8, added
+  before its code, with C85 and owner question 9: after an undo that moved every entry back, the manifest moves to
+  `artifacts/cleanup/<archive name>.manifest.json` and the empty archive folder goes by `rmdir`, deepest first; a partial
+  undo leaves both; (b) C84 added for batch A's door 7 (L-047), proven at the layer and through the routes, and the old
+  "door 7" test is now C84's own-layer test; (c) the apply plans one move per file, the first finding that asks for it
+  giving the reason; `archive` moves every member and `merge` every member but `keep_file_id`; an `empty-folder` marked
+  `archive` is never moved or removed, anywhere, and becomes a proposal line (`<folder>/ — archive — pasta vazia`); a
+  file under `memory/archive/` is a proposal too; (d) the archive folder is the owner's local day and 8 random hex, the
+  destination the file's path under `memory/` (by real path), the manifest's `createdAt` is milliseconds and its `scope`
+  the scope key of door 3; the manifest is written only when something moved, and is written even if a later move throws
+  an error that is no skip reason; a destination equal to the manifest's own path is skipped as `exists`; (e) skip
+  reasons: `EditConflictError` and a non-regular file are `changed`, `ENOENT` `missing`, `EEXIST` `exists`, a
+  `PathAccessError` (a link on the way, the filter) `forbidden_path`, the undo's included; any other error goes on as
+  an error; (f) decisions: `keepFileId` is stored only for `merge` and `until` only for `snooze` (ignored on the other
+  kinds); a decision on a scan still running is `400 validation` (its findings are empty: no key is reported); (g) the
+  undo validates the path by its spelling (`memory/archive/<one name>/manifest.json`), takes the lock, reads it strictly
+  (16 MiB) through the safe reader, and answers `409 undo_conflict` for JSON it cannot read, `v` other than 1, or an
+  entry whose `from` is outside `memory/` (or inside the archive) or whose `to` is outside its own folder; because it
+  reads through the safe reader, `POST /api/memory/cleanup/undo` is in the three reader-refusal lists of
+  `contracts/src/api/errors.ts`, as the probe printed; (h) in the copy branch of `moveWorkspaceFile` a copy whose hash
+  differs is taken away by the existing `removeIfStillOurs` (that very file, by device and inode) before
+  `EditConflictError`: C40's "to holds no unconfirmed copy"; C50's walker, as its claim says, walks the cleanup modules
+  and `moveWorkspaceFile`'s own body, so this call inside `safeWrite.ts` is not one it lists; (i) C44's "no file outside
+  `memory/archive/` and `artifacts/cleanup/`" is compared over the whole home but `logs/` and `config/db/`, which the
+  server changes for every request it answers (the request log, SQLite's shared memory); (j) C77's "refused by the bus's
+  check" runs the check of `tests/helpers/eventGuard.ts` (the envelope's schema by type and version) on the envelope the
+  bus stamps: an emission off the schema for real fails the file in the guard's `afterEach`; (k) pins moved the way
+  batch A moved them: 145 routes, 74 owner routes, 143 device-scoped routes, `[74, 69]`, 73 raised pairs, 143 checked
+  responses in `api.openapi` C21, six chained `device-scopes` amendments in `sdk.api-thin`, the four names of
+  `cleanupApply.ts` in the internal barrel (`sdk.surface`), the owner row of `docs/security.md` (74), and three scenarios
+  in `tests/helpers/contractWorld.ts` that set up through the engine so a fault reaches only their own request.
+- **Abandoned:** an archive folder per file's parent (door 4 rejected it); a `scan_running` answer from `PUT
+/decisions` (amendment 12 does not list it); moving an empty folder into the archive (a move of a folder needs an
+  `rmdir` of the origin, which C50 does not allow outside the undo).
