@@ -43,12 +43,12 @@ cabeçalho que o índice já guarda em `files.fields` (`cerebro-organizar`, door
    conventions) com um contexto ou uma pasta ("Emendas" 11), por um evento da janela (`openCleanup`,
    `brain/cleanupEvents.ts`, new) que o `CleanupHost` (new, montado uma vez pelo `OsShell`, ao lado do `NoteEditorHost`)
    ouve e atende com o pedaço do assistente, carregado por `import()`. A etapa "Escopo" lê `GET /api/contexts`, as
-   pastas indexadas de `GET /api/settings` e, para "última mudança há D dias", a linha mais recente do escopo por
-   `GET /api/memory/search` sem palavras (exists); o assistente ouve `cleanup.*` pelo `useOsEvent` do barramento da tela.
+   pastas indexadas de `GET /api/settings` e, para "N arquivos, última mudança há D dias", o `total` e o `newest` do
+   próprio inventário do escopo (emenda 18); o assistente ouve `cleanup.*` pelo `useOsEvent` do barramento da tela.
 2. Inventário → `GET /api/memory/cleanup/inventory` (door 5) → `cleanupInventory` (new, no door) agrega as linhas de `files`
    do escopo (de um contexto: as que `contextMembership` deixa e as de `memory/notes/<id>/`, "Emendas" 3), já filtradas pelo
    `rowFilter`, sem abrir arquivo: contagem por tipo, tamanho, faixas de idade, maiores pastas, grupos por subpasta e por
-   termos de `file_terms`/`file_related`.
+   termos de `file_terms`/`file_related`, e o `mtime` mais recente delas (`newest`, emenda 18).
 3. Varredura → `POST /api/memory/cleanup/scans` (door 5) → `CleanupScanner` (new, no door) roda em blocos que cedem o laço,
    segurando o `RestoreLock` compartilhado (exists); calcula assinaturas MinHash do texto do FTS e as guarda em `file_minhash`
    (door 2, migração 24); lê `linkEdges` (exists) para órfãs e as linhas de `note_links` que não resolvem, pela regra de
@@ -372,6 +372,15 @@ scan_stale` quando outra a substituiu e `409 restore_in_progress`; `POST /undo` 
     que pare uma varredura, que então termina no servidor. Vale o AC: "Cancelar" fecha o assistente, nada se aplica, o aviso
     `role="status"` "Varredura cancelada." (`cleanup.cancelled`) aparece uma vez, e "Procurar de novo" não se desenha;
     reabrir o escopo segue o AC 40 (C73). Pergunta nova 7.
+
+18. **"Última mudança há D dias" no escopo da faxina (Surface `GET /inventory`, `design.md` "Etapa 1", rodada 1 da
+    verificação).** A construção do lote C tirou D da linha mais recente de `GET /api/memory/search` sem palavras. O
+    escopo da busca não é o da faxina: `context=<id>` deixa de fora `memory/notes/<id>/` (emenda 3) e `dir=<p>` é um
+    prefixo de texto (`f.dir LIKE '<p>%'`), que também pega `<p>-antigo/`. O inventário passa a dizer `newest`: o maior
+    `mtime` (ms) das mesmas linhas que `total` conta, ou `null` quando não há nenhuma; a saída de `GET /inventory`
+    ganha esse campo (só acrescenta; a linha aprovada da Surface fica como foi aprovada e esta emenda a completa), o C1 nomeia as oito chaves e o C54 diz de que conjunto D é a mais recente. A tela
+    não pede mais a busca para isso. O prefixo da busca em `dir` é de antes desta feature e fica como está (C1, C54;
+    `checks.md`, "Correções da rodada 1").
 
 Perguntas novas ao dono, levantadas pela reconciliação; o padrão vale até a resposta:
 

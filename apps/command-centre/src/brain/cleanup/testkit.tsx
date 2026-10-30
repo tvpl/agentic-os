@@ -62,6 +62,7 @@ export function inventory(folders = 10, groups = 4): Inventory {
       count: 20 - i,
       terms: [],
     })),
+    newest: Date.now() - 3 * DAY,
   };
 }
 
@@ -87,7 +88,10 @@ export function finding(kind: FindingKind, paths: string[], over: Partial<Findin
 
 /** The scans the table holds, by id; `POST /scans` hands out the ids of `starts` in order. */
 export const cleanup = {
+  /** What `GET /inventory` answers for a scope it is not given by key below. */
   inventory: inventory() as Inventory | Error,
+  /** The inventory of one scope, by `context:<id>` or `dir:<path>`: a request names its scope, or it is refused. */
+  inventories: {} as Record<string, Inventory>,
   scans: {} as Record<string, Scan | Error>,
   starts: [] as Array<string | Error>,
   decisions: (_body: unknown): Promise<unknown> => Promise.resolve({ saved: 1 }),
@@ -119,6 +123,7 @@ const answer = (value: unknown) => (value instanceof Error ? Promise.reject(valu
 /** Reset the table and put the cleanup routes in front of the notes-view stub. Call in `beforeEach`. */
 export function resetCleanup(): void {
   cleanup.inventory = inventory();
+  cleanup.inventories = {};
   cleanup.scans = {};
   cleanup.starts = [];
   cleanup.decisions = () => Promise.resolve({ saved: 1 });
@@ -131,11 +136,14 @@ export function resetCleanup(): void {
     /* no storage */
   }
   net.overrides.push((u: Asked) => {
-    if (u.pathname === "/api/memory/cleanup/inventory") return answer(cleanup.inventory);
+    if (u.pathname === "/api/memory/cleanup/inventory") {
+      // As the route reads its query: exactly one of context and dir names the scope (C9).
+      const [ctx, dir] = [u.searchParams.get("context"), u.searchParams.get("dir")];
+      if ((ctx === null) === (dir === null)) return answer(new NetError(400, "scope_required"));
+      return answer(cleanup.inventories[ctx !== null ? `context:${ctx}` : `dir:${dir}`] ?? cleanup.inventory);
+    }
     const id = /^\/api\/memory\/cleanup\/scans\/(.+)$/.exec(u.pathname)?.[1];
     if (id) return answer(cleanup.scans[id] ?? new NetError(404, "not_found"));
-    if (u.pathname === "/api/memory/search")
-      return Promise.resolve([{ id: 1, mtime: Date.now() - 3 * DAY, path: `${WORK}/x.md` }]);
     if (u.pathname === "/api/settings")
       return Promise.resolve({
         areas: [],

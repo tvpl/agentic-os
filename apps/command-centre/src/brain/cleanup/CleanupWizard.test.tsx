@@ -18,6 +18,7 @@ import { openCleanup } from "../cleanupEvents";
 import {
   DAY,
   NetError,
+  inventory,
   WORK,
   atStep,
   cleanup,
@@ -122,10 +123,27 @@ describe("C53 one Modal with a fixed header and footer", () => {
 });
 
 describe("C54 step 1, Escopo", () => {
-  it("C54 the contexts (name, main path, count) above Ou uma pasta… with the indexed folders; a choice reads N arquivos, última mudança há D dias and enables Ver o que tem aqui", async () => {
+  it("C54 the contexts (name, main path, count) above Ou uma pasta… with the indexed folders; a choice reads N arquivos, última mudança há D dias from that scope's own inventory (N its total, D the days since its newest row) and enables Ver o que tem aqui", async () => {
     context("alfa", "Alfa", { files: 14 });
     context("beta", "Beta", { files: 3 });
     cleanup.folders = [WORK, "/work/outra"];
+    // Each scope's own inventory: what the line reads must be the chosen one's, asked by its own query.
+    cleanup.inventories["context:alfa"] = {
+      ...inventory(),
+      total: { count: 14, bytes: 1 },
+      newest: Date.now() - 3 * DAY,
+    };
+    cleanup.inventories["context:beta"] = {
+      ...inventory(),
+      total: { count: 3, bytes: 1 },
+      newest: Date.now() - 8 * DAY,
+    };
+    cleanup.inventories[`dir:${WORK}`] = {
+      ...inventory(),
+      total: { count: 5, bytes: 1 },
+      newest: Date.now() - 41 * DAY,
+    };
+    cleanup.inventory = new NetError(400, "scope_required");
     const { dialog } = await openWizard({});
     await atStep("Etapa 1 de 5 · Escopo");
     await waitFor(() => expect(within(dialog).getAllByRole("radio")).toHaveLength(2));
@@ -141,16 +159,36 @@ describe("C54 step 1, Escopo", () => {
       WORK,
       "/work/outra",
     ]);
-    const see = within(dialog).getByRole("button", { name: "Ver o que tem aqui" });
-    expect((see as HTMLButtonElement).disabled).toBe(true);
+    const see = within(dialog).getByRole("button", { name: "Ver o que tem aqui" }) as HTMLButtonElement;
+    expect(see.disabled).toBe(true);
     expect(dialog.querySelector(".cln-chosen")).toBeNull();
+    const chosen = () => dialog.querySelector(".cln-chosen")?.textContent;
+    fireEvent.click(within(dialog).getAllByRole("radio")[1]!);
+    await waitFor(() => expect(chosen()).toBe("3 arquivos, última mudança há 8 dias"));
     fireEvent.click(within(dialog).getAllByRole("radio")[0]!);
-    await waitFor(() =>
-      expect(dialog.querySelector(".cln-chosen")?.textContent).toBe("14 arquivos, última mudança há 3 dias"),
+    await waitFor(() => expect(chosen()).toBe("14 arquivos, última mudança há 3 dias"));
+    fireEvent.change(field, { target: { value: WORK } });
+    await waitFor(() => expect(chosen()).toBe("5 arquivos, última mudança há 41 dias"));
+    // Each line came from its own scope's request, and no other route was asked for it.
+    const asked = net.calls
+      .filter((c) => c.method === "GET" && c.url.startsWith("/api/memory/cleanup/inventory?"))
+      .map((c) => new URLSearchParams(c.url.split("?")[1]).toString());
+    expect(new Set(asked)).toEqual(
+      new Set(["context=beta", "context=alfa", `dir=${encodeURIComponent(WORK)}`]),
     );
-    expect((see as HTMLButtonElement).disabled).toBe(false);
+    expect(net.calls.filter((c) => c.url.startsWith("/api/memory/search"))).toEqual([]);
+    expect(see.disabled).toBe(false);
     fireEvent.click(see);
     await atStep("Etapa 2 de 5 · O que tem aqui");
+  });
+
+  it("C54 a scope with no row reads N arquivos alone, with no day", async () => {
+    context("alfa", "Alfa");
+    cleanup.inventories["context:alfa"] = { ...inventory(), total: { count: 0, bytes: 0 }, newest: null };
+    const { dialog } = await openWizard({});
+    await waitFor(() => expect(within(dialog).getAllByRole("radio")).toHaveLength(1));
+    fireEvent.click(within(dialog).getAllByRole("radio")[0]!);
+    await waitFor(() => expect(dialog.querySelector(".cln-chosen")?.textContent).toBe("0 arquivos"));
   });
 
   it("C54 with no context and no indexed folder: Nada indexado ainda… and no action", async () => {

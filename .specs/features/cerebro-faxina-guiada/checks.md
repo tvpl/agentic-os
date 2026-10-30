@@ -27,7 +27,7 @@ a code asserts both (plan.md, "Emendas" 4).
 
 ### S1 - o que tem aqui: inventário, core e rota (plan S1) · 8 files · 142 KB · ~35k
 
-**C1** - `GET /api/memory/cleanup/inventory?context=<id>` with the owner token answers `200` with `scope` = `{ kind: "context", id: "<id>" }`, `total` = the number of the scope's indexed files and their bytes, and the keys `byKind`, `bySize`, `byAge`, `topFolders`, `clusters`, each computed over the same 14 rows of the fixture (AC 1, door 5)
+**C1** - `GET /api/memory/cleanup/inventory?context=<id>` with the owner token answers `200` with `scope` = `{ kind: "context", id: "<id>" }`, `total` = the number of the scope's indexed files and their bytes, and the keys `byKind`, `bySize`, `byAge`, `topFolders`, `clusters`, `newest`, each computed over the same 14 rows of the fixture; `newest` is the largest `mtime` of exactly the rows `total` counts (a context's `memory/notes/<id>/` in, a sibling folder whose name starts the same out) and `null` for a scope with no row (AC 1, door 5, amendment 18; changed in round 1)
 Proof: `npx vitest run tests/cleanup.inventory.test.ts -t "C1 "`
 
 **C2** - `byKind` holds six groups in the order `notes`, `text`, `pdf`, `image`, `code`, `other`, each with `count` and `bytes`, one asserted case per group: `a.md` and `b.markdown` count in `notes`, `c.txt` in `text`, `d.pdf` in `pdf`, `e.png` in `image`, `f.ts` in `code`, `g.xyz` in `other`; a group with no file answers `count: 0, bytes: 0` (AC 1)
@@ -212,7 +212,7 @@ Proof: `npm run test -w apps/command-centre -- src/commands/commands.source.test
 **C53** - The wizard is one `Modal` (focus enters it, Esc closes it, focus returns to the opener) whose fixed header holds, top to bottom, the title "Faxina guiada", the scope (the context's name, or the folder's path in the mono 12px class) and the step bar: five numbered circles in the order "Escopo", "O que tem aqui", "Achados", "Conferir", "Pronto", the current one with `aria-current="step"`, the completed ones with the `Check` icon; the current step also reads "Etapa 2 de 5 · O que tem aqui"; the fixed footer holds, left to right, "Fechar", "Voltar" (`.btn`) and the step's action (`.btn.primary`) (AC 36)
 Proof: `npm run test -w apps/command-centre -- src/brain/cleanup/CleanupWizard.test.tsx -t "C53 "`
 
-**C54** - Step 1 lists the contexts (name, main path, file count) above the field "Ou uma pasta…" with the indexed folders; a chosen item shows "N arquivos, última mudança há D dias" and enables "Ver o que tem aqui"; with no context and no indexed folder the step shows "Nada indexado ainda. Adicione uma pasta em Configurações › Pastas." and no action (design.md "Etapa 1")
+**C54** - Step 1 lists the contexts (name, main path, file count) above the field "Ou uma pasta…" with the indexed folders; a chosen item shows "N arquivos, última mudança há D dias", where N is the `total.count` and D the whole days since the `newest` of the chosen scope's own `GET /api/memory/cleanup/inventory` (asked with that scope's `context` or `dir`, never another route), "N arquivos" alone when `newest` is `null`, and enables "Ver o que tem aqui"; with no context and no indexed folder the step shows "Nada indexado ainda. Adicione uma pasta em Configurações › Pastas." and no action (design.md "Etapa 1", amendment 18; changed in round 1)
 Proof: `npm run test -w apps/command-centre -- src/brain/cleanup/CleanupWizard.test.tsx -t "C54 "`
 
 **C55** - Step 2 shows the cards in the order "Arquivos" (total and bytes), "Por tipo" (six bars in the order notas, texto, PDF, imagem, código, outros, each with its number), "Idade" (four columns in band order, the number above each; the "mais de um ano" column carries the warning token's class and the word "parados"), "Maiores pastas" (ten rows, name, size and a bar) and "Grupos" (up to twelve pills, name and count); the grid has two columns at 1 280 px and one at 600 px; while the inventory loads, the card skeletons with a spinner and "Lendo o índice…" (AC 1, AC 5, design.md "Etapa 2")
@@ -336,6 +336,18 @@ change to an approved check is listed with what it was. The approved text of eve
   four skip reasons (C42, C43), inside and outside `memory/` with the archive and an empty folder as proposals (C44),
   `merge` (C45), the index request (C46), the scan refusals and the lock (C47); the undo's three skip reasons and the
   folder kept while not empty (C48), its refusals (C49) and the full undo (C85). The claims are unchanged.
+
+- **C1 (changed, amendment 18).** Was: "… and the keys `byKind`, `bySize`, `byAge`, `topFolders`, `clusters`, each
+  computed over the same 14 rows of the fixture (AC 1, door 5)". Now the keys include `newest`, and the claim says
+  which rows it is the newest of; the proof gains the case "C1 newest is the latest mtime of exactly the rows total
+  counts…" in `tests/cleanup.inventory.test.ts` (same `Proof:` line). Why: finding 3, step 1's D was read over the
+  search's notion of a scope, not the cleanup's.
+- **C54 (changed, amendment 18).** Was: "… a chosen item shows "N arquivos, última mudança há D dias" and enables "Ver o
+  que tem aqui" …". Now it names the set D comes from (the chosen scope's own inventory, by its own query) and the
+  line with no row. The test kit's inventory route answers each scope by its `context` or `dir` and refuses a request
+  that names neither (`400 scope_required`, as C9), so a dropped or a wrong scope fails C54; both faults were injected
+  and failed it. The step no longer asks `GET /api/memory/search`. The search's own `dir` prefix
+  (`core/src/memory/search.ts:58-60`) is older than this feature and is left as it is.
 
 **C86** - `POST /api/memory/cleanup/undo` for a manifest of this feature answers `409 undo_conflict`, one asserted case per reason the undo has (Handoff batch B, (g)): text that is not JSON, `v` other than 1, an entry whose `from` is outside `memory/`, an entry whose `from` is inside `memory/archive/`, and an entry whose `to` is outside its own archive folder; none moves or writes a file; the same five at the undo's own layer throw `CleanupUndoConflictError` (finding 2; added in round 1)
 Proof: `npx vitest run tests/cleanup.apply.test.ts -t "C86 "`

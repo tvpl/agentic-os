@@ -310,6 +310,7 @@ export default function CleanupWizard({
         }}
         scope={scope}
         files={inventory.data?.total.count}
+        newest={inventory.data?.newest}
         failed={invFailed}
       />
     );
@@ -405,20 +406,16 @@ function ScopeStep(p: {
   onChoose: (c: Choice) => void;
   scope: Scope | null;
   files: number | undefined;
+  /** The latest `mtime` of the rows the inventory counted (amendment 18). */
+  newest: number | null | undefined;
   failed: ReactNode;
 }) {
   const t = useT();
   const locale = useLocale();
   const work = useWorkContext();
   const [dir, setDir] = useState(p.choice && "dir" in p.choice ? p.choice.dir : "");
-  const recent = useRouteQuery(
-    ["memory", "cleanup", "recent", p.scope ? scopeKey(p.scope) : ""],
-    "GET /api/memory/search",
-    { query: { q: "", mode: "text", limit: 1, ...(p.scope ? scopeQuery(p.scope) : {}) } },
-    { enabled: p.scope !== null, staleTime: 30_000 },
-  );
   if (p.bare) return <p className="cln-empty">{t("cleanup.scope.nothing")}</p>;
-  const last = recent.data?.[0]?.mtime;
+  const last = p.newest;
   const picked = p.choice && "context" in p.choice ? p.choice.context : null;
   return (
     <div className="cln-scope">
@@ -459,9 +456,9 @@ function ScopeStep(p: {
         </datalist>
       </label>
       {p.failed}
-      {p.scope && p.files !== undefined && recent.isSuccess && (
+      {p.scope && p.files !== undefined && (
         <p className="cln-chosen">
-          {last === undefined
+          {last === null || last === undefined
             ? t("context.files", { n: p.files })
             : t("cleanup.scope.chosen", {
                 n: p.files,

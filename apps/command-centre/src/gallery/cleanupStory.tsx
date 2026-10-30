@@ -18,6 +18,7 @@ const INVENTORY: Inventory = {
     bytes: 240_000 - i * 30_000,
   })),
   bySize: [],
+  newest: NOW - 2 * DAY,
   byAge: [0, 31, 91, 366].map((from, i) => ({ from, to: [30, 90, 365, null][i]!, count: 12 + i })),
   topFolders: ["projetos", "clientes", "pesquisa"].map((name, i) => ({
     path: `${ROOT}/${name}`,

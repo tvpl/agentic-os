@@ -422,6 +422,8 @@ const CleanupInventorySchema = z.object({
       terms: z.array(z.string()),
     }),
   ),
+  /** The most recent `mtime` (ms) of the rows `total` counts, null when there are none ("última mudança há D dias"). */
+  newest: z.number().nullable(),
 });
 
 const CleanupFindingSchema = z.object({

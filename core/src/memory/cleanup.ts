@@ -200,6 +200,8 @@ export interface CleanupInventory {
   byAge: Array<{ from: number; to: number | null; count: number }>;
   topFolders: Array<{ path: string; count: number; bytes: number }>;
   clusters: Array<{ kind: "folder" | "related"; name: string; path: string | null; count: number; terms: string[] }>;
+  /** The most recent `mtime` (ms) of the rows `total` counts, or null when there are none (amendment 18). */
+  newest: number | null;
 }
 
 /** The top 3 terms the files share (by how many of them hold it, then by weight, then by name), from `file_terms`. */
@@ -318,8 +320,10 @@ export function cleanupInventory(
   const realRoots = scope.roots.map((root) => ({ root, real: realpathLenient(root) }));
   const realOf = new Map<string, string>();
   let bytes = 0;
+  let newest: number | null = null;
   for (const row of rows) {
     bytes += row.size;
+    if (newest === null || row.mtime > newest) newest = row.mtime;
     const kind = byKind.get(kindGroupOf(row.ext))!;
     kind.count++;
     kind.bytes += row.size;
@@ -361,6 +365,7 @@ export function cleanupInventory(
     byAge,
     topFolders,
     clusters: clustersOf(db, placed),
+    newest,
   };
 }
 
