@@ -92,6 +92,27 @@ export const MicroAppSchema = z.object({
 export type MicroApp = z.infer<typeof MicroAppSchema>;
 
 /** Second Brain preferences: every field optional so older clients keep working; the frontend validates values. */
+/** At most this many tabs and open folders are kept (.specs/features/cerebro-vista-notas, door 4); the rest is cut on read. */
+const BRAIN_NOTES_MAX_TABS = 12;
+const BRAIN_NOTES_MAX_EXPANDED = 500;
+const firstOf = (max: number) => (v: unknown) => (Array.isArray(v) ? v.slice(0, max) : v);
+const NotePathSchema = z.string().min(1).max(4096);
+
+/**
+ * The notes view of the Second Brain (.specs/features/cerebro-vista-notas, door 4), per machine: the root, a Home per
+ * root, the open tabs in their order, the active tab, the sort and the open folders, all absolute paths. A field this
+ * version cannot read reads its default and the others are kept, like every presentation field.
+ */
+const BrainNotesSchema = z.object({
+  root: NotePathSchema.nullable().catch(null),
+  home: z.record(NotePathSchema).catch({}),
+  tabs: z.preprocess(firstOf(BRAIN_NOTES_MAX_TABS), z.array(NotePathSchema)).catch([]),
+  active: NotePathSchema.nullable().catch(null),
+  sort: z.enum(["name", "updated"]).catch("name"),
+  expanded: z.preprocess(firstOf(BRAIN_NOTES_MAX_EXPANDED), z.array(NotePathSchema)).catch([]),
+});
+export type BrainNotes = z.infer<typeof BrainNotesSchema>;
+
 export const BrainSettingsSchema = z.object({
   layout: z.string().optional(),
   view: z.string().optional(),
@@ -109,6 +130,7 @@ export const BrainSettingsSchema = z.object({
       collapsed: z.array(z.string()).default([]),
     })
     .optional(),
+  notes: BrainNotesSchema.optional().catch(undefined),
 });
 export type BrainSettings = z.infer<typeof BrainSettingsSchema>;
 

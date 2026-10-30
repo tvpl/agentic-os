@@ -481,3 +481,8 @@ not_a_file` (the safe reader's answer for a path that is not a regular file); it
 - **Abandoned:** a `folder` argument for the MCP `note_create` and `--folder` for `mordomo note new` (no check asks for
   them; with the structure fixed both still create inside an existing area folder); a YAML parser (door 3's rejected
   alternative); answering the tree from `folderDigests` (amendment 3: it reads `_index.md` from disk and has no files).
+
+Status of batch B (updated in the commit that closes each piece):
+
+- the notes view's preferences, `UiPreferences.brain.notes` with its caps on read (door 4: C47): closed, the proof green
+  in `tests/notesview.layer.test.ts`

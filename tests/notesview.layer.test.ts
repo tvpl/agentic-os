@@ -21,6 +21,7 @@ import {
 } from "../core/src/memory/notes.js";
 import { entryEditability, memoryTree } from "../core/src/memory/tree.js";
 import { PathAccessError } from "../core/src/errors.js";
+import { UiPreferencesSchema } from "../contracts/src/preferences.js";
 import { makeTempHome } from "./helpers.js";
 
 /**
@@ -28,6 +29,7 @@ import { makeTempHome } from "./helpers.js";
  * with no HTTP: the tree (`memoryTree`, `entryEditability`), the properties (`parseProperties`, `setProperties`,
  * `validatePropertyChange`), and a new note's folder and the fixed structure (`folderSegments`, `createNote`). The HTTP
  * side of each claim is in `notesview.tree.test.ts`, `notesview.properties.test.ts` and `notesview.create.test.ts`.
+ * Batch B adds the caps of the notes view's preferences (`UiPreferencesSchema`, door 4), which no route decides.
  */
 
 const POSIX = process.platform !== "win32";
@@ -410,5 +412,62 @@ describe("doors 2 and 5 at their own layer: a new note's folder and the fixed st
       path.join(notes, "c26-nova", "nova.md"),
     );
     expect(createNote(env(off), { title: "Solta" }).path).toBe(path.join(notes, "solta.md"));
+  });
+});
+
+describe("door 4 at its own layer: the notes view's preferences", () => {
+  const brainWith = (notes: unknown, rest: Record<string, unknown> = {}) =>
+    UiPreferencesSchema.parse({ brain: { ...rest, notes } }).brain;
+
+  it("C47 own layer: brain.notes keeps the first 12 of 13 tabs and the first 500 of 501 expanded folders; an unreadable sort or home reads its default and every other field is kept", () => {
+    const tabs = Array.from({ length: 13 }, (_, i) => `/h/memory/notes/n${i}.md`);
+    const expanded = Array.from({ length: 501 }, (_, i) => `/h/memory/notes/p${i}`);
+    const read = brainWith({
+      root: "/h/memory",
+      home: { "/h/memory": "/h/memory/notes/n0.md" },
+      tabs,
+      active: tabs[2],
+      sort: "updated",
+      expanded,
+    });
+    expect(read.notes!.tabs).toEqual(tabs.slice(0, 12));
+    expect(read.notes!.expanded).toEqual(expanded.slice(0, 500));
+    expect(read.notes!.root).toBe("/h/memory");
+    expect(read.notes!.active).toBe(tabs[2]);
+    expect(read.notes!.sort).toBe("updated");
+    expect(read.notes!.home).toEqual({ "/h/memory": "/h/memory/notes/n0.md" });
+
+    // An unreadable field reads its default; the other notes fields and every other brain field are kept.
+    const odd = brainWith(
+      {
+        root: "/h/memory",
+        home: 3,
+        tabs: tabs.slice(0, 2),
+        active: tabs[1],
+        sort: "size",
+        expanded: ["/h/a"],
+      },
+      {
+        layout: "force",
+        localHops: 2,
+        showNames: true,
+        workspace: { pinned: [{ id: 1, x: 2, y: 3 }], collapsed: ["x"] },
+      },
+    );
+    expect(odd.notes!.sort).toBe("name");
+    expect(odd.notes!.home).toEqual({});
+    expect(odd.notes!.root).toBe("/h/memory");
+    expect(odd.notes!.tabs).toEqual(tabs.slice(0, 2));
+    expect(odd.notes!.active).toBe(tabs[1]);
+    expect(odd.notes!.expanded).toEqual(["/h/a"]);
+    expect(odd.layout).toBe("force");
+    expect(odd.localHops).toBe(2);
+    expect(odd.showNames).toBe(true);
+    expect(odd.workspace).toEqual({ pinned: [{ id: 1, x: 2, y: 3 }], collapsed: ["x"] });
+
+    // A brain document without notes reads none (nothing is added to it), and one whose notes is not an object
+    // keeps every other brain field.
+    expect(brainWith(undefined, { layout: "force" })).toEqual({ layout: "force" });
+    expect(brainWith(3, { layout: "force" }).layout).toBe("force");
   });
 });
