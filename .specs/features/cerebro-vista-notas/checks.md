@@ -488,3 +488,6 @@ Status of batch B (updated in the commit that closes each piece):
   in `tests/notesview.layer.test.ts`
 - the notes sidebar and its tree (S4: C31-C41): closed, every proof green in
   `apps/command-centre/src/brain/notes/NotesSidebar.test.tsx` and `NotesTree.test.tsx`
+- the tabs, the Home, the reader and the panel (S5): C43-C45, C47-C53 and C55 closed, every proof green in
+  `apps/command-centre/src/brain/notes/NoteTabs.test.tsx`, `NoteReader.test.tsx` and `NotePanel.test.tsx`; C46 and
+  C54 have their unit proofs green there, and close with their browser proofs
