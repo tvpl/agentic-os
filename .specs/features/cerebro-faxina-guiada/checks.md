@@ -4,9 +4,10 @@ Profile: ui
 Plan: `.specs/features/cerebro-faxina-guiada/plan.md`
 Design: `.specs/features/cerebro-faxina-guiada/design.md` (binding for the screens)
 
-83 checks in 5 slices + cross-cutting · 6 one-way doors · 2 open questions of the plan (1 `blocks go-live`, 2 `open`), both
-with their defaults in force, and 5 new ones the reconciliation raised (plan.md, "Emendas", questions 3-7), none blocking ·
-17 amendments for what `cerebro-correcoes`, `cerebro-contextos`, `cerebro-organizar` and `cerebro-vista-notas` built after
+89 checks in 5 slices + cross-cutting (C1-C83 approved, C84-C85 added in build, C86-C89 added in round 1) · 8 one-way
+doors (doors 7 and 8 added in build) · 2 open questions of the plan (1 `blocks go-live`, 2 `open`), both with their
+defaults in force, and 7 new ones (plan.md, "Emendas", questions 3-9: 3-7 from the reconciliation, 8 and 9 for the doors
+added in build), none blocking · 18 amendments (amendment 18 added in round 1) for what `cerebro-correcoes`, `cerebro-contextos`, `cerebro-organizar` and `cerebro-vista-notas` built after
 the plan and for what this derivation found (`plan.md`, "Emendas depois da aprovação"; each names the check that resolves it).
 
 The plan's slices mix the core, the API and the screens; here S1-S4 are the core and the API of plan S1-S4, and S5 is every
@@ -29,6 +30,7 @@ a code asserts both (plan.md, "Emendas" 4).
 
 **C1** - `GET /api/memory/cleanup/inventory?context=<id>` with the owner token answers `200` with `scope` = `{ kind: "context", id: "<id>" }`, `total` = the number of the scope's indexed files and their bytes, and the keys `byKind`, `bySize`, `byAge`, `topFolders`, `clusters`, `newest`, each computed over the same 14 rows of the fixture; `newest` is the largest `mtime` of exactly the rows `total` counts (a context's `memory/notes/<id>/` in, a sibling folder whose name starts the same out) and `null` for a scope with no row (AC 1, door 5, amendment 18; changed in round 1)
 Proof: `npx vitest run tests/cleanup.inventory.test.ts -t "C1 "`
+Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C1 "`
 
 **C2** - `byKind` holds six groups in the order `notes`, `text`, `pdf`, `image`, `code`, `other`, each with `count` and `bytes`, one asserted case per group: `a.md` and `b.markdown` count in `notes`, `c.txt` in `text`, `d.pdf` in `pdf`, `e.png` in `image`, `f.ts` in `code`, `g.xyz` in `other`; a group with no file answers `count: 0, bytes: 0` (AC 1)
 Proof: `npx vitest run tests/cleanup.inventory.test.ts -t "C2 "`
@@ -196,7 +198,7 @@ Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C48 "`
 Proof: `npx vitest run tests/cleanup.apply.test.ts -t "C49 "`
 Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C49 "`
 
-**C50** - Walking the TypeScript syntax tree of the new cleanup modules, and of `moveWorkspaceFile` with each module-private function of `safeWrite.ts` it calls (followed transitively, a removal reported with the call that leads to it), the only calls that remove a name are one `unlink` of `from` inside `moveWorkspaceFile`, reached only after the copy's hash check; one `unlink` of the copy that same call has just written at `to`, when its hash differs, through `removeIfStillOurs(realTo, copy.stat)`, which unlinks only a name that is still that file by device and inode; and one `rmdir` of an empty archive folder in the undo; the walker's self-tests find `fs.unlinkSync`, `fs.rmSync`, `fs.promises.rm` and a destructured `unlink`, ignore the word in a comment or a string, and follow a private helper with its arguments but not an exported function (AC 33; changed in round 1)
+**C50** - Walking the TypeScript syntax tree of the new cleanup modules, and of `moveWorkspaceFile` with each module-private function of `safeWrite.ts` it refers to, in any form (a `function` declaration, or a `const`/`let`/`var` holding an arrow function or a function expression; called or passed as a value; followed transitively, a removal reported with the reference that leads to it), the only calls that remove a name are one `unlink` of `from` inside `moveWorkspaceFile`, reached only after the copy's hash check; one `unlink` of the copy that same call has just written at `to`, when its hash differs, through `removeIfStillOurs(realTo, copy.stat)`, which unlinks only a name that is still that file by device and inode; and one `rmdir` of an empty archive folder in the undo; a call removes a name when its callee resolves, by the file's own bindings, to a removing function (`unlink*`, `rm*`, `rmdir*`) of `node:fs` or `node:fs/promises`, however it is reached (the default, namespace or named import, renamed or not, `promises` and its own module included; a `require`; a destructure, renamed or not; an alias or a `.bind`; a property or an element access; `.call` or `.apply`), and a local name that only spells one is not a removal; the walker's self-tests find every one of those spellings and forms, ignore the word in a comment or a string, and follow a private helper with its arguments but not an exported function (AC 33; changed in rounds 1 and 2)
 Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C50 "`
 
 ### S5 - o assistente na tela (plan S1, S3, S4, S5) · 15 files · 205 KB · ~51k
@@ -398,6 +400,33 @@ Proof: `npm run test -w apps/command-centre -- src/brain/cleanup/CleanupInventor
 Proof: `npm run test -w apps/command-centre -- src/brain/cleanup/CleanupWizard.test.tsx -t "C89 "`
 Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts cleanup.spec.ts -g "C89 "`
 
+### Correções da rodada 2
+
+Added after approval, in round 2 of the verification (`verification.md`, round 2): two checks changed, each listed with
+what it was. No product code changed; the verifier found it correct.
+
+- **C50 (changed, finding 1, R2-F5).** Was (round 1): "… of `moveWorkspaceFile` with each module-private function of
+  `safeWrite.ts` it calls (followed transitively, a removal reported with the call that leads to it) …; the walker's
+  self-tests find `fs.unlinkSync`, `fs.rmSync`, `fs.promises.rm` and a destructured `unlink`, ignore the word in a
+  comment or a string, and follow a private helper with its arguments but not an exported function". The walker
+  followed `function` declarations only and matched a callee by its local name. Now it follows a module-private
+  function in any form (an arrow function or a function expression held by `const`, `let` or `var`, the style of
+  `safeWrite.ts`'s own `needsInPlace`), called or passed as a value, and it resolves a callee by the file's bindings to
+  its import (renamed imports and destructures, `fs.promises` and `node:fs/promises`, aliases, `.bind`, element access,
+  `.call`/`.apply`); a local function that only has a remover's name is not one. The claim now says so, and the
+  self-test has a case for each spelling and form. Faults re-injected in `moveWorkspaceFile`'s rename catch, before
+  its re-throw: R2-F5 (`const forget = (p) => { try { fs.unlinkSync(p) } catch {} }`, called `forget(realFrom)`), a
+  renamed destructure (`const { unlinkSync: drop } = fs`, `drop(realFrom)`) and an element access
+  (`fs["unlinkSync"](realFrom)`): each fails C50. `Test policy` row 2's evidence names the walker's rows.
+- **C1 (proof added and tightened, finding 2, R2-F3).** The claim is unchanged. Its route case now puts the newest row
+  between older ones by path, in a `dir` scope and a context scope, keeps a context whose newest row is its notes
+  folder's, a same-prefix sibling with a newer row, and the empty scope; and C1 gains
+  `Proof: npx vitest run tests/cleanup.layer.test.ts -t "C1 "`, which calls `cleanupInventory` for a `dir` scope, a
+  context scope (an ok path with its newest row in the middle, the notes folder in, a same-prefix sibling and a missing
+  path out) and an empty one. R2-F3 re-injected (`if (newest === null) newest = row.mtime;`) fails both.
+- **The header's counts (low).** Were "83 checks · 6 one-way doors · … 5 new ones (questions 3-7) · 17 amendments"; now
+  89 checks, 8 doors, 7 new questions (3-9) and 18 amendments.
+
 ## Coverage
 
 | Set (size)                                                    | Member -> proof                                                                                                                                                                                                                                                                                                                                                                                                       | Unproven |
@@ -479,6 +508,9 @@ Evidence:
 - the decision rules (new): seven refusals and the upsert -> decides; the apply planner: four skip reasons, inside or
   outside `memory/`, `merge` -> decides; the undo: three skip reasons and four refusals -> decides
 - `moveWorkspaceFile` (new, door 1): rename or copy, five refusals, the hash-before-remove order -> decides
+- the no-removal walker (C50): which calls remove a name (every binding of a removing function of `node:fs` and
+  `node:fs/promises`) and which functions it follows (every form of a module-private function) -> decides; its
+  self-tests hold one asserted case per spelling and per form (round 2)
 - own layer: `tests/cleanup.layer.test.ts` and `tests/cleanup.move.test.ts` call those functions with no HTTP, as
   `tests/notesview.layer.test.ts`, `tests/contexts.layer.test.ts` and `tests/organize.layer.test.ts` do for the same shape
 - closest analogue: `tests/memory.notes.test.ts` (`cerebro-v2` S1) and `tests/notesview.tree.test.ts`, the same rules

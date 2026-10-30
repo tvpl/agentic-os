@@ -120,7 +120,7 @@ describe("S1 the inventory of a scope", () => {
     expect(hidden.body.topFolders).toEqual([]);
   });
 
-  it("C1 newest is the latest mtime of exactly the rows total counts: a context's notes folder counts, a sibling folder whose name starts the same does not, and a scope with no row answers null (amendment 18)", async () => {
+  it("C1 newest is the largest mtime of exactly the rows total counts, not the first row's: the newest row sits between older ones by path; a context's notes folder counts, a sibling folder whose name starts the same does not, and a scope with no row answers null (amendment 18)", async () => {
     const root = w.indexedRoot(`c1n-${++seq}`);
     const projetos = path.join(root, "projetos");
     const DAY = 86_400_000;
@@ -129,17 +129,27 @@ describe("S1 the inventory of a scope", () => {
       fs.utimesSync(file, (base - days * DAY) / 1000, (base - days * DAY) / 1000);
       return base - days * DAY;
     };
-    const old = aged(w.put(path.join(projetos, "velho.md"), "# Velho\n"), 10);
-    aged(w.put(path.join(root, "projetos-antigo", "novo.md"), "# Novo\n"), 1);
+    // By path: a-velho, m-novo, z-meio; the newest is neither the first nor the last row.
+    aged(w.put(path.join(projetos, "a-velho.md"), "# A\n"), 10);
+    const newest = aged(w.put(path.join(projetos, "m-novo.md"), "# M\n"), 1);
+    aged(w.put(path.join(projetos, "z-meio.md"), "# Z\n"), 5);
+    aged(w.put(path.join(root, "projetos-antigo", "mais-novo.md"), "# Fora\n"), 0);
+    const sub = path.join(projetos, "sub");
+    aged(w.put(path.join(sub, "antigo.md"), "# Sub\n"), 30);
     fs.mkdirSync(path.join(projetos, "vazio"));
     const id = await context("Inventário C1 newest", [projetos]);
-    const brief = aged(w.put(path.join(w.memory, "notes", id, "_resumo.md"), "# Resumo\n"), 3);
+    aged(w.put(path.join(w.memory, "notes", id, "_resumo.md"), "# Resumo\n"), 3);
+    const only = await context("Inventário C1 newest sub", [sub]);
+    const brief = aged(w.put(path.join(w.memory, "notes", only, "_resumo.md"), "# Resumo sub\n"), 2);
     await w.index();
     const dir = await inv(`dir=${q(projetos)}`);
     expect(dir.status, JSON.stringify(dir.body)).toBe(200);
-    expect([dir.body.total.count, dir.body.newest]).toEqual([1, old]);
+    expect([dir.body.total.count, dir.body.newest]).toEqual([4, newest]);
     const ctx = await inv(`context=${id}`);
-    expect([ctx.body.total.count, ctx.body.newest]).toEqual([2, brief]);
+    expect([ctx.body.total.count, ctx.body.newest]).toEqual([5, newest]);
+    // the notes folder's row is the newest of this context's rows
+    const subCtx = await inv(`context=${only}`);
+    expect([subCtx.body.total.count, subCtx.body.newest]).toEqual([2, brief]);
     const none = await inv(`dir=${q(path.join(projetos, "vazio"))}`);
     expect(none.status, JSON.stringify(none.body)).toBe(200);
     expect([none.body.total.count, none.body.newest]).toEqual([0, null]);

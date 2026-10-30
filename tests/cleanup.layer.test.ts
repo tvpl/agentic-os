@@ -305,6 +305,36 @@ describe("S1 the inventory at its own layer", () => {
     expect(hidden.topFolders.map((f) => f.path)).not.toContain(path.join(dir, "privado"));
   });
 
+  it("C1 newest is the largest mtime of the rows the inventory counts, wherever it sits in path order: a dir scope, a context scope (its notes folder in, a same-prefix sibling and a missing path out) and an empty scope (null) (round 2, amendment 18; own layer)", () => {
+    const ms = (age: number) => NOW - age * DAY - 3_600_000; // as `row` writes it
+    // dir: by path a, b, c; the newest is b
+    const dir = folder("newest");
+    row(path.join(dir, "a.md"), 1, 10);
+    row(path.join(dir, "b.md"), 1, 2);
+    row(path.join(dir, "c.md"), 1, 5);
+    row(path.join(`${dir}-antigo`, "z.md"), 1, 0);
+    const byDir = inventory(dir);
+    expect([byDir.total.count, byDir.newest]).toEqual([3, ms(2)]);
+    // context: an ok path and the notes folder; the newest is m.md, between older rows of its own path
+    const app = path.join(folder("newest-ctx"), "app");
+    fs.mkdirSync(app, { recursive: true });
+    const id = `contexto-newest-${seq}`;
+    row(path.join(app, "a.md"), 1, 9);
+    row(path.join(app, "m.md"), 1, 1);
+    row(path.join(app, "z.md"), 1, 6);
+    row(path.join(`${app}-antigo`, "y.md"), 1, 0);
+    row(path.join(path.dirname(app), "sumiu", "x.md"), 1, 0);
+    row(path.join(memory, "notes", id, "_resumo.md"), 1, 4, memory);
+    const env = envWith((s) => {
+      s.contexts = [{ id, name: "Contexto newest", paths: [app, path.join(path.dirname(app), "sumiu")] }];
+    });
+    const byContext = cleanupInventory(ctx.db, env, resolveCleanupScope(env, { context: id }), { now: NOW });
+    expect([byContext.total.count, byContext.newest]).toEqual([4, ms(1)]);
+    // empty: no row, no date
+    const none = inventory(folder("newest-vazio"));
+    expect([none.total.count, none.newest]).toEqual([0, null]);
+  });
+
   it("C7 a context's scope counts its ok path and its notes folder, never a sibling with the same prefix nor a missing path", () => {
     const dir = folder("ctx");
     const app = path.join(dir, "projetos", "app");
@@ -844,7 +874,10 @@ describe("S3 the decision rules at their own layer", () => {
 
 describe("S4 nothing removes a user file", () => {
   const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-  const REMOVERS = new Set(["unlink", "unlinkSync", "rm", "rmSync", "rmdir", "rmdirSync"]);
+  /** The functions of `node:fs` and `node:fs/promises` that remove a name (round 2: matched on the binding, not the name). */
+  const REMOVER = /^(unlink|rm|rmdir)(Sync)?$/;
+  const FS_MODULES = new Set(["fs", "node:fs"]);
+  const PROMISES_MODULES = new Set(["fs/promises", "node:fs/promises"]);
   interface Removal {
     file: string;
     fn: string;
@@ -852,52 +885,197 @@ describe("S4 nothing removes a user file", () => {
     args: string;
     pos: number;
   }
+  /** What a binding of the file stands for: the `fs` module, its promises API, or one of their removing functions. */
+  type Ref = { kind: "fs" } | { kind: "promises" } | { kind: "remover"; name: string };
+
   /**
-   * Every call whose callee ends in a name that removes a directory entry, with the function it sits in. With `only`, the
-   * walk is that one function's body and, through it, the body of each module-private function of the same file it calls
-   * (transitively, round 1): a removal reached that way is reported with the call that leads to it
+   * Every call that removes a directory entry, with the function it sits in. A call counts when its callee resolves, by
+   * the file's own bindings, to a removing function of `node:fs` or `node:fs/promises`: through the import (default,
+   * namespace or named, renamed or not, `promises` included), a `require`, a destructure (renamed or not), an alias
+   * (`const x = fs.unlinkSync`, `.bind(fs)`), a property or an element access (`fs["unlinkSync"]`), or `.call`/`.apply`
+   * on one of those (round 2). A local name that only spells a remover is not one. With `only`, the walk is that one
+   * function's body and, through it, the body of each module-private function of the same file it refers to, in any
+   * form (a `function` declaration, a `const`/`let`/`var` arrow function or function expression), called or passed,
+   * transitively: a removal reached that way is reported with the reference that leads to it
    * (`via` = `removeIfStillOurs(realTo, copy.stat)`), so the helper is read with the arguments it is given here.
    */
   function removals(file: string, text: string, only?: string): Removal[] {
     const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
     const out: Removal[] = [];
-    const exported = (n: ts.FunctionDeclaration) =>
-      (ts.getCombinedModifierFlags(n) & ts.ModifierFlags.Export) !== 0;
-    const privateFns = new Map<string, ts.FunctionDeclaration>();
-    sf.forEachChild((n) => {
-      if (ts.isFunctionDeclaration(n) && n.name && !exported(n)) privateFns.set(n.name.text, n);
-    });
-    const callee = (node: ts.CallExpression) =>
-      ts.isIdentifier(node.expression)
-        ? node.expression.text
-        : ts.isPropertyAccessExpression(node.expression)
-          ? node.expression.name.text
+    const unwrap = (e: ts.Expression): ts.Expression =>
+      ts.isParenthesizedExpression(e) ||
+      ts.isAsExpression(e) ||
+      ts.isNonNullExpression(e) ||
+      ts.isTypeAssertionExpression(e) ||
+      ts.isSatisfiesExpression(e)
+        ? unwrap(e.expression)
+        : e;
+    const bindings = new Map<string, Ref>();
+    const member = (base: Ref | null, key: string): Ref | null => {
+      if (base?.kind === "fs" && key === "promises") return { kind: "promises" };
+      if ((base?.kind === "fs" || base?.kind === "promises") && REMOVER.test(key))
+        return { kind: "remover", name: key };
+      return null;
+    };
+    const keyOf = (e: ts.ElementAccessExpression | ts.PropertyAccessExpression): string | null =>
+      ts.isPropertyAccessExpression(e)
+        ? e.name.text
+        : ts.isStringLiteralLike(e.argumentExpression)
+          ? e.argumentExpression.text
           : null;
-    const visit = (node: ts.Node, fn: string | null, via: string[], seen: Set<string>) => {
-      let here = fn;
-      if (ts.isFunctionDeclaration(node) && node.name && via.length === 0) here = node.name.text;
-      if (ts.isCallExpression(node) && (only === undefined || here === only)) {
-        const name = callee(node);
-        if (name && REMOVERS.has(name))
+    const refOf = (raw: ts.Expression): Ref | null => {
+      const e = unwrap(raw);
+      if (ts.isIdentifier(e)) return bindings.get(e.text) ?? null;
+      if (ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e)) {
+        const key = keyOf(e);
+        return key === null ? null : member(refOf(e.expression), key);
+      }
+      if (ts.isCallExpression(e)) {
+        const callee = unwrap(e.expression);
+        // `fs.unlinkSync.bind(fs)` is the remover
+        if (ts.isPropertyAccessExpression(callee) && callee.name.text === "bind") {
+          const bound = refOf(callee.expression);
+          if (bound?.kind === "remover") return bound;
+        }
+        // `require("node:fs")`
+        if (
+          ts.isIdentifier(callee) &&
+          callee.text === "require" &&
+          e.arguments[0] &&
+          ts.isStringLiteralLike(e.arguments[0])
+        ) {
+          const spec = e.arguments[0].text;
+          if (FS_MODULES.has(spec)) return { kind: "fs" };
+          if (PROMISES_MODULES.has(spec)) return { kind: "promises" };
+        }
+      }
+      return null;
+    };
+    for (const st of sf.statements) {
+      if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier) || !st.importClause)
+        continue;
+      const spec = st.moduleSpecifier.text;
+      const base: Ref | null = FS_MODULES.has(spec)
+        ? { kind: "fs" }
+        : PROMISES_MODULES.has(spec)
+          ? { kind: "promises" }
+          : null;
+      if (!base) continue;
+      if (st.importClause.name) bindings.set(st.importClause.name.text, base);
+      const named = st.importClause.namedBindings;
+      if (named && ts.isNamespaceImport(named)) bindings.set(named.name.text, base);
+      if (named && ts.isNamedImports(named))
+        for (const el of named.elements) {
+          const ref = member(base, (el.propertyName ?? el.name).text);
+          if (ref) bindings.set(el.name.text, ref);
+        }
+    }
+    // Aliases and destructures, anywhere in the file, until nothing new is learned (an alias of an alias).
+    const declarations: ts.VariableDeclaration[] = [];
+    const collect = (n: ts.Node) => {
+      if (ts.isVariableDeclaration(n) && n.initializer) declarations.push(n);
+      ts.forEachChild(n, collect);
+    };
+    collect(sf);
+    for (let changed = true; changed;) {
+      changed = false;
+      const learn = (name: string, ref: Ref | null) => {
+        if (ref && bindings.get(name)?.kind !== ref.kind) {
+          bindings.set(name, ref);
+          changed = true;
+        }
+      };
+      for (const d of declarations) {
+        if (ts.isIdentifier(d.name)) learn(d.name.text, refOf(d.initializer!));
+        else if (ts.isObjectBindingPattern(d.name)) {
+          const base = refOf(d.initializer!);
+          for (const el of d.name.elements) {
+            const prop = el.propertyName ?? el.name;
+            const key = ts.isIdentifier(prop) || ts.isStringLiteralLike(prop) ? prop.text : null;
+            if (key !== null && ts.isIdentifier(el.name)) learn(el.name.text, member(base, key));
+          }
+        }
+      }
+    }
+    const removerOf = (call: ts.CallExpression): string | null => {
+      const callee = unwrap(call.expression);
+      const direct = refOf(callee);
+      if (direct?.kind === "remover") return direct.name;
+      if (
+        ts.isPropertyAccessExpression(callee) &&
+        (callee.name.text === "call" || callee.name.text === "apply")
+      ) {
+        const target = refOf(callee.expression);
+        if (target?.kind === "remover") return target.name;
+      }
+      return null;
+    };
+
+    // The module's functions in every form: `function` declarations and variables that hold a function.
+    const exported = (n: ts.Node) =>
+      ts.canHaveModifiers(n) &&
+      (ts.getCombinedModifierFlags(n as ts.Declaration) & ts.ModifierFlags.Export) !== 0;
+    const fnOf = (init: ts.Expression | undefined): ts.Node | null => {
+      const e = init ? unwrap(init) : null;
+      return e && (ts.isArrowFunction(e) || ts.isFunctionExpression(e)) ? e : null;
+    };
+    const privateFns = new Map<string, ts.Node>();
+    const topFns = new Map<string, ts.Node>();
+    for (const st of sf.statements) {
+      if (ts.isFunctionDeclaration(st) && st.name) {
+        topFns.set(st.name.text, st);
+        if (!exported(st)) privateFns.set(st.name.text, st);
+      }
+      if (ts.isVariableStatement(st))
+        for (const d of st.declarationList.declarations) {
+          const fn = fnOf(d.initializer);
+          if (!fn || !ts.isIdentifier(d.name)) continue;
+          topFns.set(d.name.text, fn);
+          if (!exported(st)) privateFns.set(d.name.text, fn);
+        }
+    }
+    const labelOf = (n: ts.Node): string | null =>
+      ts.isFunctionDeclaration(n) && n.name
+        ? n.name.text
+        : ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && fnOf(n.initializer)
+          ? n.name.text
+          : null;
+    const visit = (node: ts.Node, label: string, via: string[], seen: ReadonlySet<string>) => {
+      const here = only === undefined ? (labelOf(node) ?? label) : label;
+      if (ts.isCallExpression(node)) {
+        const name = removerOf(node);
+        if (name)
           out.push({
             file,
-            fn: [here ?? "", ...via].join(" > "),
+            fn: [here, ...via].join(" > "),
             name,
             args: node.arguments.map((a) => a.getText(sf)).join(", "),
             pos: node.getStart(sf),
           });
-        const helper =
-          only !== undefined && ts.isIdentifier(node.expression)
-            ? privateFns.get(node.expression.text)
-            : undefined;
-        if (helper?.body && !seen.has(helper.name!.text)) {
-          const call = `${helper.name!.text}(${node.arguments.map((a) => a.getText(sf)).join(", ")})`;
-          visit(helper.body, here, [...via, call], new Set([...seen, helper.name!.text]));
+      }
+      if (only !== undefined && ts.isIdentifier(node) && privateFns.has(node.text) && !seen.has(node.text)) {
+        const parent = node.parent;
+        const isName =
+          (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+          (ts.isVariableDeclaration(parent) && parent.name === node) ||
+          (ts.isFunctionDeclaration(parent) && parent.name === node) ||
+          ts.isPropertyAssignment(parent);
+        if (!isName) {
+          const called = ts.isCallExpression(parent) && parent.expression === node;
+          const ref = called
+            ? `${node.text}(${parent.arguments.map((a) => a.getText(sf)).join(", ")})`
+            : node.text;
+          visit(privateFns.get(node.text)!, here, [...via, ref], new Set([...seen, node.text]));
         }
       }
       ts.forEachChild(node, (child) => visit(child, here, via, seen));
     };
-    visit(sf, null, [], new Set());
+    if (only === undefined) visit(sf, "", [], new Set());
+    else {
+      const start = topFns.get(only);
+      if (!start) throw new Error(`${file} has no function ${only}`);
+      visit(start, only, [], new Set([only]));
+    }
     return out;
   }
 
@@ -938,6 +1116,56 @@ describe("S4 nothing removes a user file", () => {
     expect(removals("helpers.ts", helpers, "walked").map((r) => `${r.fn} ${r.name}(${r.args})`)).toEqual([
       "walked > deeper(a) > gone(p) unlinkSync(p)",
       "walked > gone(b) unlinkSync(p)",
+    ]);
+    // Round 2: a private function in any form is followed (arrow, function expression, `let`, passed as a value), and a
+    // removal is seen however it is spelled; a local name that only looks like a remover is not one.
+    const forms = [
+      'import fs, { rm as wipe, promises as fsp2 } from "node:fs";',
+      'import * as nsfs from "fs";',
+      'import fsp from "node:fs/promises";',
+      'import { rmdir } from "node:fs/promises";',
+      "const forget = (p: string): void => { try { fs.unlinkSync(p); } catch {} };",
+      'const expressed = function (p: string) { fs["rmSync"](p); };',
+      "let later = (p: string) => nsfs.rmdirSync(p);",
+      "const { unlinkSync: drop } = fs;",
+      "const { rm: gone } = fsp;",
+      "const alias = fs.unlinkSync;",
+      "const bound = fs.rmSync.bind(fs);",
+      "const ours = { unlink: (p: string) => p };",
+      "function unlink(p: string) { return p; }",
+      "const passed = (p: string) => void fsp2.unlink(p);",
+      "export function walked(p: string, list: string[]) {",
+      "  forget(p);",
+      "  expressed(p);",
+      "  later(p);",
+      "  drop(p);",
+      "  void gone(p);",
+      "  alias(p);",
+      "  bound(p);",
+      "  void wipe(p, () => undefined);",
+      "  void fsp.unlink(p);",
+      '  void fsp["rm"](p);',
+      "  void rmdir(p);",
+      "  fs.unlinkSync.call(fs, p);",
+      "  ours.unlink(p);",
+      "  unlink(p);",
+      "  list.forEach(passed);",
+      "}",
+    ].join("\n");
+    expect(removals("forms.ts", forms, "walked").map((r) => `${r.fn} ${r.name}(${r.args})`)).toEqual([
+      "walked > forget(p) unlinkSync(p)",
+      "walked > expressed(p) rmSync(p)",
+      "walked > later(p) rmdirSync(p)",
+      "walked unlinkSync(p)",
+      "walked rm(p)",
+      "walked unlinkSync(p)",
+      "walked rmSync(p)",
+      "walked rm(p, () => undefined)",
+      "walked unlink(p)",
+      "walked rm(p)",
+      "walked rmdir(p)",
+      "walked unlinkSync(fs, p)",
+      "walked > passed unlink(p)",
     ]);
   });
 
