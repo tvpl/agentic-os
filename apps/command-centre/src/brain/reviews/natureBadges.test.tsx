@@ -102,17 +102,45 @@ describe("C74 the badges, one case per row of design.md's table", () => {
       expect(badge.textContent).toBe(text);
     });
 
-  it("C74 the tone classes are drawn from the existing tokens, never a colour of their own", async () => {
+  it("C74 the tone classes are drawn from the existing tokens, never a colour of their own, tone-muted included", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const css = readFileSync(join(__dirname, "..", "natureza.css"), "utf8");
-    for (const [tone, token] of [
-      ["tone-ok", "--ok"],
-      ["tone-info", "--info"],
-      ["tone-warn", "--warn"],
-      ["tone-accent", "--accent-text"],
-    ])
-      expect(css).toContain(`.nb.${tone} {\n  color: var(${token});\n}`);
+    const postcss = (await import("postcss")).default;
+    /** The `color` each selector of a stylesheet declares, top-level rules only. */
+    const colours = (file: string) => {
+      const out = new Map<string, string>();
+      postcss.parse(readFileSync(file, "utf8")).walkRules((r) => {
+        if (r.parent?.type !== "root") return;
+        r.walkDecls("color", (d) => {
+          for (const sel of r.selectors) out.set(sel, d.value);
+        });
+      });
+      return out;
+    };
+    const badges = colours(join(__dirname, "..", "natureza.css"));
+    const theme = colours(join(__dirname, "..", "..", "theme.css"));
+    const tones: Array<[string, string]> = [
+      ["tone-ok", "var(--ok)"],
+      ["tone-info", "var(--info)"],
+      ["tone-warn", "var(--warn)"],
+      ["tone-accent", "var(--accent-text)"],
+      ["tone-muted", "var(--text-dim)"],
+    ];
+    // Every badge is `.badge.meta.nb`: a tone with no rule of its own takes the colour of `.badge.meta`.
+    expect(theme.get(".badge.meta")).toBe("var(--text-dim)");
+    expect(badges.has(".nb"), "no colour on every badge").toBe(false);
+    for (const [tone, colour] of tones)
+      expect(badges.get(`.nb.${tone}`) ?? theme.get(".badge.meta"), tone).toBe(colour);
+    // Nothing else of the badges' stylesheet colours a tone.
+    for (const sel of badges.keys())
+      if (/tone-/.test(sel))
+        expect(
+          tones.some(([t]) => sel === `.nb.${t}`),
+          sel,
+        ).toBe(true);
+    // And the badge in the DOM carries those classes: `badge meta nb tone-muted` for relato and none.
+    renderWith(createElement(NatureBadge, { n: "relato" }), { lang: "pt-BR" });
+    expect(document.querySelector(".nb")!.className).toBe("badge meta nb tone-muted");
   });
 
   it("C74 the scope badge is text only, the abandoned badge is Archive + Abandonado em 2026-09-01, and the dense plano reads Plano with the rest as title", () => {

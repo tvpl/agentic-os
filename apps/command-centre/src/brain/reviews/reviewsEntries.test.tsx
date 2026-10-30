@@ -287,3 +287,88 @@ describe("C71 the commands and the keys", () => {
     expect(sent("POST", "/api/memory/reviews")[0]).toMatchObject({ path: a.path, action: "keep" });
   });
 });
+
+describe("C71 v in Revisões is Ainda vale, never Ver grafo (round 1)", () => {
+  const cases = [
+    ["on an item it sends Ainda vale", "due", true],
+    ["on an empty list it does nothing", "empty", false],
+    ["on the Sem classificação tab it does nothing", "unclassified", false],
+  ] as const;
+  for (const shell of ["moldura", "nucleo"] as const)
+    for (const [label, where, acts] of cases)
+      it(`C71 in the ${shell}, v ${label} and stays at #/brain/reviews; Ver grafo holds no key there`, async () => {
+        const a = item("notes/a.md", { natureza: "opiniao" });
+        list({}, where === "empty" ? [] : [a]);
+        list(
+          { kind: "unclassified" },
+          where === "unclassified" ? [item("notes/u.md", { suggested: null })] : [],
+        );
+        reviews.decide = (b) =>
+          Promise.resolve(decided((b as { path: string }).path, { version: "sha256:v2" }));
+        if (shell === "nucleo") {
+          net.prefs.shell = "nucleo";
+          window.sessionStorage.removeItem("mordomo.brainScene.classic");
+        }
+        const registry = new CommandRegistry();
+        await mountShell("/brain/reviews", shell, "pt-BR", registry);
+        await reviewsUp();
+        const user = userEvent.setup();
+        if (where === "empty")
+          await waitFor(() => expect(document.querySelector(".rv-empty")).not.toBeNull(), {
+            timeout: 10_000,
+          });
+        else
+          await waitFor(() => expect(document.querySelector(".rv-item")).not.toBeNull(), { timeout: 10_000 });
+        if (where === "unclassified") {
+          await user.click(screen.getByRole("tab", { name: /Sem classificação/ }));
+          await waitFor(() => expect(document.querySelector(".rv-classify")).not.toBeNull());
+        }
+        if (where === "due") await waitFor(() => expect(document.querySelector(".rv-acts")).not.toBeNull());
+        const graph = registry.list().find((c) => c.id === "brain.view.graph");
+        expect(graph, "Ver grafo is registered").toBeDefined();
+        expect(graph!.keys ?? []).toEqual([]);
+        (document.activeElement as HTMLElement | null)?.blur();
+        await user.keyboard("v");
+        if (acts)
+          await waitFor(() =>
+            expect(sent("POST", "/api/memory/reviews")).toEqual([
+              { path: a.path, action: "keep", baseVersion: expect.stringMatching(/^sha256:/) },
+            ]),
+          );
+        await new Promise((r) => setTimeout(r, 100));
+        if (!acts) expect(sent("POST", "/api/memory/reviews")).toEqual([]);
+        expect(window.location.hash).toBe("#/brain/reviews");
+        expect(document.querySelector(".rv h1.rv-title")?.textContent).toBe("Revisões");
+      });
+});
+
+describe("C94 the header's context shortcut (round 1)", () => {
+  for (const shell of ["moldura", "nucleo"] as const)
+    it(`C94 in the ${shell}, the header's "Contexto: Projeto X", after the filters, runs action:switch-context and the shell's context menu opens`, async () => {
+      withContext();
+      list({ context: "proj-x" }, [item("notes/a.md")]);
+      if (shell === "nucleo") {
+        net.prefs.shell = "nucleo";
+        window.sessionStorage.removeItem("mordomo.brainScene.classic");
+      }
+      const registry = new CommandRegistry();
+      await mountShell("/brain/reviews", shell, "pt-BR", registry);
+      await reviewsUp();
+      const tools = document.querySelector(".rv-head .rv-tools")!;
+      const button = await waitFor(() => {
+        const b = [...tools.children].at(-1) as HTMLButtonElement;
+        expect(b.textContent).toBe("Contexto: Projeto X");
+        return b;
+      });
+      expect(button.tagName).toBe("BUTTON");
+      const command = registry.list().find((c) => c.id === "action:switch-context")!;
+      expect(command, "the shell registers the switch").toBeDefined();
+      const run = vi.spyOn(command, "run");
+      expect(screen.queryByRole("menuitem", { name: "Novo contexto…" })).toBeNull();
+      await userEvent.setup().click(button);
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(
+        await screen.findByRole("menuitem", { name: "Novo contexto…" }, { timeout: 5_000 }),
+      ).toBeTruthy();
+    });
+});
