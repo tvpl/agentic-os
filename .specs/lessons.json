@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 53,
+  "next_id": 57,
   "lessons": [
     {
       "id": "L-001",
@@ -767,6 +767,62 @@
       "evidence": ["C54 testkit.tsx:137 (ui)"],
       "created": "2026-10-30T16:00:19Z",
       "last_seen": "2026-10-30T16:00:19Z"
+    },
+    {
+      "id": "L-053",
+      "key": "surviving_mutant::a test about a local day or local midnight must pin a non utc zone or utc runners cannot tell the mutant apart",
+      "text": "A test about a local day or local midnight must pin a non-UTC zone, or UTC runners cannot tell the mutant apart.",
+      "signal": "surviving_mutant",
+      "scope": "tests",
+      "status": "candidate",
+      "features": ["cerebro-natureza"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C80 BecameFactDialog.tsx:47 (tests)"],
+      "created": "2026-10-30T22:47:32Z",
+      "last_seen": "2026-10-30T22:47:32Z"
+    },
+    {
+      "id": "L-054",
+      "key": "surviving_mutant::a rule that applies only in one place needs a negative case at a look alike place with the same name",
+      "text": "A rule that applies only in one place needs a negative case at a look-alike place with the same name.",
+      "signal": "surviving_mutant",
+      "scope": "tests",
+      "status": "candidate",
+      "features": ["cerebro-natureza"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C16 recall.ts:451 (tests)"],
+      "created": "2026-10-30T22:47:32Z",
+      "last_seen": "2026-10-30T22:47:32Z"
+    },
+    {
+      "id": "L-055",
+      "key": "surviving_mutant::a filter on results must be tested on every path a result can arrive by including followed links",
+      "text": "A filter on results must be tested on every path a result can arrive by, including followed links.",
+      "signal": "surviving_mutant",
+      "scope": "tests",
+      "status": "candidate",
+      "features": ["cerebro-natureza"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C19 recall.ts:637 (tests)"],
+      "created": "2026-10-30T22:47:32Z",
+      "last_seen": "2026-10-30T22:47:32Z"
+    },
+    {
+      "id": "L-056",
+      "key": "spec_precision_gap::a proof that skips without a build passes silently its proof line must build first",
+      "text": "A proof that skips without a build passes silently; its proof line must build first.",
+      "signal": "spec_precision_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["cerebro-natureza"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C21 tests/natureza.cli.test.ts:32 (checks)"],
+      "created": "2026-10-30T22:47:32Z",
+      "last_seen": "2026-10-30T22:47:32Z"
     }
   ]
 }

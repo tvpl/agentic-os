@@ -376,6 +376,34 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C54 testkit.tsx:137 (ui)
 - last seen: 2026-10-30T16:00:19Z
 
+### L-053 - A test about a local day or local midnight must pin a non-UTC zone, or UTC runners cannot tell the mutant apart.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-natureza
+- evidence: C80 BecameFactDialog.tsx:47 (tests)
+- last seen: 2026-10-30T22:47:32Z
+
+### L-054 - A rule that applies only in one place needs a negative case at a look-alike place with the same name.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-natureza
+- evidence: C16 recall.ts:451 (tests)
+- last seen: 2026-10-30T22:47:32Z
+
+### L-055 - A filter on results must be tested on every path a result can arrive by, including followed links.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-natureza
+- evidence: C19 recall.ts:637 (tests)
+- last seen: 2026-10-30T22:47:32Z
+
+### L-056 - A proof that skips without a build passes silently; its proof line must build first.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: cerebro-natureza
+- evidence: C21 tests/natureza.cli.test.ts:32 (checks)
+- last seen: 2026-10-30T22:47:32Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
