@@ -38,6 +38,7 @@ import { getNotifySound, setNotifySound, useNotifications } from "../hooks/useNo
 import { errorMessage } from "../views/shared";
 import { openOnboarding } from "../onboarding/state";
 import { openNoteEditor } from "../brain/noteEvents";
+import { openCleanup } from "../brain/cleanupEvents";
 import { useCommands, type Command } from "./registry";
 
 /** Opens the palette (and closes it: the palette registers the same keys in its own `modal` scope). */
@@ -213,6 +214,17 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["note", "nota", "memory", "memoria", "write", "escrever", "create", "criar"],
         palette: true,
         run: () => openNoteEditor({ mode: "new" }),
+      },
+      {
+        // The guided cleanup (cerebro-faxina-guiada, AC 44), at its step 1 with the active context preselected.
+        id: "action:cleanup",
+        title: "cleanup.title",
+        group: "actions",
+        scope: "global",
+        icon: Sparkles,
+        keywords: ["cleanup", "faxina", "limpeza", "arquivar"],
+        palette: true,
+        run: () => openCleanup(),
       },
       {
         id: "action:now",

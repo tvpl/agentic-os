@@ -71,6 +71,14 @@
       "jsGzip": 534932,
       "cssRaw": 347899,
       "cssGzip": 74679
+    },
+    {
+      "feature": "cerebro-faxina-guiada",
+      "reason": "the guided cleanup wizard of the Second Brain as a chunk of its own (CleanupWizard, its five steps and its stylesheet, fetched the first time it is opened; the gallery's cleanup story loads that same chunk), its four entries (the context selector's item, the palette's command, the graph's Faxina button and the Núcleo scene menu's row), the host that hears the request, and the wizard's strings in two languages; measured on the build of batch C: 11.2 KB JS gzip and 1.8 KB CSS gzip above cerebro-vista-notas (C82, amendment 13)",
+      "jsRaw": 1678331,
+      "jsGzip": 546389,
+      "cssRaw": 354978,
+      "cssGzip": 76471
     }
   ]
 }

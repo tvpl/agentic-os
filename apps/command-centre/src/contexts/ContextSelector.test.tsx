@@ -60,6 +60,7 @@ describe("C31 the selector lists the whole brain first, then each context, and t
       "separator",
       "menuitem",
       "menuitem",
+      "menuitem",
     ]);
     expect(list[0]!.text).toBe("Whole brain");
     expect(list[0]!.checked).toBe("false");
@@ -73,8 +74,10 @@ describe("C31 the selector lists the whole brain first, then each context, and t
     // A context with a path that is not ok says so in text, with its icon.
     expect(list[3]!.text).toContain("Folder needs attention");
     expect(list[2]!.text).not.toContain("Folder needs attention");
-    expect(list[5]!.text).toBe("New context…");
-    expect(list[6]!.text).toBe("Manage contexts");
+    // With a context active, the guided cleanup of it opens the actions (cerebro-faxina-guiada, amendment 11).
+    expect(list[5]!.text).toBe("Clean up this context");
+    expect(list[6]!.text).toBe("New context…");
+    expect(list[7]!.text).toBe("Manage contexts");
   });
 
   it("C31 with no context active, Whole brain is the checked one and names the button, with the index's file count", async () => {

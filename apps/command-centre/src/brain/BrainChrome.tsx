@@ -4,13 +4,27 @@
  * toggles), the layout pill and the hover tooltip. Presentational only.
  */
 import { type ReactNode, useContext } from "react";
-import { ArrowLeft, Diamond, Maximize2, Menu, Minus, Plus, RefreshCw, Scan, Tv, X, Zap } from "lucide-react";
+import {
+  ArrowLeft,
+  Diamond,
+  Maximize2,
+  Menu,
+  Minus,
+  Plus,
+  RefreshCw,
+  Scan,
+  Sparkles,
+  Tv,
+  X,
+  Zap,
+} from "lucide-react";
 import type { IndexProgressPayload } from "../api";
 import { LAUNCHER_EVENT } from "../App";
 import { AppRouteContext } from "../desktop/appRoute";
 import { ErrorBox } from "../components/ui";
 import { useT } from "../i18n";
 import { IndexProgress } from "./IndexProgress";
+import { openCleanup } from "./cleanupEvents";
 import { APP_COLOR, EDGE_KINDS, ROUTINE_COLOR, SKILL_COLOR, type EdgeKind } from "./engine/world";
 import type { BrainUi } from "./state";
 import { Tooltip } from "../ui";
@@ -146,6 +160,10 @@ export function BrainChrome(p: BrainChromeProps) {
                 <Tv aria-hidden />
               </button>
             </Tooltip>
+            {/* The guided cleanup, at its step 1 (cerebro-faxina-guiada, amendment 11). */}
+            <button className="btn sm" onClick={() => openCleanup()}>
+              <Sparkles aria-hidden /> {t("cleanup.open.button")}
+            </button>
             {/* On the stage the brain is a panel: the desktop is behind it, and
                 the palette is ⌘K — neither needs a chip inside the app (G2). */}
             {!inPanel && (

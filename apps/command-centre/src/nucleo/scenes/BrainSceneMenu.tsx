@@ -17,6 +17,7 @@ import {
 } from "../../brain/engine/world";
 import { MODIFIED_RANGES, SIZE_RANGES, type BrainUi } from "../../brain/state";
 import { Switch } from "../../ui";
+import { openCleanup } from "../../brain/cleanupEvents";
 
 const KIND_KEYS: Record<EdgeKind, TKey> = {
   "markdown-link": "brain.kind.markdown-link",
@@ -53,6 +54,8 @@ export interface BrainSceneMenuProps {
   onClassic: () => void;
   onReset: () => void;
   onBake: () => void;
+  /** The guided cleanup (cerebro-faxina-guiada, amendment 11): the last row of the actions; default, just open it. */
+  onCleanup?: () => void;
   onNote: (id: number) => void;
 }
 
@@ -86,6 +89,9 @@ export function BrainSceneMenu(p: BrainSceneMenuProps) {
         </button>
         <button type="button" onClick={p.onBake}>
           {t("brain.bake")}
+        </button>
+        <button type="button" onClick={p.onCleanup ?? (() => openCleanup())}>
+          {t("cleanup.open.button")}
         </button>
       </section>
 

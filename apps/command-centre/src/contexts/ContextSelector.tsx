@@ -6,7 +6,7 @@
  * it registers the two commands of the palette.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Crosshair, Plus, RefreshCw, Settings2 } from "lucide-react";
+import { AlertTriangle, Crosshair, Plus, RefreshCw, Settings2, Sparkles } from "lucide-react";
 import { useT, useLocale } from "../i18n";
 import { qk, useRouteQuery } from "../queries";
 import { useToast } from "../components/ui";
@@ -14,6 +14,7 @@ import { useOsNavigate } from "../hooks/useViewTransition";
 import { DropdownMenu, type MenuEntry } from "../ui";
 import { errorMessage } from "../views/shared";
 import { useCommands, type Command } from "../commands/registry";
+import { openCleanup } from "../brain/cleanupEvents";
 import { NewContextDialog } from "./NewContextDialog";
 import { SWITCH_CONTEXT_ID, WHOLE_BRAIN_ID, useWorkContext } from "./useWorkContext";
 import "./contexts.css";
@@ -131,8 +132,16 @@ export function ContextSelector({ variant, collapsed = false }: ContextSelectorP
         ),
       });
     }
+  entries.push({ id: "sep-actions", separator: true });
+  // The guided cleanup of the active context, at its step 2 (cerebro-faxina-guiada, amendment 11).
+  if (active)
+    entries.push({
+      id: "cleanup",
+      label: t("cleanup.open.context"),
+      icon: <Sparkles aria-hidden />,
+      onSelect: () => openCleanup({ context: active.id, step: 2 }),
+    });
   entries.push(
-    { id: "sep-actions", separator: true },
     { id: "new", label: t("context.new"), icon: <Plus aria-hidden />, onSelect: () => setCreating(true) },
     {
       id: "manage",

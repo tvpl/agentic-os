@@ -62,6 +62,7 @@ import type { SceneViewProps } from "../sceneViews";
 import { BrainSceneCanvas, type EdgeCard, type GroupCard, type StarCard } from "./BrainSceneCanvas";
 import { BrainSceneGauge } from "./BrainSceneGauge";
 import { BrainSceneLegend, type LegendItem } from "./BrainSceneLegend";
+import { openCleanup } from "../../brain/cleanupEvents";
 import { BrainSceneMenu } from "./BrainSceneMenu";
 import { BrainSceneReader, type RailEntry, type RailGroup, type SheetPreview } from "./BrainSceneReader";
 import { BrainSceneTrail, type TrailCrumb } from "./BrainSceneTrail";
@@ -1743,6 +1744,10 @@ function Constellation({ onClassic, view }: { onClassic: () => void; view: Brain
               setMenuOpen(false);
             }}
             onBake={bake}
+            onCleanup={() => {
+              setMenuOpen(false);
+              openCleanup();
+            }}
             onNote={(id) => {
               setMenuOpen(false);
               selectId(id);

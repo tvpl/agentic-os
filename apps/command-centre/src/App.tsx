@@ -30,6 +30,7 @@ import { CommandPalette, type PaletteOpenDetail } from "./components/CommandPale
 import { WorkspaceProvider } from "./components/Workspace";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import { NoteEditorHost } from "./brain/NoteEditorHost";
+import { CleanupHost } from "./brain/CleanupHost";
 import { ConfirmProvider } from "./hooks/useConfirm";
 import { useEventStream } from "./hooks/useEventStream";
 import { NotificationsProvider } from "./hooks/useNotifications";
@@ -475,6 +476,7 @@ function OsShellInner({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () =
       )}
       {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
       <NoteEditorHost />
+      <CleanupHost />
       <ServiceHealthBanner name={meta.name} />
       <div className={`sse-dot${connected ? "" : " off"}`} title={t("common.reconnecting")} aria-hidden>
         <span className="dot warn" />

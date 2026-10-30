@@ -58,6 +58,10 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
   "index.progress": [["memory", "status"]],
   "index.finished": [["memory"], ["metrics"]],
   "index.failed": [["memory"]],
+  // The guided cleanup's scan (cerebro-faxina-guiada, door 6): the wizard listens; nothing in the cache depends on it.
+  "cleanup.progress": [],
+  "cleanup.finished": [],
+  "cleanup.failed": [],
   "approval.requested": [["approvals"], ["run"], ["notifications"]],
   "approval.resolved": [["approvals"], ["run"], ["runs"], ["settings"], ["connectors"], ["notifications"]],
   "approval.expired": [["approvals"], ["run"], ["runs"]],
