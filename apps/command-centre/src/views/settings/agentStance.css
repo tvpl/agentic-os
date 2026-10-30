@@ -1,0 +1,48 @@
+/* Settings › Memory › Agents' stance (.specs/features/cerebro-organizar, AC 31-33): the legend is a 12px label like
+   the other fields', the options and the sentences are 13px, colours are tokens, and the error is an icon plus text. */
+.stance {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0 0 var(--s-3);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.stance-legend {
+  margin-bottom: 5px;
+  padding: 0;
+  font-size: var(--fs-2);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+.stance-option {
+  font-size: var(--fs-3);
+  color: var(--text);
+  cursor: pointer;
+}
+.stance-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.stance-hint {
+  margin: 0;
+  font-size: var(--fs-3);
+  color: var(--text-dim);
+}
+.stance-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--fs-3);
+  color: var(--danger);
+}
+.stance-error svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}

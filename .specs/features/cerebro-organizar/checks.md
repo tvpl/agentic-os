@@ -376,3 +376,7 @@ Status of batch B (updated in the commit that closes each piece):
 - the folder map, the index notes and the router (S3: C24-C34) with the route's place in the contract (C49) and the
   readers it keeps (C50): closed, every proof green in `tests/organize.maps.test.ts`, `tests/organize.layer.test.ts`,
   `tests/api.openapi.test.ts`, `tests/security-reads.test.ts` and `tests/sdk.instances.test.ts`
+- the goals and the stance in the map of the agents (S4: C35-C43): closed, every proof green in
+  `tests/organize.sync.test.ts`, `tests/organize.layer.test.ts`,
+  `apps/command-centre/src/views/settings/AgentStance.test.tsx`, `tests/e2e/organize.spec.ts` and `npm run lint:css`;
+  with it batch B is closed (C24-C43, C49, C50)

@@ -12,6 +12,7 @@ import { FolderNotIndexedError, folderVerdict } from "../core/src/runs/protected
 import { childrenDigest, folderDigests, rootSlug } from "../core/src/memory/maps.js";
 import { parseFrontMatter } from "../core/src/memory/frontMatter.js";
 import { fileRowFromDb } from "../core/src/memory/indexer.js";
+import { extractGoals } from "../core/src/sync/compiler.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
 import { repoRoot } from "./helpers/organizeWorld.js";
 
@@ -409,3 +410,36 @@ describe.skipIf(!POSIX)(
     });
   },
 );
+
+describe("door 7 at its own layer: the goals of metas.md", () => {
+  it("C35 own layer: extractGoals takes the first 10 first-level items of ## Metas, each cut at 160, and leaves out nested items and what follows the section", () => {
+    const long = "L".repeat(200);
+    const items = Array.from({ length: 12 }, (_, i) => (i === 3 ? long : `Meta ${i + 1}`));
+    const text = [
+      "# Metas",
+      "",
+      "- antes da seção, não conta",
+      "",
+      "## Metas",
+      "",
+      ...items.flatMap((item, i) => (i === 1 ? [`- ${item}`, "  - aninhada", "\t- com tab"] : [`- ${item}`])),
+      "",
+      "### Uma subseção ainda dentro",
+      "",
+      "## Depois",
+      "- fora",
+    ].join("\n");
+    expect(extractGoals(text)).toEqual(
+      items.slice(0, 10).map((item, i) => (i === 3 ? long.slice(0, 160) : item)),
+    );
+    // Fewer than ten, numbered or starred, and the section ends at the next level-1 or level-2 heading.
+    expect(extractGoals("## Metas\n\n1. Um\n* Dois\n+ Três\n\n# Fim\n- fora\n")).toEqual([
+      "Um",
+      "Dois",
+      "Três",
+    ]);
+    // No ## Metas: no goals at all; an empty section: none listed.
+    expect(extractGoals("# Metas\n\n- um\n")).toBeNull();
+    expect(extractGoals("## Metas\n\nTexto corrido.\n")).toEqual([]);
+  });
+});

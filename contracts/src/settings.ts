@@ -421,6 +421,12 @@ export const SettingsSchema = z.object({
       /** Token budget for today's + yesterday's journal inside memory/ROUTER.md (chars/4). */
       journalBudgetTokens: z.number().int().min(100).max(20_000).default(1200),
       /**
+       * How a compiled AGENTS.md / CLAUDE.md asks an agent to treat a request against the owner's goals
+       * (.specs/features/cerebro-organizar, door 7): `neutral` says nothing; `contest-conflicts` adds the line that asks
+       * it to say so and propose the alternative first. Only the owner changes it; an unreadable value reads `neutral`.
+       */
+      agentStance: z.enum(["neutral", "contest-conflicts"]).default("neutral"),
+      /**
        * Semantic search over the notes (.specs/features/cerebro-v2, S4). OFF by default: nothing is embedded, no
        * extension is loaded and no connection is made until the owner turns it on. `hash` is computed in this
        * process from the text alone (no model, no network); `http` sends the text of each note to `endpoint`

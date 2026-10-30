@@ -120,6 +120,7 @@
       },
       "memory": {
         "journalBudgetTokens": 1200,
+        "agentStance": "neutral",
         "embeddings": {
           "enabled": false,
           "provider": "hash",

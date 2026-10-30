@@ -21,6 +21,7 @@ import {
 import type { SettingsShape } from "./shared";
 import { Tooltip } from "../../ui";
 import { ContextsSettings } from "../../contexts/ContextsSettings";
+import { AgentStance } from "./AgentStance";
 
 export function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
   const t = useT();
@@ -176,6 +177,8 @@ export function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
         parse={parseHttpsList(t)}
         save={(registries) => put({ marketplace: { registries } }, true)}
       />
+      {/* The last block of the tab (cerebro-organizar, amendment 10): nothing of the Contexts section moves. */}
+      <AgentStance s={s} put={put} />
     </div>
   );
 }

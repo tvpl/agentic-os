@@ -108,15 +108,15 @@ function mergeObjects(
 }
 
 /**
- * Merge a partial settings patch over the current settings. `providers.*` and
- * `limits` merge field by field so `{providers:{claude:{enabled:true}}}` keeps
- * `binaryPath`; arrays and every other key replace wholesale.
+ * Merge a partial settings patch over the current settings. `providers.*`,
+ * `limits` and `memory` merge field by field so `{providers:{claude:{enabled:true}}}`
+ * keeps `binaryPath`; arrays and every other key replace wholesale.
  */
 export function deepMergeSettings(current: Settings, patch: SettingsPatch): Settings {
   const merged: Record<string, unknown> = { ...current };
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
-    if ((key === "providers" || key === "limits") && isPlainObject(value)) {
+    if ((key === "providers" || key === "limits" || key === "memory") && isPlainObject(value)) {
       merged[key] = mergeObjects(merged[key] as Record<string, unknown>, value);
     } else {
       merged[key] = value;

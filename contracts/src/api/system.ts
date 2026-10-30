@@ -23,6 +23,8 @@ import { RoutineStatusSchema } from "../routines.js";
 export const SettingsPatchSchema = SettingsSchema.partial().extend({
   providers: z.record(ProviderId, ProviderSettingsSchema.partial()).optional(),
   limits: SettingsSchema.shape.limits.removeDefault().partial().optional(),
+  // Field by field, as limits: `{memory:{agentStance}}` must not reset the journal budget or the embeddings.
+  memory: SettingsSchema.shape.memory.removeDefault().partial().optional(),
 });
 
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;

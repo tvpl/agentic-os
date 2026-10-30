@@ -327,6 +327,8 @@ export class SyncCompiler {
       "have ONE canonical source; this file is a compiled view — do not hand-edit",
       "(edit the canonical files or use the Command Centre, then re-sync).",
       "",
+      // The first section after the title (cerebro-organizar, door 7): what the owner wants to reach.
+      ...goalsSection(this.paths, settings.memory.agentStance),
       "## Memory router",
       "",
       routerBody,
@@ -402,6 +404,71 @@ export class SyncCompiler {
       ].join("\n") + "\n"
     );
   }
+}
+
+// ---- the owner's goals (.specs/features/cerebro-organizar, S4, door 7) -------------------------------------------
+
+/** The most goals the compiled files carry, and the most characters of each. */
+export const GOALS_MAX_ITEMS = 10;
+export const GOALS_ITEM_MAX_CHARS = 160;
+/** The line `contest-conflicts` adds at the end of the goals section. */
+export const CONTEST_CONFLICTS_LINE =
+  "- When a request conflicts with these goals, say so and propose the alternative that serves them before doing it.";
+
+/** The goals file the skill organize-brain writes (door 2). */
+export function goalsFile(paths: MordomoPaths): string {
+  return path.join(paths.memory, "notes", "negocio", "metas.md");
+}
+
+/**
+ * The first-level list items of the `## Metas` section of a goals file (up to the next heading of level 1 or 2), at
+ * most 10, each cut at 160 characters; an indented (nested) item is left out. `null` when there is no such section.
+ */
+export function extractGoals(markdown: string): string[] | null {
+  const lines = markdown.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^##[ \t]+Metas[ \t]*$/.test(line));
+  if (start === -1) return null;
+  const goals: string[] = [];
+  let fenced = false;
+  for (const line of lines.slice(start + 1)) {
+    if (/^(```|~~~)/.test(line)) fenced = !fenced;
+    if (fenced) continue;
+    if (/^#{1,2}[ \t]/.test(line)) break;
+    const item = /^(?:[-*+]|\d+[.)])[ \t]+(.*\S)/.exec(line);
+    if (!item) continue;
+    goals.push(item[1]!.trim().slice(0, GOALS_ITEM_MAX_CHARS));
+    if (goals.length === GOALS_MAX_ITEMS) break;
+  }
+  return goals;
+}
+
+/**
+ * The `## Goals and priorities` section of the compiled files, the first after the title (door 7): the goals of
+ * `memory/notes/negocio/metas.md`, the line that names the file, and with `contest-conflicts` the line that asks the
+ * agent to contest a conflicting request. Nothing when the file is missing, is no file of `memory/` (a link out
+ * included), or has no goals under `## Metas`: the compile never fails on it.
+ */
+export function goalsSection(paths: MordomoPaths, stance: "neutral" | "contest-conflicts"): string[] {
+  const file = goalsFile(paths);
+  let goals: string[] | null = null;
+  try {
+    goals = extractGoals(
+      readWorkspaceText(homeReadScope(paths.home, [paths.memory]), file, { maxBytes: MAX_SYNC_FILE_BYTES })
+        .text,
+    );
+  } catch {
+    return [];
+  }
+  if (!goals || goals.length === 0) return [];
+  return [
+    "## Goals and priorities",
+    "",
+    ...goals.map((goal) => `- ${goal}`),
+    "",
+    `Full goals: ${file}`,
+    ...(stance === "contest-conflicts" ? [CONTEST_CONFLICTS_LINE] : []),
+    "",
+  ];
 }
 
 /** A target the scope will not read (a link out of the granted folders, a directory, a huge file). */

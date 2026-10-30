@@ -573,6 +573,8 @@ describe("S3 settings tolerate an invalid field", () => {
       "connectors.dataTimeoutMs": "timeout",
       "connectors.allowedCommands": "default empty: only the base allowlist",
       "memory.journalBudgetTokens": "a token budget",
+      "memory.agentStance":
+        "what the compiled AGENTS.md asks of an agent about the owner's goals; an unreadable value reads neutral (cerebro-organizar door 7)",
       "sentinels.fsWatch.enabled": "default off; an unreadable value reads off",
       "sentinels.fsWatch.debounceMs": "timing",
       "sentinels.repeatedFailure.threshold": "a count for a notification",

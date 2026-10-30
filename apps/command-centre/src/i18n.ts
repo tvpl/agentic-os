@@ -450,6 +450,11 @@ const baseEn = {
     "A configured folder could not be read. The previous index was preserved. Check folder access or update indexed folders in Settings, then try again.",
   "settings.denied": "Denied.",
   "settings.excludesHint": "One glob per line. .git, .ssh, .aws and secret files are always excluded.",
+  "settings.stance.title": "Agents' stance",
+  "settings.stance.neutral": "Neutral",
+  "settings.stance.contest": "Contest what conflicts with the goals",
+  "settings.stance.hint":
+    "How the compiled AGENTS.md and CLAUDE.md ask agents to treat a request that goes against the goals in notes/negocio/metas.md. It takes effect at the next mordomo sync.",
   "settings.folderAbsolute": "Use an absolute path.",
   "settings.folderHint": "Absolute path of an existing folder. Indexing starts on the next refresh.",
   "settings.modelHint": "Empty = provider default.",
@@ -1006,6 +1011,11 @@ const basePtBROwn = {
     "Não foi possível ler uma pasta configurada. O índice anterior foi preservado. Verifique o acesso à pasta ou atualize as pastas indexadas nas Configurações e tente novamente.",
   "settings.denied": "Negado.",
   "settings.excludesHint": "Um glob por linha. .git, .ssh, .aws e arquivos de segredo são sempre excluídos.",
+  "settings.stance.title": "Postura dos agentes",
+  "settings.stance.neutral": "Neutra",
+  "settings.stance.contest": "Contestar o que conflita com as metas",
+  "settings.stance.hint":
+    "Como o AGENTS.md e o CLAUDE.md compilados pedem aos agentes que tratem um pedido que vai contra as metas de notes/negocio/metas.md. Vale a partir do próximo mordomo sync.",
   "settings.folderAbsolute": "Use um caminho absoluto.",
   "settings.folderHint":
     "Caminho absoluto de uma pasta existente. A indexação começa na próxima atualização.",
