@@ -55,7 +55,16 @@ produces the same answer (unit-tested in `tests/core.memory.v2.test.ts`).
 ```bash
 mordomo recall "what did we decide about the Q3 budget?"          # human output
 mordomo recall "what did we decide about the Q3 budget?" --json   # for scripts
+mordomo recall "qual é o preço do plano anual?" --natureza fato    # only what is a fact
 ```
+
+Each excerpt carries the `natureza` of what it says (`fato`, `opiniao`, `plano`, `hipotese`, `relato`, or none) and
+the `escopo` of its file (`pessoal`, `equipe`, `externo`): a `> [!plano]` passage of a note, else the note's
+`natureza:` header, else the section of `MEMORY.md` or of the journal it sits in (`## Open loops` is a plan,
+`## Reflections` an opinion). The human output opens a plan's line with `[Plano — ainda não é realidade]`, a
+hypothesis's with `[Hipótese]`, an opinion's with `[Opinião]` and an unclassified one's with `[Não classificado]`.
+`--natureza` and `--escopo` (comma-separated) keep only those excerpts, as `natureza=` and `escopo=` do on
+`GET /api/memory/recall` and `GET /api/memory/search`.
 
 ```bash
 # TOKEN = config/token inside the MordomoOS home (the repo root, or $MORDOMO_HOME)

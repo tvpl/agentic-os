@@ -795,3 +795,6 @@ Status of batch A (updated in the commit that closes each piece):
   `tests/natureza.search.test.ts` and `tests/natureza.layer.test.ts`. C10 is open: its proof stores a `snooze` through
   `POST /api/memory/reviews` and reads `GET /api/memory/reviews`, batch B's routes (C45-C58), so it cannot pass before
   them
+- the CLI (C21-C23), the agents' block in the compiled `AGENTS.md`/`CLAUDE.md` and in a memory run's prompt (C24,
+  C25) and the `consolidate-memory` guide (C26): closed, every proof green in `tests/natureza.cli.test.ts` and
+  `tests/natureza.agents.test.ts`; with it batch A is closed but for C10 (C1-C9, C11-C26)
