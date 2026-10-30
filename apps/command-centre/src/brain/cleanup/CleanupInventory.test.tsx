@@ -123,6 +123,30 @@ describe("C55 the cards of what a scope holds", () => {
   });
 });
 
+describe("C88 the bars and columns are as long as their values (round 1)", () => {
+  it("C88 each fill is its value's share of the card's largest, in whole percent, at least 2% when not zero and 0 when zero: Por tipo and Idade by count, Maiores pastas by bytes", () => {
+    motion.reduced = true;
+    const data = inventory(4, 1);
+    data.byKind = data.byKind.map((k, i) => ({ ...k, count: [200, 150, 1, 0, 50, 100][i]! }));
+    data.byAge = data.byAge.map((a, i) => ({ ...a, count: [10, 4, 0, 7][i]! }));
+    data.topFolders = data.topFolders.map((f, i) => ({ ...f, bytes: [8000, 6000, 2000, 10][i]! }));
+    renderWith(<InventoryCards data={data} />, { lang: "pt-BR" });
+    const widths = (card: string) =>
+      [...cardOf(card).querySelectorAll<HTMLElement>(".cln-fill")].map((el) => el.style.width);
+    expect(widths("Por tipo")).toEqual(["100%", "75%", "2%", "0%", "25%", "50%"]);
+    expect(widths("Maiores pastas")).toEqual(["100%", "75%", "25%", "2%"]);
+    const heights = [...cardOf("Idade").querySelectorAll<HTMLElement>(".cln-col-fill")].map(
+      (el) => el.style.height,
+    );
+    expect(heights).toEqual(["100%", "40%", "0%", "70%"]);
+    // The fill is drawn inside its track: a bar of Por tipo is its track's width times its share.
+    for (const fill of cardOf("Por tipo").querySelectorAll(".cln-fill"))
+      expect(fill.parentElement!.classList.contains("cln-track")).toBe(true);
+    for (const col of cardOf("Idade").querySelectorAll(".cln-col-fill"))
+      expect(col.parentElement!.classList.contains("cln-col")).toBe(true);
+  });
+});
+
 describe("C56 the Arquivos number rises from zero", () => {
   it("C56 with motion allowed it reads 0 on the first frame and its final value 300 ms later", async () => {
     vi.useFakeTimers({

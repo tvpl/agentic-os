@@ -4,7 +4,7 @@
  * row), the unanswered first; "Aplicar a todos deste tipo" on top; and below the tabs, "O que importa aqui?", which
  * writes into the context's brief note. An answer is stored (`PUT /api/memory/cleanup/decisions`) before its card moves.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Ban,
   CalendarClock,
@@ -54,6 +54,19 @@ type Entry = { key: string; decision: Decision; keepFileId?: number; until?: num
 
 /** The newest member: the one "Juntar" keeps unless the person picks another (AC 19). */
 const newest = (f: Finding) => f.files.reduce((a, b) => (b.mtime > a.mtime ? b : a), f.files[0]!).id;
+
+/** The sentence with the other file's name in code type, as design.md writes it ("92% igual a `plano-v2.md`."). */
+function named(sentence: string, name: string | null): ReactNode {
+  const at = name ? sentence.indexOf(name) : -1;
+  if (!name || at < 0) return sentence;
+  return (
+    <>
+      {sentence.slice(0, at)}
+      <code className="cln-mono">{name}</code>
+      {sentence.slice(at + name.length)}
+    </>
+  );
+}
 
 function useReason() {
   const t = useT();
@@ -217,7 +230,7 @@ export function FindingCard(p: {
     <li className="cln-finding">
       <p className="cln-why">
         <Icon aria-hidden />
-        {reason(f)}
+        {named(reason(f), f.files[1] ? baseName(f.files[1].path) : null)}
       </p>
       <ul className="cln-files">
         {f.files.length === 0 && <li className="cln-mono">{f.detail.folder}</li>}

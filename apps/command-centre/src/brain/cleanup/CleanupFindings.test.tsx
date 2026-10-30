@@ -137,6 +137,10 @@ describe("C59 one card per kind", () => {
       expect(why!.className).toBe("cln-why");
       expect(why!.firstElementChild!.tagName.toLowerCase()).toBe("svg");
       expect(why!.textContent).toBe(sentence);
+      // The other file's name in code type, as design.md writes it ("92% igual a `plano-v2.md`."; round 1).
+      expect([...why!.querySelectorAll("code")].map((c) => c.textContent)).toEqual(
+        tab === "Duplicatas" ? ["a-copia.md"] : tab === "Quase iguais" ? ["plano-v2.md"] : [],
+      );
       expect(files!.className).toBe("cln-files");
       expect(row!.className).toBe("cln-answers");
       expect(answers(card!)).toEqual(

@@ -182,6 +182,7 @@ test("C51 the moldura: the selector's item after the actions separator and befor
   await expect(buttons.nth(0)).toHaveAccessibleName("Atualizar índice");
   await expect(buttons.nth(1)).toHaveAccessibleName("Modo apresentação (p)");
   await expect(buttons.nth(2)).toHaveAccessibleName("Faxina");
+  await expect(buttons.nth(2).locator("svg.lucide-sparkles")).toHaveCount(1);
   const order = await row.evaluate((el) =>
     [...el.querySelectorAll("button")].map((b) =>
       b.classList.contains("os-chip") ? "chip" : (b.getAttribute("aria-label") ?? b.textContent!.trim()),
@@ -397,6 +398,73 @@ for (const theme of THEMES)
       expect(await serious(page)).toEqual([]);
       expect(fs.readdirSync(dir).filter((f) => f.startsWith("igual"))).toHaveLength(2);
     });
+
+/* ---------------- C87, C89 (round 1): the step bar's line and names, the sheet's size ---------------- */
+
+test("C87 in a real browser each step's name sits under its circle, centred, and a line ties each circle to the one before it", async ({
+  page,
+}) => {
+  await open(page, "moldura", "dark", "/brain");
+  await palette(page);
+  await stepIs(page, "Etapa 1 de 5 · Escopo");
+  const geometry = await wizard(page)
+    .locator("ol.cln-steps > li")
+    .evaluateAll((lis) =>
+      lis.map((li) => {
+        const dot = li.querySelector(".cln-dot")!.getBoundingClientRect();
+        const name = li.querySelector(".cln-step-name")!.getBoundingClientRect();
+        const box = li.getBoundingClientRect();
+        const line = getComputedStyle(li, "::before");
+        const px = (v: string) => parseFloat(v);
+        return {
+          dot: { x: dot.x, y: dot.y, w: dot.width, h: dot.height },
+          name: { top: name.top, centre: name.x + name.width / 2 },
+          line:
+            line.content === "none"
+              ? null
+              : {
+                  x0: box.x + px(line.left),
+                  x1: box.x + box.width - px(line.right),
+                  y: box.y + px(line.top),
+                  h: px(line.height),
+                },
+        };
+      }),
+    );
+  expect(geometry).toHaveLength(5);
+  geometry.forEach((g, i) => {
+    expect(g.name.top, `name ${i} under its circle`).toBeGreaterThanOrEqual(g.dot.y + g.dot.h - 0.5);
+    expect(Math.abs(g.name.centre - (g.dot.x + g.dot.w / 2)), `name ${i} centred`).toBeLessThanOrEqual(1);
+    if (i === 0) return expect(g.line).toBeNull();
+    const before = geometry[i - 1]!.dot;
+    expect(g.line, `line ${i}`).not.toBeNull();
+    expect(g.line!.h).toBe(1);
+    // from just past the circle before to just before this one, at the circles' middle
+    expect(Math.abs(g.line!.x0 - (before.x + before.w)), `line ${i} start`).toBeLessThanOrEqual(3);
+    expect(Math.abs(g.line!.x1 - g.dot.x), `line ${i} end`).toBeLessThanOrEqual(3);
+    expect(Math.abs(g.line!.y - (g.dot.y + g.dot.h / 2)), `line ${i} height`).toBeLessThanOrEqual(1);
+  });
+});
+
+test("C89 in a real browser the wizard's sheet is 960 px wide at 1 440 px and at most 88vh tall, and no wider than the window at 600 px", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await open(page, "moldura", "dark", "/brain");
+  const dir = await makeNotes(page, "c89");
+  await palette(page);
+  await wizard(page).getByLabel("Ou uma pasta…").fill(dir);
+  await wizard(page).getByRole("button", { name: "Ver o que tem aqui" }).click();
+  await expect(wizard(page).locator(".cln-grid > .cln-card")).toHaveCount(5);
+  const box = async () => (await wizard(page).boundingBox())!;
+  const wide = await box();
+  expect(Math.round(wide.width)).toBe(960);
+  expect(wide.height).toBeLessThanOrEqual(0.88 * 900 + 0.5);
+  await page.setViewportSize({ width: 1440, height: 500 });
+  await expect.poll(async () => (await box()).height).toBeLessThanOrEqual(0.88 * 500 + 0.5);
+  await page.setViewportSize({ width: 600, height: 900 });
+  await expect.poll(async () => (await box()).width).toBeLessThanOrEqual(600);
+});
 
 /* ---------------- C81: the gallery ---------------- */
 

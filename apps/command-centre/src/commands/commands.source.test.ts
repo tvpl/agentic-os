@@ -669,6 +669,39 @@ describe("C16 the migrated screens own no keydown listener", () => {
     },
   );
 
+  it(
+    "C52 the guided cleanup adds no key listener: its files and its four entries own none, and the page's listeners are still exactly the allowlist (cerebro-faxina-guiada)",
+    { timeout: 60_000 },
+    () => {
+      const all = sources();
+      const cleanup = all.filter(
+        (f) =>
+          f.startsWith("brain/cleanup/") || f === "brain/CleanupHost.tsx" || f === "brain/cleanupEvents.ts",
+      );
+      expect(cleanup).toEqual(
+        expect.arrayContaining(["brain/cleanup/CleanupWizard.tsx", "brain/CleanupHost.tsx"]),
+      );
+      const entries = [
+        "contexts/ContextSelector.tsx",
+        "brain/BrainChrome.tsx",
+        "nucleo/scenes/BrainSceneMenu.tsx",
+        "commands/global.ts",
+      ];
+      const perFile = new Map<string, number>();
+      for (const file of all) {
+        const path = join(SRC, file);
+        const here = readListeners(readFileSync(path, "utf8"), file, {
+          importConst: (from, name) => importedConst(path, from, name),
+        });
+        if (here.keydown.length > 0) perFile.set(file, here.keydown.length);
+      }
+      for (const file of [...cleanup, ...entries]) expect(perFile.get(file) ?? 0, file).toBe(0);
+      expect(Object.fromEntries(perFile)).toEqual(
+        Object.fromEntries(Object.entries(OUTSIDE_THE_REGISTRY).map(([f, [n]]) => [f, n])),
+      );
+    },
+  );
+
   it("C16 no retired event is defined, used or listened for", { timeout: 60_000 }, () => {
     for (const file of sources())
       expect(namesUsed(readFileSync(join(SRC, file), "utf8"), [...RETIRED, ...RETIRED_EVENTS]), file).toEqual(

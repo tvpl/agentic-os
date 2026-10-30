@@ -122,6 +122,65 @@ describe("C53 one Modal with a fixed header and footer", () => {
   });
 });
 
+/** The declarations of a selector in cleanup.css, outside any at-rule. */
+const declsOf = (selector: string) => {
+  const out: Record<string, string> = {};
+  postcss.parse(readFileSync(join(__dirname, "cleanup.css"), "utf8")).walkRules((r) => {
+    if (r.parent?.type === "root" && r.selectors.includes(selector))
+      r.walkDecls((d) => void (out[d.prop] = d.value));
+  });
+  return out;
+};
+
+describe("C87 the step bar: five circles tied by a line, each with its name under it (round 1)", () => {
+  it("C87 each step holds its circle, then its name, stacked and centred; every step after the first draws the line from the circle before it to its own", async () => {
+    context("alfa", "Alfa");
+    const { dialog } = await openWizard({ context: "alfa", step: 2 });
+    await atStep("Etapa 2 de 5 · O que tem aqui");
+    for (const li of dialog.querySelectorAll("ol.cln-steps > li"))
+      expect([...li.children].map((c) => c.className)).toEqual(["cln-dot", "cln-step-name"]);
+    expect(declsOf(".cln-step")).toMatchObject({
+      display: "flex",
+      "flex-direction": "column",
+      "align-items": "center",
+      position: "relative",
+    });
+    // The line: one pixel in the border's token, at the circles' middle (24 px circles), from 14 px past the centre of
+    // the step before to 14 px before this one's.
+    expect(declsOf(".cln-dot")).toMatchObject({
+      width: "24px",
+      height: "24px",
+      "border-radius": "var(--r-pill)",
+    });
+    expect(declsOf(".cln-step + .cln-step::before")).toEqual({
+      content: '""',
+      position: "absolute",
+      top: "12px",
+      right: "calc(50% + 14px)",
+      left: "calc(-50% + 14px)",
+      height: "1px",
+      background: "var(--border)",
+    });
+  });
+});
+
+describe("C89 the Modal is wide: up to 960 px, and up to 88vh tall (round 1)", () => {
+  it("C89 the wizard's sheet is min(960px, 100%) wide and at most 88vh tall, its header and footer fixed around a body that scrolls", async () => {
+    context("alfa", "Alfa");
+    const { dialog } = await openWizard({ context: "alfa", step: 2 });
+    expect(dialog.classList.contains("modal")).toBe(true);
+    expect(dialog.classList.contains("cln-modal")).toBe(true);
+    expect(declsOf(".modal.cln-modal")).toMatchObject({
+      width: "min(960px, 100%)",
+      "max-height": "88vh",
+      display: "flex",
+      "flex-direction": "column",
+      overflow: "hidden",
+    });
+    expect(declsOf(".cln-body")).toMatchObject({ flex: "1", "min-height": "0", "overflow-y": "auto" });
+  });
+});
+
 describe("C54 step 1, Escopo", () => {
   it("C54 the contexts (name, main path, count) above Ou uma pasta… with the indexed folders; a choice reads N arquivos, última mudança há D dias from that scope's own inventory (N its total, D the days since its newest row) and enables Ver o que tem aqui", async () => {
     context("alfa", "Alfa", { files: 14 });

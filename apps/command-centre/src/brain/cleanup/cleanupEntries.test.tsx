@@ -152,7 +152,9 @@ describe("C51 the four entries, each in its place, and where each opens", () => 
       const chips = [...row.querySelectorAll(".os-chip")];
       expect(chips.length).toBeGreaterThan(0);
       for (const chip of chips) expect(before(buttons[2]!, chip)).toBe(true);
-      expect(buttons[2]!.querySelector("svg")).not.toBeNull();
+      // Amendment 11: the icon is Sparkles, beside the text (round 1).
+      expect(buttons[2]!.querySelector("svg.lucide-sparkles")).not.toBeNull();
+      expect(buttons[2]!.querySelectorAll("svg")).toHaveLength(1);
       fireEvent.click(buttons[2]!);
       await atStep("Etapa 1 de 5 · Escopo");
       await waitFor(() => expect(radios()).toHaveLength(2));
