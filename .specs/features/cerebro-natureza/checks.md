@@ -786,3 +786,12 @@ A, B, C, D** (the cut below), sequential, each only on green.
   - B + C ≈ 152k and C + D ≈ 194k are over the budget, so C stays apart; A lands first because B's queue reads A's
     nature reader, C asserts the routes of A and B, and D calls the routes of A and B
 - Mechanism: handoff, four batches A, B, C, D (owner, 30/10/2026)
+
+Status of batch A (updated in the commit that closes each piece):
+
+- the index (S1: C1-C9) and the search and the recall by nature (S2: C11-C20), with migration 25, the passages, the
+  nature reader, the `natureza`/`escopo` query keys of `GET /api/memory/search` and `GET /api/memory/recall` and the
+  two keys on each hit and each `answerContext[]` item: closed, every proof green in `tests/natureza.index.test.ts`,
+  `tests/natureza.search.test.ts` and `tests/natureza.layer.test.ts`. C10 is open: its proof stores a `snooze` through
+  `POST /api/memory/reviews` and reads `GET /api/memory/reviews`, batch B's routes (C45-C58), so it cannot pass before
+  them

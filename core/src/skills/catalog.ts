@@ -20,6 +20,7 @@ import { copyTreeWithoutLinks, writeWorkspaceFile } from "../security/safeWrite.
 import type { StoreProblem } from "../routines/store.js";
 import { defaultSettings } from "../config/schema.js";
 import { askedFolder, takesFolder } from "../runs/protectedFolder.js";
+import { NATUREZA_AGENT_BLOCK } from "../memory/natureza.js";
 
 /** A SKILL.md body at or above this many lines is flagged "thick" (ARMS S-L2). */
 export const THICK_LINE_THRESHOLD = 150;
@@ -451,6 +452,8 @@ export class SkillCatalog {
       `You are executing the "${skill.name}" skill from this machine's MordomoOS skill catalog.`,
       `Read the skill definition at: ${skill.skillFile}`,
       this.locationsBlock(skill, inputs),
+      // A run with memory access reads what the agents' files say about the nature of what it recalls (AC 15).
+      skill.memoryAccess ? NATUREZA_AGENT_BLOCK.join("\n") : "",
       skill.resources.length > 0
         ? `The skill folder contains extra resource files; read ONLY the ones the skill's router points you to for this task.`
         : "",

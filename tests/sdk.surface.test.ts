@@ -143,6 +143,11 @@ describe("S5 the surface is a closed list", () => {
         "cleanupScanFor",
         "saveCleanupDecisions",
         "undoCleanup",
+        // cerebro-natureza: the closed lists of door 1 the search, the recall and the CLI read their filters by
+        "ESCOPOS",
+        "NATUREZAS",
+        "parseEscopoList",
+        "parseNaturezaList",
       ].sort(),
     );
   });

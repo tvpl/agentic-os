@@ -26,6 +26,12 @@ import {
   recall,
   recordRecall,
   contextMembership,
+  ESCOPOS,
+  NATUREZAS,
+  fieldsFromDb,
+  normalizeFieldKey,
+  parseEscopoList,
+  parseNaturezaList,
   describeContexts,
   findContext,
   homeReadScope,
@@ -141,6 +147,8 @@ const OPTION_SPECS = {
   base: { type: "string" },
   context: { type: "string" },
   none: { type: "boolean" },
+  natureza: { type: "string" },
+  escopo: { type: "string" },
 } as const satisfies ParseArgsConfig["options"];
 type OptionName = keyof typeof OPTION_SPECS;
 
@@ -159,7 +167,7 @@ const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   sync: ["apply", "approve", "diff"],
   run: ["provider", "model", "effort", "input", "json", "context"],
   service: ["yes"],
-  recall: ["json", "context"],
+  recall: ["json", "context", "natureza", "escopo"],
   note: ["json", "area", "front-matter", "tag", "base"],
   context: ["none", "json"],
   mcp: [],
@@ -204,6 +212,9 @@ export interface CliArgs {
   context: string | undefined;
   /** `context use --none`: no active context (the whole brain). */
   none: boolean;
+  /** `recall`: only excerpts of these natures / of files of these scopes, comma-separated (cerebro-natureza). */
+  natureza: string | undefined;
+  escopo: string | undefined;
 }
 
 class UsageError extends Error {}
@@ -321,6 +332,8 @@ export function parseCliArgs(argv: readonly string[], env: NodeJS.ProcessEnv = p
     base: values.base as string | undefined,
     context: values.context as string | undefined,
     none: values.none === true,
+    natureza: values.natureza as string | undefined,
+    escopo: values.escopo as string | undefined,
     provider,
     model: values.model as string | undefined,
     effort,
@@ -362,6 +375,8 @@ function emptyArgs(command: Command): CliArgs {
     base: undefined,
     context: undefined,
     none: false,
+    natureza: undefined,
+    escopo: undefined,
   };
 }
 
@@ -601,7 +616,8 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo run <skill>      Run a skill headlessly (--provider ${PROVIDER_IDS.join("|")}, --model <m>,
                            --effort ${EffortLevel.options.join("|")}, --input k=v ..., --context <id|all>)
   mordomo recall <question>  Layered memory retrieval: only the sections worth reading (--json,
-                           --context <id|all>; without it, the active context of this machine)
+                           --context <id|all>; without it, the active context of this machine;
+                           --natureza fato,relato and --escopo pessoal keep only those excerpts)
   mordomo context list       The work contexts (* marks the active one); mordomo context use <id> | use --none
                            sets the active context; mordomo context show <id> prints its map
   mordomo note new <title>   Create a note under memory/notes (--area <a>, --front-matter, --tag <t> ..., --json)
@@ -1506,10 +1522,48 @@ async function cmdMcp(args: CliArgs): Promise<void> {
   }
 }
 
+/** The label an excerpt's line opens with, by its nature (cerebro-natureza, AC 13): `fato` and `relato` have none. */
+const RECALL_LABELS: Readonly<Record<string, string>> = {
+  plano: "[Plano — ainda não é realidade]",
+  hipotese: "[Hipótese]",
+  opiniao: "[Opinião]",
+};
+
+/** What ends an excerpt's line (AC 14, amendment 12): the day an archived note was abandoned, the superseded seal. */
+function recallSuffix(ctx: AppContext, excerpt: { path: string; section: string }): string {
+  const marks: string[] = [];
+  const row = ctx.db.prepare("SELECT fields FROM files WHERE path = ?").get(excerpt.path) as
+    { fields: string } | undefined;
+  const fields = fieldsFromDb(row?.fields);
+  const abandoned = fields.abandoned?.trim() ?? "";
+  if (normalizeFieldKey(fields.status ?? "") === "archived" && /^\d{4}-\d{2}-\d{2}$/.test(abandoned))
+    marks.push(`(abandonado em ${abandoned})`);
+  if (excerpt.section === "Superseded" && excerpt.path === path.join(ctx.paths.memory, "MEMORY.md"))
+    marks.push("(substituído)");
+  return marks.length > 0 ? ` ${marks.join(" ")}` : "";
+}
+
 async function cmdRecall(args: CliArgs): Promise<void> {
   const question = args.positionals.join(" ").trim();
   if (!question) {
-    console.error(pc.red('Usage: mordomo recall "<question>" [--json]'));
+    console.error(
+      pc.red('Usage: mordomo recall "<question>" [--json] [--natureza <list>] [--escopo <list>]'),
+    );
+    process.exit(EXIT_USAGE);
+  }
+  // The filters of GET /api/memory/recall: a value outside the closed lists is a usage error, before anything is read.
+  const natureza = args.natureza !== undefined ? parseNaturezaList(args.natureza) : undefined;
+  if (natureza === null) {
+    console.error(
+      pc.red(`Invalid --natureza "${args.natureza}". Expected one or more of: ${NATUREZAS.join(", ")}`),
+    );
+    process.exit(EXIT_USAGE);
+  }
+  const escopo = args.escopo !== undefined ? parseEscopoList(args.escopo) : undefined;
+  if (escopo === null) {
+    console.error(
+      pc.red(`Invalid --escopo "${args.escopo}". Expected one or more of: ${ESCOPOS.join(", ")}`),
+    );
     process.exit(EXIT_USAGE);
   }
   const ctx = new AppContext();
@@ -1518,7 +1572,11 @@ async function cmdRecall(args: CliArgs): Promise<void> {
     const chosen = chosenContext(ctx, args);
     if (chosen === undefined) return;
     const within = chosen ? contextMembership({ paths: ctx.paths, settings }, chosen) : undefined;
-    const result = recall(ctx.db, ctx.paths, settings, question, within ? { within } : {});
+    const result = recall(ctx.db, ctx.paths, settings, question, {
+      ...(within ? { within } : {}),
+      ...(natureza ? { natureza } : {}),
+      ...(escopo ? { escopo } : {}),
+    });
     recordRecall(ctx.db, result);
     if (args.json) {
       console.log(JSON.stringify(result));
@@ -1530,7 +1588,10 @@ async function cmdRecall(args: CliArgs): Promise<void> {
     if (result.answerContext.length === 0)
       console.log(pc.dim("No indexed section matched. Run `mordomo index` if the workspace changed."));
     for (const c of result.answerContext) {
-      console.log(`\n${pc.green("●")} ${c.path} § ${pc.bold(c.section)} ${pc.dim(`(score ${c.score})`)}`);
+      const label = c.natureza === null ? "[Não classificado]" : RECALL_LABELS[c.natureza];
+      console.log(
+        `\n${label ? `${pc.yellow(label)} ` : ""}${pc.green("●")} ${c.path} § ${pc.bold(c.section)} ${pc.dim(`(score ${c.score})`)}${recallSuffix(ctx, c)}`,
+      );
       console.log(pc.dim(`  why: ${c.why}`));
       console.log(
         c.excerpt

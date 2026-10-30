@@ -9,6 +9,23 @@ import { route } from "./route.js";
 
 export const JOURNAL_SECTION_NAMES = ["Today", "Decisions", "Open loops", "Runs"] as const;
 
+/** The closed lists of .specs/features/cerebro-natureza, door 1: what a note is, and whose. */
+const NATUREZA_VALUES = ["fato", "opiniao", "plano", "hipotese", "relato"] as const;
+const ESCOPO_VALUES = ["pessoal", "equipe", "externo"] as const;
+/** A query that takes a comma-separated list of one closed list: every item one of its values, none empty. */
+const closedList = (values: readonly string[]) => {
+  const item = `(?:${values.join("|")})`;
+  return z
+    .string()
+    .regex(new RegExp(`^${item}(?:,${item})*$`), `expected a comma-separated list of ${values.join(", ")}`)
+    .optional();
+};
+const NaturezaQuery = closedList(NATUREZA_VALUES);
+const EscopoQuery = closedList(ESCOPO_VALUES);
+/** A file's nature and scope as the search and the recall answer them: read through the closed lists, or null. */
+const NaturezaSchema = z.enum(NATUREZA_VALUES).nullable();
+const EscopoSchema = z.enum(ESCOPO_VALUES).nullable();
+
 const IndexStatsSchema = z.object({
   scanned: z.number(),
   added: z.number(),
@@ -46,6 +63,9 @@ const SearchHitSchema = FileRowSchema.extend({
   score: z.number(),
   /** Which half of the search found the file: the words, the vectors, or both. */
   via: z.enum(["text", "semantic", "both"]),
+  /** The file's nature and scope (cerebro-natureza, AC 10): null when it has none, or a value outside the lists. */
+  natureza: NaturezaSchema,
+  escopo: EscopoSchema,
 });
 
 const SemanticStatusSchema = z.object({
@@ -238,6 +258,10 @@ const RecallResultSchema = z.object({
       score: z.number(),
       why: z.string(),
       via: z.string().optional(),
+      /** What the excerpt is (cerebro-natureza, AC 11): its passage's, its file's, its generated section's, or null. */
+      natureza: NaturezaSchema,
+      /** The file's scope, or null. */
+      escopo: EscopoSchema,
     }),
   ),
   tokensEstimate: z.number(),
@@ -594,6 +618,9 @@ export const memoryRoutes = {
       modifiedAfter: z.coerce.number().optional(),
       limit: z.coerce.number().int().min(1).max(200).optional(),
       context: ContextQuery,
+      /** Only files of these natures / scopes, comma-separated (cerebro-natureza, AC 8 and 9). */
+      natureza: NaturezaQuery,
+      escopo: EscopoQuery,
     }),
     responses: { 200: z.array(SearchHitSchema) },
     errors: [
@@ -944,6 +971,9 @@ export const memoryRoutes = {
       /** Skip the frequency bookkeeping (dry runs, UI previews). */
       record: QueryFlag,
       context: ContextQuery,
+      /** Only excerpts of these natures (one with none is not returned) / of files of these scopes (AC 12). */
+      natureza: NaturezaQuery,
+      escopo: EscopoQuery,
     }),
     responses: { 200: RecallResultSchema },
     errors: [contextNotFound],

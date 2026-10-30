@@ -1,5 +1,6 @@
 import type { Db } from "../db/db.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
+import { readEscopo, readNatureza, type Escopo, type Natureza } from "./natureza.js";
 import { extractKeywords } from "./recall.js";
 
 export interface SearchFilters {
@@ -12,6 +13,10 @@ export interface SearchFilters {
   limit?: number;
   /** Read-time policy over stored rows (`MemoryIndexer.rowFilter`): rows it refuses are not returned. */
   allow?: (row: { root: string; rel: string }) => boolean;
+  /** Only files whose nature, read through the closed list, is one of these (cerebro-natureza, AC 8). */
+  natureza?: readonly Natureza[];
+  /** Only files whose scope, read through the closed list, is one of these (cerebro-natureza, AC 9). */
+  escopo?: readonly Escopo[];
 }
 
 /** Which half of the search found a file: the words (`text`), the vectors (`semantic`), or both. */
@@ -22,6 +27,25 @@ export interface SearchHit extends FileRow {
   /** `text` hits: the BM25 of FTS5 (lower is better). Fused hits: the reciprocal-rank score (higher is better). */
   score: number;
   via: SearchVia;
+  /** The file's nature and scope read through the closed lists (cerebro-natureza, AC 10); null when it has none. */
+  natureza: Natureza | null;
+  escopo: Escopo | null;
+}
+
+/** A file row as a hit: with its nature and its scope read through the closed lists. */
+export function searchHitOf(
+  file: FileRow,
+  extra: { snippet: string | null; score: number; via: SearchVia },
+): SearchHit {
+  return { ...file, ...extra, natureza: readNatureza(file.fields), escopo: readEscopo(file.fields) };
+}
+
+/** Whether a stored row is one the search may return: today's policy (`allow`), then the nature and the scope asked. */
+export function admits(filters: Omit<SearchFilters, "query">, row: FileRow): boolean {
+  if (filters.allow && !filters.allow(row)) return false;
+  if (filters.natureza && !filters.natureza.includes(readNatureza(row.fields) as Natureza)) return false;
+  if (filters.escopo && !filters.escopo.includes(readEscopo(row.fields) as Escopo)) return false;
+  return true;
 }
 
 /** A word for FTS5: quoted, so no query syntax leaks through, as a prefix. A NUL byte is dropped (FTS5 fails on it). */
@@ -72,12 +96,12 @@ export function searchFilters(filters: Omit<SearchFilters, "query">): { clauses:
 
 type Row = Record<string, unknown>;
 
-const hitOf = (r: Row): SearchHit => ({
-  ...fileRowFromDb(r),
-  snippet: (r.snip as string | null | undefined) ?? null,
-  score: (r.score as number | undefined) ?? 0,
-  via: "text" as const,
-});
+const hitOf = (r: Row): SearchHit =>
+  searchHitOf(fileRowFromDb(r), {
+    snippet: (r.snip as string | null | undefined) ?? null,
+    score: (r.score as number | undefined) ?? 0,
+    via: "text",
+  });
 
 /** The rows of one FTS query in BM25 order, today's policy applied before the cut (`allow`), at most `limit`. */
 function matches(db: Db, fts: string, filters: SearchFilters, limit: number, skip?: ReadonlySet<number>): SearchHit[] {
@@ -97,7 +121,7 @@ function matches(db: Db, fts: string, filters: SearchFilters, limit: number, ski
     .iterate(fts, ...params) as IterableIterator<Row>) {
     if (++read > SCAN_CAP || out.length >= limit) break;
     const hit = hitOf(row);
-    if (skip?.has(hit.id) || !(filters.allow?.(hit) ?? true)) continue;
+    if (skip?.has(hit.id) || !admits(filters, hit)) continue;
     out.push(hit);
   }
   return out;
@@ -114,7 +138,7 @@ function recent(db: Db, filters: SearchFilters, limit: number): SearchHit[] {
     .iterate(...params) as IterableIterator<Row>) {
     if (++read > SCAN_CAP || out.length >= limit) break;
     const hit = hitOf(row);
-    if (filters.allow?.(hit) ?? true) out.push(hit);
+    if (admits(filters, hit)) out.push(hit);
   }
   return out;
 }

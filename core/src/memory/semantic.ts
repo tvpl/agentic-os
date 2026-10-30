@@ -2,7 +2,15 @@ import type { Settings } from "../config/schema.js";
 import type { Db } from "../db/db.js";
 import { chooseProvider, type EmbeddingProvider } from "./embeddings.js";
 import { fileRowFromDb } from "./indexer.js";
-import { searchFiles, searchFilters, type SearchFilters, type SearchHit, type SearchVia } from "./search.js";
+import {
+  admits,
+  searchFiles,
+  searchFilters,
+  searchHitOf,
+  type SearchFilters,
+  type SearchHit,
+  type SearchVia,
+} from "./search.js";
 import { VectorIndex, countVectors, storedSemanticError, type VectorBackend, type VectorLoader } from "./vectors.js";
 
 /**
@@ -131,7 +139,7 @@ export class SemanticSearch {
         .all(...missing) as Array<Record<string, unknown>>;
       for (const row of rows) {
         const file = fileRowFromDb(row);
-        if (filters.allow?.(file) ?? true) byId.set(file.id, { ...file, snippet: null, score: 0, via: "semantic" });
+        if (admits(filters, file)) byId.set(file.id, searchHitOf(file, { snippet: null, score: 0, via: "semantic" }));
       }
     }
     const textIds = text.map((hit) => hit.id);

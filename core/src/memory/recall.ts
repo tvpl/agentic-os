@@ -13,6 +13,7 @@ import {
 import { fileRowFromDb, type FileRow } from "./indexer.js";
 import { extractLinks } from "./linkParser.js";
 import { resolveWikilink } from "./links.js";
+import { readEscopo, readNatureza, type Escopo, type Natureza, type Passage } from "./natureza.js";
 import { areaSlug } from "./routers.js";
 
 /**
@@ -54,6 +55,13 @@ export interface RecallOptions {
    * is neither opened nor reported. Without it, every file the scope grants.
    */
   within?: (row: { root: string; rel: string }) => boolean;
+  /**
+   * Only excerpts whose nature is one of these (.specs/features/cerebro-natureza, AC 12): an excerpt with no nature is
+   * not returned. A file that cannot give one is not opened; in a file that can, the best section of those natures.
+   */
+  natureza?: readonly Natureza[];
+  /** Only excerpts of files whose scope is one of these (AC 12). */
+  escopo?: readonly Escopo[];
 }
 
 export interface RecallContext {
@@ -65,6 +73,10 @@ export interface RecallContext {
   why: string;
   /** Set when the section was reached by following a pointer. */
   via?: string;
+  /** What the excerpt is (AC 11): its passage's, else the file's, else its generated section's (door 3), else null. */
+  natureza: Natureza | null;
+  /** The file's scope, read through the closed list; null when it has none. */
+  escopo: Escopo | null;
 }
 
 export interface RecallCandidate {
@@ -326,6 +338,9 @@ export interface Section {
   heading: string;
   body: string;
   level: number;
+  /** The 1-based lines of the file the trimmed body runs from and to (absent for an empty body). */
+  startLine?: number;
+  endLine?: number;
 }
 
 /** Split markdown by headings (level 1-6); the preamble becomes "(top)". Non-markdown files are chunked by ~40 lines. */
@@ -340,22 +355,31 @@ export function splitSections(content: string, isMarkdown: boolean): Section[] {
   }
   let current: Section = { heading: "(top)", body: "", level: 0 };
   let buf: string[] = [];
+  let bufStart = 1;
   let inFence = false;
   const flush = () => {
     current.body = buf.join("\n").trim();
+    if (current.body) {
+      // The lines the trimmed body runs over: its first and its last line that hold more than white space.
+      const first = buf.findIndex((l) => l.trim() !== "");
+      const last = buf.length - 1 - [...buf].reverse().findIndex((l) => l.trim() !== "");
+      current.startLine = bufStart + first;
+      current.endLine = bufStart + last;
+    }
     if (current.body || current.level > 0) out.push(current);
     buf = [];
   };
-  for (const line of lines) {
+  lines.forEach((line, i) => {
     if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
     const h = !inFence ? /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line) : null;
     if (h) {
       flush();
       current = { heading: h[2]!, body: "", level: h[1]!.length };
-      continue;
+      bufStart = i + 2;
+      return;
     }
     buf.push(line);
-  }
+  });
   flush();
   return out.length ? out : [{ heading: "(top)", body: content.trim(), level: 0 }];
 }
@@ -400,13 +424,94 @@ function isReadable(scope: ReadScope, filePath: string): boolean {
   }
 }
 
+// --------------------------------------------- the nature of an excerpt ----
+
+/**
+ * Door 3 of .specs/features/cerebro-natureza: what a level-2 section of the generated files is, by its title as the
+ * `consolidate-memory` skill (`<home>/memory/MEMORY.md`) and the journal (`<home>/memory/journal/YYYY-MM-DD.md`,
+ * `JOURNAL_SECTIONS`) write it. `Superseded` is a `fato` with the "substituído" seal, which the section's name says.
+ */
+export const MEMORY_SECTION_NATURES: Readonly<Record<string, Natureza>> = {
+  Facts: "fato",
+  Decisions: "fato",
+  "Open loops": "plano",
+  Reflections: "opiniao",
+  Superseded: "fato",
+};
+export const JOURNAL_SECTION_NATURES: Readonly<Record<string, Natureza>> = {
+  Decisions: "fato",
+  "Open loops": "plano",
+  Today: "relato",
+  Runs: "relato",
+};
+
+/** Which generated file of the memory folder `filePath` is (door 3), or null for any other file. */
+export function generatedFileKind(paths: Pick<MordomoPaths, "memory">, filePath: string): "memory" | "journal" | null {
+  const rel = path.relative(paths.memory, filePath);
+  if (rel === "MEMORY.md") return "memory";
+  const parts = rel.split(path.sep);
+  if (parts.length === 2 && parts[0] === "journal" && /^\d{4}-\d{2}-\d{2}\.md$/.test(parts[1]!)) return "journal";
+  return null;
+}
+
+/** The nature door 3 gives a section of a generated file: only a level-2 heading of the table; else null. */
+export function generatedSectionNature(
+  kind: "memory" | "journal" | null,
+  section: Pick<Section, "heading" | "level">,
+): Natureza | null {
+  if (kind === null || section.level !== 2) return null;
+  const table = kind === "memory" ? MEMORY_SECTION_NATURES : JOURNAL_SECTION_NATURES;
+  return Object.hasOwn(table, section.heading) ? table[section.heading]! : null;
+}
+
+/** What the nature of an excerpt is read from: the file's passages, its own nature and which generated file it is. */
+export interface NatureSource {
+  passages: readonly Passage[];
+  natureza: Natureza | null;
+  generated: "memory" | "journal" | null;
+}
+
+/**
+ * AC 11: an excerpt whose lines lie within a passage has the passage's nature; else the file's; else its section's in
+ * a generated file (door 3); else null. An excerpt that holds a passage without lying within it has the file's.
+ */
+export function excerptNature(source: NatureSource, section: Section): Natureza | null {
+  const { startLine, endLine } = section;
+  if (startLine !== undefined && endLine !== undefined) {
+    const passage = source.passages.find((p) => startLine >= p.startLine && endLine <= p.endLine);
+    if (passage) return passage.natureza;
+  }
+  return source.natureza ?? generatedSectionNature(source.generated, section);
+}
+
+/** Whether a file could give an excerpt of one of `wanted`, before it is opened (its passages, its nature, door 3). */
+function couldGive(source: NatureSource, wanted: readonly Natureza[]): boolean {
+  if (source.passages.some((p) => wanted.includes(p.natureza))) return true;
+  if (source.natureza !== null) return wanted.includes(source.natureza);
+  const table =
+    source.generated === "memory" ? MEMORY_SECTION_NATURES : source.generated === "journal" ? JOURNAL_SECTION_NATURES : {};
+  return Object.values(table).some((n) => wanted.includes(n));
+}
+
 interface OpenedFile {
   file: FileRow;
   sections: Section[];
-  best: { section: Section; score: number; matched: string[]; index: number } | null;
+  best: { section: Section; score: number; matched: string[]; index: number; natureza: Natureza | null } | null;
 }
 
-function openFile(scope: ReadScope, file: FileRow, keywords: string[], maxBytes: number): OpenedFile | null {
+/** How a file's sections are labelled, and which labels a recall keeps (all of them without a filter). */
+interface Labelling {
+  source: NatureSource;
+  wanted?: readonly Natureza[] | undefined;
+}
+
+function openFile(
+  scope: ReadScope,
+  file: FileRow,
+  keywords: string[],
+  maxBytes: number,
+  labels: Labelling,
+): OpenedFile | null {
   let content: string;
   try {
     // Through the safe-read primitive: the path comes from the index, so it is checked now, on its real path.
@@ -422,8 +527,11 @@ function openFile(scope: ReadScope, file: FileRow, keywords: string[], maxBytes:
     // A matching title is navigation metadata, not usable answer context.
     // Keep sections intact for pointers, but select excerpts with actual text.
     if (!section.body.trim()) return;
+    const natureza = excerptNature(labels.source, section);
+    // With a nature asked, the best section is the best of those natures (an excerpt with none is never one).
+    if (labels.wanted && !(natureza !== null && labels.wanted.includes(natureza))) return;
     const s = scoreSection(section, keywords);
-    if (!best || s.score > best.score) best = { section, score: s.score, matched: s.matched, index };
+    if (!best || s.score > best.score) best = { section, score: s.score, matched: s.matched, index, natureza };
   });
   return { file, sections, best };
 }
@@ -472,7 +580,30 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
   if (keywords.length === 0) return { ...empty, durationMs: Date.now() - started };
 
   const scope = opts.scope ?? grantedReadScope(settings, paths.home);
-  const scored = scoreCandidates(db, paths, settings, scope, keywords, opts);
+  const passagesOf = db.prepare(
+    "SELECT natureza, start_line AS startLine, end_line AS endLine FROM note_passages WHERE file_id = ? ORDER BY start_line",
+  );
+  const sourceOf = (file: FileRow): NatureSource => ({
+    passages: passagesOf.all(file.id) as Passage[],
+    natureza: readNatureza(file.fields),
+    generated: generatedFileKind(paths, file.path),
+  });
+  // A file the filters cannot be met in is neither opened nor counted (AC 12): its scope, then whether it could give
+  // an excerpt of a nature asked.
+  const fits = (file: FileRow, source: NatureSource): boolean =>
+    (!opts.escopo || opts.escopo.includes(readEscopo(file.fields) as Escopo)) &&
+    (!opts.natureza || couldGive(source, opts.natureza));
+  const sources = new Map<number, NatureSource>();
+  const scored = scoreCandidates(db, paths, settings, scope, keywords, opts).filter((cand) => {
+    if (!opts.natureza && !opts.escopo) return true;
+    const source = sourceOf(cand.file);
+    sources.set(cand.file.id, source);
+    return fits(cand.file, source);
+  });
+  const labelsOf = (file: FileRow): Labelling => ({
+    source: sources.get(file.id) ?? sourceOf(file),
+    wanted: opts.natureza,
+  });
   const maxBytes = settings.limits.maxIndexedFileBytes;
   const answer: RecallContext[] = [];
   const openedPaths = new Set<string>();
@@ -482,7 +613,7 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
   for (const cand of scored.slice(0, k)) {
     if (openedPaths.has(cand.file.path)) continue; // already reached by a pointer — never read a file twice
     openedPaths.add(cand.file.path);
-    const file = openFile(scope, cand.file, keywords, maxBytes);
+    const file = openFile(scope, cand.file, keywords, maxBytes, labelsOf(cand.file));
     opened++;
     if (!file || !file.best) continue;
     const best = file.best;
@@ -493,6 +624,8 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
       excerpt: excerptOf(best.section, excerptChars),
       score: Math.round((cand.score + best.score) * 100) / 100,
       why,
+      natureza: best.natureza,
+      escopo: readEscopo(cand.file.fields),
     });
     // (d) one level of pointers out of the chosen section.
     for (const target of pointerTargets(db, scope, best.section, cand.file, pointerLimit)) {
@@ -501,8 +634,9 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
       if (!row) continue; // only indexed files — same exclusion policy as the index
       const pointedRow = fileRowFromDb(row);
       if (opts.within && !opts.within(pointedRow)) continue; // a pointer out of the work context is not followed
+      if ((opts.natureza || opts.escopo) && !fits(pointedRow, sourceOf(pointedRow))) continue;
       openedPaths.add(target);
-      const pointed = openFile(scope, pointedRow, keywords, maxBytes);
+      const pointed = openFile(scope, pointedRow, keywords, maxBytes, labelsOf(pointedRow));
       opened++;
       if (!pointed || !pointed.best) continue;
       if (pointed.best.score > best.score) {
@@ -513,6 +647,8 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
           score: Math.round((cand.score + pointed.best.score) * 100) / 100,
           why: `pointer from ${path.basename(cand.file.path)} § "${best.section.heading}"; section "${pointed.best.section.heading}" matches ${pointed.best.matched.join(", ")}`,
           via: cand.file.path,
+          natureza: pointed.best.natureza,
+          escopo: readEscopo(pointedRow.fields),
         });
       }
     }

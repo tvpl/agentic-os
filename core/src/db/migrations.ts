@@ -568,4 +568,28 @@ CREATE TABLE IF NOT EXISTS cleanup_decisions (
 );
 `,
   },
+  {
+    version: 25,
+    name: "natureza",
+    // cerebro-natureza, doors 2 and 6: the `> [!natureza]` passages of an indexed Markdown file (they go with its row),
+    // and the owner's review decisions on a file, keyed by its path so that a full reindex keeps them. Created empty;
+    // nothing changes a row that exists. The passages of the files that do not change are filled by the next pass
+    // from the text the index already stores (`index.note_passages` in `meta`).
+    sql: `
+CREATE TABLE IF NOT EXISTS note_passages (
+  file_id INTEGER NOT NULL,
+  natureza TEXT NOT NULL,
+  start_line INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  PRIMARY KEY (file_id, start_line)
+);
+CREATE TABLE IF NOT EXISTS review_state (
+  path TEXT PRIMARY KEY,
+  last_reviewed INTEGER,
+  snooze_until INTEGER,
+  never INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+`,
+  },
 ];

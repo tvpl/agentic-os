@@ -1096,7 +1096,8 @@ describe("S3 who asked does not approve", () => {
       // Later migrations also run over these rows: who a push subscription and a retry receipt belong to (round 1), and
       // the table of links between notes (cerebro-v2) and the end of the old link table (cerebro-correcoes), which touch
       // none of them, and the work context of a run (cerebro-contextos), a column that reads NULL on the old run, and
-      // the signatures and decisions of the cleanup (cerebro-faxina-guiada), two new tables.
+      // the signatures and decisions of the cleanup (cerebro-faxina-guiada), two new tables, and the passages of a
+      // note and the review state of a file (cerebro-natureza), two more.
       expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([
         "push-subscription-device",
         "run-action-receipt-requester",
@@ -1105,6 +1106,7 @@ describe("S3 who asked does not approve", () => {
         "drop-file-links",
         "run-context",
         "cleanup",
+        "natureza",
       ]);
       const raw = new Database(tmp.paths.dbFile);
       for (const m of MIGRATIONS.filter((x) => x.version < target)) {

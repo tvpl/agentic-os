@@ -902,6 +902,38 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(142);"],
       head: ["    expect(operations).toBe(145);"],
     },
+    // cerebro-natureza added migration 25 (the passages of a note and the review state of a file): only the list of
+    // later migrations the suite pins moved, on top of cerebro-faxina-guiada's.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-natureza: migration 25 after the scopes one",
+      base: [
+        "      // the signatures and decisions of the cleanup (cerebro-faxina-guiada), two new tables.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        '        "note-links",',
+        '        "file-vectors",',
+        '        "drop-file-links",',
+        '        "run-context",',
+        '        "cleanup",',
+        "      ]);",
+      ],
+      head: [
+        "      // the signatures and decisions of the cleanup (cerebro-faxina-guiada), two new tables, and the passages of a",
+        "      // note and the review state of a file (cerebro-natureza), two more.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        '        "note-links",',
+        '        "file-vectors",',
+        '        "drop-file-links",',
+        '        "run-context",',
+        '        "cleanup",',
+        '        "natureza",',
+        "      ]);",
+      ],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

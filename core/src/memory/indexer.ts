@@ -10,6 +10,7 @@ import { removeStaleSaveTemp } from "../security/safeWrite.js";
 import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
 import { parseFrontMatter } from "./frontMatter.js";
+import { parsePassages, type Passage } from "./natureza.js";
 import { extractLinks, type ParsedLink } from "./linkParser.js";
 import { embedPending } from "./vectors.js";
 import type { IndexPhase, IndexProgress, IndexStats } from "@mordomo/contracts";
@@ -57,6 +58,12 @@ const LAST_INDEX_KEY = "last_index";
  */
 const NOTE_LINKS_KEY = "index.note_links";
 const NOTE_LINKS_VERSION = "2";
+/**
+ * Which version of the passage reading the stored `note_passages` come from (.specs/features/cerebro-natureza, door 2):
+ * the first full pass after migration 25 fills them from the stored text, opening no file, and then writes it.
+ */
+const NOTE_PASSAGES_KEY = "index.note_passages";
+const NOTE_PASSAGES_VERSION = "1";
 /** When the related-by-content edges were last refreshed: the files whose terms are newer than this still owe them. */
 const RELATED_AT_KEY = "index.related_at";
 
@@ -131,6 +138,8 @@ interface PreparedFile {
   /** The JSON of the file's top terms, or null when the text is too short to carry any. */
   terms: string | null;
   noteLinks: ParsedLink[];
+  /** The `> [!natureza]` passages (Markdown only, door 2 of cerebro-natureza). */
+  passages: Passage[];
   markdown: boolean;
 }
 
@@ -645,6 +654,7 @@ export class MemoryIndexer {
 
       // Files that did not change since migration 20 get their links from the stored text.
       if (!only) yield* this.backfillNoteLinks();
+      if (!only) yield* this.backfillNotePassages();
 
       // Phase 4: related-by-content edges for what changed (IDF over the whole corpus).
       emit(total, "related");
@@ -801,6 +811,8 @@ export class MemoryIndexer {
       fieldsJson: JSON.stringify(fields),
       terms: termsOf(name, content),
       noteLinks: markdown ? extractLinks(content, full) : [],
+      // From the text the index stores, as the backfill reads it: both give a file the same rows.
+      passages: markdown ? parsePassages(content.slice(0, 200_000)) : [],
       markdown,
     };
   }
@@ -838,7 +850,19 @@ export class MemoryIndexer {
       this.storeTerms(id, file.terms);
       stats.added++;
     }
-    if (file.markdown) this.writeNoteLinks(id, file.noteLinks);
+    if (file.markdown) {
+      this.writeNoteLinks(id, file.noteLinks);
+      this.writePassages(id, file.passages);
+    }
+  }
+
+  /** Replace the passages of one Markdown file (`note_passages`): the rows of a file are replaced, never added to. */
+  private writePassages(id: number, passages: readonly Passage[]): void {
+    this.db.prepare("DELETE FROM note_passages WHERE file_id = ?").run(id);
+    const insert = this.db.prepare(
+      "INSERT OR IGNORE INTO note_passages (file_id, natureza, start_line, end_line) VALUES (?, ?, ?, ?)",
+    );
+    for (const p of passages) insert.run(id, p.natureza, p.startLine, p.endLine);
   }
 
   /** Replace what one Markdown file says about other files (`note_links`). */
@@ -877,6 +901,36 @@ export class MemoryIndexer {
     );
   }
 
+  /**
+   * After migration 25 the Markdown files that did not change have no `note_passages` yet: they are filled from the
+   * text the index already stores, so no file is opened for it. A file that holds passages is written in its own
+   * short transaction, with a safe point after it and after every `INDEX_CHUNK_SIZE` rows read; the marker is written
+   * after the last one, so a pass that stops halfway does it again (its rows are replaced, never added to).
+   */
+  private *backfillNotePassages(): Generator<void> {
+    const stored = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(NOTE_PASSAGES_KEY) as
+      | { value: string }
+      | undefined;
+    if (stored?.value === NOTE_PASSAGES_VERSION) return;
+    const rows = this.db
+      .prepare("SELECT id FROM files WHERE ext IN ('.md', '.markdown') ORDER BY id")
+      .all() as Array<{ id: number }>;
+    const textOf = this.db.prepare("SELECT content FROM files_fts WHERE rowid = ?");
+    for (let i = 0; i < rows.length; i++) {
+      const id = rows[i]!.id;
+      const passages = parsePassages((textOf.get(id) as { content: string } | undefined)?.content ?? "");
+      if (passages.length > 0) {
+        this.write(() => this.writePassages(id, passages));
+        yield;
+      } else if ((i + 1) % INDEX_CHUNK_SIZE === 0) yield;
+    }
+    this.write(() =>
+      this.db
+        .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .run(NOTE_PASSAGES_KEY, NOTE_PASSAGES_VERSION),
+    );
+  }
+
   /** Ids of the files whose terms were stored after the last refresh of the related edges. */
   private relatedOwed(): Set<number> {
     const at = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(RELATED_AT_KEY) as { value: string } | undefined;
@@ -889,6 +943,8 @@ export class MemoryIndexer {
     this.db.prepare("DELETE FROM files WHERE id = ?").run(id);
     this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(id);
     this.db.prepare("DELETE FROM note_links WHERE src_id = ?").run(id);
+    // The passages go with the file, in the same transaction; its `review_state` (keyed by path, door 6) stays.
+    this.db.prepare("DELETE FROM note_passages WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_vectors WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_minhash WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_terms WHERE file_id = ?").run(id);

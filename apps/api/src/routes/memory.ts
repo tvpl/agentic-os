@@ -38,6 +38,8 @@ import {
   saveProperties,
   statWorkspacePath,
   workspaceScope,
+  parseEscopoList,
+  parseNaturezaList,
   type ReadScope,
 } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
@@ -65,6 +67,16 @@ function runReach(
 }
 
 /** Whether the scope lets `file` be read today (a refused path is not a hit). */
+/**
+ * The `natureza` and `escopo` filters of the search and the recall (cerebro-natureza, AC 8, 9 and 12): the contract has
+ * already refused a value outside the closed lists, so each is the list it names, or absent.
+ */
+function natureFilters(q: { natureza?: string | undefined; escopo?: string | undefined }) {
+  const natureza = q.natureza !== undefined ? parseNaturezaList(q.natureza) : null;
+  const escopo = q.escopo !== undefined ? parseEscopoList(q.escopo) : null;
+  return { ...(natureza ? { natureza } : {}), ...(escopo ? { escopo } : {}) };
+}
+
 function readable(scope: ReadScope, file: string): boolean {
   try {
     return inspectPath(scope, file).blockedReason === null;
@@ -138,7 +150,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   bind(app, "memory.search", async ({ query: q }, req) => {
     // Rows are judged by today's policy as they are read (an old index may still hold a private path).
-    const { mode, context, ...filters } = q;
+    const { mode, context, natureza: _natureza, escopo: _escopo, ...filters } = q;
     const reach = runReach(ctx, req);
     const within = contextFilter(ctx, context ?? reach?.context);
     const policy = ctx.indexer.rowFilter();
@@ -147,7 +159,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       ? (row: Row) => policy(row) && readable(reach.scope, path.join(row.root, row.rel))
       : policy;
     const allow = within ? (row: Row) => scoped(row) && within(row) : scoped;
-    return ctx.semantic.search({ ...filters, query: q.q, allow }, mode ?? "auto");
+    return ctx.semantic.search({ ...filters, ...natureFilters(q), query: q.q, allow }, mode ?? "auto");
   });
 
   bind(app, "memory.graph", async ({ query: q }) => {
@@ -309,6 +321,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       excerptChars: q.excerptChars,
       ...(reach ? { scope: reach.scope } : {}),
       ...(within ? { within } : {}),
+      ...natureFilters(q),
     });
     if (q.record !== false) recordRecall(ctx.db, result);
     return result;
