@@ -938,3 +938,34 @@ Status of batch C (updated in the commit that closes each piece):
   (C64, C65, C66, C68, C69), and the existing ones they name (`api.openapi` C16, `security-reads` C55 and its
   "finds nothing outside the list", `sdk.instances` C30, `cleanup.layer` C19, `organize.maps` C33, `notesview.properties`
   C19) green and unchanged
+
+- **Boundary (batch C):** C64-C69 closed at `cfe1a9d`. On the tree of `cfe1a9d`: `npm run build`, `npm run typecheck`
+  and `npm run lint` exit 0, `npx vitest run` at the root is green (157 files, 2139 tests, 1 skipped) and
+  `npm run test -w apps/command-centre` too (161 files, 1326 tests); each of the 12 `Proof:` lines of C64-C69 passes and
+  runs only its check's test. No product code changed: the search and recall keys batch A typed (C65), the two routes,
+  their scopes, their `docs/security.md` rows and their scenarios batch B added (C64, C66), the date keys of the
+  properties (C69) and the cleanup as it was (C68) all held as built. No route, scope, event, settings leaf or
+  migration was added, so no pinned count moved and no pinned test was edited; the raw `fs` allowlist and the
+  module-state list (C67) are the files of `aa687ed`, untouched by A, B or C. C70-C93 are untouched (batch D): no
+  screen, no locale key, no `natureza.contract` case for C92.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape, none a new one-way door:
+  (a) C66's "unchanged" run lists are compared with `apps/api/src/server.ts` at `aa687ed`, the commit before batch A,
+  as C5's C76 compares them with its own base; (b) C65's response without a key is made in the test, not in the
+  product: the search's by a spy on `ctx.semantic.search` that drops the key from each hit, the recall's by a
+  `vi.mock` of `@mordomo/core/internal` that wraps `recall` and drops it from each `answerContext[]` item only when the
+  test names a key (it is `recall` itself otherwise, for the whole file); both answers come back `500
+response_contract_violation` with the key in the message, from a `notesViewWorld` server (`validateResponses` on
+  under test); C65 also reads the two keys as required in the OpenAPI document's hit and item and as query parameters
+  of both operations; (c) C64's "where the claims above answer them" is read as `GET` declaring `400 validation` and
+  `404 context_not_found` and none of the decision's own codes, and `POST` the other seven (`400 validation` by the
+  common rule), asserted on the entry and in the served document; the seven actions are asserted as the body's enum,
+  each one accepted and `delete` refused; (d) C66's "no file or row changes" is every file under `memory/`, the
+  indexed file outside it, both `mtime`s and every `review_state` row, over three refused decisions (`keep` on the
+  editable note with its `baseVersion`, `snooze` and `never` on the file outside); the run credential is first shown
+  live on `GET /api/memory/recall`; (e) C68's scan is over `memory/notes/c68` with the default `staleDays` (180), the
+  `plano` note's `mtime` 400 days back and the `review_every: 7d` one's 30; (f) C69's "read back with the kind `date`"
+  is `GET /api/memory/note`'s `properties` entry `{ key: "became_fact", kind: "date", value: "2026-10-30" }`, and its
+  bare line is the file's bytes compared whole
+- **Abandoned:** changing product code to make a response leave a key out for C65 (a debug switch in the route would
+  be code no check asks for); a test-only route registered beside the real ones for C65 (it would prove the check of a
+  synthetic entry, not of `memory.search` and `memory.recall`)
