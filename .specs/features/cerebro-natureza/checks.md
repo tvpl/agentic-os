@@ -139,7 +139,10 @@ unclassified note's excerpt is not returned; a `natureza: plano` note whose best
 is returned with `natureza: "fato"` (AC 12)
 Proof: `npx vitest run tests/natureza.search.test.ts -t "C18 "`
 
-**C19** - `GET /api/memory/recall?…&escopo=equipe` returns only excerpts whose `escopo` is `equipe`; `natureza=talvez`,
+**C19** - `GET /api/memory/recall?…&escopo=equipe` returns only excerpts whose `escopo` is `equipe`, a pointer target
+included: a `fato`/`equipe` note linking to a higher-scoring `fato`/`pessoal` note answers only itself under `escopo=equipe`,
+and a `fato`/`equipe` note linking to a higher-scoring `plano`/`equipe` note answers only itself under `natureza=fato`
+(round 2); `natureza=talvez`,
 `natureza=` and `escopo=publico` answer `400 validation`; `context=nao-existe` answers `404 context_not_found` as before
 (AC 12, Surface, amendment 5)
 Proof: `npx vitest run tests/natureza.search.test.ts -t "C19 "`
@@ -154,24 +157,24 @@ Proof: `npx vitest run tests/natureza.search.test.ts -t "C20 "`
 asserted case per nature: `plano` → `[Plano — ainda não é realidade] ● <path> § <section> (score <n>)`, `hipotese` →
 `[Hipótese] ● …`, `opiniao` → `[Opinião] ● …`, `null` → `[Não classificado] ● …`; a `fato` and a `relato` excerpt print
 `● <path> § <section> (score <n>)` with no label, as before (AC 13, amendment 12)
-Proof: `npx vitest run tests/natureza.cli.test.ts -t "C21 "`
+Proof: `npm run build:server && npx vitest run tests/natureza.cli.test.ts -t "C21 "`
 
 **C22** - For a note with `status: archived` and `abandoned: 2026-09-01`, the excerpt keeps `natureza` as stored and the
 CLI header line ends with `(abandonado em 2026-09-01)`; an excerpt of `## Superseded` in `MEMORY.md` ends with
 `(substituído)`; `abandoned` is in `files.fields` of that note; `--json` prints the result with `natureza` and `escopo` on
 each `answerContext[]` item (AC 14, door 3, amendments 12 and 13)
-Proof: `npx vitest run tests/natureza.cli.test.ts -t "C22 "`
+Proof: `npm run build:server && npx vitest run tests/natureza.cli.test.ts -t "C22 "`
 
 **C23** - `mordomo recall "<pergunta>" --natureza fato` prints only `fato` excerpts, and `--escopo pessoal` only `pessoal`
 ones; `--natureza talvez` exits with code 2, prints `fato, opiniao, plano, hipotese, relato` on stderr, and leaves
 `recall.stats` in `meta` byte for byte (Observable, amendment 12)
-Proof: `npx vitest run tests/natureza.cli.test.ts -t "C23 "`
+Proof: `npm run build:server && npx vitest run tests/natureza.cli.test.ts -t "C23 "`
 
 **C24** - After `mordomo sync --apply`, the compiled `AGENTS.md` and `CLAUDE.md` (both views, one asserted case each) end
 with the six lines of `design.md`'s "Texto do bloco para os agentes", exactly, as the last section, after `## Ground
 rules` (an index assertion: the block's heading comes after `## Ground rules` and nothing but the block follows it) (AC 15,
 amendment 11)
-Proof: `npx vitest run tests/natureza.agents.test.ts -t "C24 "`
+Proof: `npm run build:server && npx vitest run tests/natureza.agents.test.ts -t "C24 "`
 
 **C25** - `buildRunPrompt` for a skill in `settings.memorySkills` holds the same six lines right after the locations block
 (the memory folder and the API lines) and before the resources line; with a work context, the context block is still
@@ -233,7 +236,8 @@ Proof: `npx vitest run tests/natureza.reviews.test.ts -t "C33 "`
 and each `kind=unclassified` item those and `suggested`; `items` are ordered by `dueSince`, oldest first, and by path on a
 tie (three notes due 40, 10 and 10 days ago, the last two named `b.md` and `a.md`, come as 40, `a.md`, `b.md`); `editable` is
 `true` for `memory/notes/a.md` and `false` for a file of an indexed folder; `natureza=plano` and `escopo=equipe` narrow
-`items` and `total`; `kind` missing reads `due`; `kind=other`, `limit=0`, `limit=201`, `natureza=talvez` and `escopo=publico`
+`items` and `total`, and a note due with no nature (`type: status`, reviewed 40 days ago) is listed without a filter and
+left out of `natureza=plano` (round 2); `kind` missing reads `due`; `kind=other`, `limit=0`, `limit=201`, `natureza=talvez` and `escopo=publico`
 each answer `400 validation` (Surface, amendment 6)
 Proof: `npx vitest run tests/natureza.reviews.test.ts -t "C34 "`
 
@@ -1072,3 +1076,41 @@ bug.
   after amendment 23, and the questions table gains question 10 as `.specs/STATE.md` cerebro-natureza 10 has it (the
   default: the same path, with no name created or removed under the home). The header of this file says 94 checks, 24
   amendments and 8 new questions (3-10).
+
+## Correções da rodada 2
+
+Changes added after approval, on the findings of `verification.md` round 2 (FAIL at `1e1baf8`), asked for by the
+coordinator on 30/10/2026. No product code changed: the code was right in all of them, and no new test exposed a bug.
+
+- **C19, the recall's filters on a pointer target (G3).** Two route cases in `tests/natureza.search.test.ts`
+  (`-t "C19 "`, now 3 tests), with no layer proof since C19 has none. Each has an origin note that passes the filter
+  and links to an `alvo.md` that scores higher and does not. First, without a filter, the target is answered with the
+  higher score. Then, under the filter, the answer is the origin alone, with no `via`. The `escopo` case is
+  `fato`/`equipe` → `fato`/`pessoal` under `escopo=equipe`, and the `natureza` case is `fato`/`equipe` →
+  `plano`/`equipe` under `natureza=fato`. The claim names both. G3 was re-injected (the line `if ((opts.natureza ||
+opts.escopo) && !fits(…)) continue;` deleted at `core/src/memory/recall.ts:637`). The `escopo` case fails:
+  `expected [ [ …(4) ], [ …(4) ] ] to deeply equal [ [ …(4) ] ]`, the `pessoal` target answered via the origin. The
+  `natureza` case stays green under G3, as round 2 judged: `openFile` keeps only sections of the natures asked, so a
+  `plano` target has no best section and nothing is answered. The line is guarded twice for `natureza` and once for
+  `escopo`. Reverted.
+- **C34, the queue's `natureza` filter on a due item with no nature (G5).** The fixture gains `status.md`: `type:
+status`, reviewed 40 days ago, no nature, in the indexed folder, so it stays out of `kind=unclassified`. The proof
+  asserts that the unfiltered `kind=due` lists it with `natureza: null`, `type: "status"` and `dueSince` 10 days ago. The
+  existing `kind=due&natureza=plano` assertion, `[[p, q], 2]`, now runs with it present. The claim names it. G5 was
+  re-injected (`natureza === null ||` dropped at `core/src/memory/reviews.ts:227`). C34 fails: `expected [ [ …(3) ], 3 ]
+to deeply equal [ [ …(2) ], 2 ]`. Reverted.
+- **C74's stylesheet walker (G19b).** The reader `colourRules` now takes every `color` declared on a rule that names
+  `.nb`, a `tone-` class or `.badge.meta`, at any depth, with the at-rules around it. A new C74 case proves the reader:
+  one rule at the root, one inside each of `@media`, `@supports`, `@layer` and `@container`, one two levels deep, and
+  `.nb-filter` not taken. The tone assertion now says what it checks. In `natureza.css`, a badge is coloured only by a
+  top-level `.nb.<tone>` rule with that tone's token, and nothing nested in an at-rule. `.badge.meta` is coloured by one
+  top-level rule of `theme.css` (`var(--text-dim)`), which `tone-muted` takes. The claim is unchanged; its selector
+  runs 9 tests. Re-injected `@media (prefers-contrast: more) { .nb.tone-muted { color: var(--ok) } }` (G19b), and the
+  same rule inside `@supports (color: red)`, `@layer badges` and `@container (min-width: 1px)`. Each fails with
+  `.nb.tone-muted: expected [ '<the at-rule>' ] to deeply equal []`. Reverted.
+- **C21-C24 need a built server.** `tests/natureza.cli.test.ts` and C24's describe in `tests/natureza.agents.test.ts`
+  skip without `apps/api/dist/cli.js`, as the repository's other CLI suites do (`cli.test.ts`, `contexts.cli.test.ts`,
+  `memory.notes.cli.test.ts`). They are not made to fail: `.github/workflows/ci.yml` runs `npm test` (vitest) before
+  `npm run build`, so a failing suite would break CI. A build inside the tests would race with the other suites that
+  read the same `dist`. Instead their `Proof:` lines now build first: `npm run build:server && npx vitest run …`. Run
+  as written, a proof cannot pass by skipping.
