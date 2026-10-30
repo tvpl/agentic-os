@@ -148,6 +148,9 @@ describe("S5 the surface is a closed list", () => {
         "NATUREZAS",
         "parseEscopoList",
         "parseNaturezaList",
+        // cerebro-natureza, batch B: the review queue and the decisions on it (doors 4 to 6)
+        "decideReview",
+        "reviewsDue",
       ].sort(),
     );
   });

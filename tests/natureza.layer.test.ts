@@ -15,6 +15,11 @@ import {
   splitSections,
   type NatureSource,
 } from "../core/src/memory/recall.js";
+import { decideReview } from "../core/src/memory/reviewDecisions.js";
+import { dueDay, lastReviewedDay, reviewCadence, reviewsDue } from "../core/src/memory/reviews.js";
+import { suggestNatureza } from "../core/src/memory/natureza.js";
+import { checkReviewDue, reviewDueAlert } from "../core/src/sentinels/reviewDue.js";
+import ts from "typescript";
 import { makeTempHome } from "./helpers.js";
 
 /**
@@ -444,5 +449,560 @@ describe("C17 an excerpt that holds a passage without lying within it", () => {
     expect(excerpt.section).toBe("Preço");
     expect(excerpt.excerpt).toContain("> Vamos subir o caju");
     expect(excerpt.natureza).toBe("fato");
+  });
+});
+
+// ---- S3 and S4 (batch B): the queue, the sentinel's rule, the decisions and the suggestion ---------------------------
+
+/** "Now" of every claim below: local noon of 2026-10-30, passed to the code as its clock (no fake `Date`). */
+const NOW = new Date(2026, 9, 30, 12, 0, 0).getTime();
+const DAY = 86_400_000;
+const two = (n: number) => String(n).padStart(2, "0");
+/** The local day `offset` days from today. */
+const dayAt = (offset: number) => {
+  const d = new Date(2026, 9, 30 + offset);
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+};
+const TODAY = dayAt(0);
+const envOf = () => ({ paths: ctx.paths, settings: ctx.settings() });
+const queue = (q: Parameters<typeof reviewsDue>[2] = {}) =>
+  reviewsDue(ctx.db, envOf(), { limit: 200, now: NOW, ...q });
+const itemIn = (file: string, q: Parameters<typeof reviewsDue>[2] = {}) =>
+  queue(q).items.find((i) => i.path === file);
+/** A note with these header lines, its `mtime` `mtimeAgo` days before today. */
+const headed = (file: string, head: string[], mtimeAgo = 0, body = "# Nota\n"): string => {
+  put(file, head.length ? `---\n${head.join("\n")}\n---\n${body}` : body);
+  const t = new Date(2026, 9, 30 - mtimeAgo, 12).getTime() / 1000;
+  fs.utimesSync(file, t, t);
+  return file;
+};
+const decide = (input: Parameters<typeof decideReview>[1], now = NOW) =>
+  decideReview({ db: ctx.db, paths: ctx.paths, settings: ctx.settings() }, input, now);
+const stateRowOf = (file: string) =>
+  ctx.db.prepare("SELECT last_reviewed, snooze_until, never FROM review_state WHERE path = ?").get(file);
+
+describe("C27 the due edges of an opiniao note", () => {
+  it("C27 last reviewed 91 days ago is due since yesterday, 90 days ago since today, 89 days ago not due", () => {
+    const dir = folder("c27");
+    const files = [91, 90, 89].map((age) =>
+      headed(path.join(dir, `n${age}.md`), ["natureza: opiniao", `last_reviewed: ${dayAt(-age)}`]),
+    );
+    ctx.indexer.indexAll();
+    expect(files.map((f) => itemIn(f)?.dueSince ?? null)).toEqual([dayAt(-1), TODAY, null]);
+  });
+});
+
+describe("C28 the base of the due date, one case per row", () => {
+  it("C28 no last_reviewed and mtime 91 days ago is due by the mtime", () => {
+    const file = headed(path.join(folder("c28"), "m.md"), ["natureza: opiniao"], 91);
+    ctx.indexer.indexAll();
+    expect(itemIn(file)).toMatchObject({ dueSince: dayAt(-1), lastReviewed: null });
+  });
+  it("C28 last_reviewed: ontem and mtime 91 days ago is due by the mtime", () => {
+    const file = headed(path.join(folder("c28"), "o.md"), ["natureza: opiniao", "last_reviewed: ontem"], 91);
+    ctx.indexer.indexAll();
+    expect(itemIn(file)).toMatchObject({ dueSince: dayAt(-1), lastReviewed: null });
+  });
+  it("C28 last_reviewed 100 days ago and a keep stored 10 days ago is not due, and lastReviewed is the later day", () => {
+    const file = headed(path.join(folder("c28"), "k.md"), [
+      "natureza: opiniao",
+      `last_reviewed: ${dayAt(-100)}`,
+    ]);
+    ctx.indexer.indexAll();
+    expect(itemIn(file)?.dueSince).toBe(dayAt(-10));
+    decide({ path: file, action: "keep" }, NOW - 10 * DAY);
+    expect(itemIn(file)).toBeUndefined();
+    expect(itemIn(file, { now: NOW + 80 * DAY })?.lastReviewed).toBe(dayAt(-10));
+    expect(
+      lastReviewedDay(
+        { last_reviewed: dayAt(-100) },
+        { lastReviewed: NOW - 10 * DAY, snoozeUntil: null, never: 0 },
+      ),
+    ).toBe(dayAt(-10));
+  });
+});
+
+describe("C29 never due, whatever the nature and age", () => {
+  it("C29 review_every: never on an opiniao note last reviewed 400 days ago", () => {
+    const file = headed(path.join(folder("c29"), "n.md"), [
+      "natureza: opiniao",
+      "review_every: never",
+      `last_reviewed: ${dayAt(-400)}`,
+    ]);
+    ctx.indexer.indexAll();
+    expect(itemIn(file)).toBeUndefined();
+  });
+  it("C29 review_state.never = 1 stored by action never on a copy outside memory/", () => {
+    const file = headed(path.join(folder("c29"), "copia.md"), [
+      "natureza: opiniao",
+      `last_reviewed: ${dayAt(-400)}`,
+    ]);
+    ctx.indexer.indexAll();
+    expect(itemIn(file)).toBeDefined();
+    decide({ path: file, action: "never" });
+    expect(stateRowOf(file)).toMatchObject({ never: 1 });
+    expect(itemIn(file)).toBeUndefined();
+  });
+  for (const natureza of ["fato", "opiniao", "plano", "hipotese", "relato"]) {
+    it(`C29 ${natureza} with review_every: never at 400 days`, () => {
+      const file = headed(path.join(folder("c29"), `${natureza}.md`), [
+        `natureza: ${natureza}`,
+        "review_every: never",
+        `last_reviewed: ${dayAt(-400)}`,
+      ]);
+      ctx.indexer.indexAll();
+      expect(itemIn(file)).toBeUndefined();
+    });
+  }
+});
+
+describe("C30 the cadence precedence, one case per row", () => {
+  const reviews = () => ctx.settings().memory.reviews;
+  /** Due today when last reviewed `age` days ago with these fields (the rule itself, no index). */
+  const isDue = (fields: Record<string, string>, age: number) =>
+    (dueDay({ ...fields, last_reviewed: dayAt(-age) }, null, NOW, reviewCadence(fields, reviews())) ??
+      "9999") <= TODAY;
+  const CASES: Array<[string, Record<string, string>, number, boolean]> = [
+    [
+      "type status + fato at 31 is due (byType.status over cadence.fato)",
+      { type: "status", natureza: "fato" },
+      31,
+      true,
+    ],
+    ["type status + fato at 29 is not", { type: "status", natureza: "fato" }, 29, false],
+    ["type Status reads as status", { type: "Status", natureza: "fato" }, 31, true],
+    [
+      "type status + review_every 10d at 11 is due (the note over byType)",
+      { type: "status", review_every: "10d" },
+      11,
+      true,
+    ],
+    [
+      "type conceito + opiniao at 179 is not (byType over cadence)",
+      { type: "conceito", natureza: "opiniao" },
+      179,
+      false,
+    ],
+    ["type conceito + opiniao at 181 is due", { type: "conceito", natureza: "opiniao" }, 181, true],
+    ["plano at 31 is due", { natureza: "plano" }, 31, true],
+    ["plano at 29 is not", { natureza: "plano" }, 29, false],
+    ["hipotese at 61 is due", { natureza: "hipotese" }, 61, true],
+    ["hipotese at 59 is not", { natureza: "hipotese" }, 59, false],
+    ["opiniao at 91 is due", { natureza: "opiniao" }, 91, true],
+    ["relato at 4000 is not", { natureza: "relato" }, 4000, false],
+    ["fato at 4000 is not", { natureza: "fato" }, 4000, false],
+    ["none of natureza, type, review_every at 4000 is not", {}, 4000, false],
+  ];
+  for (const [name, fields, age, want] of CASES)
+    it(`C30 ${name}`, () => expect(isDue(fields, age)).toBe(want));
+  it("C30 the same table through the queue, over indexed notes", () => {
+    const dir = folder("c30");
+    const files = CASES.map(([, fields, age], i) =>
+      headed(path.join(dir, `n${i}.md`), [
+        ...Object.entries(fields).map(([k, v]) => `${k}: ${v}`),
+        `last_reviewed: ${dayAt(-age)}`,
+      ]),
+    );
+    ctx.indexer.indexAll();
+    const listed = new Set(queue().items.map((i) => i.path));
+    expect(files.map((f) => listed.has(f))).toEqual(CASES.map(([, , , want]) => want));
+  });
+});
+
+describe("C32 the context of the queue", () => {
+  it("C32 a context's ok path and its notes folder, never app-antigo/ nor a row under its missing path; none lists all", () => {
+    const root = folder("c32");
+    const app = path.join(root, "projetos", "app");
+    const gone = path.join(root, "sumiu");
+    const head = ["natureza: opiniao", `last_reviewed: ${dayAt(-200)}`];
+    const inApp = headed(path.join(app, "a.md"), head);
+    const inOld = headed(path.join(root, "projetos", "app-antigo", "b.md"), head);
+    const inGone = headed(path.join(gone, "c.md"), head);
+    const id = `ctx-c32-${seq}`;
+    const inNotes = headed(path.join(memory, "notes", id, "d.md"), head);
+    ctx.indexer.indexAll();
+    fs.rmSync(gone, { recursive: true, force: true });
+    const mine = [inApp, inNotes, inOld, inGone];
+    const listed = (context: Parameters<typeof reviewsDue>[2]["context"]) =>
+      queue({ context })
+        .items.map((i) => i.path)
+        .filter((p) => mine.includes(p))
+        .sort();
+    const context = { id, name: "C32", paths: [app, gone] };
+    expect(listed(context)).toEqual([inApp, inNotes].sort());
+    expect(listed(null)).toEqual([...mine].sort());
+  });
+});
+
+describe("C37 what is never listed, one case per place", () => {
+  it("C37 an opiniao note aged 400 days under memory/archive/ is in neither kind", () => {
+    const file = headed(path.join(memory, "archive", "2026-10-01-ab12cd34", "velha.md"), [
+      "natureza: opiniao",
+      `last_reviewed: ${dayAt(-400)}`,
+    ]);
+    const loose = headed(path.join(memory, "archive", "2026-10-01-ab12cd34", "solta.md"), [], 400);
+    ctx.indexer.indexAll();
+    expect(itemIn(file)).toBeUndefined();
+    expect(itemIn(loose, { kind: "unclassified" })).toBeUndefined();
+  });
+  it("C37 a plano note with status: archived aged 400 days is not due", () => {
+    const file = headed(path.join(folder("c37"), "a.md"), [
+      "natureza: plano",
+      "status: archived",
+      `last_reviewed: ${dayAt(-400)}`,
+    ]);
+    ctx.indexer.indexAll();
+    expect(itemIn(file)).toBeUndefined();
+  });
+  it("C37 a plano note with status: active aged 400 days is due", () => {
+    const file = headed(path.join(folder("c37"), "b.md"), [
+      "natureza: plano",
+      "status: active",
+      `last_reviewed: ${dayAt(-400)}`,
+    ]);
+    ctx.indexer.indexAll();
+    expect(itemIn(file)).toBeDefined();
+  });
+});
+
+describe("C40 the sentinel's emit rule", () => {
+  const bus = () => {
+    const seen: Array<Record<string, unknown>> = [];
+    return {
+      seen,
+      emit: (type: string, payload: Record<string, unknown>) => seen.push({ type, ...payload }),
+    };
+  };
+  it("C40 the payload of 3 due, of 1, and none for 0", () => {
+    expect(reviewDueAlert(3, 20, NOW)).toEqual({
+      sentinel: "reviewDue",
+      title: "3 items to review",
+      body: expect.stringMatching(/\S/),
+      severity: "info",
+      href: "/brain/reviews",
+      dedupeKey: `sentinel:reviewDue:${TODAY}:all`,
+      messageParams: { count: 3, display: "3" },
+    });
+    expect(reviewDueAlert(1, 20, NOW)?.messageParams).toEqual({ count: 1, display: "1" });
+    expect(reviewDueAlert(0, 20, NOW)).toBeNull();
+  });
+  it("C40 checkReviewDue emits once a day: one for a home with due notes, none when today's key is there, one the next day with its key, none with nothing due", () => {
+    const own = makeTempHome("mordomo-natureza-layer-c40-");
+    const home = new AppContext(own.paths.home);
+    try {
+      const deps = (b: ReturnType<typeof bus>, keys: Set<string>, now: number) => ({
+        db: home.db,
+        paths: home.paths,
+        getSettings: () => home.settings(),
+        bus: b as never,
+        dedupe: { hasDedupeKey: (key: string) => keys.has(key) },
+        now: () => now,
+      });
+      const empty = bus();
+      expect(checkReviewDue(deps(empty, new Set(), NOW))).toEqual([]);
+      for (let i = 0; i < 3; i++)
+        put(
+          path.join(home.paths.memory, "notes", `n${i}.md`),
+          `---\nnatureza: opiniao\nlast_reviewed: ${dayAt(-200)}\n---\n# N\n`,
+        );
+      home.indexer.addImplicitRoot({ path: home.paths.memory, area: null, enabled: true });
+      home.indexer.indexAll();
+      const first = bus();
+      const keys = new Set<string>();
+      expect(checkReviewDue(deps(first, keys, NOW)).map((p) => p.messageParams)).toEqual([
+        { count: 3, display: "3" },
+      ]);
+      expect(first.seen).toHaveLength(1);
+      keys.add(`sentinel:reviewDue:${TODAY}:all`);
+      expect(checkReviewDue(deps(bus(), keys, NOW))).toEqual([]);
+      expect(checkReviewDue(deps(bus(), keys, NOW + DAY)).map((p) => p.dedupeKey)).toEqual([
+        `sentinel:reviewDue:${dayAt(1)}:all`,
+      ]);
+    } finally {
+      home.close();
+      own.cleanup();
+    }
+  });
+});
+
+describe("C48 snooze at its own layer", () => {
+  it("C48 snooze 14 stores snooze_until = now + 14 days on an editable note and an outside file, and writes neither", () => {
+    const editable = headed(path.join(memory, "notes", `c48-${++seq}`, "n.md"), ["natureza: opiniao"]);
+    const outside = headed(path.join(folder("c48"), "f.md"), ["natureza: opiniao"]);
+    ctx.indexer.indexAll();
+    for (const file of [editable, outside]) {
+      const bytes = fs.readFileSync(file);
+      expect(decide({ path: file, action: "snooze", days: 14 }).state).toEqual({
+        lastReviewed: null,
+        snoozeUntil: NOW + 14 * 86_400_000,
+        never: 0,
+      });
+      expect(stateRowOf(file), file).toEqual({ last_reviewed: null, snooze_until: NOW + 14 * DAY, never: 0 });
+      expect(fs.readFileSync(file).equals(bytes), file).toBe(true);
+    }
+  });
+  it("C48 days 1 and 365 are stored; 0, 366, 1.5 and missing are refused with 400 validation and store nothing", () => {
+    const dir = folder("c48");
+    const [one, year, refused] = ["um.md", "ano.md", "recusa.md"].map((n) =>
+      headed(path.join(dir, n), ["natureza: plano"]),
+    );
+    ctx.indexer.indexAll();
+    expect(decide({ path: one!, action: "snooze", days: 1 }).state?.snoozeUntil).toBe(NOW + DAY);
+    expect(decide({ path: year!, action: "snooze", days: 365 }).state?.snoozeUntil).toBe(NOW + 365 * DAY);
+    for (const days of [0, 366, 1.5, undefined]) {
+      const refusal = (() => {
+        try {
+          decide({ path: refused!, action: "snooze", days });
+          return null;
+        } catch (err) {
+          return err as { statusCode?: number; code?: string };
+        }
+      })();
+      expect([refusal?.statusCode, refusal?.code], String(days)).toEqual([400, "validation"]);
+      expect(stateRowOf(refused!), String(days)).toBeUndefined();
+    }
+  });
+});
+
+describe("C56 previous and restore at their own layer", () => {
+  it("C56 previous is null with no row and the row as it was with one; restore puts it back, restore null removes it, on an editable note too, and no file is written", () => {
+    const outside = headed(path.join(folder("c56"), "f.md"), [
+      "natureza: opiniao",
+      `last_reviewed: ${dayAt(-200)}`,
+    ]);
+    const editable = headed(path.join(memory, "notes", `c56-${++seq}`, "n.md"), [
+      "natureza: opiniao",
+      `last_reviewed: ${dayAt(-200)}`,
+    ]);
+    ctx.indexer.indexAll();
+    const keep = decide({ path: outside, action: "keep" }, NOW - DAY);
+    expect(keep.previous).toBeNull();
+    const snooze = decide({ path: outside, action: "snooze", days: 30 });
+    expect(snooze.previous).toEqual({ lastReviewed: NOW - DAY, snoozeUntil: null, never: 0 });
+    const bytes = fs.readFileSync(outside);
+    const restored = decide({ path: outside, action: "restore", state: snooze.previous });
+    expect(restored.state).toEqual({ lastReviewed: NOW - DAY, snoozeUntil: null, never: 0 });
+    expect(stateRowOf(outside)).toEqual({ last_reviewed: NOW - DAY, snooze_until: null, never: 0 });
+    expect(fs.readFileSync(outside).equals(bytes)).toBe(true);
+    expect(itemIn(outside)).toBeUndefined();
+
+    const text = fs.readFileSync(editable);
+    expect(itemIn(editable)).toBeDefined();
+    const hide = decide({ path: editable, action: "snooze", days: 7 });
+    expect(itemIn(editable)).toBeUndefined();
+    expect(decide({ path: editable, action: "restore", state: hide.previous }).state).toBeNull();
+    expect(stateRowOf(editable)).toBeUndefined();
+    expect(fs.readFileSync(editable).equals(text)).toBe(true);
+    expect(itemIn(editable)).toBeDefined();
+  });
+});
+
+describe("C61 the suggestion, one case per row", () => {
+  const CASES: Array<[string, string | null]> = [
+    ["Vamos lançar em março; planejamos três turmas.", "plano"],
+    ["We will ship it. We plan to grow.", "plano"],
+    ["Acho que o preço está alto.", "opiniao"],
+    ["In my view this is wrong.", "opiniao"],
+    ["Vamos tentar. Lançamos a primeira e lançamos a segunda.", null],
+    ["Vamos tentar. Fizemos a primeira.", null],
+    ["Vamos lançar. Acho que vai dar certo.", "plano"],
+    ["PLANEJAMOS três turmas.", "plano"],
+    ["planejamos três turmas.", "plano"],
+    ["O curso tem três turmas.", null],
+  ];
+  for (const [text, want] of CASES)
+    it(`C61 ${JSON.stringify(text)} suggests ${want}`, () => expect(suggestNatureza(text)).toBe(want));
+  it("C61 the queue reads the text the index stored: a file changed on disk after its pass keeps the suggestion of the stored text", () => {
+    const dir = path.join(memory, "notes", `c61-${++seq}`);
+    const file = headed(path.join(dir, "n.md"), [], 0, "# N\nAcho que o preço está alto.\n");
+    ctx.indexer.indexAll();
+    put(file, "# N\nVamos lançar em março; planejamos três turmas.\n");
+    expect(itemIn(file, { kind: "unclassified" })?.suggested).toBe("opiniao");
+  });
+});
+
+describe("C62 the queue and the suggestion write nothing", () => {
+  const repoRoot = path.resolve(import.meta.dirname, "..");
+  const FS = new Set(["node:fs", "fs", "node:fs/promises", "fs/promises"]);
+  const WRITERS = new Set(["setProperties", "saveProperties", "writeWorkspaceFile"]);
+  const OWN = ["core/src/security/safeWrite", "core/src/memory/notes"];
+  /** A module the queue may not import: `node:fs` in any spelling, or (resolved from `file`) safeWrite.ts or notes.ts. */
+  const forbiddenModule = (spec: string, file: string): string | null => {
+    if (FS.has(spec)) return spec;
+    if (!spec.startsWith(".")) return null;
+    const resolved = path
+      .relative(repoRoot, path.resolve(path.dirname(path.join(repoRoot, file)), spec))
+      .replace(/\.(js|ts)$/, "");
+    return OWN.includes(resolved) ? `${resolved}.ts` : null;
+  };
+  /**
+   * What a module imports of the forbidden ones and which writers it calls, read on the syntax tree: a default, a
+   * namespace, a named or a renamed import, an `export … from`, an `import x = require()` and a `require()`; a call by
+   * the name, by a renamed binding, through a namespace or a property, or by `obj["name"]`. Not covered: a dynamic
+   * `import()`, a writer received as a parameter, `Reflect`, `eval`, `Function`.
+   */
+  function forbiddenUses(file: string, source: string): string[] {
+    const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    const out: string[] = [];
+    const aliases = new Map<string, string>();
+    const learn = (name: ts.BindingName | ts.Identifier, imported: string) => {
+      if (ts.isIdentifier(name) && WRITERS.has(imported)) aliases.set(name.text, imported);
+    };
+    const collect = (node: ts.Node): void => {
+      if (
+        (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+        node.moduleSpecifier &&
+        ts.isStringLiteral(node.moduleSpecifier)
+      ) {
+        const bad = forbiddenModule(node.moduleSpecifier.text, file);
+        if (bad) out.push(`import ${bad}`);
+        const bindings = ts.isImportDeclaration(node) ? node.importClause?.namedBindings : undefined;
+        if (bindings && ts.isNamedImports(bindings))
+          for (const el of bindings.elements) learn(el.name, (el.propertyName ?? el.name).text);
+      }
+      if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+        const spec = node.moduleReference.expression;
+        if (ts.isStringLiteral(spec)) {
+          const bad = forbiddenModule(spec.text, file);
+          if (bad) out.push(`import ${bad}`);
+        }
+      }
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "require"
+      ) {
+        const spec = node.arguments[0];
+        if (spec && ts.isStringLiteral(spec)) {
+          const bad = forbiddenModule(spec.text, file);
+          if (bad) out.push(`require ${bad}`);
+        }
+        const decl = node.parent;
+        if (ts.isVariableDeclaration(decl) && ts.isObjectBindingPattern(decl.name))
+          for (const el of decl.name.elements) {
+            const key = el.propertyName ?? el.name;
+            if (ts.isIdentifier(key)) learn(el.name, key.text);
+          }
+      }
+      ts.forEachChild(node, collect);
+    };
+    collect(sf);
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const callee = node.expression;
+        const name = ts.isIdentifier(callee)
+          ? (aliases.get(callee.text) ?? callee.text)
+          : ts.isPropertyAccessExpression(callee)
+            ? callee.name.text
+            : ts.isElementAccessExpression(callee) && ts.isStringLiteral(callee.argumentExpression)
+              ? callee.argumentExpression.text
+              : null;
+        if (name !== null && WRITERS.has(name)) out.push(`call ${name}`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    return out;
+  }
+
+  const SELF: Array<[string, string, string[]]> = [
+    ["a default import of node:fs", 'import fs from "node:fs";', ["import node:fs"]],
+    ["a namespace import of fs", 'import * as nfs from "fs";', ["import fs"]],
+    [
+      "a named import of node:fs/promises",
+      'import { readFile } from "node:fs/promises";',
+      ["import node:fs/promises"],
+    ],
+    [
+      "a renamed import of fs/promises",
+      'import { writeFile as wf } from "fs/promises";',
+      ["import fs/promises"],
+    ],
+    [
+      "an import of safeWrite.ts by its relative path",
+      'import { writeWorkspaceFile } from "../security/safeWrite.js";',
+      ["import core/src/security/safeWrite.ts"],
+    ],
+    [
+      "an import of notes.ts by its relative path",
+      'import * as notes from "./notes.js";',
+      ["import core/src/memory/notes.ts"],
+    ],
+    [
+      "a re-export from notes.ts",
+      'export { saveProperties } from "./notes.js";',
+      ["import core/src/memory/notes.ts"],
+    ],
+    ["an import = require of node:fs", 'import fs = require("node:fs");', ["import node:fs"]],
+    ["a require of notes.ts", 'const n = require("./notes.js");', ["require core/src/memory/notes.ts"]],
+    [
+      "a call by the name",
+      'import { setProperties } from "./frontMatter.js";\nsetProperties("", {});',
+      ["call setProperties"],
+    ],
+    [
+      "a call by a renamed import",
+      'import { setProperties as sp } from "./frontMatter.js";\nsp("", {});',
+      ["call setProperties"],
+    ],
+    [
+      "a call by a renamed require",
+      'const { saveProperties: s } = require("./x.js");\ns();',
+      ["call saveProperties"],
+    ],
+    [
+      "a call through a namespace",
+      'import * as fm from "./frontMatter.js";\nfm.setProperties("", {});',
+      ["call setProperties"],
+    ],
+    [
+      'a call by obj["name"]',
+      'import * as fm from "./frontMatter.js";\nfm["setProperties"]("", {});',
+      ["call setProperties"],
+    ],
+    [
+      "the names in a comment or a string",
+      '// import fs from "node:fs"; saveProperties()\nconst s = "writeWorkspaceFile(x)";',
+      [],
+    ],
+    [
+      "an allowed module and an allowed call",
+      'import { parsePassages } from "./natureza.js";\nparsePassages("");',
+      [],
+    ],
+  ];
+  for (const [name, source, want] of SELF)
+    it(`C62 the walker sees ${name}`, () =>
+      expect(forbiddenUses("core/src/memory/sample.ts", source)).toEqual(want));
+
+  it("C62 core/src/memory/reviews.ts and the suggestion's module (natureza.ts) import no file writer and call none", () => {
+    for (const rel of ["core/src/memory/reviews.ts", "core/src/memory/natureza.ts"]) {
+      expect(forbiddenUses(rel, fs.readFileSync(path.join(repoRoot, rel), "utf8")), rel).toEqual([]);
+    }
+  });
+
+  it("C62 the queue of both kinds leaves every file and the review_state rows as they were", () => {
+    headed(path.join(memory, "notes", `c62-${++seq}`, "n.md"), [
+      "natureza: opiniao",
+      `last_reviewed: ${dayAt(-200)}`,
+    ]);
+    ctx.indexer.indexAll();
+    const snapshot = () => {
+      const files: Record<string, string> = {};
+      const walk = (p: string) => {
+        for (const e of fs.readdirSync(p, { withFileTypes: true })) {
+          const full = path.join(p, e.name);
+          if (e.isDirectory()) walk(full);
+          else files[full] = fs.readFileSync(full).toString("base64");
+        }
+      };
+      walk(memory);
+      walk(work);
+      return { files, rows: ctx.db.prepare("SELECT * FROM review_state ORDER BY path").all() };
+    };
+    const before = snapshot();
+    queue({ kind: "due" });
+    queue({ kind: "unclassified" });
+    expect(snapshot()).toEqual(before);
   });
 });

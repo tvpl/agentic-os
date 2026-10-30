@@ -226,6 +226,43 @@ describe("S1 the index knows the nature", () => {
   });
 });
 
+describe("C10 the review state is keyed by path", () => {
+  it("C10 a snooze stored through POST /api/memory/reviews outlives the file leaving the index and coming back with another id, and a rename leaves the new path with no state, listed when its cadence says so", async () => {
+    const root = w.indexedRoot(`c10-${++seq}`);
+    const d = new Date();
+    const old = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 120);
+    const day = `${old.getFullYear()}-${String(old.getMonth() + 1).padStart(2, "0")}-${String(old.getDate()).padStart(2, "0")}`;
+    const text = `---\nnatureza: opiniao\nlast_reviewed: ${day}\n---\n# Revisão\n`;
+    const file = w.put(path.join(root, "c10.md"), text);
+    await w.index();
+    const due = async () => {
+      const res = await w.call("GET", "/api/memory/reviews?kind=due&limit=200");
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.items as Json[]).map((i) => i.path as string);
+    };
+    expect(await due()).toContain(file);
+    const snooze = await w.call("POST", "/api/memory/reviews", { path: file, action: "snooze", days: 14 });
+    expect(snooze.status, JSON.stringify(snooze.body)).toBe(200);
+    const stored = w.ctx.db.prepare("SELECT * FROM review_state WHERE path = ?").get(file);
+    const firstId = idOf(file);
+
+    fs.rmSync(file);
+    await w.index();
+    expect(w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(file)).toBeUndefined();
+    w.put(file, text);
+    await w.index();
+    expect(idOf(file)).not.toBe(firstId);
+    expect(w.ctx.db.prepare("SELECT * FROM review_state WHERE path = ?").get(file)).toEqual(stored);
+    expect(await due()).not.toContain(file);
+
+    const renamed = path.join(root, "c10-novo.md");
+    fs.renameSync(file, renamed);
+    await w.index();
+    expect(w.ctx.db.prepare("SELECT * FROM review_state WHERE path = ?").get(renamed)).toBeUndefined();
+    expect(await due()).toContain(renamed);
+  });
+});
+
 describe("C8 the passages of files indexed before migration 25", () => {
   it("C8 the next pass fills them from the stored text without opening a file, a pass stopped after the first slice leaves no marker, and the pass after it fills the rest", async () => {
     const v = await notesViewWorld("mordomo-natureza-backfill-");

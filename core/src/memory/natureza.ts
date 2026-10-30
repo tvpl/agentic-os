@@ -92,6 +92,40 @@ export function parsePassages(content: string): Passage[] {
   return out;
 }
 
+// ---- the suggestion (AC 47, amendment 20) ---------------------------------------------------------------------------
+
+/** Markers of what is meant to happen, of what already happened, and of an opinion; matched without case or accents. */
+const FUTURE_MARKERS = ["vamos", "planejamos", "pretendemos", "a meta é", "we will", "plan to"];
+const PAST_MARKERS = ["fizemos", "lançamos", "entregamos", "concluímos", "aconteceu", "we did", "we launched", "we shipped"];
+const OPINION_MARKERS = ["acho que", "na minha opinião", "I think", "in my view"];
+
+const fold = (text: string): string =>
+  text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+/** Whole-word occurrences of the markers in a folded text. */
+function occurrences(folded: string, markers: readonly string[]): number {
+  let n = 0;
+  for (const marker of markers) {
+    const words = fold(marker).split(/\s+/).join("\\s+");
+    n += folded.match(new RegExp(`(?<![\\p{L}\\p{N}_])${words}(?![\\p{L}\\p{N}_])`, "gu"))?.length ?? 0;
+  }
+  return n;
+}
+
+/**
+ * The nature a note's text suggests (AC 47): `plano` when the future-intent markers outnumber the past ones (this rule
+ * first), else `opiniao` when an opinion marker is there, else none. Only shown; nothing writes it (AC 48).
+ */
+export function suggestNatureza(text: string): Natureza | null {
+  const folded = fold(text);
+  if (occurrences(folded, FUTURE_MARKERS) > occurrences(folded, PAST_MARKERS)) return "plano";
+  if (occurrences(folded, OPINION_MARKERS) > 0) return "opiniao";
+  return null;
+}
+
 // ---- the block the agents read (AC 15, design.md "Texto do bloco para os agentes") ------------------------------------
 
 /** The six lines of "Natureza da informação", as the compiled AGENTS.md/CLAUDE.md and a memory run's prompt hold them. */

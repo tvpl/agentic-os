@@ -62,6 +62,8 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "PUT /api/memory/cleanup/decisions": "owner",
   "POST /api/memory/cleanup/apply": "owner",
   "POST /api/memory/cleanup/undo": "owner",
+  "GET /api/memory/reviews": "content",
+  "POST /api/memory/reviews": "owner",
   "GET /api/memory/note": "content",
   "POST /api/memory/notes": "owner",
   "PUT /api/memory/notes": "owner",

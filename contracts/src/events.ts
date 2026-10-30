@@ -114,13 +114,15 @@ export interface BudgetCrossedPayload {
   budgetUsd: number;
 }
 
-export type SentinelId = "fsWatch" | "repeatedFailure" | "silentRoutine" | "connectorDelta";
+export type SentinelId = "fsWatch" | "repeatedFailure" | "silentRoutine" | "connectorDelta" | "reviewDue";
 
 export const SENTINEL_IDS: readonly SentinelId[] = [
   "fsWatch",
   "repeatedFailure",
   "silentRoutine",
   "connectorDelta",
+  /** The notes whose review fell due, once a day (.specs/features/cerebro-natureza, door 5). */
+  "reviewDue",
 ];
 
 export type SentinelSeverity = "info" | "warn" | "danger";

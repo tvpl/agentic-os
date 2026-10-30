@@ -177,9 +177,19 @@ describe("S4 the registry", () => {
         expect(entry, `${type} v${v} has a schema`).toBeDefined();
         expect(checkBody(entry!.schema, fixture), `${type} v${v}`).toEqual([]);
       }
-      expect(names(`v${v}`).filter((n) => n !== "run-frames")).toEqual(
-        OS_EVENT_TYPES.filter((t) => (EVENT_VERSIONS[t] as readonly number[]).includes(v)).sort(),
-      );
+      const types = OS_EVENT_TYPES.filter((t) => (EVENT_VERSIONS[t] as readonly number[]).includes(v)).sort();
+      const files = names(`v${v}`).filter((n) => n !== "run-frames");
+      expect(files.filter((n) => (types as readonly string[]).includes(n))).toEqual(types);
+      // A second example of a type is `<type>.<variant>.json` (cerebro-natureza C44: `sentinel.fired.reviewDue`): it
+      // names a type of this version and parses against that type's schema too.
+      for (const variant of files.filter((n) => !(types as readonly string[]).includes(n))) {
+        const type = types.find((t) => variant.startsWith(`${t}.`));
+        expect(type, `${variant} names a type of v${v}`).toBeDefined();
+        const fixture = load(`v${v}/${variant}.json`);
+        expect([fixture.type, fixture.v], variant).toEqual([type, v]);
+        const entry = EVENT_ENVELOPES.find((e) => e.type === type && e.v === v)!;
+        expect(checkBody(entry.schema, fixture), variant).toEqual([]);
+      }
     }
     // The fixtures say what the wire was, not what the code makes of it: they carry the values a v1 sent.
     expect(load("v1/run.created.json")).toMatchObject({
@@ -249,7 +259,7 @@ describe("S4 the bus and the document", () => {
       const entry = EVENT_ENVELOPES.find((e) => e.type === type && e.v === sent.v)!;
       expect(checkBody(entry.schema, sent), type).toEqual([]);
     }
-    expect(Object.keys(SCENARIOS)).toHaveLength(145);
+    expect(Object.keys(SCENARIOS)).toHaveLength(147);
   });
 
   it("C53 docs/events.md describes the two events of the index worker and the phases of its progress, and equals the generated text", () => {

@@ -128,7 +128,15 @@ export const SELECT_VALUES: Readonly<Record<string, readonly string[]>> = {
   escopo: ["pessoal", "equipe", "externo"],
 };
 const LIST_KEYS: ReadonlySet<string> = new Set(["tags", "aliases"]);
-const DATE_KEYS: ReadonlySet<string> = new Set(["created", "updated", "last_reviewed", "due"]);
+/** `became_fact` and `abandoned` are the days a review decision wrote (.specs/features/cerebro-natureza, amendment 3). */
+const DATE_KEYS: ReadonlySet<string> = new Set([
+  "created",
+  "updated",
+  "last_reviewed",
+  "due",
+  "became_fact",
+  "abandoned",
+]);
 const INTERVAL = /^(?:[1-9][0-9]{0,2}d|never)$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** A tag a property may hold (AC 30): the rule of a note's tags. */

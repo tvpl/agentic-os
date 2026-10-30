@@ -50,13 +50,14 @@ de escritor de nota nem de inbox novos.
 4. Cadência → `reviewsDue` (new, door 4 e door 5) em `core/src/memory/reviews.ts` (new, no door - placement per conventions)
    cruza `fields` com a cadência de `settings.memory.reviews` e com `review_state`, no escopo de um contexto pela
    `contextMembership` (exists, `cerebro-contextos`) mais `memory/notes/<id>/` ("Emendas" 5), e devolve o que venceu.
-5. Cobrança → `SentinelRunner.hourly` (exists) chama o sentinela `reviewDue` (door 5), que emite `sentinel.fired` uma vez por
-   dia; o gravador de notificações (exists) cria a linha do inbox com link para "Revisões"; Configurações › Notificações
+5. Cobrança → `SentinelRunner.hourly` (exists) chama o sentinela `reviewDue` (door 5, `core/src/sentinels/reviewDue.ts`, new,
+   no door - placement per conventions), que conta pelo `reviewsDue` e emite `sentinel.fired` uma vez por dia; o gravador de notificações (exists) cria a linha do inbox com link para "Revisões"; Configurações › Notificações
    (`SentinelsCard`, exists) ganha a linha que o desliga ("Emendas" 16).
-6. Decisão → `POST /api/memory/reviews` (new, door 4): numa nota editável de `memory/` (`classifyNotePath`, exists), grava
+6. Decisão → `POST /api/memory/reviews` (new, door 4; `apps/api/src/routes/reviews.ts` e `core/src/memory/reviewDecisions.ts`,
+   new, no door - placement per conventions): numa nota editável de `memory/` (`classifyNotePath`, exists), grava
    pelo `saveProperties` de `cerebro-vista-notas` (com `baseVersion`); em todo arquivo que não é editável, grava só em
    `review_state` (door 6, "Emendas" 4); "virou realidade" pode também chamar `assertFact` (exists) com `source_path`; pede ao
-   `MemoryIndexer.requestIndexPaths` (exists) a passada daquele caminho; `action: "restore"` devolve uma linha de
+   `MemoryIndexer.requestIndexPaths` (exists) a passada daquele caminho, e responde quando ela acaba (no máximo 2 s); `action: "restore"` devolve uma linha de
    `review_state` ao que era ("Emendas" 7).
 7. Agentes → o compilador (exists) e `buildRunPrompt` (exists) levam o bloco fixo "Natureza da informação" ("Emendas" 11).
 8. Interface → a tela "Revisões" (new, no door - placement per conventions) nas duas interfaces, os selos e os filtros de

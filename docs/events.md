@@ -461,7 +461,7 @@ Payload, version 1:
 
 | Field | Type | Required |
 | --- | --- | --- |
-| `sentinel` | "fsWatch" \| "repeatedFailure" \| "silentRoutine" \| "connectorDelta" | yes |
+| `sentinel` | "fsWatch" \| "repeatedFailure" \| "silentRoutine" \| "connectorDelta" \| "reviewDue" | yes |
 | `messageParams` | map of string \| number \| boolean | no |
 | `title` | string | yes |
 | `body` | string | yes |

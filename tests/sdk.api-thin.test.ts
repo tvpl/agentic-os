@@ -934,6 +934,45 @@ describe("S3 the API and the CLI start nothing of their own", () => {
         "      ]);",
       ],
     },
+    // cerebro-natureza, batch B, added the review queue (content) and the decision on it (owner): only the totals the
+    // suite pins moved again, on top of cerebro-faxina-guiada's.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-natureza batch B: two routes more under /api",
+      base: ["    expect(routes).toHaveLength(143);"],
+      head: ["    expect(routes).toHaveLength(145);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-natureza batch B: owners and scoped routes",
+      base: ["    expect([owners, scoped]).toEqual([74, 69]);"],
+      head: ["    expect([owners, scoped]).toEqual([75, 70]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-natureza batch B: the registered routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(143);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(145);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-natureza batch B: the routes of each scope, in the router and in the document",
+      times: 2,
+      base: ["toEqual({ owner: 74, monitor: 33, content: 29, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 75, monitor: 33, content: 30, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-natureza batch B: the routes after the pairing passes",
+      base: ["    expect(apiRoutes()).toHaveLength(143);"],
+      head: ["    expect(apiRoutes()).toHaveLength(145);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-natureza batch B: the operations of the route document",
+      base: ["    expect(operations).toBe(145);"],
+      head: ["    expect(operations).toBe(147);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

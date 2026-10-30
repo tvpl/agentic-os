@@ -538,6 +538,38 @@ const cleanupScopeRequired = err(
   "Neither context nor dir names a scope (context=all is the whole index), or dir is not a folder inside an enabled indexed folder or memory/",
 );
 
+// ---- reviews (.specs/features/cerebro-natureza, doors 4 and 6) ---------------------------------------------------
+
+/** A local day, `AAAA-MM-DD`. */
+const DaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+const ReviewItemSchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  natureza: NaturezaSchema,
+  /** The note's `type`, as written; null without one. */
+  type: z.string().nullable(),
+  escopo: EscopoSchema,
+  /** The later of the header's `last_reviewed` and the stored decision; null when neither exists. */
+  lastReviewed: DaySchema.nullable(),
+  /** The day the review fell (or falls) due; null for a file with no cadence. */
+  dueSince: DaySchema.nullable(),
+  /** A note of memory/ the decisions may write; the others keep the decision in the database. */
+  editable: z.boolean(),
+  mtime: z.number(),
+  /** `kind=unclassified` only: the nature the text suggests, never written (AC 47, AC 48). */
+  suggested: NaturezaSchema.optional(),
+});
+
+/** One file's stored review decisions (door 6), as a decision answers it and `restore` takes it back. */
+const ReviewStateSchema = z.object({
+  lastReviewed: z.number().int().nullable(),
+  snoozeUntil: z.number().int().nullable(),
+  never: z.union([z.literal(0), z.literal(1)]),
+});
+
+const REVIEW_ACTIONS = ["keep", "snooze", "never", "abandon", "became_fact", "classify", "restore"] as const;
+
 // ---- routes ----------------------------------------------------------------------------------------------------
 
 export const memoryRoutes = {
@@ -939,6 +971,88 @@ export const memoryRoutes = {
         "The manifest is not one this version can undo (its v is not 1, or it names a path outside its archive)",
       ),
       cleanupRestoreInProgress,
+    ],
+  }),
+  "memory.reviews.list": route({
+    method: "GET",
+    path: "/api/memory/reviews",
+    summary:
+      "The notes whose review fell due (kind=due, oldest first) or the notes of memory/notes/ with no nature (kind=unclassified), from the index rows only",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      kind: z.enum(["due", "unclassified"]).optional(),
+      context: ContextQuery,
+      natureza: NaturezaQuery,
+      escopo: EscopoQuery,
+      limit: z.coerce.number().int().min(1).max(200).optional(),
+    }),
+    responses: {
+      200: z.object({
+        items: z.array(ReviewItemSchema),
+        /** Everything that matches, beyond `limit`. */
+        total: z.number().int().min(0),
+        /** The next day something falls due, or null. */
+        nextDue: DaySchema.nullable(),
+      }),
+    },
+    errors: [contextNotFound],
+  }),
+  "memory.reviews.decide": route({
+    method: "POST",
+    path: "/api/memory/reviews",
+    summary:
+      "Decide a review: still holds, snooze, never again, changed my mind, became real, classify, or restore a stored decision; a note of memory/ is written through the guarded properties write, any other file only in the database",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      path: z.string().min(1).max(4096),
+      action: z.enum(REVIEW_ACTIONS),
+      /** `snooze`: 1 to 365 days. */
+      days: z.number().int().min(1).max(365).optional(),
+      /** `classify`: the nature the person chose. */
+      natureza: z.enum(NATUREZA_VALUES).optional(),
+      /** A write to a note of memory/: the version the caller read. */
+      baseVersion: NoteVersionSchema.optional(),
+      /** `became_fact`: the fact to assert, with the note as its source. */
+      fact: z
+        .object({
+          subject: z.string().min(1).max(2000),
+          predicate: z.string().min(1).max(2000),
+          object: z.string().min(1).max(2000),
+          validFrom: z.number().int().optional(),
+        })
+        .optional(),
+      /** `restore`: the `previous` a decision answered (null removes the stored decisions). */
+      state: ReviewStateSchema.nullable().optional(),
+    }),
+    responses: {
+      200: z.object({
+        path: z.string(),
+        /** The file's stored decisions after this one, or null. */
+        state: ReviewStateSchema.nullable(),
+        /** The stored decisions before this one, or null: what `restore` takes to undo it. */
+        previous: ReviewStateSchema.nullable(),
+        /** The note's new version, when the note was written. */
+        version: NoteVersionSchema.optional(),
+        fact: FactSchema.optional(),
+      }),
+    },
+    errors: [
+      err(
+        403,
+        "note_not_editable",
+        "became_fact, abandon and classify need a .md note of memory/ the engine does not generate (not ROUTER.md, areas/, journal/, contexts/)",
+      ),
+      err(403, "forbidden_path", "A link on the way or a private file would be written through"),
+      notFound("An indexed file at the path, under today's policy,"),
+      err(409, "edit_conflict", "The note changed after it was read; nothing was written"),
+      err(
+        409,
+        "front_matter_unreadable",
+        "The front matter is longer than 4 096 bytes or has no closing ---; nothing was written",
+      ),
+      err(413, "note_too_large", "The note is larger than the editing limit"),
     ],
   }),
   "memory.routers": route({

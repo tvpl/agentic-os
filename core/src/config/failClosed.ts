@@ -63,4 +63,5 @@ export const SETTINGS_FAIL_CLOSED: readonly FailClosedField[] = [
   { path: "sentinels.repeatedFailure.enabled", closed: false },
   { path: "sentinels.silentRoutine.enabled", closed: false },
   { path: "sentinels.repeatDetector.enabled", closed: false },
+  { path: "sentinels.reviewDue.enabled", closed: false },
 ];

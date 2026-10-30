@@ -128,6 +128,20 @@
           "staleDays": 180,
           "largeBytes": 5242880
         },
+        "reviews": {
+          "cadence": {
+            "opiniao": "90d",
+            "plano": "30d",
+            "hipotese": "60d",
+            "relato": "never",
+            "fato": "never"
+          },
+          "byType": {
+            "status": "30d",
+            "conceito": "180d"
+          },
+          "maxPerDay": 20
+        },
         "embeddings": {
           "enabled": false,
           "provider": "hash",
@@ -157,6 +171,9 @@
           "days": 30,
           "minRuns": 2,
           "similarity": 0.6
+        },
+        "reviewDue": {
+          "enabled": true
         },
         "triage": {
           "enabled": true,

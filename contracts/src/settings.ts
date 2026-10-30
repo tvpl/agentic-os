@@ -152,6 +152,12 @@ export function detectTimezone(): string {
  * Everything is optional with a default, so a settings file written before
  * this existed keeps working and gains the defaults on the next save.
  */
+/** A review cadence (.specs/features/cerebro-natureza, door 5): `<n>d` with `n` from 1 to 3650, or `never`. */
+const ReviewCadenceSchema = z
+  .string()
+  .regex(/^(?:[1-9][0-9]{0,3}d|never)$/, "a number of days from 1d to 3650d, or never")
+  .refine((value) => value === "never" || Number(value.slice(0, -1)) <= 3650, "at most 3650d");
+
 export const SentinelSettingsSchema = z.object({
   /** Watch the enabled indexed folders and re-index after a quiet period. Off by default (cost on big trees). */
   fsWatch: z
@@ -195,6 +201,15 @@ export const SentinelSettingsSchema = z.object({
       minRuns: z.number().int().min(2).max(20).default(2),
       /** Jaccard threshold on the normalized token sets. */
       similarity: z.number().min(0.1).max(1).default(0.6),
+    })
+    .default({}),
+  /**
+   * The notes whose review fell due (.specs/features/cerebro-natureza, door 5): once a day, from the hourly pass, at
+   * most one notification. On by default (owner question 2); no model and no network.
+   */
+  reviewDue: z
+    .object({
+      enabled: z.boolean().default(true),
     })
     .default({}),
   /** Short, cheap run that answers a `triage: true` sentinel with ignore/notify/propose. */
@@ -467,6 +482,30 @@ export const SettingsSchema = z.object({
         .object({
           staleDays: z.number().int().min(1).max(36_500).default(180),
           largeBytes: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(5_242_880),
+        })
+        .default({}),
+      /**
+       * The periodic reviews (.specs/features/cerebro-natureza, door 5): how long each nature and each `type` holds
+       * before a note is due, and how many items the queue shows at a time. A note's own `review_every` wins over
+       * `byType`, which wins over `cadence`. `PUT /api/settings` replaces `memory.reviews` whole (amendment 17); the
+       * list reads it at each request.
+       */
+      reviews: z
+        .object({
+          cadence: z
+            .object({
+              opiniao: ReviewCadenceSchema.default("90d"),
+              plano: ReviewCadenceSchema.default("30d"),
+              hipotese: ReviewCadenceSchema.default("60d"),
+              relato: ReviewCadenceSchema.default("never"),
+              fato: ReviewCadenceSchema.default("never"),
+            })
+            .default({}),
+          /** By the note's `type`, compared after `normalizeFieldKey`. */
+          byType: z
+            .record(z.string().min(1).max(64), ReviewCadenceSchema)
+            .default({ status: "30d", conceito: "180d" }),
+          maxPerDay: z.number().int().min(1).max(200).default(20),
         })
         .default({}),
       /**

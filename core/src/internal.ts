@@ -131,6 +131,8 @@ export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from 
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
 export { ESCOPOS, NATUREZAS, parseEscopoList, parseNaturezaList } from "./memory/natureza.js";
+export { reviewsDue } from "./memory/reviews.js";
+export { decideReview } from "./memory/reviewDecisions.js";
 export { buildGraph, relatedFiles, type GraphData, type GraphNode, type GraphEdge } from "./memory/graph.js";
 export {
   relatedEdges,

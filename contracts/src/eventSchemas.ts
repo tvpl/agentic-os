@@ -40,7 +40,7 @@ const IndexStatsSchema = z.object({
 });
 
 const SentinelFiredSchema = z.object({
-  sentinel: z.enum(["fsWatch", "repeatedFailure", "silentRoutine", "connectorDelta"]),
+  sentinel: z.enum(["fsWatch", "repeatedFailure", "silentRoutine", "connectorDelta", "reviewDue"]),
   messageParams: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
   title: z.string(),
   body: z.string(),

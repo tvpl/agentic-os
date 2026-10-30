@@ -510,6 +510,19 @@ export const SCENARIOS: Record<string, Scenario> = {
       return w.call("POST", "/api/memory/cleanup/undo", { manifest: applied.manifest });
     },
   },
+  // cerebro-natureza, batch B: the review queue, and a "still holds" on an indexed note of memory/notes/.
+  [key("GET", "/api/memory/reviews")]: { run: (w) => w.call("GET", "/api/memory/reviews?kind=due") },
+  [key("POST", "/api/memory/reviews")]: {
+    run: async (w) => {
+      const note = noteOf(w, "Cenário de revisão");
+      await w.ctx.indexer.requestIndexPaths([note.path]);
+      return w.call("POST", "/api/memory/reviews", {
+        path: note.path,
+        action: "keep",
+        baseVersion: note.version,
+      });
+    },
+  },
   [key("GET", "/api/memory/recall")]: { run: (w) => w.call("GET", "/api/memory/recall?q=Alfa&record=false") },
   [key("GET", "/api/memory/recall/stats")]: { run: (w) => w.call("GET", "/api/memory/recall/stats") },
   [key("GET", "/api/memory/journal")]: { run: (w) => w.call("GET", "/api/memory/journal") },

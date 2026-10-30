@@ -852,3 +852,15 @@ relato` (the scopes for `--escopo`); (j) migration 25 is named `natureza`; (k) t
   one backfill transaction per 25 rows (three files make one slice, and C8 could not stop between two); filtering the
   recall only after the top `k` files were opened (a higher plano note would take the place of the fato one, C18);
   writing C10's test against batch B's routes before they exist
+
+Status of batch B (updated in the commit that closes each piece):
+
+- the queue, the daily reminder and the decisions (S3: C27-C44; S4: C45-C51, C53-C63) and C10: closed, every proof
+  green in `tests/natureza.reviews.test.ts`, `tests/natureza.sentinel.test.ts`, `tests/natureza.decisions.test.ts`,
+  `tests/natureza.contract.test.ts` (C44), `tests/natureza.layer.test.ts` and `tests/natureza.index.test.ts` (C10), with
+  `GET`/`POST /api/memory/reviews`, `settings.memory.reviews`, `settings.sentinels.reviewDue` and the `reviewDue`
+  sentinel. **C52 is open, a stop-and-ask:** its claim says the abandoned note keeps "the same inode", and the guarded
+  properties write that door 4 and AC 32 name (`saveProperties` → `writeWorkspaceFile` `replace` → `replaceBeside`,
+  `core/src/security/safeWrite.ts`) replaces a note by a temporary file and a `rename`, so the inode always changes (the
+  run gave 704521 before and 704522 after). Every other clause of C52 is asserted by a test in
+  `tests/natureza.decisions.test.ts` whose title does not carry the id, so C52's selector finds no test

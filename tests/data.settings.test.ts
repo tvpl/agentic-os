@@ -101,6 +101,7 @@ const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
     silentRoutine: { ...d.sentinels.silentRoutine, enabled: false },
     connectorDelta: { ...d.sentinels.connectorDelta, enabled: false },
     repeatDetector: { ...d.sentinels.repeatDetector, enabled: false },
+    reviewDue: { ...d.sentinels.reviewDue, enabled: false },
     triage: { ...d.sentinels.triage, enabled: false, dailyBudgetUsd: 0 },
   },
   channels: {
@@ -483,6 +484,7 @@ describe("S3 settings tolerate an invalid field", () => {
       "sentinels.connectorDelta.enabled",
       "sentinels.repeatDetector.enabled",
       "sentinels.repeatedFailure.enabled",
+      "sentinels.reviewDue.enabled",
       "sentinels.silentRoutine.enabled",
       "sentinels.triage.enabled",
     ]);
@@ -581,6 +583,21 @@ describe("S3 settings tolerate an invalid field", () => {
         "how old a file is before the cleanup asks about it; it moves nothing (cerebro-faxina-guiada amendment 14)",
       "memory.cleanup.largeBytes":
         "how big a file is before the cleanup asks about it; it moves nothing (cerebro-faxina-guiada amendment 14)",
+      "memory.reviews.cadence.opiniao":
+        "how long an opinion holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.cadence.plano":
+        "how long a plan holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.cadence.hipotese":
+        "how long a hypothesis holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.cadence.relato":
+        "how long a report holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.cadence.fato":
+        "how long a fact holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.byType.status":
+        "how long a status note holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.byType.conceito":
+        "how long a concept note holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.maxPerDay": "how many items the review queue shows at a time (cerebro-natureza door 5)",
       "sentinels.fsWatch.enabled": "default off; an unreadable value reads off",
       "sentinels.fsWatch.debounceMs": "timing",
       "sentinels.repeatedFailure.threshold": "a count for a notification",

@@ -8,6 +8,7 @@ import type { NotificationInput } from "../notifications/store.js";
 import { checkRepeatedFailure } from "./repeatedFailure.js";
 import { checkSilentRoutines } from "./silentRoutine.js";
 import { checkConnectorDeltas, type ConnectorDeltaDeps } from "./connectorDelta.js";
+import { checkReviewDue } from "./reviewDue.js";
 import { FsWatchSentinel } from "./fsWatch.js";
 import { installSentinelTriage, type TriageInbox, type TriageRunner } from "./triage.js";
 import { detectRepeatedPrompts } from "../skills/repeatDetector.js";
@@ -19,8 +20,9 @@ import type { DedupeLookup, SentinelFiredPayload } from "./types.js";
  * It owns three things and nothing else:
  *  - the bus subscription that reacts to a run finishing badly;
  *  - the file-system watcher (off unless the settings turn it on);
- *  - the hourly pass (silent routines, connector deltas, the did-it-twice
- *    detector), which the service drives from its existing hourly sweep.
+ *  - the hourly pass (silent routines, connector deltas, the reviews that fell
+ *    due, the did-it-twice detector), which the service drives from its
+ *    existing hourly sweep.
  *
  * Every timer is unref'd: sentinels must never be the reason a process
  * refuses to exit, and every pass swallows its own errors — a proactive
@@ -52,6 +54,7 @@ export interface SentinelRunnerDeps {
 export interface HourlyReport {
   silentRoutines: SentinelFiredPayload[];
   connectorDeltas: SentinelFiredPayload[];
+  reviewDue: SentinelFiredPayload[];
   repeatSuggestions: number;
 }
 
@@ -152,7 +155,12 @@ export class SentinelRunner {
    * the runner's own timer when it schedules itself). Never rejects.
    */
   async hourly(): Promise<HourlyReport> {
-    const report: HourlyReport = { silentRoutines: [], connectorDeltas: [], repeatSuggestions: 0 };
+    const report: HourlyReport = {
+      silentRoutines: [],
+      connectorDeltas: [],
+      reviewDue: [],
+      repeatSuggestions: 0,
+    };
     const settings = this.deps.getSettings();
     if (settings.sentinels.silentRoutine.enabled) {
       try {
@@ -181,6 +189,20 @@ export class SentinelRunner {
         });
       } catch (err) {
         this.report(err, "connectorDelta");
+      }
+    }
+    if (settings.sentinels.reviewDue.enabled) {
+      try {
+        report.reviewDue = checkReviewDue({
+          db: this.deps.db,
+          paths: this.deps.paths,
+          getSettings: this.deps.getSettings,
+          bus: this.bus,
+          dedupe: this.deps.notifications,
+          ...(this.deps.now ? { now: this.deps.now } : {}),
+        });
+      } catch (err) {
+        this.report(err, "reviewDue");
       }
     }
     try {
