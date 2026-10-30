@@ -33,6 +33,11 @@ const EVENT_DESCRIPTIONS: Record<OsEventTypeName, string> = {
   "index.finished": "The memory index finished.",
   "index.failed": "The memory index could not finish; the previous index is kept when it says so.",
   "index.cancelled": "A memory index pass was cancelled; the blocks it had committed stay.",
+  "cleanup.progress":
+    "A cleanup scan of a scope advanced: `phase` is inventory, signatures, links or findings, in that order, with `done` of `total`.",
+  "cleanup.finished":
+    "A cleanup scan finished; `findings` is how many it reports (`GET /api/memory/cleanup/scans/:id`).",
+  "cleanup.failed": "A cleanup scan could not finish; the signatures it had stored stay.",
   "approval.requested": "An approval is waiting for a human.",
   "approval.resolved": "An approval was decided.",
   "approval.expired": "Pending approvals past their time to live were swept to expired.",

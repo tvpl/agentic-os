@@ -25,7 +25,7 @@ The version of an event is the `v` in its envelope (or its frame).
 The schemas are the contract: `EVENT_SCHEMAS[type][v]` for the bus and `RUN_FRAME_SCHEMAS[type][v]` for the run stream. The files
 `tests/fixtures/events/v1/` are frozen examples of version 1 of every type, and the tests fail if a change makes one stop parsing.
 
-## Events of the bus (25)
+## Events of the bus (28)
 
 ### `run.created`
 
@@ -204,6 +204,47 @@ Payload, version 1:
 | Field | Type | Required |
 | --- | --- | --- |
 | `runId` | string | yes |
+
+### `cleanup.progress`
+
+A cleanup scan of a scope advanced: `phase` is inventory, signatures, links or findings, in that order, with `done` of `total`.
+
+Versions: 1 (current 1).
+
+Payload, version 1:
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `scanId` | string | yes |
+| `phase` | "inventory" \| "signatures" \| "links" \| "findings" | yes |
+| `done` | integer | yes |
+| `total` | integer | yes |
+
+### `cleanup.finished`
+
+A cleanup scan finished; `findings` is how many it reports (`GET /api/memory/cleanup/scans/:id`).
+
+Versions: 1 (current 1).
+
+Payload, version 1:
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `scanId` | string | yes |
+| `findings` | integer | yes |
+
+### `cleanup.failed`
+
+A cleanup scan could not finish; the signatures it had stored stay.
+
+Versions: 1 (current 1).
+
+Payload, version 1:
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `scanId` | string | yes |
+| `code` | string | yes |
 
 ### `approval.requested`
 

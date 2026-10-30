@@ -23,6 +23,10 @@ export type OsEventType =
   | "index.finished"
   | "index.failed"
   | "index.cancelled"
+  /** A cleanup scan of a scope advanced, finished or failed (.specs/features/cerebro-faxina-guiada, door 6). */
+  | "cleanup.progress"
+  | "cleanup.finished"
+  | "cleanup.failed"
   | "approval.requested"
   | "approval.resolved"
   | "approval.expired"
@@ -74,6 +78,9 @@ export interface IndexStats {
 /** The phases of an index pass, in order (`index.progress`). */
 export const INDEX_PHASES = ["scan", "index", "prune", "related", "vectors"] as const;
 export type IndexPhase = (typeof INDEX_PHASES)[number];
+
+/** The phases of a cleanup scan, in order (`cleanup.progress`, .specs/features/cerebro-faxina-guiada, door 6). */
+export type CleanupPhase = "inventory" | "signatures" | "links" | "findings";
 
 /** Where an index pass runs: a `worker_thread` of the service, or the service's own thread (no worker script). */
 export type IndexMode = "worker" | "inline";
@@ -156,6 +163,9 @@ export interface OsEventMap {
   "index.finished": { stats: IndexStats; runId?: string };
   "index.failed": { code: string; previousIndexPreserved: boolean; runId?: string };
   "index.cancelled": { runId: string };
+  "cleanup.progress": { scanId: string; phase: CleanupPhase; done: number; total: number };
+  "cleanup.finished": { scanId: string; findings: number };
+  "cleanup.failed": { scanId: string; code: string };
   "approval.requested": { id: string; kind: ApprovalKind; description: string; runId?: string | null };
   "approval.resolved": { id: string; kind: ApprovalKind; status: Approval["status"]; runId: string | null };
   "approval.expired": { count: number };

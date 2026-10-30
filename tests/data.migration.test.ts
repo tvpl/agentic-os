@@ -541,15 +541,17 @@ describe("C30 migration 20 on a database that already holds an index", () => {
         sql: string;
       };
       expect(table.sql).not.toMatch(/virtual|vec0/i);
-      // cerebro-correcoes added migration 22 (the end of file_links) after these two, and cerebro-contextos 23 (the
-      // work context of a run and of a conversation)
-      expect(db.pragma("user_version", { simple: true })).toBe(23);
-      expect(MIGRATIONS.at(-1)!.version).toBe(23);
-      expect(MIGRATIONS.slice(-4).map((m) => m.name)).toEqual([
+      // cerebro-correcoes added migration 22 (the end of file_links) after these two, cerebro-contextos 23 (the
+      // work context of a run and of a conversation), and cerebro-faxina-guiada 24 (the signatures and the decisions of
+      // the cleanup)
+      expect(db.pragma("user_version", { simple: true })).toBe(24);
+      expect(MIGRATIONS.at(-1)!.version).toBe(24);
+      expect(MIGRATIONS.slice(-5).map((m) => m.name)).toEqual([
         "note-links",
         "file-vectors",
         "drop-file-links",
         "run-context",
+        "cleanup",
       ]);
       // the migration SQL twice leaves the table as it was
       const sql = MIGRATIONS.find((m) => m.version === 21)!.sql!;

@@ -543,4 +543,29 @@ DELETE FROM meta WHERE key = 'index.pending_links';
         db.exec("ALTER TABLE sessions ADD COLUMN context_id TEXT");
     },
   },
+  {
+    version: 24,
+    name: "cleanup",
+    // cerebro-faxina-guiada, doors 2 and 3: at most one MinHash signature per indexed file (64 Uint32 little-endian,
+    // `algo` minhash-v1:64:w5, with the mtime and size of the file it was made from), and the owner's decision on a
+    // finding of a scope, one per (scope, key). Created empty; nothing changes a row that exists.
+    sql: `
+CREATE TABLE IF NOT EXISTS file_minhash (
+  file_id INTEGER PRIMARY KEY,
+  algo TEXT NOT NULL,
+  sig BLOB NOT NULL,
+  mtime INTEGER NOT NULL,
+  size INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cleanup_decisions (
+  scope TEXT NOT NULL,
+  key TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  keep_file_id INTEGER,
+  until INTEGER,
+  decided_at INTEGER NOT NULL,
+  PRIMARY KEY (scope, key)
+);
+`,
+  },
 ];

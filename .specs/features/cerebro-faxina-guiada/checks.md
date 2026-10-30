@@ -450,3 +450,11 @@ The estimate exceeds the 150k budget. Mechanism chosen by the owner on 30/10/202
   - A + B ≈ 210k and B + C ≈ 220k are over the budget, so the three stay apart; A lands first because B's routes take its
     `scanId`, and C calls the routes of A and B
 - Mechanism: to be chosen by the owner (handoff in three batches A, B, C, or one builder with compaction accepted)
+
+Status of batch A (updated in the commit that closes each piece):
+
+- the inventory (S1: C1-C9) and the scan with its signatures, its events and its thresholds (S2: C10-C32), with the
+  three routes of batch A in the contract (`GET /api/memory/cleanup/inventory`, `POST /api/memory/cleanup/scans`,
+  `GET /api/memory/cleanup/scans/:id`), migration 24 and `settings.memory.cleanup`: closed, every proof green in
+  `tests/cleanup.inventory.test.ts`, `tests/cleanup.scan.test.ts` and `tests/cleanup.layer.test.ts`; with it batch A is
+  closed (C1-C32)

@@ -795,6 +795,74 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(137);"],
       head: ["    expect(operations).toBe(139);"],
     },
+    // cerebro-faxina-guiada added three routes (the inventory and a scan for content, the start of a scan for the owner)
+    // and migration 24 (the signatures and decisions of the cleanup): only the totals and the list of later migrations
+    // the suite pins moved.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada: three routes more under /api",
+      base: ["    expect(routes).toHaveLength(137);"],
+      head: ["    expect(routes).toHaveLength(140);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada: owners and scoped routes",
+      base: ["    expect([owners, scoped]).toEqual([70, 67]);"],
+      head: ["    expect([owners, scoped]).toEqual([71, 69]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada: the registered routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(137);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(140);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada: the routes of each scope, in the router and in the document",
+      times: 2,
+      base: ["toEqual({ owner: 70, monitor: 33, content: 27, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 71, monitor: 33, content: 29, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada: the routes after the pairing passes",
+      base: ["    expect(apiRoutes()).toHaveLength(137);"],
+      head: ["    expect(apiRoutes()).toHaveLength(140);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada: the operations of the route document",
+      base: ["    expect(operations).toBe(139);"],
+      head: ["    expect(operations).toBe(142);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada: migration 24 after the scopes one",
+      base: [
+        "      // none of them, and the work context of a run (cerebro-contextos), a column that reads NULL on the old run.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        '        "note-links",',
+        '        "file-vectors",',
+        '        "drop-file-links",',
+        '        "run-context",',
+        "      ]);",
+      ],
+      head: [
+        "      // none of them, and the work context of a run (cerebro-contextos), a column that reads NULL on the old run, and",
+        "      // the signatures and decisions of the cleanup (cerebro-faxina-guiada), two new tables.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        '        "note-links",',
+        '        "file-vectors",',
+        '        "drop-file-links",',
+        '        "run-context",',
+        '        "cleanup",',
+        "      ]);",
+      ],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

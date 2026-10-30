@@ -459,6 +459,17 @@ export const SettingsSchema = z.object({
         })
         .default({}),
       /**
+       * The guided cleanup of a context or a folder (.specs/features/cerebro-faxina-guiada, amendment 14): a file whose
+       * age (or `last_reviewed`) passes `staleDays` is `stale`, one past `largeBytes` is `large-file`. The scan reads
+       * them when it starts. `PUT /api/settings` replaces `memory.cleanup` whole, like the other fields of `memory`.
+       */
+      cleanup: z
+        .object({
+          staleDays: z.number().int().min(1).max(36_500).default(180),
+          largeBytes: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(5_242_880),
+        })
+        .default({}),
+      /**
        * Semantic search over the notes (.specs/features/cerebro-v2, S4). OFF by default: nothing is embedded, no
        * extension is loaded and no connection is made until the owner turns it on. `hash` is computed in this
        * process from the text alone (no model, no network); `http` sends the text of each note to `endpoint`

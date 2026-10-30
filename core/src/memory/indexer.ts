@@ -890,6 +890,7 @@ export class MemoryIndexer {
     this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(id);
     this.db.prepare("DELETE FROM note_links WHERE src_id = ?").run(id);
     this.db.prepare("DELETE FROM file_vectors WHERE file_id = ?").run(id);
+    this.db.prepare("DELETE FROM file_minhash WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_terms WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_related WHERE src_id = ? OR dst_id = ?").run(id, id);
     this.touched.delete(id);

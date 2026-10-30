@@ -577,6 +577,10 @@ describe("S3 settings tolerate an invalid field", () => {
         "what the compiled AGENTS.md asks of an agent about the owner's goals; an unreadable value reads neutral (cerebro-organizar door 7)",
       "memory.notes.fixedStructure":
         "where a new note may go, not who may read or write; an unreadable value reads off (cerebro-vista-notas door 5)",
+      "memory.cleanup.staleDays":
+        "how old a file is before the cleanup asks about it; it moves nothing (cerebro-faxina-guiada amendment 14)",
+      "memory.cleanup.largeBytes":
+        "how big a file is before the cleanup asks about it; it moves nothing (cerebro-faxina-guiada amendment 14)",
       "sentinels.fsWatch.enabled": "default off; an unreadable value reads off",
       "sentinels.fsWatch.debounceMs": "timing",
       "sentinels.repeatedFailure.threshold": "a count for a notification",

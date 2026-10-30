@@ -135,6 +135,9 @@ describe("S5 the surface is a closed list", () => {
         // cerebro-vista-notas: the notes tree and the properties route (doors 1 and 2)
         "memoryTree",
         "saveProperties",
+        // cerebro-faxina-guiada: the scope of a cleanup and its inventory (door 5)
+        "cleanupInventory",
+        "resolveCleanupScope",
       ].sort(),
     );
   });

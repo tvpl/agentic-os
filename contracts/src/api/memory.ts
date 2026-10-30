@@ -1,6 +1,7 @@
 /** The second brain: the file index, search, graph, previews, recall, the journal, hygiene and bi-temporal facts. */
 import { z } from "zod";
-import { QueryFlag, err, notFound } from "./common.js";
+import { isAbsolutePath } from "../workContext.js";
+import { IdParams, QueryFlag, err, notFound } from "./common.js";
 import { ContextQuery, contextNotFound } from "./contexts.js";
 import { route } from "./route.js";
 
@@ -360,6 +361,127 @@ const MapsRootQuery = z
     message: "root: memory, or an absolute path",
   });
 
+/**
+ * The guided cleanup (.specs/features/cerebro-faxina-guiada): what a scope holds, from the index rows alone, and what a
+ * scan of it found. A scope is a work context (`context=<id>`) or a folder (`dir=<absolute path>`), never both and never
+ * the whole index.
+ */
+export const CLEANUP_KIND_GROUPS = ["notes", "text", "pdf", "image", "code", "other"] as const;
+/** The kinds of a finding, in the order the scan lists them (plan.md, Impact). */
+export const CLEANUP_FINDING_KINDS = [
+  "duplicate",
+  "near-duplicate",
+  "stale",
+  "orphan",
+  "broken-link",
+  "empty-folder",
+  "large-file",
+  "untitled",
+] as const;
+/** What the owner may decide about a finding (door 3). */
+export const CLEANUP_DECISIONS = ["keep", "archive", "merge", "snooze", "unsure"] as const;
+export const CLEANUP_SCAN_STATES = ["running", "finished", "failed"] as const;
+/** The phases of a scan, in order (door 6; the payload of `cleanup.progress` in `eventSchemas.ts` says the same). */
+export const CLEANUP_PHASES = ["inventory", "signatures", "links", "findings"] as const;
+
+/** `dir`: an absolute folder (POSIX, or a Windows drive or share). */
+const CleanupDirField = z.string().min(1).max(4096).refine(isAbsolutePath, "dir: an absolute path");
+
+const CleanupScopeSchema = z.union([
+  z.object({ kind: z.literal("context"), id: z.string() }),
+  z.object({ kind: z.literal("dir"), path: z.string() }),
+]);
+
+const countBytes = { count: z.number().int().min(0), bytes: z.number().int().min(0) };
+
+const CleanupInventorySchema = z.object({
+  scope: CleanupScopeSchema,
+  /** The scope's indexed files that today's policy shows, and their bytes. */
+  total: z.object(countBytes),
+  /** Six groups by extension, always in the order of `CLEANUP_KIND_GROUPS`. */
+  byKind: z.array(z.object({ kind: z.enum(CLEANUP_KIND_GROUPS), ...countBytes })),
+  /** Up to 100 KiB, up to 1 MiB, up to `memory.cleanup.largeBytes`, and larger (`upTo` null). */
+  bySize: z.array(z.object({ upTo: z.number().int().nullable(), ...countBytes })),
+  /** Whole days since `mtime`: 0-30, 31-90, 91-365, and more than 365 (`to` null). */
+  byAge: z.array(
+    z.object({ from: z.number().int(), to: z.number().int().nullable(), count: z.number().int().min(0) }),
+  ),
+  /** The 10 folders below the scope's roots with the most bytes (their files' at any depth), most first. */
+  topFolders: z.array(z.object({ path: z.string(), ...countBytes })),
+  /**
+   * Up to 12 groups, the largest first: one per first-level subfolder when the files lie under two or more, else the
+   * connected components of the related-by-content edges scored 0.3 or more. `terms` are the top 3 shared terms.
+   */
+  clusters: z.array(
+    z.object({
+      kind: z.enum(["folder", "related"]),
+      name: z.string(),
+      /** The subfolder, for a `folder` group. */
+      path: z.string().nullable(),
+      count: z.number().int().min(0),
+      terms: z.array(z.string()),
+    }),
+  ),
+});
+
+const CleanupFindingSchema = z.object({
+  /** `<kind>:` and the SHA-256 of the members' paths and hashes, sorted (door 3): a member that changes, changes it. */
+  key: z.string(),
+  kind: z.enum(CLEANUP_FINDING_KINDS),
+  /** The files the finding is about (none for an `empty-folder`, whose folder is in `detail`). */
+  files: z.array(
+    z.object({
+      id: z.number().int(),
+      path: z.string(),
+      size: z.number().int().min(0),
+      mtime: z.number(),
+      /** The bytes as the scan saw them. */
+      sha256: z.string(),
+    }),
+  ),
+  /** What the finding is, by kind: the estimate, the age, the date, the link, the folder, the size. */
+  detail: z.object({
+    /** `near-duplicate`: the estimated Jaccard similarity of the two texts' 5-word shingles. */
+    similarity: z.number().optional(),
+    /** `stale`: whole days since `mtime` or since `lastReviewed`, as `since` says. */
+    ageDays: z.number().int().optional(),
+    since: z.enum(["mtime", "last_reviewed"]).optional(),
+    lastReviewed: z.string().optional(),
+    /** `broken-link`: the target as the note writes it, the line, and the kind of link. */
+    target: z.string().optional(),
+    line: z.number().int().optional(),
+    linkKind: z.enum(["markdown-link", "wikilink"]).optional(),
+    /** `empty-folder`: the folder. */
+    folder: z.string().optional(),
+    /** `large-file`: its bytes and the bound it passed. */
+    bytes: z.number().int().optional(),
+    limit: z.number().int().optional(),
+  }),
+  suggested: z.enum(CLEANUP_DECISIONS),
+});
+
+const CleanupScanSchema = z.object({
+  scanId: z.string(),
+  scope: CleanupScopeSchema,
+  status: z.enum(CLEANUP_SCAN_STATES),
+  /** The phase the scan is in (the last one it reached, once it ended). */
+  phase: z.enum(CLEANUP_PHASES),
+  /** Why a `failed` scan stopped; null otherwise. */
+  code: z.string().nullable(),
+  startedAt: z.number(),
+  finishedAt: z.number().nullable(),
+  /** The findings once the scan finished (none while it runs or after it failed). */
+  findings: z.array(CleanupFindingSchema),
+  /** How many findings a stored decision hid. */
+  decided: z.number().int().min(0),
+});
+
+const cleanupScopeRequired = err(
+  400,
+  "scope_required",
+  "Neither context nor dir names a scope (context=all is the whole index), or dir is not a folder inside an enabled indexed folder or memory/",
+);
+
 // ---- routes ----------------------------------------------------------------------------------------------------
 
 export const memoryRoutes = {
@@ -665,6 +787,43 @@ export const memoryRoutes = {
       notFound("An indexed row under the folder (dir)"),
       contextNotFound,
     ],
+  }),
+  "memory.cleanup.inventory": route({
+    method: "GET",
+    path: "/api/memory/cleanup/inventory",
+    summary:
+      "What a work context or a folder holds, from the index rows only (no file is opened): totals, kinds, sizes, ages, the largest folders and the groups",
+    tag: "memory",
+    scope: "content",
+    query: z.object({ context: ContextQuery, dir: CleanupDirField.optional() }),
+    responses: { 200: CleanupInventorySchema },
+    errors: [cleanupScopeRequired, contextNotFound],
+  }),
+  "memory.cleanup.scans.start": route({
+    method: "POST",
+    path: "/api/memory/cleanup/scans",
+    summary:
+      "Start a scan of a work context or a folder for what asks a decision (duplicates, near-duplicates, stale, orphans, broken links, empty folders, large files, untitled notes); progress arrives as cleanup.* events",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({ context: z.string().min(1).max(64).optional(), dir: CleanupDirField.optional() }),
+    responses: { 202: z.object({ scanId: z.string() }) },
+    errors: [
+      cleanupScopeRequired,
+      contextNotFound,
+      err(409, "scan_running", "A scan of the same scope is running; the message names its scanId"),
+      err(409, "restore_in_progress", "A restore holds the home; no scan starts until it has finished"),
+    ],
+  }),
+  "memory.cleanup.scans.get": route({
+    method: "GET",
+    path: "/api/memory/cleanup/scans/:id",
+    summary: "A cleanup scan: running with its phase, finished with its findings, or failed with its code",
+    tag: "memory",
+    scope: "content",
+    params: IdParams,
+    responses: { 200: CleanupScanSchema },
+    errors: [notFound("The scan")],
   }),
   "memory.routers": route({
     method: "POST",

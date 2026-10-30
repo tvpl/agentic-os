@@ -124,6 +124,10 @@
         "notes": {
           "fixedStructure": false
         },
+        "cleanup": {
+          "staleDays": 180,
+          "largeBytes": 5242880
+        },
         "embeddings": {
           "enabled": false,
           "provider": "hash",

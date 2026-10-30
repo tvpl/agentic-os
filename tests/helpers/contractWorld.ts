@@ -344,6 +344,14 @@ const uuid = () => crypto.randomUUID();
 const noteOf = (w: World, title: string) =>
   createNote({ paths: w.ctx.paths, settings: w.ctx.settings() }, { title });
 
+/** Wait for a cleanup scan to end (a scan runs on after its 202). */
+async function scanEnded(w: World, scanId: string | undefined): Promise<void> {
+  if (!scanId) return;
+  for (let i = 0; i < 2000 && w.ctx.cleanup.get(scanId)?.status === "running"; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 export const SCENARIOS: Record<string, Scenario> = {
   // ---- reads
   [key("GET", "/api/system/info")]: { run: (w) => w.call("GET", "/api/system/info") },
@@ -431,6 +439,25 @@ export const SCENARIOS: Record<string, Scenario> = {
   [key("GET", "/api/memory/maps")]: { run: (w) => w.call("GET", "/api/memory/maps") },
   // cerebro-vista-notas, door 1: one level of the notes tree, from the index rows.
   [key("GET", "/api/memory/tree")]: { run: (w) => w.call("GET", "/api/memory/tree") },
+  // cerebro-faxina-guiada, door 5: the inventory of a context, a scan of a folder (waited for, so that its reads end
+  // inside its own scenario), and a scan read back once it ended.
+  [key("GET", "/api/memory/cleanup/inventory")]: {
+    run: (w) => w.call("GET", "/api/memory/cleanup/inventory?context=contract-context"),
+  },
+  [key("POST", "/api/memory/cleanup/scans")]: {
+    run: async (w) => {
+      const answer = await w.call("POST", "/api/memory/cleanup/scans", { dir: w.workspace });
+      await scanEnded(w, (answer.body as { scanId?: string } | null)?.scanId);
+      return answer;
+    },
+  },
+  [key("GET", "/api/memory/cleanup/scans/:id")]: {
+    run: async (w) => {
+      const scanId = w.ctx.cleanup.start({ dir: w.workspace });
+      await scanEnded(w, scanId);
+      return w.call("GET", `/api/memory/cleanup/scans/${scanId}`);
+    },
+  },
   [key("GET", "/api/memory/recall")]: { run: (w) => w.call("GET", "/api/memory/recall?q=Alfa&record=false") },
   [key("GET", "/api/memory/recall/stats")]: { run: (w) => w.call("GET", "/api/memory/recall/stats") },
   [key("GET", "/api/memory/journal")]: { run: (w) => w.call("GET", "/api/memory/journal") },

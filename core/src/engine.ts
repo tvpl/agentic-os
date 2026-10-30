@@ -46,6 +46,7 @@ import { JsonlLogger } from "./logs/jsonl.js";
 import { MemoryIndexer } from "./memory/indexer.js";
 import { generateRouters } from "./memory/routers.js";
 import { IndexWorkerHost } from "./memory/indexHost.js";
+import { CleanupScanner } from "./memory/cleanupScan.js";
 import { SemanticSearch } from "./memory/semantic.js";
 import { installJournalHooks } from "./memory/journal.js";
 import { MetricsHistory } from "./metrics/history.js";
@@ -174,6 +175,8 @@ export class MordomoEngine {
   readonly indexer: MemoryIndexer;
   /** Runs the index passes: in a worker thread when the worker script is there (`memory/indexHost.ts`). */
   readonly indexHost: IndexWorkerHost;
+  /** The scans of the guided cleanup (.specs/features/cerebro-faxina-guiada, S2), one running per scope. */
+  readonly cleanup: CleanupScanner;
   /** The semantic half of the search (off until `memory.embeddings.enabled`); one per engine. */
   readonly semantic: SemanticSearch;
   readonly routines: RoutineStore;
@@ -302,6 +305,12 @@ export class MordomoEngine {
       bus: this.events,
       getSettings: () => this.settings(),
       indexer: this.indexer,
+    });
+    this.cleanup = new CleanupScanner({
+      db: this.db,
+      paths: this.paths,
+      bus: this.events,
+      getSettings: () => this.settings(),
     });
     // The routers follow the index (.specs/features/cerebro-correcoes, S5): a pass that changed rows brings them up to
     // date before it is announced. Only routers that exist: the first ones are made by the setup, `mordomo index` or the
