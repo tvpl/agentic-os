@@ -779,7 +779,8 @@ A, B, C, D** (the cut below), sequential, each only on green.
     `tests/natureza.agents.test.ts` and the S1-S2 half of `tests/natureza.layer.test.ts` ≈ 72 KB → ≈ 18k = ≈ 86k; C1-C26
   - **B** (the queue, the sentinel and the decisions, core and API): S3 + S4 ≈ 60k + 29k = ≈ 89k, plus
     `tests/natureza.reviews.test.ts`, `tests/natureza.sentinel.test.ts`, `tests/natureza.decisions.test.ts` and the rest of
-    the layer file ≈ 60 KB → ≈ 15k = ≈ 104k; C27-C63
+    the layer file ≈ 60 KB → ≈ 15k = ≈ 104k; C27-C63, and C10 (moved from A by the coordinator on 30/10/2026: its proof
+    stores and reads through B's `POST`/`GET /api/memory/reviews`; the claim and the proof are unchanged)
   - **C** (the API's cross-cutting checks): ≈ 43k, plus `tests/natureza.contract.test.ts` ≈ 20 KB → ≈ 5k = ≈ 48k; C64-C69
   - **D** (the screens and their cross-cutting checks): S5 + C90-C92 ≈ 77k + 33k = ≈ 110k, plus the eight UI test files and
     `tests/e2e/reviews.spec.ts` ≈ 145 KB → ≈ 36k = ≈ 146k; C70-C93
