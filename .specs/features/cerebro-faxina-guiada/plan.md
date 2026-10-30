@@ -28,41 +28,53 @@ lista do que vai mudar e aplica; o que foi arquivado volta com um clique, e o qu
 
 ## Flow
 
-Reutiliza o índice (`files`, `files_fts`, `file_related`, `note_links`), o resolvedor de links da `cerebro-correcoes`
-(`linkEdges`), o `rowFilter` do `MemoryIndexer`, o primitivo seguro (`writeWorkspaceFile`, `homeReadScope`), as rotas de nota
-(`saveNote` com `baseVersion`), o `RestoreLock`, o barramento com `EVENT_VERSIONS`, a tabela `API` e `bind`, as primitivas
-(`Modal`, `Tabs`) e o `useTweenNumber`; nenhuma segunda indexação, política ou escrita.
+Reutiliza o índice (`files`, `files_fts`, `file_terms`, `file_related`, `note_links`), o resolvedor de links da
+`cerebro-correcoes` (`linkEdges`, e a regra de `linksOf` para um link que não resolve), a pertença de um contexto
+(`contextMembership`, `contextNotesDir`, `contextBriefFile` em `core/src/memory/contexts.ts`, `cerebro-contextos`), o
+cabeçalho que o índice já guarda em `files.fields` (`cerebro-organizar`, door 6), a regra de gerados de `classifyNotePath`
+(`GENERATED_DIRS`, `GENERATED_FILES`), o `rowFilter` do `MemoryIndexer`, o primitivo seguro (`writeWorkspaceFile`,
+`listWorkspaceDir`, `homeReadScope`), as rotas de nota (`GET /api/memory/note` e `saveNote` com `baseVersion`), o
+`RestoreLock`, o barramento com `EVENT_VERSIONS`, a tabela `API` e `bind`, as primitivas (`Modal`, `Tabs`, `DropdownMenu`),
+`useWorkContext` e o `useTweenNumber`; nenhuma segunda indexação, política ou escrita.
 
-1. Entrada → o seletor de contexto, a paleta ("Faxina guiada") ou o botão da tela do Segundo Cérebro abrem o
-   `CleanupWizard` (new, no door - placement per conventions) com um contexto ou uma pasta.
+1. Entrada → o menu do `ContextSelector` (exists, `cerebro-contextos`), a paleta ("Faxina guiada", no registro de comandos,
+   exists), o botão "Faxina" de `.brain-topbar-actions` do grafo (`brain/BrainChrome.tsx`, exists) ou a linha "Faxina" de
+   `bs-menu-acts` (`nucleo/scenes/BrainSceneMenu.tsx`, exists) abrem o `CleanupWizard` (new, no door - placement per
+   conventions) com um contexto ou uma pasta ("Emendas" 11).
 2. Inventário → `GET /api/memory/cleanup/inventory` (door 5) → `cleanupInventory` (new, no door) agrega as linhas de `files`
-   do escopo, já filtradas pelo `rowFilter`, sem abrir arquivo: contagem por tipo, tamanho, faixas de idade, maiores pastas,
-   grupos por subpasta e por termos de `file_related`.
+   do escopo (de um contexto: as que `contextMembership` deixa e as de `memory/notes/<id>/`, "Emendas" 3), já filtradas pelo
+   `rowFilter`, sem abrir arquivo: contagem por tipo, tamanho, faixas de idade, maiores pastas, grupos por subpasta e por
+   termos de `file_terms`/`file_related`.
 3. Varredura → `POST /api/memory/cleanup/scans` (door 5) → `CleanupScanner` (new, no door) roda em blocos que cedem o laço,
    segurando o `RestoreLock` compartilhado (exists); calcula assinaturas MinHash do texto do FTS e as guarda em `file_minhash`
-   (door 2); lê `linkEdges` (exists após `cerebro-correcoes`) para órfãs e links quebrados; descarta achados já decididos em
-   `cleanup_decisions` (door 3); anuncia `cleanup.progress`/`cleanup.finished`/`cleanup.failed` (door 6).
+   (door 2, migração 24); lê `linkEdges` (exists) para órfãs e as linhas de `note_links` que não resolvem, pela regra de
+   `linksOf` (exists), para links quebrados; lê `title` e `fields.last_reviewed` das linhas e `listWorkspaceDir` (exists) para
+   pastas vazias; descarta achados já decididos em `cleanup_decisions` (door 3); anuncia
+   `cleanup.progress`/`cleanup.finished`/`cleanup.failed` (door 6).
 4. Perguntas → `GET /api/memory/cleanup/scans/:id` (door 5) devolve os achados; `PUT /api/memory/cleanup/decisions` grava cada resposta
-   em `cleanup_decisions` (door 3) e o texto "o que importa aqui" vai para a nota-resumo do contexto por `saveNote` (exists),
-   com `baseVersion`.
+   em `cleanup_decisions` (door 3) e o texto "o que importa aqui" vai para a nota-resumo do contexto
+   (`memory/notes/<id>/_resumo.md`, o `brief` de `GET /api/contexts`, exists), lida por `GET /api/memory/note` e escrita por
+   `PUT /api/memory/notes` (`saveNote`, exists) com `baseVersion` ("Emendas" 7).
 5. Aplicar → `POST /api/memory/cleanup/apply` (door 5) → `moveWorkspaceFile` (new, door 1) move para o arquivo de `memory/`
    cada arquivo marcado, conferindo o hash de agora contra o da varredura; grava o manifesto (door 4); pede ao
    `MemoryIndexer.requestIndexPaths` (exists) a passada dos caminhos de origem e de destino. Fora de `memory/`, o plano vira
-   uma lista de propostas em `artifacts/` (pergunta 1).
+   uma lista de propostas em `artifacts/cleanup/` (pergunta 1).
 6. Desfazer → `POST /api/memory/cleanup/undo` (door 5) lê o manifesto e move de volta o que ainda está como foi deixado.
 7. out: a tela mostra o resultado (movidos, pulados com o motivo, propostas) e o botão "Desfazer".
 
 ## Impact
 
-| Front       | What changes                                                                                                                                                                                                                                                                                  |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| domain      | new term: `achado` (finding) — um fato sobre um ou mais arquivos do escopo que pede uma decisão (`duplicate`, `near-duplicate`, `stale`, `orphan`, `broken-link`, `empty-folder`, `large-file`, `untitled`), com uma chave estável `kind:sha-dos-membros`, vive em `core/src/memory/cleanup*` |
-| domain      | new term: `decisão de faxina` — `keep`, `archive`, `merge`, `snooze`, `unsure` sobre a chave de um achado; vale até a chave mudar (um membro mudou de bytes) ou, para `snooze`, até a data                                                                                                    |
-| domain      | new term: `arquivo` (archive) — `memory/archive/AAAA-MM-DD-<id>/` com os arquivos movidos na mesma forma de caminho relativo e um `manifest.json`; indexado, fora dos achados e fora do escopo padrão de um contexto                                                                          |
-| domain      | existing term: `higiene` (`GET /api/memory/hygiene`) continua igual para o que é de sistema (skills, rotinas, conectores); os achados de arquivo desta feature são uma rota própria e escopada — quem lê a higiene hoje: nenhuma tela; a CLI `doctor` não a usa                               |
-| stored data | migração 23 cria `file_minhash` e `cleanup_decisions` (`CREATE TABLE IF NOT EXISTS`, nada altera linha existente); as assinaturas se calculam na primeira varredura de cada escopo e somem com o arquivo (o `removeFile` do indexador ganha o `DELETE`)                                       |
-| stored data | `memory/archive/` passa a existir no primeiro arquivamento; `ROUTER.md` e `areas/*.md` não o listam (é lido como pasta gerada pelo roteador, igual a `journal/`)                                                                                                                              |
-| eventos     | três tipos novos no barramento: `cleanup.progress`, `cleanup.finished`, `cleanup.failed` (`v: 1`); `docs/events.md` regenerado                                                                                                                                                                |
+| Front       | What changes                                                                                                                                                                                                                                                                                                                     |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| domain      | new term: `achado` (finding) — um fato sobre um ou mais arquivos do escopo que pede uma decisão (`duplicate`, `near-duplicate`, `stale`, `orphan`, `broken-link`, `empty-folder`, `large-file`, `untitled`), com uma chave estável `kind:sha-dos-membros`, vive em `core/src/memory/cleanup*`                                    |
+| domain      | new term: `decisão de faxina` — `keep`, `archive`, `merge`, `snooze`, `unsure` sobre a chave de um achado; vale até a chave mudar (um membro mudou de bytes) ou, para `snooze`, até a data                                                                                                                                       |
+| domain      | new term: `arquivo` (archive) — `memory/archive/AAAA-MM-DD-<id>/` com os arquivos movidos na mesma forma de caminho relativo e um `manifest.json`; indexado, fora dos achados e fora do escopo padrão de um contexto                                                                                                             |
+| domain      | existing term: `higiene` (`GET /api/memory/hygiene`) continua igual para o que é de sistema (skills, rotinas, conectores); os achados de arquivo desta feature são uma rota própria e escopada — quem lê a higiene hoje: nenhuma tela; a CLI `doctor` não a usa                                                                  |
+| stored data | migração 24 (a 23 é `run-context`, de `cerebro-contextos`) cria `file_minhash` e `cleanup_decisions` (`CREATE TABLE IF NOT EXISTS`, nada altera linha existente); as assinaturas se calculam na primeira varredura de cada escopo e somem com o arquivo (o `removeFile` do indexador ganha o `DELETE`, como o de `file_vectors`) |
+| stored data | `memory/archive/` passa a existir no primeiro arquivamento; `ROUTER.md` e `areas/*.md` não o listam (é lido como pasta gerada pelo roteador, igual a `journal/`); o mapa de pastas de `cerebro-organizar` (`GET /api/memory/maps`, a seção "Folder indexes" do `ROUTER.md`) só anda sob `memory/notes/` e também não o lista     |
+| stored data | `settings.json` ganha `memory.cleanup` (`staleDays` 180, `largeBytes` 5 242 880); `PUT /api/settings` mescla `memory` um nível só, então um patch de `memory.cleanup` troca o objeto inteiro e mantém `notes`, `journalBudgetTokens`, `agentStance` e `embeddings` ("Emendas" 14)                                                |
+| stored data | arquivar um arquivo de `memory/notes/<pasta>/` muda os filhos da pasta: o `_index.md` dela (`cerebro-organizar`) fica `stale` em `GET /api/memory/maps` até a próxima `organize-brain etapa=indexar`, e um link Markdown dele (em "Comece por") para o arquivo movido deixa de resolver ("Emendas" 15)                           |
+| eventos     | três tipos novos no barramento: `cleanup.progress`, `cleanup.finished`, `cleanup.failed` (`v: 1`); `docs/events.md` regenerado                                                                                                                                                                                                   |
 
 ## Relations
 
@@ -259,8 +271,111 @@ ligado e desligado, e ver o mesmo texto de estado nas duas.
 | collection arquivo `memory/archive/`         | grouping, naming, what does not fit    | AC 27 (uma pasta por aplicar, caminho relativo preservado), AC 29 (destino que existe é pulado)         |
 | command "Faxina guiada"                      | document or copy a person reads        | AC 36, AC 44                                                                                            |
 
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+O texto aprovado acima fica como foi aprovado, exceto `Flow` e `Impact`, que se mantêm verdadeiros. O plano e o `design.md`
+foram aprovados antes de `cerebro-correcoes` (C1), `cerebro-contextos` (C2), `cerebro-organizar` (C3) e
+`cerebro-vista-notas` (C4); o que as quatro construíram (AD-037 a AD-041, `git log` até `108f27f`) e o que a derivação dos
+checks achou ficam aqui, cada um com o check de `checks.md` que o resolve. Nenhuma emenda muda o formato literal de uma door;
+as que dizem um código ou uma recusa a mais só estreitam. A pergunta 1 segue sem resposta, e o padrão dela (só propor fora de
+`memory/`) segue valendo; nada aqui amplia o que a faxina escreve.
+
+1. **Migração 24 (Impact, doors 2 e 3).** A C2 usou a migração 23 (`run-context`, `context_id` em `runs` e `sessions`).
+   `file_minhash` e `cleanup_decisions` nascem na migração 24, com os formatos literais das doors 2 e 3 (C15, C17).
+2. **Links só de `note_links` (Problem, Flow 3, AC 11).** O Problem cita `file_links`; a C1 o tirou (migração 22, AD-037 b).
+   Órfã é a nota `.md` sem nenhuma aresta de `linkEdges` nos dois sentidos, entre arquivos que a política de hoje deixa; link
+   quebrado é a linha de `note_links` cujo alvo, pela regra de `linksOf`, não resolve (`outgoing[].resolved` `null`), a mesma
+   resposta que a seção "Links quebrados" do painel da C4 mostra; o `detail` do achado leva o alvo e a linha (C20, C21). Um
+   wikilink para uma nota arquivada continua resolvendo pelo nome, porque `memory/archive/` é indexado (suposição "Arquivo
+   indexado").
+3. **O escopo de um contexto (AC 1, AC 2, AC 4, door 3).** A C2 decide a pertença por `contextMembership` (realpath igual ou
+   seguido do separador, só os caminhos `ok`), e a C4 juntou a pasta de notas do contexto às raízes dele. O escopo
+   `context:<id>` é o que `contextMembership` deixa mais as linhas de `memory/notes/<id>/`, as mesmas linhas que a árvore da C4
+   mostra para o contexto; um caminho `missing` ou `not_indexed` não conta (C2). Em toda leitura da C2 `context=all` é o acervo
+   inteiro, que é "nem `context` nem `dir`": `400 scope_required`; `context` e `dir` juntos são `400 validation` (C7, C9).
+4. **`400 scope_required` e o `403 scope_required` comum (door 5, AC 3, AC 4, AC 46).** `contracts/src/api/errors.ts` já tem
+   `403 scope_required` para todas as rotas guardadas (um dispositivo sem o escopo da rota). O código da door 5 fica como
+   aprovado, e o status separa os dois: os checks afirmam o par (status, código) e nunca só o código (C9, C74). Pergunta
+   nova 3.
+5. **O que a varredura ignora (AC 14).** A lista aprovada (`ROUTER.md`, `areas/`, `journal/`) era o conjunto de gerados da
+   época; a C2 acrescentou `memory/contexts/` (`GENERATED_DIRS` de `core/src/memory/notes.ts`). A varredura ignora
+   `memory/archive/` e tudo o que `classifyNotePath` chama de gerado: `memory/ROUTER.md`, `memory/areas/`, `memory/journal/`,
+   `memory/contexts/`. `memory/maps/`, `memory/inbox/` e os `_index.md` da C3 são notas como as outras (editáveis, C4 emenda 9)
+   (C27).
+6. **O cabeçalho no índice (AC 10, AC 12).** Desde a C3 (door 6), `last_reviewed` está em `files.fields` e `title` vem de
+   `title:` ou do primeiro `# `: `stale` por `last_reviewed` e `untitled` se decidem nas linhas, sem abrir arquivo; um
+   `last_reviewed` que não é `AAAA-MM-DD` não conta, e vale só o `mtime` (C19, C24).
+7. **A nota-resumo (AC 23, AC 24).** A C2 guarda o resumo em `memory/notes/<id>/_resumo.md` (`brief` de `GET /api/contexts`,
+   `null` quando não existe), e o modelo dele já tem `## O que importa`, entre `## O que é` e `## Metas`. O texto entra no fim
+   dessa seção (antes do `## ` seguinte), com uma linha em branco antes; um resumo sem a seção ganha `## O que importa` e o
+   texto no fim; todo outro byte fica (C65, C66). Um contexto com `brief: null` é o AC 24: o assistente não cria o resumo (isso
+   é o "Editar resumo" da C2, `PATCH /api/contexts/:id {brief:true}`). A skill organize-brain da C3 só preenche seções vazias
+   do resumo, então não sobrescreve o que a faxina escreveu.
+8. **`natureza`, `escopo` e `review_every` já existem (Out of scope, linhas 8 a 10).** A C3 os pôs no vocabulário do guia e
+   em `files.fields` (door 6); o "Why" dessas linhas diz que nascem na C6. O que fica de fora não muda: os cartões por
+   natureza e escopo, os achados "plano antigo" e "nota sem natureza" e a fila de `review_every` seguem da C6, e esta feature
+   não lê esses campos (C19).
+9. **As propostas do relatório da organize-brain (Out of scope da C3).** O plano da C3 deixou para esta feature "aplicar pelo
+   motor as propostas do relatório (mover, mesclar, arquivar)" nas pastas do usuário. Com o padrão da pergunta 1, esta feature
+   não move nem escreve fora de `memory/` e não lê o relatório da C3: o que ele propõe numa pasta do usuário continua uma
+   proposta que a pessoa executa. A expectativa da C3 fica dependente da pergunta 1 (C44).
+10. **Reparação de links (Out of scope da C4).** O plano da C4 diz que esta feature "traz a reparação dos links quebrados".
+    Os critérios aprovados aqui acham o link quebrado (AC 11) e oferecem as respostas de todo achado (AC 18); nenhuma resposta
+    reescreve o corpo de uma nota, e esta emenda não acrescenta uma. Pergunta nova 4 (C21, C59).
+11. **De onde a faxina abre (AC 36, `design.md` "Aberto de três lugares").** O `design.md` não diz o lugar de cada entrada nos
+    menus que a C2 e a C4 desenharam depois. No menu do `ContextSelector` a entrada "Fazer faxina neste contexto" é a
+    primeira do grupo de ações (logo depois do separador, antes de "Novo contexto"), só aparece com um contexto ativo e abre o
+    assistente na etapa 2 com esse contexto. Na moldura, o botão "Faxina" (`.btn.sm`, ícone `Sparkles` e texto) é o terceiro
+    de `.brain-topbar-actions` do grafo, depois de "Atualizar índice" e "Modo apresentação (p)" e antes dos `os-chip`; o modo Notas da C4 não
+    tem fileira de ações e chega à faxina pela paleta e pelo seletor. No Núcleo, "Faxina" é a última linha de `bs-menu-acts` do
+    menu da cena, depois de "Salvar como visão padrão". A paleta e o botão abrem na etapa 1 com o contexto ativo preselecionado, e
+    nenhum com "Todo o cérebro" (C51).
+12. **Os códigos de `404` e `409` e quem chama (Surface, door 5, AC 46).** A Surface lista os status, não todo código.
+    `GET /scans/:id`, `PUT /decisions` e `POST /apply` para um `scanId` desconhecido e `POST /undo` para um manifesto que não
+    existe respondem `404 not_found`. `POST /apply` responde `409 scan_running` enquanto a varredura não terminou, `409
+scan_stale` quando outra a substituiu e `409 restore_in_progress`; `POST /undo` responde `409 undo_conflict` (AC 34) e
+    `409 restore_in_progress`: aplicar e desfazer seguram o `RestoreLock` compartilhado como a varredura, porque uma
+    restauração troca `memory/` inteira (C11, C36, C47, C49). A C2 e a C3 abriram `GET /api/memory/search` e
+    `GET /api/memory/maps` à credencial de uma execução; nenhuma das seis rotas entra nessa lista, e a credencial de uma
+    execução recebe `403 forbidden` de todas, `inventory` e `GET /scans/:id` incluídas (C76).
+13. **Teto de peso (AC 43).** Como na C4 (emenda 14), `bundle:check` mede contra a entrada mais nova de
+    `scripts/bundle-baseline.json` × 1,05 e soma todo o JS do `dist`, e a entrada desta feature seria a mais nova. O teto é
+    sobre a entrada anterior (`cerebro-vista-notas`, 534 932 B de JS gzip e 74 679 B de CSS gzip): no máximo 12 KB de JS gzip e
+    2 KB de CSS gzip a mais, com o assistente num pedaço próprio por `import()` (C82). Pergunta nova 5.
+14. **Os limiares em `settings.memory.cleanup` (AC 10, AC 12, Impact).** A suposição "Limiares" põe os valores em
+    `settings.memory.cleanup`, que o Impact não listava: `staleDays` (padrão 180) e `largeBytes` (padrão 5 242 880). O
+    `PUT /api/settings` mescla `memory` um nível só (C3 doors 12 e 13, C4 emenda 12): `{memory:{cleanup:{staleDays:90}}}` troca
+    `memory.cleanup` inteiro (`largeBytes` volta ao padrão) e mantém `notes`, `journalBudgetTokens`, `agentStance` e
+    `embeddings`; a varredura lê os valores quando começa (C18, C23, C32).
+15. **Arquivar e a nota-índice da pasta de origem (Impact, C3 door 3).** Mover um arquivo de `memory/notes/<pasta>/` muda o
+    digest dos filhos dela; o `_index.md` da pasta fica `stale` em `GET /api/memory/maps` e um link Markdown dele para o
+    arquivo movido deixa de resolver até a próxima `organize-brain etapa=indexar`. A faxina não reescreve o `_index.md`
+    (a C3 só sobrescreve o que tem `generated-by: organize-brain`, e quem o reescreve é ela). `memory/archive/` fica fora do
+    mapa, que só anda sob `memory/notes/` (C46).
+16. **As recusas de uma decisão (AC 19, AC 21, AC 25).** O AC 25 nomeia a chave que a varredura não deu. A derivação acha as
+    outras entradas que não se podem guardar, e todas são `400 validation` sem guardar nada do pedido: `decision` fora das
+    cinco, `merge` sem `keepFileId` ou com um id fora do achado, `merge` num achado que não é `duplicate` nem `near-duplicate`,
+    `snooze` sem `until` ou com `until` no passado (C35).
+17. **"Cancelar" durante a varredura (AC 37, `design.md` "Estados de erro").** O AC 37 diz que "Cancelar" fecha o
+    assistente sem aplicar nada; o `design.md` desenha "Varredura cancelada." com "Procurar de novo". A Surface não tem rota
+    que pare uma varredura, que então termina no servidor. Vale o AC: "Cancelar" fecha o assistente, nada se aplica, o aviso
+    `role="status"` "Varredura cancelada." (`cleanup.cancelled`) aparece uma vez, e "Procurar de novo" não se desenha;
+    reabrir o escopo segue o AC 40 (C73). Pergunta nova 7.
+
+Perguntas novas ao dono, levantadas pela reconciliação; o padrão vale até a resposta:
+
+| #   | Kind | Question                                                                                                                                                                                                                                                                                        | Until answered                                                                                           |
+| --- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 3   | open | O `400 scope_required` da door 5 tem o mesmo código do `403 scope_required` comum (dispositivo sem o escopo). Trocar por `400 cleanup_scope_required` antes de sair, ou manter? Recomendo trocar: um cliente que ramifica pelo código não confunde os dois; custa só a door 5.                  | mantém o aprovado; os checks afirmam o par (status, código)                                              |
+| 4   | open | A C4 contava com a faxina para reparar links quebrados. Acrescentar a resposta "Corrigir link" (reescreve o alvo na nota de origem por `PUT /api/memory/notes` com `baseVersion`)? Recomendo deixar para `cerebro-rituais` (C8), que já trata sugestões de ligação.                             | o achado `broken-link` só pergunta, como todo achado; nenhuma nota tem o corpo reescrito                 |
+| 5   | open | O teto de peso desta feature: 12 KB de JS gzip e 2 KB de CSS gzip acima de `cerebro-vista-notas` (emenda 13)?                                                                                                                                                                                   | 12 KB e 2 KB; se a construção passar, para e pergunta                                                    |
+| 6   | open | A nota-resumo do próprio contexto (`_resumo.md`) e as notas-índice da C3 (`_index.md`) entram nos achados como qualquer nota (uma `_resumo.md` sem link é órfã a cada varredura até "Manter")? Recomendo deixá-las fora dos achados.                                                            | entram como qualquer nota (o texto aprovado); arquivar o resumo desabilita "O que importa aqui?" (AC 24) |
+| 7   | open | "Cancelar" deve parar a varredura no servidor (uma rota `POST /api/memory/cleanup/scans/:id/cancel`, como `POST /api/memory/index/cancel`) e mostrar "Varredura cancelada." com "Procurar de novo", como o `design.md` desenha (emenda 17)? Recomendo não: a varredura só lê e termina sozinha. | o AC 37: "Cancelar" fecha o assistente e a varredura termina no servidor                                 |
+
 ## Sources
 
 - `reports/Segundo cérebro para agentes.md`, roteiro M4 (lint de higiene) e a seção sobre manutenção — o escopo do lint.
 - `.specs/roadmap.md`, C5 — a entrega desta feature.
 - `.specs/features/cerebro-faxina-guiada/design.md` — binding para as telas.
+- `.specs/STATE.md` AD-037 a AD-041 e os `plan.md`, `checks.md` e `verification.md` de `cerebro-correcoes`, `cerebro-contextos`,
+  `cerebro-organizar` e `cerebro-vista-notas` — o que as quatro construíram antes desta ("Emendas depois da aprovação").
