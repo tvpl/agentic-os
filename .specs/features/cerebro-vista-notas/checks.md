@@ -439,4 +439,4 @@ The estimate exceeds the 150k budget, so the build stops here for the mechanism 
     22k + 7k + 23k = ≈ 52k, plus their tests (`PropertiesTable`, `NoteEditInPlace`, `NoteCreate`, `notesCopy`, the e2e of
     C77, C78) ≈ 74 KB → ≈ 19k = ≈ 71k; C56-C71, C77-C79, C81
   - B + C together ≈ 178k is over the budget, so the three stay apart; A must land first because B and C call its routes
-- Mechanism: pending the owner (handoff | one builder)
+- Mechanism: handoff (the owner chose it on 2026-10-30: three batches A, B, C, sequential, each only on green)

@@ -47,7 +47,7 @@
 
 ## Handoff
 
-**Feature**: cerebro-organizar (C3) construída em dois lotes e verificada (rodada 1 FAIL, rodada 2 PASS); cerebro-contextos (C2) e cerebro-correcoes (C1) fechadas; próxima: cerebro-vista-notas (C4), plano e desenho escritos
+**Feature**: cerebro-vista-notas (C4): checks escritos (81), construção em três lotes A, B, C; C1, C2 e C3 fechadas
 **Where**: na branch `chore/tlc-spec-lean-skill`, integradas e com `verification.md` (as que usaram as três rodadas fecharam com escalonamento ao dono, nota no fim de cada relatório): seguranca-p0, ci-gate, motor-composicao, capacidades-aplicadas, contratos, preferencias-ui, provedores-plugaveis, api-v1, adaptadores-tipados, moldura-app, seguranca-p1, dados-v2, comandos-atalhos, design-system, escopos-dispositivo. Também integradas e fechadas com escalonamento: primitivas e sdk-core (três rodadas FAIL). Integradas e ainda em verificação: contratos-rest (rodadas 1 e 2 FAIL, correções integradas), licenca-comercial (rodada 1 FAIL, correção integrada; todo texto jurídico é minuta para o dono), limpeza-legado (integrada, rodada 1). Aceites pendentes do dono: "Perguntas ao dono" (AD-014, AD-018 a AD-025).
 **In progress**: nada em worktree; resta a decisão do dono sobre os FAIL residuais (ver o fim de cada `verification.md`)
 **Next step**: o dono responde "Perguntas ao dono", cerebro-correcoes 1 e 2 (padrões valem enquanto isso); escrever os checks de `cerebro-contextos` e construir; as perguntas anteriores (limpeza-legado 1, distribuicao 16-20, cerebro-v2 13-19, licenca-comercial 10-11) seguem
