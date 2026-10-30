@@ -289,3 +289,65 @@ describe("S2 the properties of a note", () => {
     expect(large.body.error.code).toBe("note_too_large");
   });
 });
+
+describe("door 8 at the boundary: the details of the property writer", () => {
+  const version = async (p: string) => (await read(p)).body.version as string;
+
+  it("C84 the same key in set and remove is 400 validation; a set value written as a JSON string when it does not read the same unquoted; a value set to what it holds keeps its line; a block list stays a block; a repeated key's later lines and a value's trailing comment are read as door 8 says; an unreadable header reads as none", async () => {
+    // the same key set and removed
+    const both = note(`${PRINT.join("\n")}\ncorpo\n`);
+    const was = bytes(both);
+    const refused = await write({
+      path: both,
+      baseVersion: await version(both),
+      set: { status: "done" },
+      remove: ["status"],
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(400);
+    expect(refused.body.error.code).toBe("validation");
+    expect(bytes(both).equals(was)).toBe(true);
+
+    // a trailing comment is not part of an unquoted value; set to what it holds, the line is kept; a text that does
+    // not read the same unquoted is a JSON string, one that does is written plain
+    const p = note("---\nstatus: active # revisto\nowner: Ana\n---\ncorpo\n");
+    const got = await read(p);
+    expect(got.body.properties).toEqual([
+      { key: "status", kind: "status", value: "active" },
+      { key: "owner", kind: "text", value: "Ana" },
+    ]);
+    let res = await write({
+      path: p,
+      baseVersion: got.body.version,
+      set: { status: "active", owner: "a: b" },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(bytes(p).toString("utf8")).toBe('---\nstatus: active # revisto\nowner: "a: b"\n---\ncorpo\n');
+    res = await write({ path: p, baseVersion: res.body.version, set: { owner: "Ana (sócia), v.2" } });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(bytes(p).toString("utf8")).toBe(
+      "---\nstatus: active # revisto\nowner: Ana (sócia), v.2\n---\ncorpo\n",
+    );
+
+    // a block list stays a block, its items at the first one's indentation
+    const b = note("---\ntags:\n    - um\n    - dois\n---\ncorpo\n");
+    res = await write({ path: b, baseVersion: await version(b), set: { tags: ["um", "dois", "tres"] } });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(bytes(b).toString("utf8")).toBe("---\ntags:\n    - um\n    - dois\n    - tres\n---\ncorpo\n");
+
+    // a repeated key: the first line is the property, the later ones other properties
+    const r = note("---\ntype: um\ntype: dois\n---\ncorpo\n");
+    const repeated = await read(r);
+    expect(repeated.body.properties).toEqual([{ key: "type", kind: "text", value: "um" }]);
+    expect(repeated.body.otherProperties).toBe("type: dois");
+
+    // an unreadable header (no closing ---) reads as none
+    const u = note("---\ntype: context\n\ncorpo\n");
+    const unreadable = await read(u);
+    expect(unreadable.status).toBe(200);
+    expect([unreadable.body.properties, unreadable.body.otherProperties, unreadable.body.bodyStart]).toEqual([
+      [],
+      null,
+      0,
+    ]);
+  });
+});

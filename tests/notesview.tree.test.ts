@@ -400,6 +400,34 @@ describe.skipIf(!POSIX)("S1 the tree route", () => {
     expect(await tree({ context: "all", root: elsewhere })).toEqual(await tree({ root: elsewhere }));
   });
 
+  it('C82 a context with no ok path and no notes folder answers 200 with roots [], root null, dir "" and no entry; with a root asked it answers 400 unknown_root', async () => {
+    const r = w.indexedRoot("c82");
+    const gone = path.join(r, "sumida");
+    fs.mkdirSync(gone, { recursive: true });
+    w.put(path.join(r, "outra.md"), "# Outra\n");
+    await w.index();
+    w.update((s) => {
+      s.contexts = [...s.contexts, { id: "c82", name: "C82", paths: [gone] }];
+    });
+    fs.rmSync(gone, { recursive: true });
+    expect(fs.existsSync(path.join(memory, "notes", "c82"))).toBe(false);
+    expect(await tree({ context: "c82" })).toEqual({
+      roots: [],
+      root: null,
+      dir: "",
+      folders: [],
+      files: [],
+      indexNote: null,
+      truncated: false,
+      omitted: 0,
+    });
+    for (const root of [memory, r, gone]) {
+      const res = await refused({ context: "c82", root });
+      expect(res.status, root).toBe(400);
+      expect(res.body.error.code, root).toBe("unknown_root");
+    }
+  });
+
   it("C12 while an index pass runs every root answers indexing true, and once it ends every root answers false", async () => {
     const r = w.indexedRoot("c12");
     for (let i = 0; i < 3000; i++) {

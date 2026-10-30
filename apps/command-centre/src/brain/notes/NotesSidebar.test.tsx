@@ -4,6 +4,8 @@
  * the line of the active context and the shell's one selector, the root and its menu, the context of every tree
  * request, a context switch, the index line and "Reindexar" / "Cancelar". The network is `./testnet`.
  */
+import fs from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -52,6 +54,40 @@ describe("C31 the top of the sidebar is the active context, and the shell's sele
     const menu = await screen.findByRole("menu", {}, { timeout: 2000 });
     expect(within(menu).getByRole("menuitemcheckbox", { name: "Todo o cérebro" })).toBeTruthy();
     expect(screen.getAllByRole("menu")).toHaveLength(1);
+  });
+
+  it("C31 top to bottom: the context line first, the root box (the root, then the index line with Reindexar beside it), the Home line, NOTAS with Nova nota, Nova pasta, Recolher tudo and Ordenar in that order, then the tree last", async () => {
+    view();
+    const side = await waitFor(sidebar);
+    const tree = await within(side).findByRole("tree");
+    const heading = within(side).getByRole("heading", { name: "NOTAS" });
+    const tools = await Promise.all(
+      ["Nova nota", "Nova pasta", "Recolher tudo", "Ordenar"].map((name) =>
+        within(heading.parentElement!).findByRole("button", { name }),
+      ),
+    );
+    const context = within(side).getByRole("button", { name: "Todo o cérebro" });
+    const root = side.querySelector<HTMLElement>("button.notes-root")!;
+    const index = side.querySelector<HTMLElement>('.notes-index-line[role="status"]')!;
+    const reindex = within(side).getByRole("button", { name: "Reindexar" });
+    const home = within(side).getByRole("button", { name: "Definir uma Home" });
+    const order = [context, root, index, reindex, home, heading, ...tools, tree];
+    for (let i = 1; i < order.length; i++)
+      expect(
+        order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+        `${order[i - 1]!.textContent} before ${order[i]!.textContent}`,
+      ).toBeTruthy();
+    // the context above everything, the tree below everything
+    const body = side.querySelector(".notes-sidebar-body")!;
+    expect(body.firstElementChild).toBe(context);
+    expect(body.lastElementChild!.contains(tree) || body.lastElementChild === tree).toBe(true);
+    // the index line in the root's box, with Reindexar beside it
+    expect(root.closest(".notes-rootbox")!.contains(index)).toBe(true);
+    expect(reindex.parentElement).toBe(index.parentElement);
+    // and no rule of the view's stylesheet draws them in another order than the document's
+    const css = fs.readFileSync(path.join(__dirname, "notes.css"), "utf8");
+    expect(css).not.toMatch(/(^|[\s;{])order\s*:/);
+    expect(css).not.toMatch(/(row|column)-reverse/);
   });
 
   it("C31 with a context active the line reads its name", async () => {

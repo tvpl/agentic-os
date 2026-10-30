@@ -302,3 +302,43 @@ describe("C55 the callouts of a note's nature", () => {
     expect(rule).toMatch(/font-size:\s*var\(--fs-2\)/);
   });
 });
+
+describe("C86 the note's header", () => {
+  it("C86 the title then, under it, the path in mono 12px; the actions on the right as .btn.sm; Mais holds Definir como Home, Exportar Markdown, Abrir no editor do sistema and Copiar caminho in that order", async () => {
+    const f = note(1, MEM, "notes/plano.md", { title: "Plano", content: "# Plano\n" });
+    read(f, { onEdit: () => undefined });
+    const article = await screen.findByRole("article", { name: "Plano" });
+    const head = article.querySelector("header")!;
+    // the titles block first, the actions after it (drawn on its right: notes.css, a row with space between)
+    const [titles, actions] = [...head.children] as HTMLElement[];
+    expect(titles!.className).toBe("notes-note-titles");
+    expect(actions!.className).toBe("notes-note-actions");
+    expect(head.children).toHaveLength(2);
+    const [title, where] = [...titles!.children] as HTMLElement[];
+    expect(title!.tagName).toBe("H1");
+    expect(title!.textContent).toBe("Plano");
+    expect(where!.className).toBe("notes-note-path");
+    expect(where!.textContent).toBe(pathOf(f));
+    const css = fs.readFileSync(path.join(NOTES_DIR, "notes.css"), "utf8");
+    const rule = (sel: string) => new RegExp(`\\${sel}\\s*\\{([^}]*)\\}`).exec(css)![1]!;
+    expect(rule(".notes-note-path")).toMatch(/font-family:\s*var\(--font-mono\)/);
+    expect(rule(".notes-note-path")).toMatch(/font-size:\s*var\(--fs-2\)/);
+    expect(rule(".notes-note-head")).toMatch(/justify-content:\s*space-between/);
+    const buttons = within(actions!).getAllByRole("button");
+    expect(buttons.map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual([
+      "Editar",
+      "Ver no grafo",
+      "Mais",
+    ]);
+    for (const b of buttons) expect([...b.classList].sort(), b.textContent!).toEqual(["btn", "sm"]);
+    const user = userEvent.setup();
+    await user.click(within(actions!).getByRole("button", { name: "Mais" }));
+    await tick();
+    const menu = await screen.findByRole("menu");
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((m) => m.textContent),
+    ).toEqual(["Definir como Home", "Exportar Markdown", "Abrir no editor do sistema", "Copiar caminho"]);
+  });
+});

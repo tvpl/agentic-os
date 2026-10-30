@@ -481,3 +481,85 @@ for (const theme of ["dark", "light"] as const satisfies readonly Theme[]) {
     expect(await serious(page, "#story-notes")).toEqual([]);
   });
 }
+
+/* ---------------- round 1: arrangements design.md decides (C85, C86, C89) ---------------- */
+
+type Box = { x: number; y: number; width: number; height: number };
+const boxOf = async (page: Page, selector: string): Promise<Box> =>
+  (await page.locator(selector).first().boundingBox())!;
+
+for (const shell of ["moldura", "nucleo"] as const satisfies readonly Shell[]) {
+  test(`C85 in the ${shell} the Grafo | Notas row sits above the three columns`, async ({ page }) => {
+    await open(page, shell, "/brain/notes");
+    await makeNotes(page);
+    await page.reload();
+    await openFromTree(page, `Alfa ${stamp}`);
+    const scope = shell === "moldura" ? '[data-app="brain"]' : ".bs-notes";
+    const row = await boxOf(page, `${scope} .brain-viewrow`);
+    await expect(page.locator(`${scope} .brain-viewrow`).getByRole("button")).toHaveText(["Graph", "Notes"]);
+    for (const column of [".notes-view", ".notes-sidebar", ".notes-main"]) {
+      const c = await boxOf(page, `${scope} ${column}`);
+      expect(row.y + row.height, column).toBeLessThanOrEqual(c.y + 1);
+      // above, not beside: the row and the column share some width
+      expect(row.x, column).toBeLessThan(c.x + c.width);
+      expect(row.x + row.width, column).toBeGreaterThan(c.x);
+    }
+  });
+}
+
+test("C86 the note's header: the path in mono 12px under the title, the actions on the right as .btn.sm, and Mais in its order", async ({
+  page,
+}) => {
+  await open(page, "moldura", "/brain/notes");
+  await makeNotes(page);
+  await page.reload();
+  await openFromTree(page, `Alfa ${stamp}`);
+  const head = page.locator(".notes-note-head");
+  const title = (await head.locator(".notes-note-title").boundingBox())!;
+  const where = (await head.locator(".notes-note-path").boundingBox())!;
+  const actions = (await head.locator(".notes-note-actions").boundingBox())!;
+  const box = (await head.boundingBox())!;
+  expect(where.y).toBeGreaterThanOrEqual(title.y + title.height - 1);
+  expect(Math.abs(where.x - title.x)).toBeLessThanOrEqual(1);
+  expect(actions.x).toBeGreaterThanOrEqual(Math.max(title.x + title.width, where.x) - 1);
+  expect(actions.x + actions.width).toBeGreaterThanOrEqual(box.x + box.width - 2);
+  const font = await head.locator(".notes-note-path").evaluate((el) => {
+    const probe = document.createElement("span");
+    probe.style.fontFamily = "var(--font-mono)";
+    document.body.appendChild(probe);
+    const mono = getComputedStyle(probe).fontFamily;
+    probe.remove();
+    const style = getComputedStyle(el);
+    return { px: parseFloat(style.fontSize), family: style.fontFamily, mono };
+  });
+  expect(font.px).toBe(12);
+  expect(font.family).toBe(font.mono);
+  const buttons = head.locator(".notes-note-actions button");
+  await expect(buttons).toHaveCount(3);
+  for (const b of await buttons.all()) await expect(b).toHaveClass(/^(?=.*\bbtn\b)(?=.*\bsm\b)/);
+  await head.getByRole("button", { name: "More" }).click();
+  await expect(page.getByRole("menu").getByRole("menuitem")).toHaveText([
+    "Set as home",
+    "Export Markdown",
+    "Open in system editor",
+    "Copy path",
+  ]);
+});
+
+test("C89 the tabs' + sits at the end of the strip, after every tab and every close", async ({ page }) => {
+  await open(page, "moldura", "/brain/notes");
+  await makeNotes(page);
+  await page.reload();
+  await openFromTree(page, `Alfa ${stamp}`);
+  await openFromTree(page, `Beta ${stamp}`);
+  const plus = (await page.getByRole("button", { name: "Open another note" }).boundingBox())!;
+  const before = [
+    ...(await page.locator(".notes-tabs [role=tab]").all()),
+    ...(await page.locator(".notes-tabs .notes-tab-x").all()),
+  ];
+  expect(before).toHaveLength(4);
+  for (const el of before) {
+    const b = (await el.boundingBox())!;
+    expect(plus.x).toBeGreaterThanOrEqual(b.x + b.width - 1);
+  }
+});

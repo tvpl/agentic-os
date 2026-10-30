@@ -19,7 +19,12 @@ import {
   createNote,
   folderSegments,
 } from "../core/src/memory/notes.js";
-import { entryEditability, memoryTree } from "../core/src/memory/tree.js";
+import {
+  TreeFolderMissingError,
+  TreeRootError,
+  entryEditability,
+  memoryTree,
+} from "../core/src/memory/tree.js";
 import { PathAccessError } from "../core/src/errors.js";
 import { UiPreferencesSchema } from "../contracts/src/preferences.js";
 import { makeTempHome } from "./helpers.js";
@@ -29,7 +34,8 @@ import { makeTempHome } from "./helpers.js";
  * with no HTTP: the tree (`memoryTree`, `entryEditability`), the properties (`parseProperties`, `setProperties`,
  * `validatePropertyChange`), and a new note's folder and the fixed structure (`folderSegments`, `createNote`). The HTTP
  * side of each claim is in `notesview.tree.test.ts`, `notesview.properties.test.ts` and `notesview.create.test.ts`.
- * Batch B adds the caps of the notes view's preferences (`UiPreferencesSchema`, door 4), which no route decides.
+ * Batch B adds the caps of the notes view's preferences (`UiPreferencesSchema`, door 4), which no route decides. Round 1
+ * of the verification adds the tree's roots and cap (C5, C6, C10, C11) and doors 6, 7 and 8 (C82, C83, C84).
  */
 
 const POSIX = process.platform !== "win32";
@@ -469,5 +475,215 @@ describe("door 4 at its own layer: the notes view's preferences", () => {
     // keeps every other brain field.
     expect(brainWith(undefined, { layout: "force" })).toEqual({ layout: "force" });
     expect(brainWith(3, { layout: "force" }).layout).toBe("force");
+  });
+});
+
+describe("door 1 at its own layer: the roots and the cap (round 1)", () => {
+  const ctxOf = (id: string, paths: string[]) => ({ id, name: id.toUpperCase(), paths });
+
+  it("C5 own layer: a root that is neither memory/ nor an enabled indexed folder (/tmp/fora, a disabled one) is TreeRootError (400 unknown_root); a dir with no indexed row and ../<another root's folder> are TreeFolderMissingError (404 not_found)", () => {
+    const off = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-notes-layer-off-")));
+    try {
+      const settings = settingsWith((s) => {
+        s.indexedFolders.push({ path: off, area: null, enabled: false });
+      });
+      row(off, "desligada.md");
+      for (const root of ["/tmp/fora", off]) {
+        const err = thrown(() => memoryTree(ctx.db, env(settings), { root }));
+        expect(err, root).toBeInstanceOf(TreeRootError);
+        expect([err.statusCode, err.code], root).toEqual([400, "unknown_root"]);
+      }
+      const d = folder("c5");
+      row(work, path.join(d, "a.md"));
+      row(memory, path.join("notes", "c5-memoria", "b.md"));
+      for (const dir of ["nao-existe", path.relative(work, path.join(memory, "notes", "c5-memoria"))]) {
+        const err = thrown(() => memoryTree(ctx.db, env(settings), { root: work, dir }));
+        expect(err, dir).toBeInstanceOf(TreeFolderMissingError);
+        expect([err.statusCode, err.code], dir).toEqual([404, "not_found"]);
+      }
+      expect(names(memoryTree(ctx.db, env(settings), { root: work, dir: d }).files)).toEqual(["a.md"]);
+    } finally {
+      fs.rmSync(off, { recursive: true, force: true });
+    }
+  });
+
+  it("C6 own layer: a folder of 1 003 entries (1 001 files and 2 subfolders) gives the first 1 000 in order, truncated and omitted 3; one of 1 000 gives truncated false and omitted 0", () => {
+    const big = folder("c6");
+    row(work, path.join(big, "sub-a", "x.md"));
+    row(work, path.join(big, "sub-b", "y.md"));
+    for (let i = 0; i < 1001; i++) row(work, path.join(big, `f${String(i).padStart(4, "0")}.md`));
+    const cut = memoryTree(ctx.db, env(), { root: work, dir: big });
+    expect(names(cut.folders)).toEqual(["sub-a", "sub-b"]);
+    expect(cut.files).toHaveLength(998);
+    expect(cut.files[0]!.name).toBe("f0000.md");
+    expect(cut.files.at(-1)!.name).toBe("f0997.md");
+    expect([cut.truncated, cut.omitted]).toEqual([true, 3]);
+    const full = folder("c6-mil");
+    for (let i = 0; i < 1000; i++) row(work, path.join(full, `g${String(i).padStart(4, "0")}.md`));
+    const all = memoryTree(ctx.db, env(), { root: work, dir: full });
+    expect(all.files).toHaveLength(1000);
+    expect([all.truncated, all.omitted]).toEqual([false, 0]);
+  });
+
+  it("C10 own layer: with a context the roots are its ok paths in its order (a missing one left out), then its notes folder when it exists; the root defaults to the first; the entries are the context's", () => {
+    const base = folder("c10");
+    const app = path.join(work, base, "projetos", "app");
+    const gone = path.join(work, base, "apagada");
+    const clientes = path.join(memory, "notes", `${base}-x`, "clientes");
+    const id = `c10l-${seq}`;
+    const notes = path.join(memory, "notes", id);
+    for (const dir of [app, clientes, notes]) fs.mkdirSync(dir, { recursive: true });
+    row(work, path.join(base, "projetos", "app", "a.md"));
+    row(work, path.join(base, "projetos", "app-antigo", "velho.md"));
+    row(memory, path.relative(memory, path.join(clientes, "cliente.md")));
+    row(memory, path.relative(memory, path.join(notes, "nota.md")));
+    const context = ctxOf(id, [app, gone, clientes]);
+    const top = memoryTree(ctx.db, env(), { context });
+    expect(top.roots.map((r) => [r.path, r.editable])).toEqual([
+      [app, false],
+      [clientes, true],
+      [notes, true],
+    ]);
+    expect(top.root).toBe(app);
+    expect(names(top.files)).toEqual(["a.md"]);
+    expect(JSON.stringify(top)).not.toContain("app-antigo");
+    expect(names(memoryTree(ctx.db, env(), { context, root: clientes }).files)).toEqual(["cliente.md"]);
+    expect(names(memoryTree(ctx.db, env(), { context, root: notes }).files)).toEqual(["nota.md"]);
+  });
+
+  it("C11 own layer: with a context, memory/ and an indexed folder outside it are TreeRootError (400 unknown_root)", () => {
+    const base = folder("c11");
+    const inside = path.join(work, base, "dentro");
+    fs.mkdirSync(inside, { recursive: true });
+    row(work, path.join(base, "dentro", "a.md"));
+    const elsewhere = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-notes-layer-c11-")));
+    try {
+      const settings = settingsWith((s) => {
+        s.indexedFolders.push({ path: elsewhere, area: null, enabled: true });
+      });
+      const context = ctxOf(`c11l-${seq}`, [inside]);
+      expect(memoryTree(ctx.db, env(settings), { context }).root).toBe(inside);
+      for (const root of [memory, elsewhere]) {
+        const err = thrown(() => memoryTree(ctx.db, env(settings), { context, root }));
+        expect(err, root).toBeInstanceOf(TreeRootError);
+        expect([err.statusCode, err.code], root).toEqual([400, "unknown_root"]);
+      }
+    } finally {
+      fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it("C82 own layer: a context with no ok path and no notes folder answers roots [], root null and no entry; with a root asked it is TreeRootError (400 unknown_root)", () => {
+    const context = ctxOf(`c82l-${++seq}`, [path.join(work, "nao-existe-c82")]);
+    expect(memoryTree(ctx.db, env(), { context })).toEqual({
+      roots: [],
+      root: null,
+      dir: "",
+      folders: [],
+      files: [],
+      indexNote: null,
+      truncated: false,
+      omitted: 0,
+    });
+    for (const root of [memory, work]) {
+      const err = thrown(() => memoryTree(ctx.db, env(), { context, root }));
+      expect(err, root).toBeInstanceOf(TreeRootError);
+      expect([err.statusCode, err.code], root).toEqual([400, "unknown_root"]);
+    }
+  });
+});
+
+describe("door 7 at its own layer: area and folder together", () => {
+  it("C83 own layer: createNote with an area and a folder is NoteValidationError (400 validation) and makes nothing; each alone is written", () => {
+    const settings = settingsWith((s) => {
+      s.areas = ["Área C83"];
+    });
+    const notes = path.join(memory, "notes");
+    const err = thrown(() =>
+      createNote(env(settings), { title: "Ambas", area: "Área C83", folder: "c83l-pasta" }),
+    );
+    expect(err).toBeInstanceOf(NoteValidationError);
+    expect([err.statusCode, err.code]).toEqual([400, "validation"]);
+    expect(fs.existsSync(path.join(notes, "c83l-pasta"))).toBe(false);
+    expect(fs.existsSync(path.join(notes, "area-c83", "ambas.md"))).toBe(false);
+    expect(createNote(env(settings), { title: "Só pasta", folder: "c83l-pasta" }).path).toBe(
+      path.join(notes, "c83l-pasta", "so-pasta.md"),
+    );
+    const inArea = createNote(env(settings), { title: "Só área", area: "Área C83" }).path;
+    expect(path.dirname(path.dirname(inArea))).toBe(notes);
+  });
+});
+
+describe("door 8 at its own layer: the details of the property writer", () => {
+  it("C84 own layer: a text is written plain only when it reads the same unquoted, else as a JSON string, one case per rule", () => {
+    const text = "---\nowner: x\n---\ncorpo\n";
+    const cases: Array<[what: string, value: string, line: string]> = [
+      ["letters", "Ana", "owner: Ana"],
+      ["the allowed marks", "Plano (A), v.2/3 d'o-x_y", "owner: Plano (A), v.2/3 d'o-x_y"],
+      ["empty", "", 'owner: ""'],
+      ["starts with a digit", "1º lugar", 'owner: "1º lugar"'],
+      ["starts with a mark", "#tag", 'owner: "#tag"'],
+      ["ends with a space", "Ana ", 'owner: "Ana "'],
+      ["true", "true", 'owner: "true"'],
+      ["null", "null", 'owner: "null"'],
+      ["yes", "yes", 'owner: "yes"'],
+      ["a colon", "a: b", 'owner: "a: b"'],
+      ["a double quote", 'diz "oi"', 'owner: "diz \\"oi\\""'],
+    ];
+    for (const [what, value, line] of cases) {
+      const next = setProperties(text, { set: { owner: value } });
+      expect(next, what).toBe(`---\n${line}\n---\ncorpo\n`);
+      expect(parseProperties(next).properties[0]!.value, what).toBe(value);
+    }
+  });
+
+  it("C84 own layer: an unquoted value loses its trailing # comment, a quoted one keeps a # inside; a value set to what it holds keeps its line byte for byte", () => {
+    const text =
+      '---\nstatus: active # revisto\nowner: Ana   # dona\nnota: "Ana # não é comentário"\n---\ncorpo\n';
+    expect(parseProperties(text).properties.map((p) => [p.key, p.value])).toEqual([
+      ["status", "active"],
+      ["owner", "Ana"],
+      ["nota", "Ana # não é comentário"],
+    ]);
+    expect(setProperties(text, { set: { status: "active", owner: "Ana" } })).toBe(text);
+  });
+
+  it("C84 own layer: a repeated key's first line is the property and the later lines are other properties, kept as they are when the property is written", () => {
+    const text = "---\ntype: um\ntype: dois\n---\ncorpo\n";
+    const read = parseProperties(text);
+    expect(read.properties).toEqual([{ key: "type", kind: "text", value: "um" }]);
+    expect(read.otherProperties).toBe("type: dois");
+    expect(setProperties(text, { set: { type: "tres" } })).toBe("---\ntype: tres\ntype: dois\n---\ncorpo\n");
+  });
+
+  it("C84 own layer: the same key in set and remove is PropertyValidationError (400 validation)", () => {
+    const err = thrown(() =>
+      setProperties(`${PRINT.join("\n")}\n`, { set: { status: "done" }, remove: ["status"] }),
+    );
+    expect(err).toBeInstanceOf(PropertyValidationError);
+    expect([err.statusCode, err.code]).toEqual([400, "validation"]);
+  });
+
+  it("C84 own layer: a block list stays a block with its first item's indentation, and an inline list stays inline", () => {
+    for (const indent of ["  ", "    "]) {
+      const text = `---\ntags:\n${indent}- um\n${indent}- dois\n---\n`;
+      expect(setProperties(text, { set: { tags: ["um", "tres", "quatro"] } }), JSON.stringify(indent)).toBe(
+        `---\ntags:\n${indent}- um\n${indent}- tres\n${indent}- quatro\n---\n`,
+      );
+    }
+    expect(setProperties("---\ntags: [um, dois]\n---\n", { set: { tags: ["um", "tres"] } })).toBe(
+      "---\ntags: [um, tres]\n---\n",
+    );
+  });
+
+  it("C84 own layer: an unreadable header (past 4 096 bytes, or with no closing ---) reads as none: [], null, 0", () => {
+    const long = [
+      "---",
+      ...Array.from({ length: 100 }, (_, i) => `campo${i}: ${"x".repeat(45)}`),
+      "---",
+      "corpo",
+    ].join("\n");
+    for (const text of [long, "---\ntype: context\n\ncorpo\n"])
+      expect(parseProperties(text)).toEqual({ properties: [], otherProperties: null, bodyStart: 0 });
   });
 });

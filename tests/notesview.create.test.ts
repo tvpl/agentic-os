@@ -93,6 +93,25 @@ describe("S3 a folder for a new note", () => {
     },
   );
 
+  it("C83 area and folder together answer 400 validation and nothing is written; folder alone gives the folder and area alone the area's folder, as before", async () => {
+    fixed(false);
+    w.update((s) => {
+      s.areas = [...s.areas, "Área C83"];
+    });
+    const before = listing();
+    const both = await create({ title: "Ambas", area: "Área C83", folder: "c83-pasta" });
+    expect(both.status, JSON.stringify(both.body)).toBe(400);
+    expect(both.body.error.code).toBe("validation");
+    expect(listing()).toEqual(before);
+    const inFolder = await create({ title: "Só pasta", folder: "c83-pasta" });
+    expect(inFolder.status, JSON.stringify(inFolder.body)).toBe(201);
+    expect(path.dirname(inFolder.body.path)).toBe(path.join(notesDir, "c83-pasta"));
+    const inArea = await create({ title: "Só área", area: "Área C83" });
+    expect(inArea.status, JSON.stringify(inArea.body)).toBe(201);
+    expect(path.dirname(path.dirname(inArea.body.path))).toBe(notesDir);
+    expect(path.dirname(inArea.body.path)).not.toBe(path.join(notesDir, "c83-pasta"));
+  });
+
   it("C26 with fixedStructure on, a folder that does not exist, an area whose folder does not exist and neither answer 409 structure_fixed and write nothing; a folder that exists answers 201", async () => {
     w.update((s) => {
       s.areas = [...s.areas, "Área C26"];
