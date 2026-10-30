@@ -406,7 +406,7 @@ the scans that happen to traverse them.
 
 ## Handoff
 
-The estimate exceeds the 150k budget, so the build stops here for the mechanism choice (`build.md`).
+The estimate exceeds the 150k budget. Mechanism chosen by the owner on 30/10/2026: **handoff, three batches A, B, C** (the cut below), sequential, each only on green.
 
 - Arithmetic (`wc -c` of the files each slice touches at `108f27f`, / 4; new files estimated):
   - S1: `contracts/src/api/memory.ts` 29 592, `apps/api/src/routes/memory.ts` 14 893, `core/src/memory/contexts.ts` 15 924,
