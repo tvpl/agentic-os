@@ -458,3 +458,53 @@ Status of batch A (updated in the commit that closes each piece):
   `GET /api/memory/cleanup/scans/:id`), migration 24 and `settings.memory.cleanup`: closed, every proof green in
   `tests/cleanup.inventory.test.ts`, `tests/cleanup.scan.test.ts` and `tests/cleanup.layer.test.ts`; with it batch A is
   closed (C1-C32)
+
+- **Boundary (batch A):** C1-C32 closed at `8d91441`, which closes the batch. On the tree of `8d91441`: `npm run build`,
+  `npm run typecheck` and `npm run lint` exit 0, `npx vitest run` at the root is green (144 files, 1907 tests, 1 skipped)
+  and `npm run test -w apps/command-centre` too (154 files, 1227 tests); each of the 38 `Proof:` lines of C1-C32 passes
+  and runs only its check's test. S3-S5 and C33-C83 are untouched (batches B and C): no `PUT /decisions`, no apply, no
+  undo, no `moveWorkspaceFile`, no screen. What batch A already moved for its three routes, so that batch B adds three
+  more on top: the `API` table (142 routes, 71 owner, 29 content), `EXPECTED_ROUTE_SCOPES`, the rows of
+  `docs/security.md`, a scenario each in `tests/helpers/contractWorld.ts`, the three `cleanup.*` types in
+  `EVENT_VERSIONS` with their v1 fixtures, and `docs/events.md` regenerated; C74-C79 are still batch B's to prove.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) Landing row 7, added
+  before its code: the key of a `broken-link` also hashes the link (kind, target, line) and the key of an
+  `empty-folder` (which has no member, `files: []`, the folder in `detail.folder`) hashes the folder's real path, so two
+  links of one note, or two empty folders, never share a `(scope, key)`; owner question 8 asks about it and the extra
+  test "door 7" in `tests/cleanup.layer.test.ts` holds it; (b) the scan reads the bytes of every finding's members, and
+  of the files that share a size, through `openWorkspaceFile(...).sha256()`, for the duplicates and for door 3's key
+  (Flow hop 3 says so); a file it cannot open is no member of anything; (c) the shapes the Surface left open: `total`
+  is `{ count, bytes }`; `byKind` is `{ kind, count, bytes }` with `notes` `.md`/`.markdown`, `text` `.txt .text .csv
+.tsv .log .rtf .doc .docx .odt`, `pdf`, `image` (11 extensions), `code` (the index's code and data extensions) and
+  `other`; `bySize` is four bands `{ upTo, count, bytes }` (100 KiB, 1 MiB, `memory.cleanup.largeBytes`, then `null`);
+  `byAge` is `{ from, to, count }`; `topFolders` are the folders strictly below the scope's roots, nested ones included,
+  ties by path; `clusters` are `{ kind: "folder" | "related", name, path, count, terms }`, a `related` group needs two
+  files and is named by its terms joined with " · ", shared terms rank by how many files hold them, then weight, then
+  name; a finding is `{ key, kind, files: [{ id, path, size, mtime, sha256 }], detail, suggested }` with `detail` by
+  kind (`similarity`; `since`, `ageDays`, `lastReviewed`; `target`, `line`, `linkKind`; `folder`; `bytes`, `limit`) and
+  `suggested` `merge` for both duplicate kinds, `archive` for `stale` and `empty-folder`, `keep` for the others; a scan
+  is `{ scanId, scope, status, phase, code, startedAt, finishedAt, findings, decided }`; (d) the rules the checks left
+  open: an empty file is nobody's duplicate; a near-duplicate is one finding per pair; `stale` takes `mtime` first and
+  `last_reviewed` (a real `YYYY-MM-DD`, read as midnight UTC) second; an orphan counts links from anywhere in the index
+  that today's policy allows; `empty-folder` reports the topmost folder of an empty tree (`pai/`, not also `pai/oca/`),
+  "holds no indexed file" by the index rows; `untitled` is a Markdown row whose `title` is null; a failed scan's code is
+  always `scan_failed`; findings are ordered by kind, then first path, then line; (e) `409 scan_running` names the
+  running scanId in `error.message`, because the error envelope has no other field for it (C28 reads it there); (f)
+  `dir` must be absolute (`400 validation` from the schema), and a folder inside the home's `config/` or `logs/` is
+  `400 scope_required`; (g) the scanner is the engine's (`engine.cleanup`, `CleanupScanner` in
+  `core/src/memory/cleanupScan.ts`), takes the shared restore lock with no wait, keeps the last 100 scans in memory and
+  has `latest(scopeKey)` for batch B's `scan_stale`; each record keeps its findings with the members' `sha256` for the
+  apply's `changed` check; the routes are in `apps/api/src/routes/cleanup.ts`, their entries in
+  `contracts/src/api/memory.ts`; (h) `CLEANUP_PHASES`, `CLEANUP_FINDING_KINDS`, `CLEANUP_DECISIONS`,
+  `CLEANUP_KIND_GROUPS` and `CLEANUP_SCAN_STATES` stay inside `contracts/src/api/memory.ts`, not in the package's
+  exports (`tests/contracts.test.ts` C41 pins that surface), and `CleanupPhase` is a type of `contracts/src/events.ts`;
+  (i) `minhash.ts` imports nothing, so C14 loads it in two child processes by type stripping; (j) the contract world's
+  scan scenarios wait for their scan to end, so a scan's reads stay inside its own scenario of the refusal probe; (k)
+  pins moved the way the repo moves them: 142 routes, 71 owner and 29 content routes (with their amendments in
+  `sdk.api-thin`), 71 raised pairs (`400 scope_required`, `409 scan_running`), 140 checked responses in
+  `api.openapi` C21, 28 event types, migration 24 in `data.migration`, `contexts.runs` C22 and `device-scopes` C22, the
+  two settings leaves of `data.settings` C46, the v1 `settings.changed` fixture, and `cleanupInventory` and
+  `resolveCleanupScope` in the internal barrel (`sdk.surface`).
+- **Abandoned:** finding duplicates from the indexed text (a binary has none, and the text is cut at 200 000
+  characters); a column for the file's hash in `file_minhash` (door 2's literal shape has none); a route that cancels a
+  scan (amendment 17); exporting the cleanup constants from `@mordomo/contracts`.
