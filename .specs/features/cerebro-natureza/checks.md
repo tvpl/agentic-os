@@ -733,8 +733,8 @@ line of a `fato` or `relato` excerpt (C21), the search's `404` and `409` (C13), 
 
 ## Handoff
 
-The estimate exceeds the 150k budget. Mechanism: **not yet chosen** — to be chosen by the owner (handoff in four batches
-A, B, C, D, or one builder with compaction accepted) before the first line of code.
+The estimate exceeds the 150k budget. Mechanism chosen by the owner on 30/10/2026: **handoff, four batches
+A, B, C, D** (the cut below), sequential, each only on green.
 
 - Arithmetic (`wc -c` of the files each slice touches at `c672981`, / 4; new files estimated):
   - S1: `core/src/memory/frontMatter.ts` 18 419, `core/src/memory/fields.ts` 4 147, `core/src/memory/indexer.ts` 41 609,
@@ -785,4 +785,4 @@ A, B, C, D, or one builder with compaction accepted) before the first line of co
     `tests/e2e/reviews.spec.ts` ≈ 145 KB → ≈ 36k = ≈ 146k; C70-C93
   - B + C ≈ 152k and C + D ≈ 194k are over the budget, so C stays apart; A lands first because B's queue reads A's
     nature reader, C asserts the routes of A and B, and D calls the routes of A and B
-- Mechanism: not yet chosen
+- Mechanism: handoff, four batches A, B, C, D (owner, 30/10/2026)
