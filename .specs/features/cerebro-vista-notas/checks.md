@@ -449,3 +449,35 @@ Status of batch A (updated in the commit that closes each piece):
   (C75, C76, C80): closed, every proof green in `tests/notesview.tree.test.ts`, `tests/notesview.properties.test.ts`,
   `tests/notesview.layer.test.ts`, `tests/notesview.contract.test.ts`, `tests/api.openapi.test.ts`,
   `tests/security-reads.test.ts` and `tests/sdk.instances.test.ts`; with it batch A is closed (C1-C28, C75, C76, C80)
+
+- **Boundary (batch A):** C1-C28, C75, C76 and C80 closed. S3 (C24-C28) at `91e177e`; S1 (C1-C12), S2 (C13-C23),
+  C75, C76 and C80 at `03e578c`, which closes the batch. On the tree of `03e578c`: `npm run build`, `npm run typecheck`
+  and `npm run lint` exit 0, `npx vitest run` at the root is green (141 files, 1851 tests, 1 skipped) and
+  `npm run test -w apps/command-centre` too (141 files, 1128 tests); each of the 45 `Proof:` lines of the batch passes
+  and runs only its check's test. S4-S8 and C77-C79, C81 are untouched (batches B and C): no screen, no data module, no
+  `brain.notes` preference (C47's own-layer proof is batch B's to add to `tests/notesview.layer.test.ts`), no gallery
+  entry and no bundle baseline.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) Landing rows 6 (`root`
+  is `null` only when a context has no root, with `roots: []`), 7 (`area` with `folder` is `400 validation`) and 8 (the
+  details of the property writer: a value set to what it holds keeps its line, a block list stays a block list, the
+  quoting rule of a text, a trailing ` # comment` of an unquoted value is not part of it, a repeated key's later lines
+  are other properties, a key in both `set` and `remove` is `400`, an unreadable header reads as none on `GET`), each in
+  the commit of its code; Flow hop 3 names `saveProperties` in `notes.ts`, which checks and writes around
+  `setProperties`; (b) for batch B: `files[]`/`folders[]` carry `reason` only when `editable` is false; `roots[].name`
+  is the folder's base name (the screen says "Memória"); `rel` is relative to the root with `/`, and a folder's `rel`
+  is what `dir` takes back; the rows of a context's notes folder are the context's; the tree reads the rows of every
+  index root that holds the folder by real path (so a context path inside an indexed folder, and a root nested in the
+  folder, both list); the `_index.md` of a user folder is found under the longest enabled indexed folder holding it;
+  `GET /api/memory/tree` is not a read of a run's credential (`403`); (c) the properties route also declares `404
+not_a_file` (the safe reader's answer for a path that is not a regular file); its body caps each value at 4 000
+  characters and 1 000 entries in the contract (the core's 500 and 20 decide `400 validation`), because a bound equal to
+  a `RUN_LIMITS` number fails sdk C68; (d) pins moved the way the repo moves them: 139 routes, 70 owner and 27 content
+  routes (with their amendments in `sdk.api-thin`), 69 raised pairs, `memoryTree` and `saveProperties` in the internal
+  barrel, `CEREBRO_V2_ROUTES` (the create route declares `409 structure_fixed`), the `named` list of api.contract C53
+  (the properties route names the note codes), the v1 `settings.changed` fixture and the settings leaf of
+  data.settings C46; (e) `tests/helpers/notesViewWorld.ts` is the shared world (a real home, a server, indexed folders
+  outside the home, `row()` for stale rows, `device()`); C12 runs a real pass over 3 000 notes and reads the tree
+  between two `running` statuses.
+- **Abandoned:** a `folder` argument for the MCP `note_create` and `--folder` for `mordomo note new` (no check asks for
+  them; with the structure fixed both still create inside an existing area folder); a YAML parser (door 3's rejected
+  alternative); answering the tree from `folderDigests` (amendment 3: it reads `_index.md` from disk and has no files).
