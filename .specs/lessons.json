@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 41,
+  "next_id": 44,
   "lessons": [
     {
       "id": "L-001",
@@ -207,13 +207,16 @@
       "text": "List every entry point that can start the guarded action before claiming a policy holds",
       "signal": "ac_gap",
       "scope": "policy",
-      "status": "candidate",
-      "features": ["capacidades-aplicadas"],
-      "recurrence": 1,
+      "status": "confirmed",
+      "features": ["capacidades-aplicadas", "cerebro-organizar"],
+      "recurrence": 2,
       "harmful": 0,
-      "evidence": ["apps/api/src/cli.ts:1377 (round 1, CLI) (policy)"],
+      "evidence": [
+        "apps/api/src/cli.ts:1377 (round 1, CLI) (policy)",
+        "Coverage: ways a run of the skill starts (retry, objective step) (policy)"
+      ],
       "created": "2026-10-06T14:56:25Z",
-      "last_seen": "2026-10-06T14:56:25Z"
+      "last_seen": "2026-10-30T01:11:41Z"
     },
     {
       "id": "L-016",
@@ -499,13 +502,16 @@
       "text": "When the Test policy asks for an own-layer proof of a decision table, name a unit test per table row against the module; boundary tests alone leave the row unmet.",
       "signal": "ac_gap",
       "scope": "checks",
-      "status": "candidate",
-      "features": ["cerebro-contextos"],
-      "recurrence": 1,
+      "status": "confirmed",
+      "features": ["cerebro-contextos", "cerebro-organizar"],
+      "recurrence": 2,
       "harmful": 0,
-      "evidence": ["verification.md Test policy row 1; core/src/memory/contexts.ts:215 (checks)"],
+      "evidence": [
+        "verification.md Test policy row 1; core/src/memory/contexts.ts:215 (checks)",
+        "Test policy row 1 (assertProtectsDirs, takesFolder) (checks)"
+      ],
       "created": "2026-10-29T22:08:22Z",
-      "last_seen": "2026-10-29T22:08:22Z"
+      "last_seen": "2026-10-30T01:11:41Z"
     },
     {
       "id": "L-035",
@@ -569,13 +575,16 @@
       "text": "Each case of a refused-kind table must be refused for its own reason alone; a case another rule also refuses stays green when its rule is removed.",
       "signal": "spec_precision_gap",
       "scope": "validation",
-      "status": "candidate",
-      "features": ["cerebro-contextos"],
-      "recurrence": 1,
+      "status": "confirmed",
+      "features": ["cerebro-contextos", "cerebro-organizar"],
+      "recurrence": 2,
       "harmful": 0,
-      "evidence": ["C3; tests/contexts.test.ts:169 (validation)"],
+      "evidence": [
+        "C3; tests/contexts.test.ts:169 (validation)",
+        "C30 tests/organize.maps.test.ts:274 (validation)"
+      ],
       "created": "2026-10-29T22:08:22Z",
-      "last_seen": "2026-10-29T22:08:22Z"
+      "last_seen": "2026-10-30T01:11:41Z"
     },
     {
       "id": "L-040",
@@ -590,6 +599,48 @@
       "evidence": ["tests/contexts.runs.test.ts:297 (tests)"],
       "created": "2026-10-29T23:05:57Z",
       "last_seen": "2026-10-29T23:05:57Z"
+    },
+    {
+      "id": "L-041",
+      "key": "surviving_mutant::assert every field a failure record promises not only its code",
+      "text": "Assert every field a failure record promises, not only its code",
+      "signal": "surviving_mutant",
+      "scope": "runs",
+      "status": "candidate",
+      "features": ["cerebro-organizar"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["core/src/runs/runManager.ts:1005 (mutant 3, C20) (runs)"],
+      "created": "2026-10-30T01:11:41Z",
+      "last_seen": "2026-10-30T01:11:41Z"
+    },
+    {
+      "id": "L-042",
+      "key": "spec_deviation::a field by field settings merge must say how deep it goes and a proof must show a patch that omits an optional nested key keeps or drops it as the contract says",
+      "text": "A field-by-field settings merge must say how deep it goes, and a proof must show a patch that omits an optional nested key keeps or drops it as the contract says",
+      "signal": "spec_deviation",
+      "scope": "config",
+      "status": "candidate",
+      "features": ["cerebro-organizar"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/api/src/routes/system.ts:105,119 (door 12, finding 4) (config)"],
+      "created": "2026-10-30T01:11:41Z",
+      "last_seen": "2026-10-30T01:11:41Z"
+    },
+    {
+      "id": "L-043",
+      "key": "spec_precision_gap::name a request in a check with the query parameters the route contract declares",
+      "text": "Name a request in a check with the query parameters the route contract declares",
+      "signal": "spec_precision_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["cerebro-organizar"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C2 (check says ?path=, route takes ?rel=) (checks)"],
+      "created": "2026-10-30T01:11:41Z",
+      "last_seen": "2026-10-30T01:11:41Z"
     }
   ]
 }

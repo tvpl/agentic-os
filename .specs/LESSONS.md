@@ -8,7 +8,26 @@
 
 Corroborated across multiple features. Safe to apply as guidance.
 
-_none_
+### L-015 - List every entry point that can start the guarded action before claiming a policy holds
+
+- signal: `ac_gap` · recurrence: 2 feature(s) · scope: `policy` · harmful: 0
+- features: capacidades-aplicadas, cerebro-organizar
+- evidence: apps/api/src/cli.ts:1377 (round 1, CLI) (policy) (+1 more)
+- last seen: 2026-10-30T01:11:41Z
+
+### L-034 - When the Test policy asks for an own-layer proof of a decision table, name a unit test per table row against the module; boundary tests alone leave the row unmet.
+
+- signal: `ac_gap` · recurrence: 2 feature(s) · scope: `checks` · harmful: 0
+- features: cerebro-contextos, cerebro-organizar
+- evidence: verification.md Test policy row 1; core/src/memory/contexts.ts:215 (checks) (+1 more)
+- last seen: 2026-10-30T01:11:41Z
+
+### L-039 - Each case of a refused-kind table must be refused for its own reason alone; a case another rule also refuses stays green when its rule is removed.
+
+- signal: `spec_precision_gap` · recurrence: 2 feature(s) · scope: `validation` · harmful: 0
+- features: cerebro-contextos, cerebro-organizar
+- evidence: C3; tests/contexts.test.ts:169 (validation) (+1 more)
+- last seen: 2026-10-30T01:11:41Z
 
 ## Candidates (under observation - do NOT load as guidance yet)
 
@@ -110,13 +129,6 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - signal: `ac_gap` · recurrence: 1 feature(s) · scope: `security` · harmful: 0
 - features: capacidades-aplicadas
 - evidence: core/src/spawn/safeSpawn.ts:274 (round 1, probes) (security)
-- last seen: 2026-10-06T14:56:25Z
-
-### L-015 - List every entry point that can start the guarded action before claiming a policy holds
-
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `policy` · harmful: 0
-- features: capacidades-aplicadas
-- evidence: apps/api/src/cli.ts:1377 (round 1, CLI) (policy)
 - last seen: 2026-10-06T14:56:25Z
 
 ### L-016 - Size a Coverage set from the AC's own list, not from the subset the author thought of: when an AC says 'each of those names', the set size is the count in the AC it points back to.
@@ -245,13 +257,6 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C8 - several readable homonyms (resolution)
 - last seen: 2026-10-29T18:03:56Z
 
-### L-034 - When the Test policy asks for an own-layer proof of a decision table, name a unit test per table row against the module; boundary tests alone leave the row unmet.
-
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: cerebro-contextos
-- evidence: verification.md Test policy row 1; core/src/memory/contexts.ts:215 (checks)
-- last seen: 2026-10-29T22:08:22Z
-
 ### L-035 - Every status a Surface row gains mid-build needs a check whose proof drives that status, not only a test that the route declares it.
 
 - signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
@@ -280,19 +285,33 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C47; tests/security-reads.test.ts:2325 (checks)
 - last seen: 2026-10-29T22:08:22Z
 
-### L-039 - Each case of a refused-kind table must be refused for its own reason alone; a case another rule also refuses stays green when its rule is removed.
-
-- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `validation` · harmful: 0
-- features: cerebro-contextos
-- evidence: C3; tests/contexts.test.ts:169 (validation)
-- last seen: 2026-10-29T22:08:22Z
-
 ### L-040 - When a check is reworded, rename its proof's test title and comments in the same commit, or the test name keeps stating the old claim its assertions now contradict.
 
 - signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
 - features: cerebro-contextos
 - evidence: tests/contexts.runs.test.ts:297 (tests)
 - last seen: 2026-10-29T23:05:57Z
+
+### L-041 - Assert every field a failure record promises, not only its code
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `runs` · harmful: 0
+- features: cerebro-organizar
+- evidence: core/src/runs/runManager.ts:1005 (mutant 3, C20) (runs)
+- last seen: 2026-10-30T01:11:41Z
+
+### L-042 - A field-by-field settings merge must say how deep it goes, and a proof must show a patch that omits an optional nested key keeps or drops it as the contract says
+
+- signal: `spec_deviation` · recurrence: 1 feature(s) · scope: `config` · harmful: 0
+- features: cerebro-organizar
+- evidence: apps/api/src/routes/system.ts:105,119 (door 12, finding 4) (config)
+- last seen: 2026-10-30T01:11:41Z
+
+### L-043 - Name a request in a check with the query parameters the route contract declares
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: cerebro-organizar
+- evidence: C2 (check says ?path=, route takes ?rel=) (checks)
+- last seen: 2026-10-30T01:11:41Z
 
 ## Quarantined (failed when applied - ignore)
 
