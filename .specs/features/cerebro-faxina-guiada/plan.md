@@ -40,7 +40,11 @@ cabeçalho que o índice já guarda em `files.fields` (`cerebro-organizar`, door
 1. Entrada → o menu do `ContextSelector` (exists, `cerebro-contextos`), a paleta ("Faxina guiada", no registro de comandos,
    exists), o botão "Faxina" de `.brain-topbar-actions` do grafo (`brain/BrainChrome.tsx`, exists) ou a linha "Faxina" de
    `bs-menu-acts` (`nucleo/scenes/BrainSceneMenu.tsx`, exists) abrem o `CleanupWizard` (new, no door - placement per
-   conventions) com um contexto ou uma pasta ("Emendas" 11).
+   conventions) com um contexto ou uma pasta ("Emendas" 11), por um evento da janela (`openCleanup`,
+   `brain/cleanupEvents.ts`, new) que o `CleanupHost` (new, montado uma vez pelo `OsShell`, ao lado do `NoteEditorHost`)
+   ouve e atende com o pedaço do assistente, carregado por `import()`. A etapa "Escopo" lê `GET /api/contexts`, as
+   pastas indexadas de `GET /api/settings` e, para "última mudança há D dias", a linha mais recente do escopo por
+   `GET /api/memory/search` sem palavras (exists); o assistente ouve `cleanup.*` pelo `useOsEvent` do barramento da tela.
 2. Inventário → `GET /api/memory/cleanup/inventory` (door 5) → `cleanupInventory` (new, no door) agrega as linhas de `files`
    do escopo (de um contexto: as que `contextMembership` deixa e as de `memory/notes/<id>/`, "Emendas" 3), já filtradas pelo
    `rowFilter`, sem abrir arquivo: contagem por tipo, tamanho, faixas de idade, maiores pastas, grupos por subpasta e por

@@ -581,3 +581,57 @@ Status of batch C (updated in the commit that closes each piece):
   green in `CleanupFindings.test.tsx`, `CleanupReview.test.tsx`, `cleanupMotion.test.ts`, `cleanupCopy.test.ts`,
   `tests/cleanup.contract.test.ts` (C82) and `tests/e2e/cleanup.spec.ts` (C80, C81); with it batch C is closed
   (C51-C73, C80-C83)
+
+- **Boundary (batch C):** C51-C73 and C80-C83 closed at `93f7a81`, which closes the batch and the feature's 85 checks.
+  On that tree: `npm run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0, `npx vitest
+run` at the root is green (148 files, 1935 tests, 1 skipped) and `npm run test -w apps/command-centre` too (161
+  files, 1321 tests); each of the 29 UI and root `Proof:` lines of batch C passes and runs only its check's tests, and
+  the browser proofs (C51, C55, C80, C81) pass in `tests/e2e/cleanup.spec.ts`, run together with `a11y.spec.ts`,
+  `notes-view.spec.ts`, `contexts.spec.ts`, `gallery.spec.ts` and `gallery-contrast.spec.ts` (117 tests). The weight,
+  measured on the final build: JS gzip 546 389 B (11 457 B above `cerebro-vista-notas`, under the 12 288 B cap), CSS
+  gzip 76 471 B (1 792 B above it, under the 2 048 B cap); the wizard's chunk is about 7.2 KB of JS gzip and 1.8 KB of
+  CSS gzip, its strings in two languages about 1.9 KB.
+- **Settled mid-build:** nothing by the owner, and no new one-way door (no route, stored shape or event changed).
+  Builder decisions inside the approved shape: (a) the four entries call `openCleanup(request)`
+  (`brain/cleanupEvents.ts`, a window event `mordomo:open-cleanup`), heard by `CleanupHost`, mounted once by `OsShell`
+  beside the note editor's host, which `lazy`-loads `brain/cleanup/CleanupWizard.tsx`; the selector's item asks for
+  `{ context, step: 2 }`, the palette and both "Faxina" buttons for step 1, and the wizard preselects the active
+  context there; the scene menu row takes an optional `onCleanup` (the scene closes its menu first); (b) the UI's
+  `invalidationMap` lists `cleanup.progress`, `cleanup.finished` and `cleanup.failed` with no key to refresh, because
+  the event stream subscribes only to the types listed there; (c) step 1's "N arquivos, última mudança há D dias":
+  N is the inventory's `total.count` and D the whole days since the `mtime` of the most recent row of
+  `GET /api/memory/search?q=&mode=text&limit=1` with the scope, since C1 pins the inventory's keys and it has no
+  newest date; "Ou uma pasta…" is a text field over a datalist of the enabled `indexedFolders`, an absolute path in it
+  is the `dir` scope, and "Nada indexado ainda…" shows when there is no context and no enabled indexed folder; (d)
+  resuming (AC 40): `localStorage` `mordomo.cleanup.v1` keeps, per scope key, the scan's id, when it finished and the
+  answers given; entering step 2 of a scope within 24 hours of that reads `GET /scans/:id` and opens "Achados" with
+  those answers, a scan the server no longer has starts over, and after 24 hours step 2 waits for "Procurar o que
+  decidir" (the new scan is the person's to start, not automatic); (e) "Cancelar" forgets the scan (its later events
+  open nothing), closes the wizard and says "Varredura cancelada." in an `info` toast, which the toasts' `role="status"`
+  region announces; (f) an answered card draws one `Check` with the answer's word and "Respondido", whatever the
+  answer, and the kinds' icons are ones the bundle already ships (`Copy`, `Repeat`, `CalendarClock`, `Unlink`, `Ban`,
+  `FolderOpen`, `Server`, `FileText`), both for the weight cap; (g) "Juntar" shows the radios and a "Confirmar" that
+  sends the merge; "Aplicar a todos deste tipo" sends every finding of the tab, answered or not, a merge keeping each
+  one's newest member; (h) "Guardar" reads the brief right before it writes; after a `409 edit_conflict`, "Carregar de
+  novo" clears the conflict so the next "Guardar" reads the newest version; a save shows "Salvo" and empties the box;
+  any other failure is the band "Não foi possível guardar a resposta."; (i) step 4's lines are computed on screen from
+  the findings and the answers as batch B's apply plans them (one line per file, the first finding gives the
+  decision; `memory/archive/<local day>-…/<path under memory/>`; a file outside `memory/` or already in its archive,
+  and an empty folder, are proposals), the `memory/` folder from `GET /api/system/info`; (j) step 5's "propostas"
+  number is the plan's proposal lines when the apply returned a list, else 0, and "Abrir a lista de propostas" closes
+  the wizard and opens the list as a document panel (`OPEN_PANEL_EVENT`, `doc:<path>`); (k) the footer: on steps 1-4
+  "Fechar" (`.btn.ghost`), "Voltar" (`.btn`, disabled on step 1) and the action (`.btn.primary`); where the action is
+  "Fechar" itself (no finding, no change, step 5) the first "Fechar" is not drawn; step 5 has "Desfazer" (`.btn`) in
+  "Voltar"'s place while a manifest is there to undo; (l) strings reused where the words are the same: `common.back`,
+  `common.close`, `common.cancel`, `common.confirm`, `brain.groups`, `shell.palette.files`, `scene.brain.kind.pdf`,
+  `note.state.saved`; the middle age bands read their numbers ("31-90", "91-365"); the reason of a `stale` by
+  `last_reviewed` reads "Sem revisão há N dias."; the near-duplicate's sentence names the other file as plain text
+  ("92% igual a plano-v2.md."), not in code type; (m) pins moved: the `cerebro-contextos` C31 test of the selector's
+  menu (`contexts/ContextSelector.test.tsx`) gains the new row before "New context…" (amendment 11), the closed list
+  of files no entry reaches (`legacy.graph.test.ts` C1) gains `brain/cleanup/testkit.tsx`, and
+  `scripts/bundle-baseline.json` gains the `cerebro-faxina-guiada` entry; (n) the browser proofs run with motion
+  reduced, as the other specs do (C72 compares both settings in rendered components), and the spec's palette helper
+  presses Control+K again until the launcher's field is up.
+- **Abandoned:** a newest-change field in the inventory (C1 pins its keys); an icon per answer and kind icons new to
+  the bundle (the weight cap); file names in code type inside the reasons; starting the new scan by itself after 24
+  hours.
