@@ -337,6 +337,7 @@ Decisões de produto e de processo que a feature `cerebro-v2` tomou com o padrã
 6. **(open) Deixar o `_resumo.md` do contexto e os `_index.md` da C3 fora dos achados?** Padrão: tratados como qualquer nota, como aprovado.
 7. **(open) "Cancelar" durante a varredura para a varredura no servidor (rota nova), como o desenho mostra (emenda 17)?** Padrão: a regra do plano (fecha o assistente e diz "Varredura cancelada." uma vez).
 8. **(open) A door 7, acrescentada na construção do lote A sem pergunta: a chave de um `broken-link` leva o alvo e a linha do link, e a de um `empty-folder` o caminho da pasta, além dos membros.** Sem isso dois links quebrados da mesma nota (ou todas as pastas vazias) teriam a mesma chave e uma decisão valeria para todos. Padrão: manter. Alternativa: uma chave por nota com todos os seus links. Reverter: `core/src/memory/cleanupScan.ts` (a chave) e a door 7 do `plan.md`; o check que a prova entra no lote B.
+9. **(open) A door 8, acrescentada na construção do lote B sem pergunta: um desfazer completo move o `manifest.json` para `artifacts/cleanup/<dia>-<id>.manifest.json` e tira as pastas vazias do arquivo com `rmdir`.** Sem isso a pasta do arquivo ficaria só com o manifesto, contra o AC 32 (a pasta some), e o AC 33 proíbe apagar arquivo; um desfazer parcial deixa os dois onde estão. Padrão: manter (C85). Alternativa: deixar a pasta com o manifesto, contra o AC 32. Reverter: `core/src/memory/cleanupApply.ts` (o fim do desfazer), a door 8 do `plan.md` e o C85.
 
 ### distribuicao
 
