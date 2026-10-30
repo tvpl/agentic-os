@@ -1028,32 +1028,50 @@ describe("S4 nothing removes a user file", () => {
           if (ref) bindings.set(el.name.text, ref);
         }
     }
-    // Aliases and destructures, anywhere in the file, until nothing new is learned (an alias of an alias).
-    const declarations: ts.VariableDeclaration[] = [];
+    // Aliases and destructures, anywhere in the file, until nothing new is learned (an alias of an alias): a declaration's
+    // initializer and an assignment's right side, into a name or an object pattern nested to any depth (after round 3).
+    const sources: Array<[target: ts.Node, value: ts.Expression]> = [];
     const collect = (n: ts.Node) => {
-      if (ts.isVariableDeclaration(n) && n.initializer) declarations.push(n);
+      if (ts.isVariableDeclaration(n) && n.initializer) sources.push([n.name, n.initializer]);
+      if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken)
+        sources.push([n.left, n.right]);
       ts.forEachChild(n, collect);
     };
     collect(sf);
+    const propKey = (p: ts.Node | undefined): string | null =>
+      p && (ts.isIdentifier(p) || ts.isStringLiteralLike(p)) ? p.text : null;
     for (let changed = true; changed;) {
       changed = false;
       const learn = (name: string, ref: Ref | null) => {
-        if (ref && bindings.get(name)?.kind !== ref.kind) {
+        const had = bindings.get(name);
+        if (
+          ref &&
+          (had?.kind !== ref.kind ||
+            (had.kind === "remover" && ref.kind === "remover" && had.name !== ref.name))
+        ) {
           bindings.set(name, ref);
           changed = true;
         }
       };
-      for (const d of declarations) {
-        if (ts.isIdentifier(d.name)) learn(d.name.text, refOf(d.initializer!));
-        else if (ts.isObjectBindingPattern(d.name)) {
-          const base = refOf(d.initializer!);
-          for (const el of d.name.elements) {
-            const prop = el.propertyName ?? el.name;
-            const key = ts.isIdentifier(prop) || ts.isStringLiteralLike(prop) ? prop.text : null;
-            if (key !== null && ts.isIdentifier(el.name)) learn(el.name.text, member(base, key));
+      const into = (target: ts.Node, ref: Ref | null): void => {
+        if (!ref) return;
+        if (ts.isParenthesizedExpression(target)) return into(target.expression, ref);
+        if (ts.isIdentifier(target)) return learn(target.text, ref);
+        if (ts.isObjectBindingPattern(target))
+          for (const el of target.elements) {
+            const key = propKey(el.propertyName ?? el.name);
+            if (key !== null) into(el.name, member(ref, key));
           }
-        }
-      }
+        if (ts.isObjectLiteralExpression(target))
+          for (const prop of target.properties) {
+            if (ts.isShorthandPropertyAssignment(prop)) learn(prop.name.text, member(ref, prop.name.text));
+            else if (ts.isPropertyAssignment(prop)) {
+              const key = propKey(prop.name);
+              if (key !== null) into(prop.initializer, member(ref, key));
+            }
+          }
+      };
+      for (const [target, value] of sources) into(target, refOf(value));
     }
     const removerOf = (call: ts.CallExpression): string | null => {
       const callee = unwrap(call.expression);
@@ -1192,6 +1210,16 @@ describe("S4 nothing removes a user file", () => {
       "const ours = { unlink: (p: string) => p };",
       "function unlink(p: string) { return p; }",
       "const passed = (p: string) => void fsp2.unlink(p);",
+      // after round 3: a require, .apply, a var helper, nested destructures and aliases made by assignment
+      'const required = require("node:fs");',
+      'const requiredP = require("fs/promises");',
+      "var old = function (p: string) { required.rmdirSync(p); };",
+      "const { promises: { rm: zap } } = fs;",
+      "const { promises: { unlink: { } } } = fs;",
+      "let assigned: (p: string) => void;",
+      "assigned = fs.unlinkSync;",
+      "let renamed: unknown, inner: unknown;",
+      "({ rmSync: renamed, promises: { rmdir: inner } } = fs as never);",
       "export function walked(p: string, list: string[]) {",
       "  forget(p);",
       "  expressed(p);",
@@ -1208,6 +1236,13 @@ describe("S4 nothing removes a user file", () => {
       "  ours.unlink(p);",
       "  unlink(p);",
       "  list.forEach(passed);",
+      "  fs.rmSync.apply(fs, [p]);",
+      "  void requiredP.rm(p);",
+      "  old(p);",
+      "  void zap(p);",
+      "  assigned(p);",
+      "  (renamed as (p: string) => void)(p);",
+      "  void (inner as (p: string) => Promise<void>)(p);",
       "}",
     ].join("\n");
     expect(removals("forms.ts", forms, "walked").map((r) => `${r.fn} ${r.name}(${r.args})`)).toEqual([
@@ -1224,6 +1259,13 @@ describe("S4 nothing removes a user file", () => {
       "walked rmdir(p)",
       "walked unlinkSync(fs, p)",
       "walked > passed unlink(p)",
+      "walked rmSync(fs, [p])",
+      "walked rm(p)",
+      "walked > old(p) rmdirSync(p)",
+      "walked rm(p)",
+      "walked unlinkSync(p)",
+      "walked rmSync(p)",
+      "walked rmdir(p)",
     ]);
   });
 

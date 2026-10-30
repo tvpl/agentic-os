@@ -198,7 +198,7 @@ Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C48 "`
 Proof: `npx vitest run tests/cleanup.apply.test.ts -t "C49 "`
 Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C49 "`
 
-**C50** - Walking the TypeScript syntax tree of the new cleanup modules, and of `moveWorkspaceFile` with each module-private function of `safeWrite.ts` it refers to, in any form (a `function` declaration, or a `const`/`let`/`var` holding an arrow function or a function expression; called or passed as a value; followed transitively, a removal reported with the reference that leads to it), the only calls that remove a name are one `unlink` of `from` inside `moveWorkspaceFile`, reached only after the copy's hash check; one `unlink` of the copy that same call has just written at `to`, when its hash differs, through `removeIfStillOurs(realTo, copy.stat)`, which unlinks only a name that is still that file by device and inode; and one `rmdir` of an empty archive folder in the undo; a call removes a name when its callee resolves, by the file's own bindings, to a removing function (`unlink*`, `rm*`, `rmdir*`) of `node:fs` or `node:fs/promises`, however it is reached (the default, namespace or named import, renamed or not, `promises` and its own module included; a `require`; a destructure, renamed or not; an alias or a `.bind`; a property or an element access; `.call` or `.apply`), and a local name that only spells one is not a removal; the walker's self-tests find every one of those spellings and forms, ignore the word in a comment or a string, and follow a private helper with its arguments but not an exported function (AC 33; changed in rounds 1 and 2)
+**C50** - Walking the TypeScript syntax tree of the new cleanup modules, and of `moveWorkspaceFile` with each module-private function of `safeWrite.ts` it refers to (a `function` declaration, or a `const`, `let` or `var` holding an arrow function or a function expression; called or passed as a value; followed transitively, a removal reported with the reference that leads to it), the only calls that remove a name are one `unlink` of `from` inside `moveWorkspaceFile`, reached only after the copy's hash check; one `unlink` of the copy that same call has just written at `to`, when its hash differs, through `removeIfStillOurs(realTo, copy.stat)`, which unlinks only a name that is still that file by device and inode; and one `rmdir` of an empty archive folder in the undo. A call removes a name when its callee resolves, by the file's own bindings, to a removing function (`unlink*`, `rm*`, `rmdir*`) of `node:fs` or `node:fs/promises`, reached through: a default, namespace or named import (renamed or not, `promises` included); a `require` of either module; a destructure in a declaration or an assignment, renamed or not and nested to any depth; an alias made by a declaration or an assignment, or by `.bind`; a property access or an element access with a string literal; or `.call` or `.apply` on one of those. A local name that only spells a remover is not one. The walker does not follow, and the claim does not cover: a key computed from anything but a string literal, a dynamic `import()`, an array or an object literal holding a remover, a remover received as a parameter or from another module, `Reflect`, `eval` or `Function`. Its self-tests hold one case for each covered spelling and form, ignore the word in a comment or a string, and follow a private helper with its arguments but not an exported function (AC 33; changed in rounds 1 and 2 and after round 3)
 Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C50 "`
 
 ### S5 - o assistente na tela (plan S1, S3, S4, S5) · 15 files · 205 KB · ~51k
@@ -452,6 +452,19 @@ changed.
   route and the layer (same `Proof:` lines). R3-F6 re-injected (`if (proposals.length > 1)` at `cleanupApply.ts:307`)
   fails both.
 
+- **C50 (changed, finding 4, R3-F11, R3-F12, R3-F13).** Was (round 2): "… a call removes a name when its callee
+  resolves … however it is reached (the default, namespace or named import, renamed or not, `promises` and its own
+  module included; a `require`; a destructure, renamed or not; an alias or a `.bind`; a property or an element access;
+  `.call` or `.apply`) …; the walker's self-tests find every one of those spellings and forms …". The walker now learns
+  a destructure nested to any depth and an alias or a destructure made by an assignment, and its self-tests gain the
+  missing cases: a `require` of each module, `.apply`, a `var` helper, a nested destructure, an assignment alias and a
+  destructuring assignment. The claim now lists exactly the spellings the walker covers and names the ones it does not
+  (a computed key that is not a string literal, a dynamic `import()`, a remover held in an array or object literal or
+  received as a parameter or from another module, `Reflect`, `eval`, `Function`). Faults: the walker's `require` branch
+  disabled fails a C50 test (R3-F11); `.apply` dropped from it fails one (R3-F12); the verifier's nested destructure
+  (`const { promises: { rm: zap } } = fs; void zap(realFrom)` in `moveWorkspaceFile`'s rename catch) fails C50
+  (R3-F13). `Test policy` row 2's evidence says the same.
+
 ## Coverage
 
 | Set (size)                                                    | Member -> proof                                                                                                                                                                                                                                                                                                                                                                                                       | Unproven |
@@ -533,9 +546,12 @@ Evidence:
 - the decision rules (new): seven refusals and the upsert -> decides; the apply planner: four skip reasons, inside or
   outside `memory/`, `merge` -> decides; the undo: three skip reasons and four refusals -> decides
 - `moveWorkspaceFile` (new, door 1): rename or copy, five refusals, the hash-before-remove order -> decides
-- the no-removal walker (C50): which calls remove a name (every binding of a removing function of `node:fs` and
-  `node:fs/promises`) and which functions it follows (every form of a module-private function) -> decides; its
-  self-tests hold one asserted case per spelling and per form (round 2)
+- the no-removal walker (C50): which calls remove a name (the bindings of a removing function of `node:fs` and
+  `node:fs/promises` C50 lists: imports, `require`, destructures nested in a declaration or an assignment, aliases by
+  declaration, assignment or `.bind`, property and string-literal element access, `.call` and `.apply`) and which
+  functions it follows (a module-private `function`, or a `const`/`let`/`var` arrow function or function expression)
+  -> decides; its self-tests hold one asserted case per listed spelling and per form, and the forms it does not follow
+  are named out of C50's claim (round 2, after round 3)
 - own layer: `tests/cleanup.layer.test.ts` and `tests/cleanup.move.test.ts` call those functions with no HTTP, as
   `tests/notesview.layer.test.ts`, `tests/contexts.layer.test.ts` and `tests/organize.layer.test.ts` do for the same shape
 - closest analogue: `tests/memory.notes.test.ts` (`cerebro-v2` S1) and `tests/notesview.tree.test.ts`, the same rules
