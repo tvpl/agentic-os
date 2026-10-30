@@ -864,3 +864,68 @@ Status of batch B (updated in the commit that closes each piece):
   `core/src/security/safeWrite.ts`) replaces a note by a temporary file and a `rename`, so the inode always changes (the
   run gave 704521 before and 704522 after). Every other clause of C52 is asserted by a test in
   `tests/natureza.decisions.test.ts` whose title does not carry the id, so C52's selector finds no test
+
+- **Boundary (batch B):** C10, C27-C51 and C53-C63 closed at `16573a4`; C52 open (stop-and-ask, above). On the tree of
+  `16573a4`: `npm run build`, `npm run typecheck` and `npm run lint` exit 0, `npx vitest run` at the root is green
+  (157 files, 2134 tests, 1 skipped) and `npm run test -w apps/command-centre` too (161 files, 1326 tests); each of the 48 `Proof:` lines of C10 and C27-C63
+  passes and runs only its check's tests, but C52's, whose selector finds no test. C64-C93 are untouched (batches C and
+  D): no screen, no locale key, no `natureza.contract` case but C44. What batch B already moved, so that C and D add on
+  top: the two routes are in the `API` table (`memory.reviews.list`, scope `content`; `memory.reviews.decide`, scope
+  `owner`, errors `403 note_not_editable`, `403 forbidden_path`, `404 not_found`, `409 edit_conflict`, `409
+front_matter_unreadable`, `413 note_too_large`, and `400 validation` by the common rule), in `EXPECTED_ROUTE_SCOPES`,
+  in `docs/security.md` (`content` 30, `owner` 75) and in `contractWorld.ts` (a `GET kind=due`, and a `keep` on an
+  indexed note); neither is in `RUN_API_READ_ROUTES` or `RUN_API_WRITE_ROUTES` (amendment 22, C66 is C's). Pins moved
+  the way C5 moved them: 147 routes and scenarios, `owner` 75 and `content` 30, 145 checked responses, the
+  device-scopes amendments in `sdk.api-thin`, `api.contract` C53's list of routes that name a note's codes (the POST
+  joins it), the raised pairs unchanged at 73, and `ReviewCadenceSchema` kept private so the contracts package's surface (`contracts.test` C41) does not grow. Settings: `memory.reviews` and `sentinels.reviewDue` with their leaves in
+  `data.settings` C46, `sentinels.reviewDue.enabled` in `SETTINGS_FAIL_CLOSED` (closed `false`, so C63 and C19 of
+  `data.settings` list it), and the v1 `settings.changed` fixture. Events: `SENTINEL_IDS` and the v1 schema of
+  `sentinel.fired` hold `reviewDue`, `docs/events.md` regenerated, and the fixture
+  `tests/fixtures/events/v1/sentinel.fired.reviewDue.json`; `events.contract` C27 now takes a second example of a type as
+  `<type>.<variant>.json` and parses it against that type's schema. `became_fact` and `abandoned` are date keys of the
+  properties (amendment 3; C69, which proves the refusal, is C's). The barrel has `decideReview` and `reviewsDue`
+  (`sdk.surface` C38). For D: `GET /api/sentinels` lists a `reviewDue` row already (it reads `SENTINEL_IDS`), and the
+  inbox row has `messageKey` `sentinel.reviewDue` with `messageParams` `{ count, display }`.
+- **Settled mid-build:** nothing by the owner but C52, which waits for an answer. Builder decisions inside the approved
+  shape, none a new one-way door: (a) the queue is `core/src/memory/reviews.ts` (`reviewsDue`, and the pure
+  `reviewCadence`, `lastReviewedDay`, `dueDay`, `localDay`, `readReviewState`), the decisions
+  `core/src/memory/reviewDecisions.ts` (`decideReview`), the sentinel `core/src/sentinels/reviewDue.ts`, the routes
+  `apps/api/src/routes/reviews.ts`, and the suggestion `suggestNatureza` in `natureza.ts` (so C62's walker covers
+  `reviews.ts` and `natureza.ts`); `reviews.ts` does not import `notes.ts`, so the list's `editable` is a function the
+  route hands it (`classifyNotePath`, false on a refusal); (b) the stored decisions answer as `{ lastReviewed,
+snoozeUntil, never }` with the two instants in ms or `null` and `never` `0` or `1`, as the row holds it; the `POST`
+  answers `path`, `state` (the row after the decision, or `null`), `previous`, and `version` and `fact` when there are
+  any; (c) the order of the refusals is the decision itself (`400`), the index row under today's policy (`404
+not_found`), the path (`403 forbidden_path`), what may be edited (`403 note_not_editable`), then for a note
+  `baseVersion` (`400` without it), its size (`413`), its version (`409 edit_conflict`) and its header (`409
+front_matter_unreadable`); a file gone since the pass, or a folder where it was, is `404 not_found` (door 4 lists no
+  `not_a_file`; the refusal probe found the case); a `.md` of `memory/` that is not UTF-8 is not editable, so its
+  keep and never go to `review_state`; (d) "editable" for the decisions is `readNote`'s answer (`classifyNotePath`
+  and UTF-8 text), and a `snooze` or a `restore` never reads the note; `became_fact` writes `was` only when the note had
+  a nature, and does not refuse a note that is not `plano` or `hipotese` (the screen offers it only for those); (e) the
+  `POST` awaits `requestIndexPaths([path])` for at most 2 s before it answers, so the next list reads the note as it is
+  (AC 36); (f) in the queue, a snooze hides a file while `snooze_until` ≥ now (so it is back at now + days + 1 ms);
+  `status: archived` and `memory/archive/` leave both kinds; `review_state.never` hides only from `due`; `nextDue` is the
+  first day a file that is not listed falls due (a snoozed one counts from the later of its due day and the day its
+  snooze ends) and is `null` for `kind=unclassified`; a `kind=unclassified` item carries `dueSince` when its `type` or
+  `review_every` give it a cadence, else `null`; (g) `byType` is a record (any `type`, 1-64 characters), its default the
+  two entries of door 5; a cadence is `<n>d` from 1 to 3650 or `never`, as `review_every`; (h) the sentinel's title is
+  "N items to review" for every N, as amendment 16 writes it (also for 1), its body one fixed sentence, and it skips the
+  query when today's key is already in the inbox; (i) the suggestion folds case and accents, counts whole words (a
+  marker of two words across any spaces), and reads `files_fts.content` only for the items listed; (j) proof readings:
+  the route tests run on `movingClock` (`tests/helpers/movingClock.ts`), a `Date.now()` shifted to `NOW` that goes on
+  ticking, because the indexer waits for `Date.now()` to move (`indexer.ts`, the related phase) and a frozen fake `Date`
+  hangs every pass; where a claim names an exact instant (C31's now + 14 days and + 1 ms) the clock is frozen only
+  around the `GET`s, and a decision's own "now" is read as the `updated_at` of the row it wrote (C46, C48:
+  `snooze_until = updated_at + days × 86 400 000`); the layer tests pass `now` to the code. C28's stored keep is read
+  back through the list once that later review falls due (`lastReviewed` is that day); C46's likewise at now + 31
+  days; C33's secret-named rows are `files` rows a pass would not write (`.env.md` due, `.env.notas.md`
+  unclassified), as C5's C6 made them; C41's and C43's runner is a `SentinelRunner` over the home's database, settings,
+  bus and inbox with a silent routine and a connector that has news; C43's "unreadable" `review_state` is the table
+  renamed away for the pass; C51's failing assertion is a `BEFORE INSERT` trigger on `facts`; C55's link is the note's
+  folder moved out and linked back after the pass, its `413` a note of 1 MB + 10 bytes (indexed under the 2 MB index
+  limit, over the 1 MB note limit)
+- **Abandoned:** a frozen fake `Date` in the route tests (every index pass hangs on it); answering `404 not_a_file`
+  from the `POST` (door 4 names `404 not_found`); a `POST` that answers before the pass over its path (the next list
+  would read the old header); asserting C52's inode, or an in-place write for `abandon` to keep it (that would take the
+  decision off the guarded write door 4 names): left to the owner
