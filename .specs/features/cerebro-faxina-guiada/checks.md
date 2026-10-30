@@ -573,7 +573,11 @@ null`, `skipped[].reason` is one of `changed`, `missing`, `exists`, `forbidden_p
 
 Status of batch C (updated in the commit that closes each piece):
 
-- the entries (C51, C52), the frame and its flow (C53, C54, C67, C70, C71, C73) and step 2 (C55 in rendered
-  components, C56, C57): closed in rendered components, every UI proof green in
-  `src/brain/cleanup/cleanupEntries.test.tsx`, `CleanupWizard.test.tsx` and `CleanupInventory.test.tsx`; C51's and
-  C55's browser proofs are still to come
+- the entries (C51, C52), the frame and its flow (C53, C54, C67, C70, C71, C73) and step 2 (C55, C56, C57): closed,
+  every UI proof green in `src/brain/cleanup/cleanupEntries.test.tsx`, `CleanupWizard.test.tsx` and
+  `CleanupInventory.test.tsx`, and C51's and C55's browser proofs green in `tests/e2e/cleanup.spec.ts`
+- step 3 (C58-C66), steps 4 and 5 (C68, C69), the motion (C72), the stylesheet, the type floor, the state marks and
+  axe in both themes and both shells (C80), the gallery (C81), the weight (C82) and the copy (C83): closed, every proof
+  green in `CleanupFindings.test.tsx`, `CleanupReview.test.tsx`, `cleanupMotion.test.ts`, `cleanupCopy.test.ts`,
+  `tests/cleanup.contract.test.ts` (C82) and `tests/e2e/cleanup.spec.ts` (C80, C81); with it batch C is closed
+  (C51-C73, C80-C83)

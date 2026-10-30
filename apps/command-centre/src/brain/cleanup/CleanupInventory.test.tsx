@@ -101,11 +101,11 @@ describe("C55 the cards of what a scope holds", () => {
 
   it("C55 the grid has two columns, and one under 760 px (the browser measures 1 280 px and 600 px)", () => {
     const columns: Array<[string, string]> = [];
-    css().walkRules(".cln-grid", (r) =>
-      r.walkDecls("grid-template-columns", (d) =>
-        columns.push([r.parent?.type === "atrule" ? (r.parent as postcss.AtRule).params : "", d.value]),
-      ),
-    );
+    css().walkRules(".cln-grid", (r) => {
+      r.walkDecls("grid-template-columns", (d) => {
+        columns.push([r.parent?.type === "atrule" ? (r.parent as postcss.AtRule).params : "", d.value]);
+      });
+    });
     expect(columns).toEqual([
       ["", "1fr 1fr"],
       ["(max-width: 760px)", "1fr"],

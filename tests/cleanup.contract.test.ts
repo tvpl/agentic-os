@@ -17,6 +17,7 @@ import { EventBus } from "@mordomo/core/internal";
 import { SCENARIOS, buildWorld } from "./helpers/contractWorld.js";
 import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
 import { notesViewWorld, type Json, type NotesViewWorld } from "./helpers/notesViewWorld.js";
+import { ENTRIES, edgesOf, loadTree, reachable } from "../apps/command-centre/src/testing/sourceGraph.js";
 
 /**
  * .specs/features/cerebro-faxina-guiada, batch B, the API's cross-cutting checks (C74-C77, C79): the six routes in the
@@ -303,5 +304,69 @@ describe("C77 the three events", () => {
     expect(guard(good)).toEqual([]);
     const bad = { ...good, payload: { ...good.payload, phase: "other" } };
     expect(guard(bad).join(" ")).toContain("phase");
+  });
+});
+
+describe("cross-cutting: the weight of the wizard (batch C)", () => {
+  type Entry = {
+    feature: string;
+    reason: string;
+    jsRaw: number;
+    jsGzip: number;
+    cssRaw: number;
+    cssGzip: number;
+  };
+
+  it("C82 the wizard is reached from both entries only by a dynamic import(); the baseline's cerebro-faxina-guiada entry follows cerebro-vista-notas with a reason of more than 40 characters and the four numbers, at most 12 KB of JS gzip and 2 KB of CSS gzip above it (534 932 B and 74 679 B)", () => {
+    const tree = loadTree(path.join(repoRoot, "apps", "command-centre", "src"));
+    // What each page loads without anyone asking: its entry and what that imports statically.
+    for (const entry of ENTRIES) {
+      const seen = new Set<string>([entry]);
+      const queue = [entry];
+      while (queue.length > 0)
+        for (const edge of edgesOf(tree, queue.pop()!)) {
+          if (edge.how === "dynamic" || edge.how === "url" || seen.has(edge.to)) continue;
+          seen.add(edge.to);
+          queue.push(edge.to);
+        }
+      expect(
+        [...seen].filter((f) => f.startsWith("brain/cleanup/")),
+        entry,
+      ).toEqual([]);
+    }
+    expect(reachable(tree).has("brain/cleanup/CleanupWizard.tsx")).toBe(true);
+    // The two ways in are dynamic: the host the shell mounts, and the gallery's cleanup story, itself an import().
+    const importers = (to: string) =>
+      [...tree.keys()].filter(
+        (f) =>
+          !/\.test\./.test(f) &&
+          f !== "brain/cleanup/testkit.tsx" &&
+          edgesOf(tree, f).some((e) => e.to === to),
+      );
+    const how = (from: string, to: string) => edgesOf(tree, from).find((e) => e.to === to)?.how;
+    expect(importers("brain/cleanup/CleanupWizard.tsx").sort()).toEqual([
+      "brain/CleanupHost.tsx",
+      "gallery/cleanupStory.tsx",
+    ]);
+    expect(how("brain/CleanupHost.tsx", "brain/cleanup/CleanupWizard.tsx")).toBe("dynamic");
+    expect(importers("gallery/cleanupStory.tsx")).toEqual(["gallery/main.tsx"]);
+    expect(how("gallery/main.tsx", "gallery/cleanupStory.tsx")).toBe("dynamic");
+
+    const baseline = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, "scripts", "bundle-baseline.json"), "utf8"),
+    ) as {
+      after: Entry[];
+    };
+    const i = baseline.after.findIndex((e) => e.feature === "cerebro-faxina-guiada");
+    expect(i, "the entry exists").toBeGreaterThan(0);
+    const entry = baseline.after[i]!;
+    const before = baseline.after[i - 1]!;
+    expect(before.feature).toBe("cerebro-vista-notas");
+    expect([before.jsGzip, before.cssGzip]).toEqual([534_932, 74_679]);
+    expect(entry.reason.length).toBeGreaterThan(40);
+    for (const k of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
+      expect(Number.isInteger(entry[k]) && entry[k] > 0, k).toBe(true);
+    expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(12 * 1024);
+    expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(2 * 1024);
   });
 });
