@@ -137,3 +137,29 @@ pasta" na raiz de `memory/notes` fica desabilitado com o `Tooltip` "Estrutura fi
 | Esta nota não existe mais.                         | This note no longer exists.                       |
 | Nome da pasta / Título da primeira nota / Criar    | Folder name / First note title / Create           |
 | Estrutura fixa: crie dentro de uma pasta existente | Fixed structure: create inside an existing folder |
+
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+O texto aprovado acima fica como foi aprovado. O desenho veio antes de `cerebro-contextos` (C2) e `cerebro-organizar` (C3)
+estarem construídas; o que elas mudam nesta tela fica aqui, com o item de `plan.md` ("Emendas depois da aprovação") e o check
+que o prova.
+
+- **Barra das notas, item 0 (plan 1).** O `ContextSelector` da C2 é um por shell e já está na tela (moldura: abaixo da marca;
+  Núcleo: à esquerda da linha de voz). O item 0 é a linha do contexto ativo: o ícone `Crosshair` e o nome do contexto, ou
+  "Todo o cérebro" / "Whole brain" (a chave `context.all` da C2), num botão que abre o menu desse seletor (o comando
+  `action:switch-context`, "Trocar de contexto" / "Switch context"). Nenhum segundo seletor é montado (C31).
+- **Raiz, item 1 (plan 2, 11).** Com um contexto ativo o `Menu` lista só os caminhos `ok` dele, na ordem dele, e a pasta de
+  notas dele quando existe; um caminho dentro de `memory/` e a pasta de notas têm o selo `Editável`. O selo `Indexando` aparece
+  em toda raiz enquanto uma passada roda, porque a passada não diz a raiz (C12, C32).
+- **Árvore, item 5 (plan 9).** O `Lock` ganha um terceiro motivo: um arquivo de `memory/` que não é `.md`, com o `Tooltip`
+  "Só notas .md se editam" / "Only .md notes can be edited". "Gerada pelo MordomoOS" vale também para `memory/contexts/` (C39).
+- **Pasta selecionada, item 5 da área de leitura (plan 4, 5).** A nota-índice é primeiro o `_index.md` de `cerebro-organizar`
+  (ao lado das notas em `memory/notes/`, em `memory/maps/…` para uma pasta do usuário), depois `index.md`, `README.md`,
+  `CLAUDE.md`, `AGENTS.md`; a lista de uma pasta sem ela tira o tipo de `fields.type` do índice (C40).
+- **Propriedades, item 3 (plan 6).** `type` é texto (o vocabulário da C3 é aberto); uma data lida que não é `AAAA-MM-DD` (o
+  `created` que "Nova nota" escreve é um instante ISO) aparece como texto, sem campo de data, e fica como está (C56).
+- **"+N não mostrados" (plan 10).** N vem do campo `omitted` da resposta da árvore (C38).
+
+| pt-BR                  | en                           |
+| ---------------------- | ---------------------------- |
+| Só notas .md se editam | Only .md notes can be edited |

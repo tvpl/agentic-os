@@ -32,12 +32,16 @@ ao lado.
 ## Flow
 
 Reutiliza o índice (`files`), o `rowFilter`, `GET /api/memory/note` e `PUT /api/memory/notes` (com `baseVersion` e
-`409 edit_conflict`), `linksOf`, `relatedFiles`, o renderizador único `components/Markdown.tsx`, as primitivas de `ui/`, o
-registro de comandos, `UiPreferences` e os eventos `index.*`; nenhum leitor de disco novo, nenhum segundo renderizador.
+`409 edit_conflict`), `linksOf` (só `note_links`, desde `cerebro-correcoes`), `relatedFiles`, `contextMembership` e
+`contextOkPaths` (`cerebro-contextos`), a regra de onde mora `_index.md` (`core/src/memory/maps.ts`, `cerebro-organizar`), o
+renderizador único `components/Markdown.tsx`, as primitivas de `ui/`, o registro de comandos, `UiPreferences`,
+`useWorkContext` e os eventos `index.*`; nenhum leitor de disco novo, nenhum segundo renderizador.
 
 1. Árvore → `GET /api/memory/tree` (new, door 1) em `apps/api/src/routes/memory.ts` (exists) chama `memoryTree` (new, door 1)
-   em `core/src/memory/tree.ts`, que lê só linhas de `files` sob a raiz e a pasta pedidas, filtradas por `rowFilter` e, com `context`, pelo teste de pertença do contexto (`cerebro-contextos`, door 6), e
-   devolve as subpastas com contagem, os arquivos com título, `mtime`, `editable`/`reason`, e a nota-índice da pasta.
+   em `core/src/memory/tree.ts`, que lê só linhas de `files` sob a raiz e a pasta pedidas, filtradas por `rowFilter` e, com
+   `context`, por `contextMembership` (`core/src/memory/contexts.ts`, exists), e devolve as subpastas com contagem, os arquivos
+   com título, tipo (`fields.type`), `mtime`, `editable`/`reason`, e a nota-índice da pasta, achada nas linhas pela regra de
+   `INDEX_NOTE`/`rootSlug` (`core/src/memory/maps.ts`, exists) e, sem ela, pelos nomes de sempre.
 2. Nota → `GET /api/memory/note` (exists, muda: door 2) devolve também as `properties` lidas por `parseProperties` (new, door 3)
    em `core/src/memory/frontMatter.ts` (exists) e o `bodyStart`.
 3. Propriedade → `PUT /api/memory/notes/properties` (new, door 2) → `setProperties` (new, door 3) em `frontMatter.ts` reescreve
@@ -45,25 +49,26 @@ registro de comandos, `UiPreferences` e os eventos `index.*`; nenhum leitor de d
    reindexação do caminho (`requestIndexPaths`, exists).
 4. Pasta nova → `POST /api/memory/notes` (exists, muda: door 2) aceita `folder` sob `memory/notes`; `createNote` (exists,
    `core/src/memory/notes.ts`) a cria com a primeira nota; com `memory.notes.fixedStructure` (door 5) recusa criar pasta.
-5. Interface → `useMemoryData` (new, no door - placement per conventions) em `apps/command-centre/src/brain/` concentra o pedido
-   do grafo, a busca e os relacionados para `SecondBrain.tsx` (exists), `BrainScene.tsx` (exists) e `NotesView` (new, no door -
-   placement per conventions), que desenha a barra, as abas, as propriedades, o corpo por `Markdown` (exists) e o painel com
-   `LinksSection` (exists).
+5. Interface → um módulo de dados (new, no door - placement per conventions) em `apps/command-centre/src/brain/` concentra o
+   pedido do grafo (`graphRequest`, hoje em `contexts/useWorkContext.ts`, exists), a busca (`brain/useBrainSearch.ts`, exists)
+   e os relacionados para `SecondBrain.tsx` (exists), `BrainScene.tsx` (exists) e `NotesView` (new, no door - placement per
+   conventions), que desenha a barra (com a linha do contexto ativo de `useWorkContext`, exists, que abre o `ContextSelector`
+   do shell, exists), as abas, as propriedades, o corpo por `Markdown` (exists) e o painel com `LinksSection` (exists).
 6. Persistência da vista → `PUT /api/ui-preferences` (exists) guarda `brain.notes` (door 4): raiz, Home por raiz, abas, aba
    ativa, ordem e pastas abertas.
 
 ## Impact
 
-| Front         | What changes                                                                                                                                                                                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| domain        | new term: `raiz` — `memory/` ou uma pasta indexada habilitada; um escopo da vista sobre o que o índice já tem, não um cofre novo                                                                                                                                   |
-| domain        | new term: `propriedade` — uma linha `chave: valor` de primeiro nível do cabeçalho `---` de uma nota, com um tipo (`text`, `list`, `date`, `status`); o resto do cabeçalho é "outras propriedades", preservado byte a byte                                          |
-| domain        | new term: `nota-índice` — o arquivo `index.md`, `README.md`, `CLAUDE.md` ou `AGENTS.md` de uma pasta (o primeiro que existir, nessa ordem); quem passa a depender: a skill da feature `cerebro-organizar`, que gera essas notas                                    |
-| domain        | existing term: `brain.view` em `UiPreferences` era o agrupamento do grafo (`areas`, `folders`); não muda; a vista nova é a rota `/brain/notes`, não um valor de `view` — quem ramifica hoje em `view`: `brain/state.ts:57`                                         |
-| domain        | existing term: `title` do índice vinha de `title:` ou do primeiro `#`; não muda — `type`, `status`, `updated`, `last_reviewed` passam a ser lidos para a vista, e o índice continua guardando só `title` e `tags` do cabeçalho                                     |
-| stored data   | nada a migrar no banco; `config/ui-preferences.json` ganha `brain.notes` (aditivo, `.catch` como o resto); `settings.json` ganha `memory.notes.fixedStructure` (padrão `false`); um cabeçalho existente só muda quando a pessoa edita uma propriedade daquela nota |
-| contrato REST | `GET /api/memory/note` ganha `properties`, `otherProperties`, `bodyStart`; `POST /api/memory/notes` ganha `folder?` e o erro `409 structure_fixed`; duas rotas novas (`Surface`)                                                                                   |
-| interface     | `/brain` ganha o seletor "Grafo                                                                                                                                                                                                                                    | Notas" nos dois shells; o `NoteEditor` em diálogo continua para "Nova nota" fora da vista e para o grafo; o pedido do grafo, a busca e os relacionados passam a vir de um só módulo |
+| Front         | What changes                                                                                                                                                                                                                                                                                                                                   |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| domain        | new term: `raiz` — `memory/` ou uma pasta indexada habilitada (com um contexto ativo: um caminho `ok` dele ou a pasta de notas dele); um escopo da vista sobre o que o índice já tem, não um cofre novo                                                                                                                                        |
+| domain        | new term: `propriedade` — uma linha `chave: valor` de primeiro nível do cabeçalho `---` de uma nota, com um tipo (`text`, `list`, `date`, `status`); o resto do cabeçalho é "outras propriedades", preservado byte a byte                                                                                                                      |
+| domain        | new term: `nota-índice` — o `_index.md` de uma pasta onde `cerebro-organizar` o põe (ao lado das notas em `memory/notes/`, em `memory/maps/<slug da raiz>/…` para uma pasta do usuário) e, sem ele, o primeiro de `index.md`, `README.md`, `CLAUDE.md`, `AGENTS.md` na pasta; quem escreve `_index.md` é a skill organize-brain, a vista só lê |
+| domain        | existing term: `brain.view` em `UiPreferences` era o agrupamento do grafo (`areas`, `folders`); não muda; a vista nova é a rota `/brain/notes`, não um valor de `view` — quem ramifica hoje em `view`: `brain/state.ts:57`                                                                                                                     |
+| domain        | existing term: `title` do índice vinha de `title:` ou do primeiro `#`; não muda — o índice guarda do cabeçalho `title`, `tags` e, desde `cerebro-organizar` (door 6), as sete chaves de `FRONT_MATTER_FIELDS` em `fields`; a árvore lê o tipo de `fields.type`, a tabela de propriedades lê o arquivo                                          |
+| stored data   | nada a migrar no banco; `config/ui-preferences.json` ganha `brain.notes` (aditivo, `.catch` como o resto); `settings.json` ganha `memory.notes.fixedStructure` (padrão `false`); um cabeçalho existente só muda quando a pessoa edita uma propriedade daquela nota                                                                             |
+| contrato REST | `GET /api/memory/note` ganha `properties`, `otherProperties`, `bodyStart`; `POST /api/memory/notes` ganha `folder?` e o erro `409 structure_fixed`; duas rotas novas (`Surface`; a árvore com `omitted` e `files[].type`, "Emendas" 5 e 10)                                                                                                    |
+| interface     | `/brain` ganha o seletor "Grafo \| Notas" nos dois shells; o `NoteEditor` em diálogo continua para "Nova nota" fora da vista e para o grafo; o pedido do grafo, a busca e os relacionados passam a vir de um só módulo; a barra das notas segue o contexto ativo de `useWorkContext` e não monta um segundo `ContextSelector`                  |
 
 ## Relations
 
@@ -235,19 +240,14 @@ e um callout `> [!opiniao]` e ver a seleção e o rótulo.
 
 | Assumption                         | Chosen default                                                                                                   | Rationale                                                                                                              | Confirmed? |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Onde a vista mora                  | rota `/brain/notes` na moldura e modo "Notas" da cena do cérebro no Núcleo, com o mesmo seletor "Grafo \| Notas" | AD-005: os dois shells mostram os mesmos dados; uma rota permite link direto para uma nota aberta                      | n          |
-| Tecla da vista                     | `V` no escopo `view:brain`, além dos comandos da paleta                                                          | `/`, `p`, `f`, `l` e `N` já são do escopo; `V` está livre e não colide com o navegador                                 | n          |
-| `updated` automático               | salvar não muda `updated:`; a árvore ordena por `mtime`                                                          | mudar o cabeçalho em todo salvamento muda o diff de toda nota; uma rotina ou a skill podem cuidar disso                | n          |
-| Clique num link                    | abre em aba nova ou foca a existente; não substitui a aba atual                                                  | quem lê segue links sem perder o lugar; o teto de 12 abas fecha a menos usada                                          | n          |
-| Remover propriedade                | pelo menu da linha, sem confirmação                                                                              | o menu já é o segundo passo, e o valor está no histórico quando a `cerebro-memoria-confiavel` (C7) versionar `memory/` | n          |
-| Dependência de `cerebro-correcoes` | esta feature vem depois dela no roteiro e herda o estado de erro da busca e o `404` dos relacionados             | AD-003 (roteiro em ordem); os links da vista usam `GET /api/memory/links`, que já resolve wikilinks hoje               | n          |
+| Onde a vista mora                  | rota `/brain/notes` na moldura e modo "Notas" da cena do cérebro no Núcleo, com o mesmo seletor "Grafo \| Notas" | AD-005: os dois shells mostram os mesmos dados; uma rota permite link direto para uma nota aberta                      | y          |
+| Tecla da vista                     | `V` no escopo `view:brain`, além dos comandos da paleta                                                          | `/`, `p`, `f`, `l` e `N` já são do escopo; `V` está livre e não colide com o navegador                                 | y          |
+| `updated` automático               | salvar não muda `updated:`; a árvore ordena por `mtime`                                                          | mudar o cabeçalho em todo salvamento muda o diff de toda nota; uma rotina ou a skill podem cuidar disso                | y          |
+| Clique num link                    | abre em aba nova ou foca a existente; não substitui a aba atual                                                  | quem lê segue links sem perder o lugar; o teto de 12 abas fecha a menos usada                                          | y          |
+| Remover propriedade                | pelo menu da linha, sem confirmação                                                                              | o menu já é o segundo passo, e o valor está no histórico quando a `cerebro-memoria-confiavel` (C7) versionar `memory/` | y          |
+| Dependência de `cerebro-correcoes` | esta feature vem depois dela no roteiro e herda o estado de erro da busca e o `404` dos relacionados             | AD-003 (roteiro em ordem); os links da vista usam `GET /api/memory/links`, que já resolve wikilinks hoje               | y          |
 
-**Open questions:**
-
-| #   | Kind | Question                                                                                                                                                                                                                                                               | Until answered                   |
-| --- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| 1   | open | A Home e as abas são preferência desta máquina (`UiPreferences`, door 4) ou parte do acervo, que viaja com o backup e o Syncthing e que os agentes leem como "por onde começar"? Recomendo a preferência agora; um "por onde começar" para agentes já é o `ROUTER.md`. | door 4 como escrita: por máquina |
-| 2   | open | A estrutura fixa (door 5) vem desligada ou ligada? Recomendo desligada: um acervo novo precisa criar as primeiras pastas, e a skill de `cerebro-organizar` pode ligá-la ao fim da entrevista.                                                                          | desligada (`false`)              |
+**Open questions:** none - all resolved or logged above. As perguntas 1 (a Home e as abas são preferência desta máquina, em `UiPreferences`, door 4) e 2 (a estrutura fixa vem desligada, `false`, door 5) foram respondidas pelo dono em 29/10/2026 com os padrões recomendados.
 
 ## Observable
 
@@ -278,8 +278,86 @@ e um callout `> [!opiniao]` e ver a seleção e o rótulo.
 | screen vista de notas (propriedades `natureza`, `escopo`, `review_every`) | error state                           | AC 56                                                                                                                                          |
 | document callouts de natureza na leitura                                  | structure                             | AC 57                                                                                                                                          |
 
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+O texto aprovado acima fica como foi aprovado, exceto `Flow` e `Impact`, que se mantêm verdadeiros. O plano foi escrito antes
+de `cerebro-correcoes` (C1), `cerebro-contextos` (C2) e `cerebro-organizar` (C3); o que as três construíram (`b2f1e70..HEAD`,
+AD-037 a AD-040) e o que a derivação dos checks achou ficam aqui, cada um com como `checks.md` resolve. Nenhum muda uma door;
+as que acrescentam campo a uma resposta (5, 10) só acrescentam.
+
+1. **Seletor de contexto e seletor de raiz (AC 53, design.md item 0).** A C2 monta um `ContextSelector` por shell (na moldura
+   abaixo da marca, no Núcleo à esquerda da linha de voz), que registra `action:switch-context` e `action:whole-brain` e avisa
+   uma vez quando o contexto ativo some; um segundo na barra das notas registraria os comandos e o aviso duas vezes. O topo da
+   barra das notas é a linha do contexto ativo (ícone `Crosshair`, o nome do contexto ou "Todo o cérebro", de
+   `useWorkContext`), que, escolhida, abre o menu do seletor do shell pelo comando `action:switch-context`; o seletor de raiz
+   fica logo abaixo, com as raízes que a rota da árvore devolve. A vista não monta outro `ContextSelector` (C31). As leituras
+   da vista que aceitam contexto (árvore, busca, relacionadas) levam `context=<id>` de `useWorkContext().query` (C32, C74);
+   `GET /api/memory/note`, `GET /api/memory/links` e a rota de propriedades não têm contexto.
+2. **Raízes de um contexto (door 1, AC 53).** A C2 só conta os caminhos `ok` (`contextOkPaths`), aceita uma pasta de `memory/`
+   como caminho e guarda as notas do contexto em `memory/notes/<id>/` (`contextNotesDir`). As raízes de `?context=<id>` são os
+   caminhos `ok` na ordem do contexto (um `missing` ou `not_indexed` fica fora), depois a pasta de notas quando existe; um
+   caminho dentro de `memory/` e a pasta de notas são `editable: true`; as entradas são as que `contextMembership` deixa (C10).
+   `context=all` é a resposta sem contexto, como em toda leitura da C2 (C11).
+3. **Fonte da árvore e a rota de mapas da C3 (Flow 1, door 1).** `GET /api/memory/maps` devolve a lista plana de todas as
+   pastas com o digest e o estado da nota-índice, sem arquivos, títulos, ordem, nível nem edição, e lê o cabeçalho de
+   `_index.md` do disco. A árvore continua uma rota própria, um nível por pedido, só das linhas de `files`, sem abrir arquivo
+   (AC 4), pelo mesmo `rowFilter`; da C3 ela reaproveita só a regra de onde mora a nota-índice (`INDEX_NOTE`, `MAPS_DIR`,
+   `rootSlug` de `core/src/memory/maps.ts`). O estado `fresh`/`stale`/`missing` não entra na árvore: é da skill (C3, C8).
+4. **Nota-índice (Impact, door 1, AC 9).** A C3 escreve `_index.md` ao lado das notas para uma pasta de `memory/notes/`, e em
+   `memory/maps/<rootSlug(raiz)>/<subcaminho>/_index.md` para uma pasta do usuário (nunca dentro dela); a ordem aprovada
+   (`index.md`, `README.md`, `CLAUDE.md`, `AGENTS.md`) não o conhecia. `indexNote` é o id da linha indexada do `_index.md` da
+   pasta, onde a regra da C3 o põe, e, sem ele, o primeiro daqueles quatro na pasta. Por vir das linhas, um `_index.md` escrito
+   depois da última passada só conta depois da próxima (C8).
+5. **O cabeçalho no índice (Impact, AC 9).** Desde a C3 (door 6), `type`, `status`, `updated`, `last_reviewed`, `natureza`,
+   `escopo` e `review_every` (até 64 caracteres) entram em `files.fields`. A lista de uma pasta sem nota-índice mostra o tipo
+   de `fields.type` sem abrir arquivo: `files[]` da árvore ganha `type` (`string | null`) (C9, C40). A tabela de propriedades
+   continua lendo o arquivo (`GET /api/memory/note`), porque `fields` corta em 64 caracteres e não guarda listas nem as outras
+   chaves.
+6. **Tipos das propriedades e o vocabulário da C3 (door 3, AC 25, AC 30).** (a) `type` tem onze valores no guia da C3, e o dono
+   pode acrescentar outros na entrevista: continua `text` (AC 25), sem seleção nem recusa. (b) `status`: os cinco valores são os
+   da C3; um valor que o dono acrescentou é lido, mostrado e mantido (door 3), e a rota recusa escrevê-lo (AC 30); ele se
+   escreve pelo editor do corpo. (c) `natureza`, `escopo` e `review_every` são os da C3; o AC 30 não lista os tipos `select` e
+   `interval`, que entraram na door 3 depois dele, e eles valem como `status`: um valor fora deles é `400 validation` (C19).
+   (d) `createNote` com `frontMatter` escreve `title: "<JSON>"` e `created: <instante ISO 8601>`; um valor entre aspas lê-se sem
+   elas (como `parseFrontMatter`), e uma chave `date` cujo valor lido não é `AAAA-MM-DD` mantém o tipo e o valor como estão e é
+   mostrada como texto (C14, C56). (e) `children-digest` e `generated-by` de um `_index.md` são `text` (C14).
+7. **Links e backlinks (AC 21, AC 22) e `note_links` da C1.** Desde a C1 os links vêm só de `note_links` (a migração 22 tirou
+   `file_links`), resolvidos na leitura por `linksOf`. O corpo resolve `[[alvo]]`, `[[alvo|texto]]` e links relativos pelo
+   `outgoing[].resolved` da mesma resposta de `GET /api/memory/links` que o painel usa, para corpo e painel nunca divergirem
+   (C51). `GET /api/memory/links` não tem `context`: os backlinks são do acervo inteiro, e as relacionadas seguem o contexto
+   (C52).
+8. **Uma camada de dados (AC 47, AC 48, Flow 5).** A C1 entregou `brain/useBrainSearch.ts` (a busca das duas telas, com o estado
+   de erro) e a C2 `graphRequest` em `contexts/useWorkContext.ts`; a cena do Núcleo ainda chama `GET /api/memory/related`
+   direto, sem `context`, e `SecondBrain.tsx` não pede relacionadas (os vizinhos vêm das arestas do grafo). O módulo único é um
+   de `apps/command-centre/src/brain/` que reúne os três pedidos (o `graphRequest` passa para ele, e `contexts/` o importa de
+   lá); a varredura do C72 vale para as três telas, e os leitores que a C2 deixou fora (a paleta, a busca universal do Núcleo,
+   o grafo de 700 nós da área de trabalho, o diálogo de novo contexto) ficam como estão. O AC 48 vale, para as relacionadas,
+   nas telas que as pedem: a cena e a vista (C73, C74).
+9. **Gerados e não editáveis (AC 8).** A C2 acrescentou `memory/contexts/` aos gerados (`classifyNotePath`): a árvore responde
+   `reason: "generated"` também para ele. `memory/maps/` (C3) é editável. Um arquivo de `memory/` que não é `.md` não se edita
+   (`classifyNotePath`) e o AC 8 não o nomeava: `reason: "not_markdown"`, com o texto "Só notas .md se editam" (C7, C39;
+   design.md).
+10. **Teto da pasta (AC 7).** A tela mostra "+N não mostrados", e `truncated` não dá N: a resposta ganha `omitted`, quantos
+    ficaram de fora (`0` sem corte) (C6, C38).
+11. **`indexing` por raiz (door 1).** `index.progress` não diz a raiz e uma passada percorre todas: `roots[].indexing` é `true`
+    para toda raiz enquanto o `indexHost` está `running` (C12).
+12. **Estrutura fixa e quem escreve fora de `POST /api/memory/notes` (door 5, AC 44).** O `PATCH /api/contexts/:id {brief:true}`
+    da C2 cria `memory/notes/<id>/_resumo.md` por `ensureContextBrief`, e a skill organize-brain da C3 escreve `_index.md`,
+    `inbox/` e `maps/` pelos arquivos da execução; nenhum passa pela rota e a door 5 não os recusa. A regra vale para
+    `POST /api/memory/notes`, `mordomo note new` e a ferramenta MCP `note_create` (C26, C27). O `PUT /api/settings` mescla
+    `memory` um nível só (C3, doors 12 e 13): `{memory:{notes:{fixedStructure:true}}}` troca `memory.notes` inteiro e mantém
+    `journalBudgetTokens`, `agentStance` e `embeddings` (C28). A pergunta 2 previa que a skill de `cerebro-organizar` pudesse
+    ligar a estrutura fixa ao fim da entrevista; a C3 não construiu isso, e esta feature não o acrescenta.
+13. **Tecla da vista.** As teclas do escopo `view:brain` são minúsculas (`/`, `p`, `f`, `l`, `n`): a `V` e a `N` do plano são
+    `v` e `n` (C30).
+14. **Peso do build (AC 51).** `bundle:check` mede contra a entrada mais nova de `scripts/bundle-baseline.json` × 1,05, e a
+    entrada desta feature seria a mais nova: sozinho não falha. Como em `cerebro-v2`, o teto é sobre a entrada anterior
+    (`cerebro-contextos`): no máximo 8 KB de JS gzip e 1,5 KB de CSS gzip a mais (C79).
+
 ## Sources
 
 - `reports/Segundo cérebro para agentes.md`, roteiro A6 e M7, e a seção "Exibir para diagnosticar…" — o que entra e o que fica.
 - `.specs/features/cerebro-correcoes/plan.md`, `.specs/features/cerebro-v2/plan.md` e `design.md` — o estado de erro herdado, o editor, os links e a regra de quem escreve.
 - `design.md` desta feature — binding para as telas.
+- `git log b2f1e70..HEAD`, `.specs/STATE.md` AD-037 a AD-040 e os `checks.md` de `cerebro-correcoes`, `cerebro-contextos` e
+  `cerebro-organizar` — o que as três construíram antes desta ("Emendas depois da aprovação").
