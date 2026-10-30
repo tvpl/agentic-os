@@ -496,3 +496,40 @@ Status of batch B (updated in the commit that closes each piece):
   `notesCommands.test.ts`; C29 has its unit proof green in `NotesView.test.tsx` and closes with its browser proof
 - in a real browser (C29, C42, C46, C54): closed, every proof green in `tests/e2e/notes-view.spec.ts`; with it S4
   (C29-C42) and S5 (C43-C55) are closed
+
+- **Boundary (batch B):** C29-C55 and C72-C74 closed. The data module at `298493b`, door 4 (C47) at `ed5759f`, the
+  view with its sidebar and tree (C31-C41) at `12967c6`, the tabs, Home, reader and panel (C43-C45, C47-C53, C55) at
+  `89caace`, S8 with C29 and C30 at `ee9ab4b`, the browser proofs (C29, C42, C46, C54) at `8a485ad`, and the sidebar's
+  fold with the kept-true Flow and Impact and the batch-B bundle entry at `5a4c94c`, which closes the batch. On the tree
+  of `5a4c94c`: `npm run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0; `npx vitest run`
+  at the root is green (141 files, 1852 tests, 1 skipped) and `npm run test -w apps/command-centre` too (149 files,
+  1170 tests); each of the 78 non-browser `Proof:` lines of batches A and B passes and runs only its check's tests, and
+  `tests/e2e/notes-view.spec.ts`, `a11y.spec.ts`, `contexts.spec.ts` and `brain-errors.spec.ts` pass (84 tests; two
+  light-theme cases of a11y C29 failed once on a gallery hint's timing and a service banner over a button, and pass
+  alone and in the next full run). S6, S7 and C77-C79, C81 are untouched: no properties table, no editor in place, no
+  create controls in the tree's heading (the empty folder's "Nova nota" opens the `cerebro-v2` dialog), no gallery
+  entry, no `notesview.contract` C79 test.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) the switch and the
+  `v` key live in `brain/BrainViewSwitch.tsx`, registered once per brain on screen (`exclusive: "brain.view"`, the
+  Núcleo's classic map mounts the frame's brain); "Ver notas" carries `v` on the graph and "Ver grafo" on the notes,
+  never both; (b) the graph is unmounted on `/brain/notes` and its selection and camera come back through
+  `useBrainState`'s navigation snapshot; "Ver no grafo" is `/brain?sel=<id>&local=1&hops=1` (the graph drops `hops=1`,
+  its default); (c) the view's preferences are written whole (`PUT /api/ui-preferences {brain:{notes}}`, 400 ms after
+  the last change), because the route merges objects and a partial `notes` would be filled with defaults; (d) tabs are
+  paths, a tab read back after a reload finds its id and title in its folder's tree row (in the active context), and
+  every tree request carries the context; `<home>/memory` comes from `GET /api/system/info`; (e) the close buttons of
+  the tabs sit outside the tab list (axe's required-children forbids a button in a `tablist`): one grid, each `X` in the
+  column after its tab, the list `display: contents`; (f) a tree item is named by its row (`aria-labelledby`), not by its
+  open children; the lock is a `role="img"` with the reason as its name and hint, as are a broken link and "Falhou";
+  (g) the callouts are a block of `brain/markdown.ts` drawn in every shape; their box style lives in `notes.css`; (h)
+  for batch C: `useNotesState().markUnsaved(path, on)` is how the editor marks a tab, `NoteReader` leaves the place of
+  the properties table between its header and its body, and `brain/notes/testnet.ts` is the specs' network (it also
+  answers the note's `properties` as `[]`); (i) pins moved the way the repo moves them: `.notes-why` in typography's
+  reviewed 12px list, `brain/notes/testnet.ts` among the files no entry reaches, the `cerebro-vista-notas` entry of
+  `scripts/bundle-baseline.json` measured on this build (526 977 B JS gzip, 15.2 KB above `cerebro-contextos`, NotesView
+  about 10.5 KB of it) so pixel C28's 2% holds — C79's 8 KB bound over `cerebro-contextos` is already exceeded by this
+  batch alone, so batch C either slims the chunk or the bound needs the owner (flagged, not renegotiated here).
+- **Abandoned:** a second `ContextSelector` in the notes sidebar (amendment 1); the graph kept mounted and hidden on
+  `/brain/notes` (its loop and canvas would keep running behind the notes); a `GET /api/memory/tree` with no context
+  to find a tab's id (it broke "every tree request carries context=<id>"); `title=` hints on the locks and links (AD-017
+  f: hints are `Tooltip`s).
