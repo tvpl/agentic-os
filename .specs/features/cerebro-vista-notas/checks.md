@@ -445,3 +445,7 @@ Status of batch A (updated in the commit that closes each piece):
 
 - a new note's folder and the fixed structure through the API, the CLI and the MCP (S3: C24-C28): closed, every proof
   green in `tests/notesview.create.test.ts` and `tests/notesview.layer.test.ts`
+- the tree (S1: C1-C12), the properties (S2: C13-C23) and the two routes in the contract, its scopes and its readers
+  (C75, C76, C80): closed, every proof green in `tests/notesview.tree.test.ts`, `tests/notesview.properties.test.ts`,
+  `tests/notesview.layer.test.ts`, `tests/notesview.contract.test.ts`, `tests/api.openapi.test.ts`,
+  `tests/security-reads.test.ts` and `tests/sdk.instances.test.ts`; with it batch A is closed (C1-C28, C75, C76, C80)

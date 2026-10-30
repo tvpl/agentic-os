@@ -19,6 +19,7 @@ import {
   listFacets,
   linksOf,
   listJournalDates,
+  memoryTree,
   localDateString,
   memoryHygiene,
   previewFile,
@@ -34,6 +35,7 @@ import {
   retractFact,
   runMapReach,
   saveNote,
+  saveProperties,
   statWorkspacePath,
   workspaceScope,
   type ReadScope,
@@ -41,7 +43,7 @@ import {
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
-import { contextFilter } from "./contexts.js";
+import { contextFilter, requireContext } from "./contexts.js";
 
 /**
  * What a run's own credential reads through the recall and the search (.specs/features/cerebro-contextos, doors 7 and
@@ -243,6 +245,27 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     const written = saveNote(noteContext(), body);
     reindex(written.path);
     return written;
+  });
+
+  bind(app, "memory.notes.properties", async ({ body }) => {
+    const written = saveProperties(noteContext(), body);
+    reindex(written.path);
+    return written;
+  });
+
+  /**
+   * One level of the notes tree (.specs/features/cerebro-vista-notas, door 1), from the index rows alone: no file is
+   * opened, and a row today's policy hides is neither listed nor counted.
+   */
+  bind(app, "memory.tree", async ({ query: q }) => {
+    const context = requireContext(ctx, q.context);
+    return memoryTree(ctx.db, noteContext(), {
+      context,
+      root: q.root,
+      dir: q.dir,
+      sort: q.sort,
+      indexing: ctx.indexHost.status().state === "running",
+    });
   });
 
   /**

@@ -1,11 +1,19 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import type { Settings } from "../config/schema.js";
-import { PathAccessError } from "../errors.js";
+import { EditConflictError, PathAccessError } from "../errors.js";
 import type { MordomoPaths } from "../paths.js";
 import { realpathLenient } from "../security/paths.js";
 import { homeReadScope, openWorkspaceFile, statWorkspacePath, type ReadScope } from "../security/safeFs.js";
 import { writeWorkspaceFile } from "../security/safeWrite.js";
+import {
+  parseProperties,
+  setProperties,
+  validatePropertyChange,
+  type NoteProperties,
+  type Property,
+  type PropertyValue,
+} from "./frontMatter.js";
 import { workspaceScope } from "./preview.js";
 import { areaSlug } from "./routers.js";
 
@@ -31,8 +39,8 @@ export const MAX_SAME_NAME = 99;
 /** How deep a `folder` of a new note may go under `memory/notes/` (.specs/features/cerebro-vista-notas, door 2). */
 export const MAX_FOLDER_LEVELS = 4;
 /** Folders of `memory/` the engine writes itself (the routers, the maps of the work contexts) or only appends to (the journal). */
-const GENERATED_DIRS = new Set(["areas", "journal", "contexts"]);
-const GENERATED_FILES = new Set(["router.md"]);
+export const GENERATED_DIRS: ReadonlySet<string> = new Set(["areas", "journal", "contexts"]);
+export const GENERATED_FILES: ReadonlySet<string> = new Set(["router.md"]);
 const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
 const VERSION_PATTERN = /^sha256:([0-9a-f]{64})$/;
 
@@ -103,7 +111,7 @@ export interface NoteWritten {
   mtime: number;
 }
 
-export interface NoteRead extends NoteWritten {
+export interface NoteRead extends NoteWritten, NoteProperties {
   content: string;
   editable: boolean;
   /** Why it cannot be edited, when `editable` is false. */
@@ -124,6 +132,13 @@ export interface SaveNoteInput {
   path: string;
   content: string;
   baseVersion: string;
+}
+
+export interface SavePropertiesInput {
+  path: string;
+  baseVersion: string;
+  set?: Record<string, PropertyValue> | undefined;
+  remove?: string[] | undefined;
 }
 
 /** The most bytes a note may hold under these settings. */
@@ -290,11 +305,18 @@ function readClassified(ctx: NoteContext, candidate: string): NoteRead {
       mtime: Math.floor(file.stat.mtimeMs),
     };
     if (text === null) {
-      return { ...base, content: "", editable: false, reason: "The file is not UTF-8 text." };
+      return {
+        ...base,
+        content: "",
+        editable: false,
+        reason: "The file is not UTF-8 text.",
+        ...parseProperties(""),
+      };
     }
     return {
       ...base,
       content: text,
+      ...parseProperties(text),
       editable: classified.editable,
       ...(classified.reason ? { reason: classified.reason } : {}),
     };
@@ -420,5 +442,64 @@ export function saveNote(ctx: NoteContext, input: SaveNoteInput): NoteWritten {
     version: versionOf(bytes),
     size: bytes.length,
     mtime: Math.floor(stat.mtimeMs),
+  };
+}
+
+/**
+ * Change the properties of a note's front matter (.specs/features/cerebro-vista-notas, doors 2 and 3), only if the note
+ * is still the version the caller read: the change is checked first (`400 validation`), then the note (`403`, `404`,
+ * `413`), then its version (`409 edit_conflict`) and its header (`409 front_matter_unreadable`); the new text replaces
+ * the file through the guarded writer, so a file that changes in between keeps its bytes.
+ */
+export function saveProperties(ctx: NoteContext, input: SavePropertiesInput): NoteWritten & { properties: Property[] } {
+  const match = VERSION_PATTERN.exec(input.baseVersion);
+  if (!match) throw new NoteValidationError("validation", "baseVersion: expected sha256: and 64 hex digits");
+  const change = { set: input.set, remove: input.remove };
+  validatePropertyChange(change);
+  const classified = classifyNotePath(ctx, input.path);
+  if (!classified.editable) throw new NoteNotEditableError(classified.reason ?? "This file cannot be edited.");
+  const limit = noteLimitBytes(ctx.settings);
+  const scope = memoryScope(ctx);
+  const missing = (err: unknown): never => {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new NoteMissingError("The note does not exist.");
+    throw err;
+  };
+  let bytes: Buffer;
+  try {
+    bytes = unnameableIsForbidden(input.path, () => {
+      const file = openWorkspaceFile(scope, classified.logical);
+      try {
+        if (file.stat.size > limit) throw new NoteTooLargeError(limit);
+        return file.readBytes(limit).bytes;
+      } finally {
+        file.close();
+      }
+    });
+  } catch (err) {
+    return missing(err);
+  }
+  const text = assertText(bytes);
+  if (text === null) throw new NoteNotEditableError("The file is not UTF-8 text.");
+  if (versionOf(bytes) !== input.baseVersion) throw new EditConflictError();
+  const next = setProperties(text, change);
+  const nextBytes = Buffer.from(next, "utf8");
+  if (nextBytes.length > limit) throw new NoteTooLargeError(limit);
+  if (next !== text) {
+    try {
+      unnameableIsForbidden(input.path, () =>
+        writeWorkspaceFile(scope, classified.logical, nextBytes, { mode: "replace", expectSha256: match[1]! }),
+      );
+    } catch (err) {
+      missing(err);
+    }
+  }
+  const stat = statWorkspacePath(scope, classified.logical).stat;
+  return {
+    path: classified.logical,
+    name: path.basename(classified.logical),
+    version: versionOf(nextBytes),
+    size: nextBytes.length,
+    mtime: Math.floor(stat.mtimeMs),
+    properties: parseProperties(next).properties,
   };
 }

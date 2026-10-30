@@ -756,6 +756,45 @@ describe("S3 the API and the CLI start nothing of their own", () => {
         "    const WRITES",
       ],
     },
+    // cerebro-vista-notas added two routes (the notes tree for content, the properties of a note for the owner): only the
+    // totals the suite pins moved.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-vista-notas: two routes more under /api",
+      base: ["    expect(routes).toHaveLength(135);"],
+      head: ["    expect(routes).toHaveLength(137);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-vista-notas: owners and scoped routes",
+      base: ["    expect([owners, scoped]).toEqual([69, 66]);"],
+      head: ["    expect([owners, scoped]).toEqual([70, 67]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-vista-notas: the registered routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(135);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(137);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-vista-notas: the routes of each scope, in the router and in the document",
+      times: 2,
+      base: ["toEqual({ owner: 69, monitor: 33, content: 26, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 70, monitor: 33, content: 27, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-vista-notas: the routes after the pairing passes",
+      base: ["    expect(apiRoutes()).toHaveLength(135);"],
+      head: ["    expect(apiRoutes()).toHaveLength(137);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-vista-notas: the operations of the route document",
+      base: ["    expect(operations).toBe(137);"],
+      head: ["    expect(operations).toBe(139);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

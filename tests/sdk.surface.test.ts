@@ -132,6 +132,9 @@ describe("S5 the surface is a closed list", () => {
         // cerebro-organizar: the folder map the route answers, and what a run's credential sees on it (doors 4, 10)
         "folderDigests",
         "runMapReach",
+        // cerebro-vista-notas: the notes tree and the properties route (doors 1 and 2)
+        "memoryTree",
+        "saveProperties",
       ].sort(),
     );
   });

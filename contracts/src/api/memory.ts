@@ -72,11 +72,81 @@ const NoteWrittenSchema = z.object({
   mtime: z.number(),
 });
 
+/**
+ * The kinds of a property (.specs/features/cerebro-vista-notas, door 3), fixed by its key: `tags`, `aliases` are `list`;
+ * `created`, `updated`, `last_reviewed`, `due` are `date`; `status` is `status`; `natureza`, `escopo` are `select`;
+ * `review_every` is `interval`; any other key is `text`.
+ */
+export const PROPERTY_KINDS = ["text", "list", "date", "status", "select", "interval"] as const;
+
+/** One `key: value` line at the top level of a note's front matter (door 2). */
+const PropertySchema = z.object({
+  key: z.string(),
+  kind: z.enum(PROPERTY_KINDS),
+  value: z.union([z.string(), z.array(z.string())]),
+});
+
 const NoteReadSchema = NoteWrittenSchema.extend({
   content: z.string(),
   /** False for a file that is not an editable note under `memory/`; `reason` says why. */
   editable: z.boolean(),
   reason: z.string().optional(),
+  /** The properties of the front matter, in file order. */
+  properties: z.array(PropertySchema),
+  /** The lines of the front matter the property reader does not understand, as they are; null when there are none. */
+  otherProperties: z.string().nullable(),
+  /** Where the body starts: the offset (in characters of `content`) of the first character after the closing `---`. */
+  bodyStart: z.number().int().min(0),
+});
+
+/** Why an entry of the tree cannot be edited (.specs/features/cerebro-vista-notas, AC 8 and amendment 9). */
+export const TREE_REASONS = ["outside_memory", "generated", "not_markdown"] as const;
+
+/** One level of the notes tree (door 1): built from the `files` rows only. */
+const MemoryTreeSchema = z.object({
+  /** `memory/` then the enabled indexed folders; with a context, its `ok` paths then its notes folder. */
+  roots: z.array(
+    z.object({
+      path: z.string(),
+      name: z.string(),
+      editable: z.boolean(),
+      /** True while an index pass runs (a pass walks every root). */
+      indexing: z.boolean(),
+    }),
+  ),
+  /** The root asked for (or the first one); null only when there is no root at all. */
+  root: z.string().nullable(),
+  /** The folder listed, relative to the root, with `/` (`""` for the root itself). */
+  dir: z.string(),
+  folders: z.array(
+    z.object({
+      rel: z.string(),
+      name: z.string(),
+      /** Indexed files under the folder, at any depth, that today's policy shows. */
+      count: z.number().int().min(0),
+      editable: z.boolean(),
+      reason: z.enum(TREE_REASONS).optional(),
+    }),
+  ),
+  files: z.array(
+    z.object({
+      id: z.number(),
+      rel: z.string(),
+      name: z.string(),
+      title: z.string().nullable(),
+      /** The front matter's `type`, as the index holds it in `fields`. */
+      type: z.string().nullable(),
+      mtime: z.number(),
+      editable: z.boolean(),
+      reason: z.enum(TREE_REASONS).optional(),
+    }),
+  ),
+  /** The id of the folder's index note: its `_index.md`, else the first of index.md, README.md, CLAUDE.md, AGENTS.md. */
+  indexNote: z.number().nullable(),
+  /** More than 1 000 entries: the first 1 000 in the order asked for are listed. */
+  truncated: z.boolean(),
+  /** How many entries were left out (0 when nothing was). */
+  omitted: z.number().int().min(0),
 });
 
 const LinkKindSchema = z.enum(["markdown-link", "wikilink"]);
@@ -508,6 +578,38 @@ export const memoryRoutes = {
       err(413, "note_too_large", "The note is larger than the editing limit"),
     ],
   }),
+  "memory.notes.properties": route({
+    method: "PUT",
+    path: "/api/memory/notes/properties",
+    summary:
+      "Change, add or remove properties of a note's front matter, only if it is still the version the caller read (baseVersion); every other byte is kept",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      path: z.string().min(1),
+      baseVersion: NoteVersionSchema,
+      set: z.record(z.union([z.string().max(4000), z.array(z.string().max(4000)).max(1000)])).optional(),
+      remove: z.array(z.string().max(200)).max(1000).optional(),
+    }),
+    responses: { 200: NoteWrittenSchema.extend({ properties: z.array(PropertySchema) }) },
+    errors: [
+      err(403, "forbidden_path", "A link on the way or a private file would be written through"),
+      err(
+        403,
+        "note_not_editable",
+        "Not a .md file under memory/, or a file the engine generates (ROUTER.md, areas/, journal/, contexts/)",
+      ),
+      err(404, "not_a_file", "The path names something that is not a regular file"),
+      err(404, "note_missing", "The note does not exist"),
+      err(409, "edit_conflict", "The file changed after it was read; nothing was written"),
+      err(
+        409,
+        "front_matter_unreadable",
+        "The front matter is longer than 4 096 bytes or has no closing ---; nothing was written",
+      ),
+      err(413, "note_too_large", "The note is larger than the editing limit"),
+    ],
+  }),
   "memory.notes.save": route({
     method: "PUT",
     path: "/api/memory/notes",
@@ -542,6 +644,27 @@ export const memoryRoutes = {
     query: z.object({ root: MapsRootQuery.optional() }),
     responses: { 200: z.object({ folders: z.array(FolderMapSchema) }) },
     errors: [notFound("The indexed root (or, for a run's credential, a folder the run was handed)")],
+  }),
+  "memory.tree": route({
+    method: "GET",
+    path: "/api/memory/tree",
+    summary: `One level of the notes tree, from the index rows only (no file is opened): the roots, the subfolders with their count, the files, and the folder's index note; ${contextNote}`,
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      context: ContextQuery,
+      /** A root, absolute: memory/, an enabled indexed folder, or (with a context) one of its roots. */
+      root: z.string().min(1).max(4096).optional(),
+      /** The folder, relative to the root (`""`, the default, is the root). */
+      dir: z.string().max(4096).optional(),
+      sort: z.enum(["name", "updated"]).optional(),
+    }),
+    responses: { 200: MemoryTreeSchema },
+    errors: [
+      err(400, "unknown_root", "The root is not memory/, an enabled indexed folder or a root of the context"),
+      notFound("An indexed row under the folder (dir)"),
+      contextNotFound,
+    ],
   }),
   "memory.routers": route({
     method: "POST",

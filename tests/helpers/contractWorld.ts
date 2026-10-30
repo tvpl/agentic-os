@@ -429,6 +429,8 @@ export const SCENARIOS: Record<string, Scenario> = {
   [key("GET", "/api/memory/routers/check")]: { run: (w) => w.call("GET", "/api/memory/routers/check") },
   // cerebro-organizar, door 4: the folder map over the indexed workspace and memory/notes/.
   [key("GET", "/api/memory/maps")]: { run: (w) => w.call("GET", "/api/memory/maps") },
+  // cerebro-vista-notas, door 1: one level of the notes tree, from the index rows.
+  [key("GET", "/api/memory/tree")]: { run: (w) => w.call("GET", "/api/memory/tree") },
   [key("GET", "/api/memory/recall")]: { run: (w) => w.call("GET", "/api/memory/recall?q=Alfa&record=false") },
   [key("GET", "/api/memory/recall/stats")]: { run: (w) => w.call("GET", "/api/memory/recall/stats") },
   [key("GET", "/api/memory/journal")]: { run: (w) => w.call("GET", "/api/memory/journal") },
@@ -666,6 +668,17 @@ export const SCENARIOS: Record<string, Scenario> = {
         path: note.path,
         content: "# Cenário de escrita\n\nsalva\n",
         baseVersion: note.version,
+      });
+    },
+  },
+  // cerebro-vista-notas, door 2: a property of a note made for the scenario.
+  [key("PUT", "/api/memory/notes/properties")]: {
+    run: (w) => {
+      const note = noteOf(w, "Cenário de propriedades");
+      return w.call("PUT", "/api/memory/notes/properties", {
+        path: note.path,
+        baseVersion: note.version,
+        set: { status: "draft" },
       });
     },
   },
