@@ -341,6 +341,41 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: plan.md Landing doors 6-8 (plan)
 - last seen: 2026-10-30T06:34:11Z
 
+### L-048 - A static walker that proves an absence must resolve bindings to the import and list in its claim the spellings it does not cover.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-faxina-guiada
+- evidence: C50 tests/cleanup.layer.test.ts (tests)
+- last seen: 2026-10-30T16:00:19Z
+
+### L-049 - A partial outcome of a multi-step undo needs its own case, asserting both what stays and that a second run still works.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-faxina-guiada
+- evidence: C48 cleanupApply.ts:433 (tests)
+- last seen: 2026-10-30T16:00:19Z
+
+### L-050 - Test a list writer with exactly one item, not only with several.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-faxina-guiada
+- evidence: C44 cleanupApply.ts:307 (tests)
+- last seen: 2026-10-30T16:00:19Z
+
+### L-051 - A test that seeds stored rows by hand does not prove the writer stores them; read back what the route wrote.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-faxina-guiada
+- evidence: C26 tests/cleanup.layer.test.ts:681 (tests)
+- last seen: 2026-10-30T16:00:19Z
+
+### L-052 - A UI test mock must honour the query it receives, or the scope the screen sends goes unproven.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `ui` · harmful: 0
+- features: cerebro-faxina-guiada
+- evidence: C54 testkit.tsx:137 (ui)
+- last seen: 2026-10-30T16:00:19Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

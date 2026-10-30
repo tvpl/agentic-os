@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 48,
+  "next_id": 53,
   "lessons": [
     {
       "id": "L-001",
@@ -697,6 +697,76 @@
       "evidence": ["plan.md Landing doors 6-8 (plan)"],
       "created": "2026-10-30T06:34:11Z",
       "last_seen": "2026-10-30T06:34:11Z"
+    },
+    {
+      "id": "L-048",
+      "key": "surviving_mutant::a static walker that proves an absence must resolve bindings to the import and list in its claim the spellings it does not cover",
+      "text": "A static walker that proves an absence must resolve bindings to the import and list in its claim the spellings it does not cover.",
+      "signal": "surviving_mutant",
+      "scope": "tests",
+      "status": "candidate",
+      "features": ["cerebro-faxina-guiada"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C50 tests/cleanup.layer.test.ts (tests)"],
+      "created": "2026-10-30T16:00:19Z",
+      "last_seen": "2026-10-30T16:00:19Z"
+    },
+    {
+      "id": "L-049",
+      "key": "surviving_mutant::a partial outcome of a multi step undo needs its own case asserting both what stays and that a second run still works",
+      "text": "A partial outcome of a multi-step undo needs its own case, asserting both what stays and that a second run still works.",
+      "signal": "surviving_mutant",
+      "scope": "tests",
+      "status": "candidate",
+      "features": ["cerebro-faxina-guiada"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C48 cleanupApply.ts:433 (tests)"],
+      "created": "2026-10-30T16:00:19Z",
+      "last_seen": "2026-10-30T16:00:19Z"
+    },
+    {
+      "id": "L-050",
+      "key": "surviving_mutant::test a list writer with exactly one item not only with several",
+      "text": "Test a list writer with exactly one item, not only with several.",
+      "signal": "surviving_mutant",
+      "scope": "tests",
+      "status": "candidate",
+      "features": ["cerebro-faxina-guiada"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C44 cleanupApply.ts:307 (tests)"],
+      "created": "2026-10-30T16:00:19Z",
+      "last_seen": "2026-10-30T16:00:19Z"
+    },
+    {
+      "id": "L-051",
+      "key": "ac_gap::a test that seeds stored rows by hand does not prove the writer stores them read back what the route wrote",
+      "text": "A test that seeds stored rows by hand does not prove the writer stores them; read back what the route wrote.",
+      "signal": "ac_gap",
+      "scope": "tests",
+      "status": "candidate",
+      "features": ["cerebro-faxina-guiada"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C26 tests/cleanup.layer.test.ts:681 (tests)"],
+      "created": "2026-10-30T16:00:19Z",
+      "last_seen": "2026-10-30T16:00:19Z"
+    },
+    {
+      "id": "L-052",
+      "key": "spec_precision_gap::a ui test mock must honour the query it receives or the scope the screen sends goes unproven",
+      "text": "A UI test mock must honour the query it receives, or the scope the screen sends goes unproven.",
+      "signal": "spec_precision_gap",
+      "scope": "ui",
+      "status": "candidate",
+      "features": ["cerebro-faxina-guiada"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C54 testkit.tsx:137 (ui)"],
+      "created": "2026-10-30T16:00:19Z",
+      "last_seen": "2026-10-30T16:00:19Z"
     }
   ]
 }
