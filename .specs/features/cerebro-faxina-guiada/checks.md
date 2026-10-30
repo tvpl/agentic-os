@@ -570,3 +570,10 @@ null`, `skipped[].reason` is one of `changed`, `missing`, `exists`, `forbidden_p
 - **Abandoned:** an archive folder per file's parent (door 4 rejected it); a `scan_running` answer from `PUT
 /decisions` (amendment 12 does not list it); moving an empty folder into the archive (a move of a folder needs an
   `rmdir` of the origin, which C50 does not allow outside the undo).
+
+Status of batch C (updated in the commit that closes each piece):
+
+- the entries (C51, C52), the frame and its flow (C53, C54, C67, C70, C71, C73) and step 2 (C55 in rendered
+  components, C56, C57): closed in rendered components, every UI proof green in
+  `src/brain/cleanup/cleanupEntries.test.tsx`, `CleanupWizard.test.tsx` and `CleanupInventory.test.tsx`; C51's and
+  C55's browser proofs are still to come
