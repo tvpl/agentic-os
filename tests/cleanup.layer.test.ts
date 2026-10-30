@@ -14,7 +14,21 @@ import {
   type CleanupFinding,
   type CleanupScanRecord,
 } from "../core/src/memory/cleanupScan.js";
-import { cleanupDecisionRefusal, saveCleanupDecisions } from "../core/src/memory/cleanupApply.js";
+import {
+  CleanupNotFoundError,
+  CleanupScanStaleError,
+  CleanupUndoConflictError,
+  CleanupValidationError,
+  applyCleanup,
+  cleanupDecisionRefusal,
+  cleanupScanFor,
+  saveCleanupDecisions,
+  undoCleanup,
+  type CleanupMoveDeps,
+} from "../core/src/memory/cleanupApply.js";
+import { CleanupScanRunningError, type CleanupFindingFile } from "../core/src/memory/cleanupScan.js";
+import { RestoreInProgressError } from "../core/src/errors.js";
+import { RestoreLock } from "../core/src/restoreLock.js";
 import ts from "typescript";
 import { MINHASH_ALGO, minhashShingles, minhashSignature } from "../core/src/memory/minhash.js";
 import * as safeFs from "../core/src/security/safeFs.js";
@@ -26,8 +40,9 @@ import { makeTempHome } from "./helpers.js";
  * scanner's finding rules (`scanCleanupScope`), the MinHash (`minhash.ts`) and migration 24. "Now" is the fixed clock
  * `NOW`; a file's age is `NOW - mtime` in whole days. The HTTP side of each claim is in `cleanup.inventory.test.ts` and
  * `cleanup.scan.test.ts`. Batch B: the decision rules (`cleanupDecisionRefusal`, `saveCleanupDecisions`), door 7's
- * literal key and the no-removal walker; the apply and the undo are proven through the routes in
- * `cleanup.apply.test.ts`, and `moveWorkspaceFile` in `cleanup.move.test.ts`.
+ * literal key and the no-removal walker; `moveWorkspaceFile` is proven in `cleanup.move.test.ts`. Round 1: the apply
+ * planner (`applyCleanup`, `cleanupScanFor`) and the undo (`undoCleanup`) here too, one case per row of their decision
+ * tables (C41-C49, C85, C86), as their boundary proofs in `cleanup.apply.test.ts` go through the routes.
  */
 
 vi.mock("../core/src/security/safeFs.js", async (importOriginal) => {
@@ -931,5 +946,404 @@ describe("S4 nothing removes a user file", () => {
     };
     visit(sf, null);
     expect(callers).toEqual(["undoCleanup"]);
+  });
+});
+
+/* ---- round 1: the apply planner and the undo at their own layer (Test policy row 1) ------------------------------ */
+
+describe("S4 the apply planner and the undo at their own layer", () => {
+  const sha = (b: Buffer | string) => crypto.createHash("sha256").update(b).digest("hex");
+  const asked: string[][] = [];
+  const deps = (): CleanupMoveDeps => ({
+    db: ctx.db,
+    paths: ctx.paths,
+    settings: ctx.settings(),
+    indexer: {
+      requestIndexPaths: (p: readonly string[]) => {
+        asked.push([...p]);
+        return Promise.resolve();
+      },
+    },
+  });
+  /** A folder of `memory/notes/` for one test. */
+  const notes = (name: string) => {
+    const dir = path.join(memory, "notes", `layer-${name}-${++seq}`);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  };
+  let ids = 0;
+  /** A member as the scan saw it: its path, size and the hash of its bytes now. */
+  const member = (file: string): CleanupFindingFile => {
+    const st = fs.statSync(file);
+    return { id: ++ids, path: file, size: st.size, mtime: st.mtimeMs, sha256: sha(fs.readFileSync(file)) };
+  };
+  const finding = (
+    kind: CleanupFinding["kind"],
+    files: string[],
+    detail: CleanupFinding["detail"] = {},
+  ): CleanupFinding => ({
+    key: `${kind}:${sha(`${kind}-${++ids}`)}`,
+    kind,
+    files: files.map(member),
+    detail,
+    suggested: "keep",
+  });
+  /** A finished scan of its own scope key, with `decisions` stored on its findings through the decision rules. */
+  function decided(
+    findings: CleanupFinding[],
+    decisions: Array<[number, string, number?]>,
+  ): CleanupScanRecord {
+    const scan: CleanupScanRecord = {
+      scanId: `layer-${++seq}`,
+      scope: { kind: "dir", path: memory },
+      scopeKey: `dir:layer-${seq}`,
+      status: "finished",
+      phase: "findings",
+      code: null,
+      startedAt: NOW,
+      finishedAt: NOW,
+      findings,
+      decided: 0,
+    };
+    saveCleanupDecisions(
+      ctx.db,
+      scan,
+      decisions.map(([i, decision, keepFileId]) => ({ key: findings[i]!.key, decision, keepFileId })),
+      { now: NOW },
+    );
+    return scan;
+  }
+  const dayOf = (at: number) => {
+    const d = new Date(at);
+    const two = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+  };
+  /** Every name under a folder with its bytes' hash (a folder as "dir", a link as its target). */
+  const snapshot = (dir: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    const walk = (at: string) => {
+      if (!fs.existsSync(at)) return;
+      for (const e of fs.readdirSync(at, { withFileTypes: true })) {
+        const full = path.join(at, e.name);
+        if (e.isSymbolicLink()) out[full] = `link:${fs.readlinkSync(full)}`;
+        else if (e.isDirectory()) {
+          out[full] = "dir";
+          walk(full);
+        } else out[full] = sha(fs.readFileSync(full));
+      }
+    };
+    walk(dir);
+    return out;
+  };
+  /** The next archive folder this apply will make, by pinning the 8 hex of its name. */
+  const pinArchive = (hex: string) => {
+    const real = crypto.randomBytes.bind(crypto);
+    return vi
+      .spyOn(crypto, "randomBytes")
+      .mockImplementation(((n: number, ...rest: unknown[]) =>
+        n === 4
+          ? Buffer.from(hex, "hex")
+          : (real as (...a: unknown[]) => Buffer)(n, ...rest)) as typeof crypto.randomBytes);
+  };
+  /** Three files of `memory/notes/` archived by one apply. */
+  function archivedThree(name: string, count = 3) {
+    const dir = notes(name);
+    const files = Array.from({ length: count }, (_, i) =>
+      put(path.join(dir, `f${i}.md`), `layer ${name} ${i}\n`),
+    );
+    const scan = decided(
+      files.map((f) => finding("untitled", [f])),
+      files.map((_, i) => [i, "archive"] as [number, string]),
+    );
+    const res = applyCleanup(deps(), scan, { now: NOW });
+    expect(res.moved).toHaveLength(count);
+    return { files, res, toOf: (from: string) => res.moved.find((m) => m.from === from)!.to };
+  }
+
+  it("C41 archive on memory/notes/clientes/a.md and memory/notes/b.md moves both under memory/archive/<day>-<8 hex>/ with their paths, and the manifest is door 4's shape exactly (own layer)", () => {
+    const dir = notes("c41");
+    const a = put(path.join(dir, "clientes", "a.md"), "layer a\n");
+    const b = put(path.join(dir, "b.md"), "layer bb\n");
+    const scan = decided(
+      [finding("untitled", [a]), finding("untitled", [b])],
+      [
+        [0, "archive"],
+        [1, "archive"],
+      ],
+    );
+    const [ma, mb] = [scan.findings[0]!.files[0]!, scan.findings[1]!.files[0]!];
+    const res = applyCleanup(deps(), scan, { now: NOW });
+    const folder = path.dirname(res.manifest!);
+    expect(path.dirname(folder)).toBe(path.join(memory, "archive"));
+    expect(path.basename(folder)).toMatch(new RegExp(`^${dayOf(NOW)}-[0-9a-f]{8}$`));
+    const rel = (f: string) => path.relative(memory, f);
+    expect(res.moved).toEqual([
+      { from: a, to: path.join(folder, rel(a)) },
+      { from: b, to: path.join(folder, rel(b)) },
+    ]);
+    expect(res.skipped).toEqual([]);
+    expect(res.proposals).toBeNull();
+    expect(fs.existsSync(a) || fs.existsSync(b)).toBe(false);
+    expect(fs.readFileSync(path.join(folder, rel(a)), "utf8")).toBe("layer a\n");
+    expect(JSON.parse(fs.readFileSync(res.manifest!, "utf8"))).toEqual({
+      v: 1,
+      createdAt: NOW,
+      scope: scan.scopeKey,
+      entries: [
+        { from: a, to: path.join(folder, rel(a)), sha256: ma.sha256, size: ma.size },
+        { from: b, to: path.join(folder, rel(b)), sha256: mb.sha256, size: mb.size },
+      ],
+    });
+  });
+
+  it("C42 a file changed after the scan is skipped as changed and a file gone as missing, both left where they are, and the third moves (own layer)", () => {
+    const dir = notes("c42");
+    const [changed, gone, fine] = ["mudou", "sumiu", "fica"].map((n) =>
+      put(path.join(dir, `${n}.md`), `layer ${n}\n`),
+    );
+    const scan = decided(
+      [finding("untitled", [changed!]), finding("untitled", [gone!]), finding("untitled", [fine!])],
+      [
+        [0, "archive"],
+        [1, "archive"],
+        [2, "archive"],
+      ],
+    );
+    fs.appendFileSync(changed!, "+");
+    fs.rmSync(gone!);
+    const res = applyCleanup(deps(), scan, { now: NOW });
+    expect(res.skipped).toEqual([
+      { path: changed, reason: "changed" },
+      { path: gone, reason: "missing" },
+    ]);
+    expect(res.moved.map((m) => m.from)).toEqual([fine]);
+    expect(fs.readFileSync(changed!, "utf8")).toBe("layer mudou\n+");
+    expect(fs.existsSync(gone!)).toBe(false);
+  });
+
+  it("C43 a file reached through a link on the way is forbidden_path and one whose destination exists is exists; both sides unchanged (own layer)", () => {
+    const dir = notes("c43");
+    const through = put(path.join(dir, "sub", "x.md"), "layer x\n");
+    const taken = put(path.join(dir, "y.md"), "layer y\n");
+    const scan = decided(
+      [finding("untitled", [through]), finding("untitled", [taken])],
+      [
+        [0, "archive"],
+        [1, "archive"],
+      ],
+    );
+    fs.renameSync(path.join(dir, "sub"), path.join(dir, "sub-real"));
+    fs.symlinkSync(path.join(dir, "sub-real"), path.join(dir, "sub"));
+    const spy = pinArchive("1a7e1a7e");
+    try {
+      const folder = path.join(memory, "archive", `${dayOf(NOW)}-1a7e1a7e`);
+      const occupant = put(path.join(folder, path.relative(memory, taken)), "ja estava\n");
+      const before = snapshot(memory);
+      const res = applyCleanup(deps(), scan, { now: NOW });
+      expect(res.skipped).toEqual([
+        { path: through, reason: "forbidden_path" },
+        { path: taken, reason: "exists" },
+      ]);
+      expect([res.moved, res.manifest]).toEqual([[], null]);
+      expect(snapshot(memory)).toEqual(before);
+      expect(fs.readFileSync(occupant, "utf8")).toBe("ja estava\n");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("C44 files outside memory/, a file already in the archive and an empty folder are proposals: nothing moved or written there, one line each in artifacts/cleanup/<day>-<id>.md (own layer)", () => {
+    const out = folder("c44");
+    const one = put(path.join(out, "um.md"), "layer um\n");
+    const two = put(path.join(out, "pasta", "dois.md"), "layer dois\n");
+    const kept = put(
+      path.join(memory, "archive", "2026-01-01-0000c044", "notes", "velho.md"),
+      "layer velho\n",
+    );
+    const empty = path.join(out, "vazia");
+    fs.mkdirSync(empty);
+    const scan = decided(
+      [
+        finding("stale", [one], { since: "mtime", ageDays: 400 }),
+        finding("untitled", [two]),
+        finding("untitled", [kept]),
+        finding("empty-folder", [], { folder: empty }),
+      ],
+      [
+        [0, "archive"],
+        [1, "archive"],
+        [2, "archive"],
+        [3, "archive"],
+      ],
+    );
+    const before = { ...snapshot(out), ...snapshot(memory) };
+    const res = applyCleanup(deps(), scan, { now: NOW });
+    expect([res.moved, res.skipped, res.manifest]).toEqual([[], [], null]);
+    expect({ ...snapshot(out), ...snapshot(memory) }).toEqual(before);
+    expect(path.dirname(res.proposals!)).toBe(path.join(ctx.paths.artifacts, "cleanup"));
+    expect(path.basename(res.proposals!)).toMatch(new RegExp(`^${dayOf(NOW)}-[0-9a-f]{8}\\.md$`));
+    const lines = fs
+      .readFileSync(res.proposals!, "utf8")
+      .split("\n")
+      .filter((l) => l.startsWith("- [ ] "));
+    expect(lines).toEqual([
+      `- [ ] ${one} — archive — parado há 400 dias`,
+      `- [ ] ${two} — archive — sem título`,
+      `- [ ] ${kept} — archive — sem título`,
+      `- [ ] ${empty}${path.sep} — archive — pasta vazia`,
+    ]);
+  });
+
+  it("C45 a merge keeping the newest of three duplicates leaves it in place and moves the other two (own layer)", () => {
+    const dir = notes("c45");
+    const files = ["a", "b", "c"].map((n, i) => put(path.join(dir, `${n}.md`), "layer igual\n", 3 - i));
+    const dup = finding("duplicate", files);
+    const newest = dup.files[2]!.id;
+    const res = applyCleanup(deps(), decided([dup], [[0, "merge", newest]]), { now: NOW });
+    expect(res.moved.map((m) => m.from)).toEqual([files[0], files[1]]);
+    expect(fs.existsSync(files[2]!)).toBe(true);
+    expect(fs.existsSync(files[0]!) || fs.existsSync(files[1]!)).toBe(false);
+  });
+
+  it("C46 the indexer is asked for every origin and every destination of the moves (own layer)", () => {
+    asked.length = 0;
+    const { res } = archivedThree("c46", 2);
+    expect(asked).toEqual([res.moved.flatMap((m) => [m.from, m.to])]);
+    expect(asked[0]).toHaveLength(4);
+  });
+
+  it("C47 the scan an apply names: none is not_found, a running one scan_running, a replaced one scan_stale; under the exclusive lock the apply is restore_in_progress; none moves (own layer)", () => {
+    const dir = notes("c47");
+    const file = put(path.join(dir, "a.md"), "layer c47\n");
+    const scan = decided([finding("untitled", [file])], [[0, "archive"]]);
+    const running = { ...scan, scanId: "running", status: "running" as const };
+    const newer = { ...scan, scanId: "newer" };
+    const scans = (list: CleanupScanRecord[], latest: CleanupScanRecord) => ({
+      get: (id: string) => list.find((s) => s.scanId === id),
+      latest: (key: string) => (key === scan.scopeKey ? latest : undefined),
+    });
+    expect(() => cleanupScanFor(scans([scan], scan), "outro", "apply")).toThrow(CleanupNotFoundError);
+    expect(() => cleanupScanFor(scans([running], running), "running", "apply")).toThrow(
+      CleanupScanRunningError,
+    );
+    expect(() => cleanupScanFor(scans([scan, newer], newer), scan.scanId, "apply")).toThrow(
+      CleanupScanStaleError,
+    );
+    expect(cleanupScanFor(scans([scan], scan), scan.scanId, "apply")).toBe(scan);
+    const held = RestoreLock.acquire(ctx.paths, 0, "exclusive");
+    try {
+      expect(() => applyCleanup(deps(), scan, { now: NOW })).toThrow(RestoreInProgressError);
+    } finally {
+      held.release();
+    }
+    expect(fs.readFileSync(file, "utf8")).toBe("layer c47\n");
+  });
+
+  it("C48 the undo moves back the untouched file, skips a changed one and a missing one, and one whose origin exists; the folder stays while it is not empty (own layer)", () => {
+    const { files, res, toOf } = archivedThree("c48");
+    const folder = path.dirname(res.manifest!);
+    fs.appendFileSync(toOf(files[0]!), "+");
+    fs.rmSync(toOf(files[1]!));
+    const r = undoCleanup(deps(), res.manifest!);
+    expect(r.restored).toEqual([{ from: files[2], to: toOf(files[2]!) }]);
+    expect(r.skipped).toEqual([
+      { path: files[0], reason: "changed" },
+      { path: files[1], reason: "missing" },
+    ]);
+    expect(fs.readFileSync(files[2]!, "utf8")).toBe("layer c48 2\n");
+    expect(fs.existsSync(folder)).toBe(true);
+
+    const second = archivedThree("c48b", 1);
+    put(second.files[0]!, "outra no lugar\n");
+    const again = undoCleanup(deps(), second.res.manifest!);
+    expect([again.restored, again.skipped]).toEqual([[], [{ path: second.files[0], reason: "exists" }]]);
+    expect(fs.existsSync(path.dirname(second.res.manifest!))).toBe(true);
+  });
+
+  it("C49 the undo refuses a path outside memory/archive/, another file name and a path that climbs out (validation), a manifest that is not there (not_found), v 2 (undo_conflict) and works under no exclusive lock (restore_in_progress); none moves (own layer)", () => {
+    const { res } = archivedThree("c49", 1);
+    const folder = path.dirname(res.manifest!);
+    const v2 = put(
+      path.join(memory, "archive", "2026-01-01-0000c049", "manifest.json"),
+      JSON.stringify({ v: 2, entries: [] }),
+    );
+    put(path.join(folder, "outro.json"), "{}");
+    const before = snapshot(memory);
+    const cases: Array<[string, string, new (...a: never[]) => Error]> = [
+      ["outside memory/archive/", path.join(memory, "notes", "manifest.json"), CleanupValidationError],
+      ["another file name", path.join(folder, "outro.json"), CleanupValidationError],
+      ["climbs out", `${memory}/archive/../notes/manifest.json`, CleanupValidationError],
+      [
+        "not there",
+        path.join(memory, "archive", "2026-01-01-00000000", "manifest.json"),
+        CleanupNotFoundError,
+      ],
+      ["v 2", v2, CleanupUndoConflictError],
+    ];
+    for (const [name, manifest, error] of cases)
+      expect(() => undoCleanup(deps(), manifest), name).toThrow(error);
+    const held = RestoreLock.acquire(ctx.paths, 0, "exclusive");
+    try {
+      expect(() => undoCleanup(deps(), res.manifest!)).toThrow(RestoreInProgressError);
+    } finally {
+      held.release();
+    }
+    expect(snapshot(memory)).toEqual(before);
+  });
+
+  it("C85 after an undo that moved every entry back, the manifest is at artifacts/cleanup/<archive name>.manifest.json with its bytes and the archive folder is gone (own layer)", () => {
+    const { files, res } = archivedThree("c85", 2);
+    const text = fs.readFileSync(res.manifest!, "utf8");
+    const folder = path.dirname(res.manifest!);
+    const r = undoCleanup(deps(), res.manifest!);
+    expect(r.restored.map((e) => e.from)).toEqual(files);
+    expect(r.skipped).toEqual([]);
+    expect(
+      fs.readFileSync(
+        path.join(ctx.paths.artifacts, "cleanup", `${path.basename(folder)}.manifest.json`),
+        "utf8",
+      ),
+    ).toBe(text);
+    expect(fs.existsSync(folder)).toBe(false);
+  });
+
+  it("C86 the undo answers undo_conflict, one case per reason, and moves nothing: JSON it cannot read, v other than 1, an entry whose from is outside memory/ or inside the archive, and one whose to is outside its own folder (own layer)", () => {
+    const { files, res, toOf } = archivedThree("c86", 1);
+    const good = JSON.parse(fs.readFileSync(res.manifest!, "utf8")) as {
+      entries: Array<Record<string, unknown>>;
+    };
+    const entry = good.entries[0]!;
+    const outside = path.join(folder(`c86-fora`), "f0.md");
+    const cases: Array<[string, string]> = [
+      ["not JSON", "{ isto não é json"],
+      ["v 2", JSON.stringify({ ...good, v: 2 })],
+      ["from outside memory/", JSON.stringify({ ...good, entries: [{ ...entry, from: outside }] })],
+      [
+        "from inside the archive",
+        JSON.stringify({
+          ...good,
+          entries: [{ ...entry, from: path.join(memory, "archive", "2026-01-01-0000aaaa", "f0.md") }],
+        }),
+      ],
+      [
+        "to outside its folder",
+        JSON.stringify({
+          ...good,
+          entries: [{ ...entry, to: path.join(memory, "archive", "2026-01-01-0000bbbb", "f0.md") }],
+        }),
+      ],
+    ];
+    const original = fs.readFileSync(res.manifest!, "utf8");
+    try {
+      for (const [name, text] of cases) {
+        fs.writeFileSync(res.manifest!, text);
+        const before = { ...snapshot(memory), ...snapshot(path.dirname(outside)) };
+        expect(() => undoCleanup(deps(), res.manifest!), name).toThrow(CleanupUndoConflictError);
+        expect({ ...snapshot(memory), ...snapshot(path.dirname(outside)) }, name).toEqual(before);
+      }
+    } finally {
+      fs.writeFileSync(res.manifest!, original);
+    }
+    expect(fs.existsSync(toOf(files[0]!))).toBe(true);
   });
 });

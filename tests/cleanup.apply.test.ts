@@ -471,4 +471,41 @@ describe("S4 undo", () => {
     expect(fs.existsSync(path.dirname(res.manifest))).toBe(false);
     expect(fs.readdirSync(path.join(w.memory, "archive"))).toEqual([]);
   });
+
+  it("C86 undo answers 409 undo_conflict, one case per reason, and moves nothing: JSON it cannot read, v other than 1, an entry whose from is outside memory/ or inside the archive, and one whose to is outside its own folder", async () => {
+    const w = await world();
+    const { res } = await archived(w, "c86", 1);
+    const original = fs.readFileSync(res.manifest, "utf8");
+    const good = JSON.parse(original) as { entries: Json[] };
+    const entry = good.entries[0]!;
+    const outside = path.join(w.indexedRoot("c86-fora"), "f0.md");
+    const cases: Array<[string, string]> = [
+      ["not JSON", "{ isto não é json"],
+      ["v 2", JSON.stringify({ ...good, v: 2 })],
+      ["from outside memory/", JSON.stringify({ ...good, entries: [{ ...entry, from: outside }] })],
+      [
+        "from inside the archive",
+        JSON.stringify({
+          ...good,
+          entries: [{ ...entry, from: path.join(w.memory, "archive", "2026-01-01-0000aaaa", "f0.md") }],
+        }),
+      ],
+      [
+        "to outside its folder",
+        JSON.stringify({
+          ...good,
+          entries: [{ ...entry, to: path.join(w.memory, "archive", "2026-01-01-0000bbbb", "f0.md") }],
+        }),
+      ],
+    ];
+    const files = () => ({ ...snapshot(w.memory, [res.manifest]), ...snapshot(path.dirname(outside)) });
+    const before = files();
+    for (const [name, text] of cases) {
+      fs.writeFileSync(res.manifest, text);
+      const r = await undo(w, res.manifest);
+      expect([r.status, code(r)], name).toEqual([409, "undo_conflict"]);
+      expect(files(), name).toEqual(before);
+    }
+    fs.writeFileSync(res.manifest, original);
+  });
 });
