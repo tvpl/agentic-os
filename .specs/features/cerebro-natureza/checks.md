@@ -931,3 +931,10 @@ front_matter_unreadable`); a file gone since the pass, or a folder where it was,
   from the `POST` (door 4 names `404 not_found`); a `POST` that answers before the pass over its path (the next list
   would read the old header); asserting C52's inode, or an in-place write for `abandon` to keep it (that would take the
   decision off the guarded write door 4 names): left to the owner
+
+Status of batch C (updated in the commit that closes each piece):
+
+- the API's cross-cutting checks (C64-C69): closed, every proof green, the new ones in `tests/natureza.contract.test.ts`
+  (C64, C65, C66, C68, C69), and the existing ones they name (`api.openapi` C16, `security-reads` C55 and its
+  "finds nothing outside the list", `sdk.instances` C30, `cleanup.layer` C19, `organize.maps` C33, `notesview.properties`
+  C19) green and unchanged
