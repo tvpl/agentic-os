@@ -798,3 +798,56 @@ Status of batch A (updated in the commit that closes each piece):
 - the CLI (C21-C23), the agents' block in the compiled `AGENTS.md`/`CLAUDE.md` and in a memory run's prompt (C24,
   C25) and the `consolidate-memory` guide (C26): closed, every proof green in `tests/natureza.cli.test.ts` and
   `tests/natureza.agents.test.ts`; with it batch A is closed but for C10 (C1-C9, C11-C26)
+
+- **Boundary (batch A):** C1-C9 and C11-C26 closed at `68516ae` (`84daa60` for S1 and S2's code and C1-C20); C10 is
+  open, handed to batch B with its routes. On the tree of `68516ae`: `npm run build`, `npm run typecheck` and
+  `npm run lint` exit 0, `npx vitest run` at the root is green (153 files, 2034 tests, 1 skipped) and
+  `npm run test -w apps/command-centre` too (161 files, 1326 tests); each of the 28 `Proof:` lines of the
+  checks of the batch but C10 passes and runs only its check's test (C10's selector finds no test). S3-S5, C27-C93 and C10 are untouched
+  (batches B, C and D): no `reviews.ts`, no `GET`/`POST /api/memory/reviews`, no `settings.memory.reviews`, no
+  `reviewDue`, no screen. What batch A already moved, so that batch B adds on top: migration 25 (`note_passages` and
+  `review_state`, both empty until B writes the second) in `data.migration`, `contexts.runs` C25 and `device-scopes`
+  C22 (with its chained amendment in `sdk.api-thin` C29), and `ESCOPOS`, `NATUREZAS`, `parseEscopoList` and
+  `parseNaturezaList` in the internal barrel (`sdk.surface` C38). No route, event type or settings leaf was added, so
+  those pins did not move. The search and recall entries of `contracts/src/api/memory.ts` already carry the query keys
+  and the two response keys (`z.enum(...).nullable()`, required); C65, which proves them, is still batch C's. C10's
+  proof needs `POST /api/memory/reviews` (`snooze`) and `GET /api/memory/reviews`; the index side it rests on is in:
+  `review_state` is keyed by path and a removal keeps its row (C9 asserts it).
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape, none a new one-way door:
+  (a) the reader, the list parsers, the passage parser and the agents' block live in `core/src/memory/natureza.ts`;
+  door 3's table, `excerptNature` and the filters in `recall.ts`; (b) a block quote is a passage only when its first
+  line is the marker (`>` in column 1, `[!x]` of the five, any case, an Obsidian fold sign `-`/`+` and a title
+  allowed); a marker on a later line of a block that opened otherwise is no passage; (c) the passages of a file are
+  parsed from the text the index stores (its first 200 000 characters) in the pass and in the backfill alike, so both
+  write the same rows; (d) the backfill writes each file that holds passages in its own short transaction with a safe
+  point after it and after every 25 rows read, and writes `index.note_passages` = `"1"` in `meta` last; a "slice" of
+  C8 is one such write; (e) an excerpt's lines are the first and last non-blank lines of its section's trimmed body
+  (`Section.startLine`/`endLine`, 1-based over the whole file), and it lies within a passage when both do; (f) with
+  `natureza` or `escopo` the recall neither opens nor counts a candidate whose scope is outside or that cannot give a
+  nature asked (no passage, no file nature, no door-3 section of one), so `candidatesConsidered` and `candidates`
+  reflect the filter; in a file it opens the best section is the best of the natures asked, and a pointer target
+  follows the same rule; (g) the search applies the two filters after today's policy, where `allow` is applied, in
+  the three modes; (h) the query keys are strings matched by a regex of the closed list, comma-separated (`natureza=`
+  is `400 validation`); the lists stay private to `contracts/src/api/memory.ts`, so the package's surface does not
+  grow; (i) the CLI puts the label and one space before `●`; it reads the abandoned day from the row's `fields`
+  (`status` `archived` after `normalizeFieldKey`, `abandoned` a `YYYY-MM-DD`), since `RecallContext` has no field for
+  it, and `(substituído)` is the section `Superseded` of `<home>/memory/MEMORY.md`; a value outside the lists exits 2
+  before the home is opened, with `Invalid --natureza "<v>". Expected one or more of: fato, opiniao, plano, hipotese,
+relato` (the scopes for `--escopo`); (j) migration 25 is named `natureza`; (k) the compiled files keep a blank line
+  after the ground rules and then the six lines; the run prompt holds them as their own paragraph after the locations
+  block; (l) `consolidate-memory` goes to 1.1.0, its step 3 saying recall reads the nature of a line from the five
+  titles; (m) proof readings the checks left open: C2's "`errors: 0`" is asserted as `index.finished` with no
+  `index.failed` and every file added (`IndexStats` has no `errors` key, and adding one would move the v1 schema of
+  `index.finished`), over the seven files of its seven cases (the claim says five); C8's "files indexed before
+  migration 25" is a pass's rows with `note_passages` and the marker deleted (an indexer of 24 cannot run with this
+  code; C7 migrates a real 24 database), its stop is the second backfill write failing, and its read audit is an
+  `fs.openSync` recorder plus a spy on `readWorkspaceText` plus `auditFiles` over `natureza.ts`; C20's record is the
+  answer of the same fixture run at `aa687ed`, with fixed mtimes so the candidates' tie-break is stable; C25's work
+  context is the `contextBlock` argument of `buildRunPrompt` (the launch's builder is private); C18 has one more note
+  than its claim names, whose best section is a plano one beside a fato passage, so that a recall that skipped the
+  nature of the best section would fail
+- **Abandoned:** an `errors` count in `IndexStats` for C2 (it changes `index.finished` v1); parsing the passages from
+  the whole file in the pass and from the stored text in the backfill (they would disagree past 200 000 characters);
+  one backfill transaction per 25 rows (three files make one slice, and C8 could not stop between two); filtering the
+  recall only after the top `k` files were opened (a higher plano note would take the place of the fato one, C18);
+  writing C10's test against batch B's routes before they exist
