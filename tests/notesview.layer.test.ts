@@ -610,7 +610,7 @@ describe("door 7 at its own layer: area and folder together", () => {
       path.join(notes, "c83l-pasta", "so-pasta.md"),
     );
     const inArea = createNote(env(settings), { title: "Só área", area: "Área C83" }).path;
-    expect(path.dirname(path.dirname(inArea))).toBe(notes);
+    expect(path.dirname(inArea)).toBe(path.join(notes, "area-c83"));
   });
 });
 

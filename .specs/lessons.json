@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 44,
+  "next_id": 48,
   "lessons": [
     {
       "id": "L-001",
@@ -641,6 +641,62 @@
       "evidence": ["C2 (check says ?path=, route takes ?rel=) (checks)"],
       "created": "2026-10-30T01:11:41Z",
       "last_seen": "2026-10-30T01:11:41Z"
+    },
+    {
+      "id": "L-044",
+      "key": "spec_precision_gap::a clause like as before in a check still needs its value asserted by name not only what it is not",
+      "text": "A clause like 'as before' in a check still needs its value asserted by name, not only what it is not.",
+      "signal": "spec_precision_gap",
+      "scope": "tests",
+      "status": "candidate",
+      "features": ["cerebro-vista-notas"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C83 tests/notesview.create.test.ts:111 (tests)"],
+      "created": "2026-10-30T06:34:11Z",
+      "last_seen": "2026-10-30T06:34:11Z"
+    },
+    {
+      "id": "L-045",
+      "key": "spec_precision_gap::when a proof asserts an arrangement its claim does not name put it in the claim and in the coverage row",
+      "text": "When a proof asserts an arrangement its claim does not name, put it in the claim and in the Coverage row.",
+      "signal": "spec_precision_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["cerebro-vista-notas"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C42 tests/e2e/notes-view.spec.ts:234 (checks)"],
+      "created": "2026-10-30T06:34:11Z",
+      "last_seen": "2026-10-30T06:34:11Z"
+    },
+    {
+      "id": "L-046",
+      "key": "surviving_mutant::a check that says where something sits on screen needs an order assertion not a find anywhere query",
+      "text": "A check that says where something sits on screen needs an order assertion, not a find-anywhere query.",
+      "signal": "surviving_mutant",
+      "scope": "ui",
+      "status": "candidate",
+      "features": ["cerebro-vista-notas"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C31 NotesSidebar.tsx:78 (ui)"],
+      "created": "2026-10-30T06:34:11Z",
+      "last_seen": "2026-10-30T06:34:11Z"
+    },
+    {
+      "id": "L-047",
+      "key": "ac_gap::a one way door a builder adds mid build owes a check and an owner question in the same commit",
+      "text": "A one-way door a builder adds mid-build owes a check and an owner question in the same commit.",
+      "signal": "ac_gap",
+      "scope": "plan",
+      "status": "candidate",
+      "features": ["cerebro-vista-notas"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["plan.md Landing doors 6-8 (plan)"],
+      "created": "2026-10-30T06:34:11Z",
+      "last_seen": "2026-10-30T06:34:11Z"
     }
   ]
 }

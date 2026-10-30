@@ -313,6 +313,34 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C2 (check says ?path=, route takes ?rel=) (checks)
 - last seen: 2026-10-30T01:11:41Z
 
+### L-044 - A clause like 'as before' in a check still needs its value asserted by name, not only what it is not.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-vista-notas
+- evidence: C83 tests/notesview.create.test.ts:111 (tests)
+- last seen: 2026-10-30T06:34:11Z
+
+### L-045 - When a proof asserts an arrangement its claim does not name, put it in the claim and in the Coverage row.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: cerebro-vista-notas
+- evidence: C42 tests/e2e/notes-view.spec.ts:234 (checks)
+- last seen: 2026-10-30T06:34:11Z
+
+### L-046 - A check that says where something sits on screen needs an order assertion, not a find-anywhere query.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `ui` · harmful: 0
+- features: cerebro-vista-notas
+- evidence: C31 NotesSidebar.tsx:78 (ui)
+- last seen: 2026-10-30T06:34:11Z
+
+### L-047 - A one-way door a builder adds mid-build owes a check and an owner question in the same commit.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `plan` · harmful: 0
+- features: cerebro-vista-notas
+- evidence: plan.md Landing doors 6-8 (plan)
+- last seen: 2026-10-30T06:34:11Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

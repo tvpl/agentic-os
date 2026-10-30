@@ -108,8 +108,7 @@ describe("S3 a folder for a new note", () => {
     expect(path.dirname(inFolder.body.path)).toBe(path.join(notesDir, "c83-pasta"));
     const inArea = await create({ title: "Só área", area: "Área C83" });
     expect(inArea.status, JSON.stringify(inArea.body)).toBe(201);
-    expect(path.dirname(path.dirname(inArea.body.path))).toBe(notesDir);
-    expect(path.dirname(inArea.body.path)).not.toBe(path.join(notesDir, "c83-pasta"));
+    expect(path.dirname(inArea.body.path)).toBe(path.join(notesDir, "area-c83"));
   });
 
   it("C26 with fixedStructure on, a folder that does not exist, an area whose folder does not exist and neither answer 409 structure_fixed and write nothing; a folder that exists answers 201", async () => {
