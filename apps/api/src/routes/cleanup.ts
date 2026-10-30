@@ -1,12 +1,20 @@
 import type { FastifyInstance } from "fastify";
-import { cleanupInventory, resolveCleanupScope } from "@mordomo/core/internal";
+import {
+  applyCleanup,
+  cleanupInventory,
+  cleanupScanFor,
+  resolveCleanupScope,
+  saveCleanupDecisions,
+  undoCleanup,
+} from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
 
 /**
- * The guided cleanup (.specs/features/cerebro-faxina-guiada, door 5): the inventory of a scope and the scans of it. The
- * rules are the core's (`core/src/memory/cleanup.ts`, `cleanupScan.ts`); the scans are the engine's (`ctx.cleanup`).
+ * The guided cleanup (.specs/features/cerebro-faxina-guiada, door 5): the inventory of a scope, the scans of it, the
+ * owner's decisions, the apply and the undo. The rules are the core's (`core/src/memory/cleanup.ts`, `cleanupScan.ts`,
+ * `cleanupApply.ts`); the scans are the engine's (`ctx.cleanup`).
  */
 export function registerCleanupRoutes(app: FastifyInstance, ctx: AppContext): void {
   const env = () => ({ paths: ctx.paths, settings: ctx.settings() });
@@ -30,4 +38,20 @@ export function registerCleanupRoutes(app: FastifyInstance, ctx: AppContext): vo
     const { scopeKey: _key, ...view } = scan;
     return view;
   });
+
+  /** The owner's answers to findings of the newest scan of a scope (AC 19 to AC 22, AC 25). */
+  bind(app, "memory.cleanup.decisions", async ({ body }) =>
+    saveCleanupDecisions(ctx.db, cleanupScanFor(ctx.cleanup, body.scanId, "decide"), body.decisions),
+  );
+
+  /** Move what was marked under memory/ to the archive, and list what lies outside it (AC 27 to AC 31). */
+  bind(app, "memory.cleanup.apply", async ({ body }) => {
+    const scan = cleanupScanFor(ctx.cleanup, body.scanId, "apply");
+    return applyCleanup({ ...env(), db: ctx.db, indexer: ctx.indexer }, scan);
+  });
+
+  /** Move back what an apply archived, by its manifest (AC 32, AC 34). */
+  bind(app, "memory.cleanup.undo", async ({ body }) =>
+    undoCleanup({ ...env(), db: ctx.db, indexer: ctx.indexer }, body.manifest),
+  );
 }

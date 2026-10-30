@@ -127,6 +127,7 @@ export { linksOf } from "./memory/links.js";
 export { classifyNotePath, createNote, readNote, saveNote, saveProperties } from "./memory/notes.js";
 export { memoryTree } from "./memory/tree.js";
 export { cleanupInventory, resolveCleanupScope } from "./memory/cleanup.js";
+export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from "./memory/cleanupApply.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
 export { buildGraph, relatedFiles, type GraphData, type GraphNode, type GraphEdge } from "./memory/graph.js";

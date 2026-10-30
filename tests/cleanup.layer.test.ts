@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,7 +9,13 @@ import { AppContext } from "../apps/api/src/context.js";
 import type { Settings } from "../core/src/config/schema.js";
 import { MIGRATIONS } from "../core/src/db/migrations.js";
 import { cleanupInventory, resolveCleanupScope, type CleanupInventory } from "../core/src/memory/cleanup.js";
-import { scanCleanupScope, type CleanupFinding } from "../core/src/memory/cleanupScan.js";
+import {
+  scanCleanupScope,
+  type CleanupFinding,
+  type CleanupScanRecord,
+} from "../core/src/memory/cleanupScan.js";
+import { cleanupDecisionRefusal, saveCleanupDecisions } from "../core/src/memory/cleanupApply.js";
+import ts from "typescript";
 import { MINHASH_ALGO, minhashShingles, minhashSignature } from "../core/src/memory/minhash.js";
 import * as safeFs from "../core/src/security/safeFs.js";
 import { makeTempHome } from "./helpers.js";
@@ -18,7 +25,9 @@ import { makeTempHome } from "./helpers.js";
  * policy rows 1 and 2), with no HTTP: the scope and the inventory (`resolveCleanupScope`, `cleanupInventory`), the
  * scanner's finding rules (`scanCleanupScope`), the MinHash (`minhash.ts`) and migration 24. "Now" is the fixed clock
  * `NOW`; a file's age is `NOW - mtime` in whole days. The HTTP side of each claim is in `cleanup.inventory.test.ts` and
- * `cleanup.scan.test.ts`. Batch B adds the decision rules, the apply planner, the undo and the no-removal walker.
+ * `cleanup.scan.test.ts`. Batch B: the decision rules (`cleanupDecisionRefusal`, `saveCleanupDecisions`), door 7's
+ * literal key and the no-removal walker; the apply and the undo are proven through the routes in
+ * `cleanup.apply.test.ts`, and `moveWorkspaceFile` in `cleanup.move.test.ts`.
  */
 
 vi.mock("../core/src/security/safeFs.js", async (importOriginal) => {
@@ -658,19 +667,32 @@ describe("S2 the scanner's finding rules at their own layer", () => {
     expect(after!.key).not.toBe(keys.get("keep"));
   });
 
-  it("door 7 (added in build): two broken links of one note have two keys, and two empty folders two keys", async () => {
+  it("C84 door 7: a broken link's key hashes its member and the link (kind, target, line), an empty folder's its real path; two links of one note have two keys, two empty folders two keys", async () => {
     const dir = folder("porta7");
-    put(path.join(dir, "nota.md"), "# Nota\n[[um-alvo]]\n[[outro-alvo]]\n");
+    const note = put(path.join(dir, "nota.md"), "# Nota\n[[um-alvo]]\n[[outro-alvo]]\n");
     fs.mkdirSync(path.join(dir, "vazia-a"));
     fs.mkdirSync(path.join(dir, "vazia-b"));
     index();
     const { findings } = await scan(dir);
+    const hex = (text: string | Buffer) => crypto.createHash("sha256").update(text).digest("hex");
+    const sha = hex(fs.readFileSync(note));
     const broken = ofKind(findings, "broken-link");
-    expect(broken.map((f) => f.detail.target)).toEqual(["um-alvo", "outro-alvo"]);
-    expect(new Set(broken.map((f) => f.key)).size).toBe(2);
+    expect(broken.map((f) => [f.detail.target, f.detail.line, f.detail.linkKind])).toEqual([
+      ["um-alvo", 2, "wikilink"],
+      ["outro-alvo", 3, "wikilink"],
+    ]);
+    expect(broken.map((f) => f.key)).toEqual([
+      `broken-link:${hex(`${note}\u0000${sha}\n\u0001wikilink\u0000um-alvo\u00002`)}`,
+      `broken-link:${hex(`${note}\u0000${sha}\n\u0001wikilink\u0000outro-alvo\u00003`)}`,
+    ]);
     const empty = ofKind(findings, "empty-folder");
-    expect(empty).toHaveLength(2);
-    expect(new Set(empty.map((f) => f.key)).size).toBe(2);
+    expect(empty.map((f) => [f.files, f.key])).toEqual(
+      ["vazia-a", "vazia-b"].map((name) => [
+        [],
+        `empty-folder:${hex(`\u0001folder\u0000${fs.realpathSync(path.join(dir, name))}`)}`,
+      ]),
+    );
+    expect(new Set([...broken, ...empty].map((f) => f.key)).size).toBe(4);
   });
 
   it("C27 memory/archive/, ROUTER.md, areas/, journal/ and contexts/ give no finding, one case per place; maps/ and inbox/ do; an excluded file gives none", async () => {
@@ -705,5 +727,209 @@ describe("S2 the scanner's finding rules at their own layer", () => {
     expect(about(reported.maps).sort()).toEqual(["orphan", "stale", "untitled"]);
     expect(about(reported.inbox).sort()).toEqual(["orphan", "stale", "untitled"]);
     expect(about(excluded)).toEqual([]);
+  });
+});
+
+describe("S3 the decision rules at their own layer", () => {
+  const finding = (kind: CleanupFinding["kind"], key: string, ids: number[]): CleanupFinding => ({
+    key,
+    kind,
+    files: ids.map((id) => ({ id, path: `/x/${id}.md`, size: 1, mtime: 1, sha256: "0".repeat(64) })),
+    detail: {},
+    suggested: "keep",
+  });
+  const dup = finding("duplicate", `duplicate:${"1".repeat(64)}`, [11, 12]);
+  const near = finding("near-duplicate", `near-duplicate:${"2".repeat(64)}`, [21, 22]);
+  const orphan = finding("orphan", `orphan:${"3".repeat(64)}`, [31]);
+  const findings = [dup, near, orphan];
+
+  it("C35 each refused entry is refused for its own reason: the same entry with that one thing right is accepted; one refused entry stores nothing of its request", () => {
+    // [the refusal, the entry, the same entry with only that reason taken away, a word of the reason]
+    const cases: Array<[string, Json, Json, string]> = [
+      [
+        "a key the scan did not report",
+        { key: `orphan:${"9".repeat(64)}`, decision: "keep" },
+        { key: orphan.key, decision: "keep" },
+        "no finding",
+      ],
+      [
+        "decision delete",
+        { key: orphan.key, decision: "delete" },
+        { key: orphan.key, decision: "archive" },
+        "Not a decision",
+      ],
+      [
+        "merge without keepFileId",
+        { key: dup.key, decision: "merge" },
+        { key: dup.key, decision: "merge", keepFileId: 12 },
+        "keepFileId",
+      ],
+      [
+        "merge with an id outside the finding",
+        { key: dup.key, decision: "merge", keepFileId: 31 },
+        { key: dup.key, decision: "merge", keepFileId: 11 },
+        "not a member",
+      ],
+      [
+        "merge on an orphan",
+        { key: orphan.key, decision: "merge", keepFileId: 31 },
+        { key: near.key, decision: "merge", keepFileId: 21 },
+        "duplicate",
+      ],
+      [
+        "snooze without until",
+        { key: orphan.key, decision: "snooze" },
+        { key: orphan.key, decision: "snooze", until: NOW + 1 },
+        "until",
+      ],
+      [
+        "snooze until a second ago",
+        { key: orphan.key, decision: "snooze", until: NOW - 1000 },
+        { key: orphan.key, decision: "snooze", until: NOW + 1000 },
+        "later than now",
+      ],
+    ];
+    for (const [name, bad, good, why] of cases) {
+      expect(cleanupDecisionRefusal(findings, good as never, NOW), `${name}: the right one`).toBeNull();
+      expect(cleanupDecisionRefusal(findings, bad as never, NOW), name).toContain(why);
+    }
+    // the edge of until: now itself is not later than now
+    expect(
+      cleanupDecisionRefusal(findings, { key: orphan.key, decision: "snooze", until: NOW }, NOW),
+    ).toContain("later than now");
+
+    const scope = `dir:/c35/${++seq}`;
+    const scanRecord = { scopeKey: scope, findings } as unknown as CleanupScanRecord;
+    const stored = () =>
+      ctx.db.prepare("SELECT COUNT(*) AS n FROM cleanup_decisions WHERE scope = ?").get(scope) as {
+        n: number;
+      };
+    for (const [name, bad] of cases) {
+      expect(
+        () =>
+          saveCleanupDecisions(ctx.db, scanRecord, [{ key: dup.key, decision: "keep" }, bad as never], {
+            now: NOW,
+          }),
+        name,
+      ).toThrow(expect.objectContaining({ statusCode: 400, code: "validation" }));
+      expect(stored().n, name).toBe(0);
+    }
+    expect(
+      saveCleanupDecisions(
+        ctx.db,
+        scanRecord,
+        cases.map(([, , good]) => good as never),
+        { now: NOW },
+      ).saved,
+    ).toBe(7);
+    // one row per (scope, key): the later entry for a key replaces the earlier
+    expect(stored().n).toBe(3);
+  });
+});
+
+describe("S4 nothing removes a user file", () => {
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+  const REMOVERS = new Set(["unlink", "unlinkSync", "rm", "rmSync", "rmdir", "rmdirSync"]);
+  interface Removal {
+    file: string;
+    fn: string;
+    name: string;
+    args: string;
+    pos: number;
+  }
+  /** Every call whose callee ends in a name that removes a directory entry, with the function it sits in. */
+  function removals(file: string, text: string, only?: string): Removal[] {
+    const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+    const out: Removal[] = [];
+    const visit = (node: ts.Node, fn: string | null) => {
+      let here = fn;
+      if (ts.isFunctionDeclaration(node) && node.name) here = node.name.text;
+      if (ts.isCallExpression(node) && (only === undefined || here === only)) {
+        const callee = node.expression;
+        const name = ts.isIdentifier(callee)
+          ? callee.text
+          : ts.isPropertyAccessExpression(callee)
+            ? callee.name.text
+            : null;
+        if (name && REMOVERS.has(name))
+          out.push({
+            file,
+            fn: here ?? "",
+            name,
+            args: node.arguments.map((a) => a.getText(sf)).join(", "),
+            pos: node.getStart(sf),
+          });
+      }
+      ts.forEachChild(node, (child) => visit(child, here));
+    };
+    visit(sf, null);
+    return out;
+  }
+
+  it("C50 the walker sees fs.unlinkSync, fs.rmSync, fs.promises.rm and a destructured unlink, and not the word in a comment or a string", () => {
+    const sample = [
+      'import fs from "node:fs";',
+      "const { unlink } = fs.promises;",
+      "export function f(p: string) {",
+      "  // fs.unlinkSync(p) in a comment",
+      '  const s = "fs.rmSync(p)";',
+      "  fs.unlinkSync(p);",
+      "  fs.rmSync(p, { force: true });",
+      "  void fs.promises.rm(p);",
+      "  void unlink(p);",
+      "  return s;",
+      "}",
+    ].join("\n");
+    expect(removals("sample.ts", sample).map((r) => `${r.name}(${r.args})`)).toEqual([
+      "unlinkSync(p)",
+      "rmSync(p, { force: true })",
+      "rm(p)",
+      "unlink(p)",
+    ]);
+  });
+
+  it("C50 in the new cleanup modules and moveWorkspaceFile, the only removals are one unlink of from after the copy's hash check, and one rmdir of an empty archive folder in the undo", () => {
+    const read = (rel: string) => fs.readFileSync(path.join(repoRoot, rel), "utf8");
+    const modules = [
+      "core/src/memory/cleanup.ts",
+      "core/src/memory/cleanupScan.ts",
+      "core/src/memory/cleanupApply.ts",
+      "core/src/memory/minhash.ts",
+      "apps/api/src/routes/cleanup.ts",
+    ];
+    const found = [
+      ...modules.flatMap((rel) => removals(rel, read(rel))),
+      ...removals(
+        "core/src/security/safeWrite.ts",
+        read("core/src/security/safeWrite.ts"),
+        "moveWorkspaceFile",
+      ),
+    ];
+    expect(found.map((r) => `${r.file} ${r.fn} ${r.name}(${r.args})`)).toEqual([
+      "core/src/memory/cleanupApply.ts removeEmptyArchive rmdirSync(dir)",
+      "core/src/security/safeWrite.ts moveWorkspaceFile unlinkSync(realFrom)",
+    ]);
+    // the unlink comes after the copy is hashed and compared, in the same function
+    const safeWrite = read("core/src/security/safeWrite.ts");
+    const unlinkAt = found.find((r) => r.name === "unlinkSync")!.pos;
+    const checkAt = safeWrite.indexOf("copy.sha256() !== sha256");
+    expect(checkAt).toBeGreaterThan(safeWrite.indexOf("export function moveWorkspaceFile"));
+    expect(checkAt).toBeLessThan(unlinkAt);
+    // the rmdir is the undo's: removeEmptyArchive is called from undoCleanup and from nowhere else
+    const apply = read("core/src/memory/cleanupApply.ts");
+    const sf = ts.createSourceFile("cleanupApply.ts", apply, ts.ScriptTarget.Latest, true);
+    const callers: string[] = [];
+    const visit = (node: ts.Node, fn: string | null) => {
+      const here = ts.isFunctionDeclaration(node) && node.name ? node.name.text : fn;
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "removeEmptyArchive"
+      )
+        callers.push(here ?? "");
+      ts.forEachChild(node, (child) => visit(child, here));
+    };
+    visit(sf, null);
+    expect(callers).toEqual(["undoCleanup"]);
   });
 });

@@ -6,7 +6,14 @@ import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { API, routeKey, type RouteDefinition } from "@mordomo/contracts";
-import { SkillRegistry, b64url, createNote, type Fetcher } from "@mordomo/core/internal";
+import {
+  SkillRegistry,
+  applyCleanup,
+  b64url,
+  createNote,
+  saveCleanupDecisions,
+  type Fetcher,
+} from "@mordomo/core/internal";
 import { AppContext } from "../../apps/api/src/context.js";
 import { buildServer } from "../../apps/api/src/server.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "../helpers.js";
@@ -352,6 +359,25 @@ async function scanEnded(w: World, scanId: string | undefined): Promise<void> {
   }
 }
 
+/**
+ * A finished cleanup scan of a new folder under memory/notes/ holding one untitled note, and that finding's key; with
+ * `archive`, the decision to archive it is stored too. Made through the engine, so the scenario's only request is its
+ * own route's.
+ */
+async function cleanupReady(w: World, archive = false): Promise<{ scanId: string; key: string }> {
+  const dir = path.join(w.ctx.paths.memory, "notes", `faxina-${uuid().slice(0, 8)}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "sem-titulo.md");
+  fs.writeFileSync(file, `sem titulo ${uuid()}\n`);
+  await w.ctx.indexer.requestIndexPaths([file]);
+  const scanId = w.ctx.cleanup.start({ dir });
+  await scanEnded(w, scanId);
+  const scan = w.ctx.cleanup.get(scanId)!;
+  const key = scan.findings.find((f) => f.kind === "untitled")?.key ?? "";
+  if (archive) saveCleanupDecisions(w.ctx.db, scan, [{ key, decision: "archive" }]);
+  return { scanId, key };
+}
+
 export const SCENARIOS: Record<string, Scenario> = {
   // ---- reads
   [key("GET", "/api/system/info")]: { run: (w) => w.call("GET", "/api/system/info") },
@@ -456,6 +482,32 @@ export const SCENARIOS: Record<string, Scenario> = {
       const scanId = w.ctx.cleanup.start({ dir: w.workspace });
       await scanEnded(w, scanId);
       return w.call("GET", `/api/memory/cleanup/scans/${scanId}`);
+    },
+  },
+  // cerebro-faxina-guiada, batch B: the owner's answer to a finding, the apply of an archived one, and its undo.
+  [key("PUT", "/api/memory/cleanup/decisions")]: {
+    run: async (w) => {
+      const { scanId, key: finding } = await cleanupReady(w);
+      return w.call("PUT", "/api/memory/cleanup/decisions", {
+        scanId,
+        decisions: [{ key: finding, decision: "keep" }],
+      });
+    },
+  },
+  [key("POST", "/api/memory/cleanup/apply")]: {
+    run: async (w) => {
+      const { scanId } = await cleanupReady(w, true);
+      return w.call("POST", "/api/memory/cleanup/apply", { scanId });
+    },
+  },
+  [key("POST", "/api/memory/cleanup/undo")]: {
+    run: async (w) => {
+      const { scanId } = await cleanupReady(w, true);
+      const applied = applyCleanup(
+        { paths: w.ctx.paths, settings: w.ctx.settings(), db: w.ctx.db, indexer: w.ctx.indexer },
+        w.ctx.cleanup.get(scanId)!,
+      );
+      return w.call("POST", "/api/memory/cleanup/undo", { manifest: applied.manifest });
     },
   },
   [key("GET", "/api/memory/recall")]: { run: (w) => w.call("GET", "/api/memory/recall?q=Alfa&record=false") },

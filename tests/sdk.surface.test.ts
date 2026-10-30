@@ -138,6 +138,11 @@ describe("S5 the surface is a closed list", () => {
         // cerebro-faxina-guiada: the scope of a cleanup and its inventory (door 5)
         "cleanupInventory",
         "resolveCleanupScope",
+        // cerebro-faxina-guiada, batch B: the decisions, the apply and the undo (doors 1, 3, 4 and 5)
+        "applyCleanup",
+        "cleanupScanFor",
+        "saveCleanupDecisions",
+        "undoCleanup",
       ].sort(),
     );
   });

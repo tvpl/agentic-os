@@ -303,6 +303,17 @@ Proof: `npm run bundle:check`
 **C83** - Every row of design.md's "Texto" table (27 rows) is a key of `en` and `ptBR` in `locales/brain.ts` with that text, and both locales hold the same keys (design.md, "Texto")
 Proof: `npm run test -w apps/command-centre -- src/brain/cleanup/cleanupCopy.test.ts -t "C83 "`
 
+### Checks acrescentados na construção
+
+Added after approval, while building, one per door a builder added (L-047): the approved C1-C83 are as they were.
+
+**C84** - Door 7's key, as plan.md states it: a `broken-link` finding's key is `broken-link:` and the SHA-256 (hex) of `<member path>\u0000<SHA-256 of its bytes>`, a newline, and `\u0001<linkKind>\u0000<target>\u0000<line>`; an `empty-folder` finding (`files: []`) has `empty-folder:` and the SHA-256 of `\u0001folder\u0000<the folder's real path>`; so the links `[[um-alvo]]` (line 2) and `[[outro-alvo]]` (line 3) of one note and the empty folders `vazia-a/` and `vazia-b/` have four different keys, each equal to that literal, and through the routes a `keep` stored by `PUT /decisions` on the first link's key hides that link from the next scan (`decided` 1) and still reports the other (door 7, AC 11, AC 13; added in batch B for batch A's door 7)
+Proof: `npx vitest run tests/cleanup.layer.test.ts -t "C84 "`
+Proof: `npx vitest run tests/cleanup.decisions.test.ts -t "C84 "`
+
+**C85** - After `POST /api/memory/cleanup/undo` moved every entry of a manifest back, the manifest is at `<home>/artifacts/cleanup/<AAAA-MM-DD>-<8 hex>.manifest.json` (the archive folder's name) with the same bytes, and the archive folder is gone, leaving `memory/archive/` empty (door 8, AC 32; added in batch B)
+Proof: `npx vitest run tests/cleanup.apply.test.ts -t "C85 "`
+
 ## Coverage
 
 | Set (size)                                               | Member -> proof                                                                                                                                                                                                                                                                                          | Unproven |
@@ -315,7 +326,7 @@ Proof: `npm run test -w apps/command-centre -- src/brain/cleanup/cleanupCopy.tes
 | `POST /api/memory/cleanup/undo` statuses (4)             | 200 C48 · 400 C49 · 404 C49 · 409 C49                                                                                                                                                                                                                                                                    | -        |
 | named error codes, as (status, code) pairs (9)           | `400 scope_required` C8, C9 · `404 context_not_found` C9 · `400 validation` C9, C35, C49 · `404 not_found` C11, C36, C47, C49 · `409 scan_running` C28, C47 · `409 scan_stale` C36, C47 · `409 restore_in_progress` C29, C47, C49 · `409 undo_conflict` C49 · `403 scope_required` (device) C75          | -        |
 | routes that take a `scanId` (3)                          | `GET /scans/:id` C11 · `PUT /decisions` C33, C36 · `POST /apply` C41, C47                                                                                                                                                                                                                                | -        |
-| doors of Landing (6)                                     | 1 C38, C39, C40 · 2 C14, C15, C16 · 3 C17, C25, C33 · 4 C41, C48 · 5 C74 · 6 C10, C77                                                                                                                                                                                                                    | -        |
+| doors of Landing (8)                                     | 1 C38, C39, C40 · 2 C14, C15, C16 · 3 C17, C25, C33 · 4 C41, C48 · 5 C74 · 6 C10, C77 · 7 C84 (added in build) · 8 C85 (added in build)                                                                                                                                                                  | -        |
 | stored shapes (4)                                        | `file_minhash` C15 · `cleanup_decisions` C17 · `manifest.json` C41 · `settings.memory.cleanup` C32                                                                                                                                                                                                       | -        |
 | startup config: `memory.cleanup` thresholds (1 assembly) | the service (`AppContext`, behind every cleanup route) C18, C23, C32                                                                                                                                                                                                                                     | -        |
 | scope kinds (7)                                          | context C1, C7 · `dir` in an indexed folder C8 · `dir` under `memory/` C8 · `dir` outside every root C8 · none C9 · `context=all` C9 · `context` and `dir` C9                                                                                                                                            | -        |
@@ -347,8 +358,8 @@ Proof: `npm run test -w apps/command-centre -- src/brain/cleanup/cleanupCopy.tes
 | themes (2)                                               | light C80, C81 · dark C80, C81                                                                                                                                                                                                                                                                           | -        |
 | design.md copy (27 rows)                                 | C83, table-driven over all 27                                                                                                                                                                                                                                                                            | -        |
 
-- Claims naming a status code, route or response shape: C1, C8-C11, C21, C28, C29, C32-C37, C41-C49, C74-C77, C79 -
-  each proven through `app.inject` against `buildServer`; C2-C7, C12-C20, C22-C27, C35, C50 also or only at their own layer,
+- Claims naming a status code, route or response shape: C1, C8-C11, C21, C28, C29, C32-C37, C41-C49, C74-C77, C79, C84, C85 -
+  each proven through `app.inject` against `buildServer`; C2-C7, C12-C20, C22-C27, C35, C50, C84 also or only at their own layer,
   with no HTTP; C38-C40 at the primitive's own layer
 - Claims about the screens: C51-C73, C83 in rendered components; C51, C55, C80, C81 also in a real browser, both shells
   where the claim names them
@@ -508,3 +519,11 @@ Status of batch A (updated in the commit that closes each piece):
 - **Abandoned:** finding duplicates from the indexed text (a binary has none, and the text is cut at 200 000
   characters); a column for the file's hash in `file_minhash` (door 2's literal shape has none); a route that cancels a
   scan (amendment 17); exporting the cleanup constants from `@mordomo/contracts`.
+
+Status of batch B (updated in the commit that closes each piece):
+
+- the decisions (S3: C33-C37), the apply and the undo with `moveWorkspaceFile` (S4: C38-C50), the API's cross-cutting
+  checks (C74-C79) and the checks added in build (C84 for batch A's door 7, C85 for door 8): closed, every proof green in
+  `tests/cleanup.decisions.test.ts`, `tests/cleanup.apply.test.ts`, `tests/cleanup.move.test.ts`,
+  `tests/cleanup.contract.test.ts` and `tests/cleanup.layer.test.ts`, with the three routes of batch B in the contract
+  (`PUT /api/memory/cleanup/decisions`, `POST /api/memory/cleanup/apply`, `POST /api/memory/cleanup/undo`)

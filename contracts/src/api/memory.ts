@@ -476,6 +476,36 @@ const CleanupScanSchema = z.object({
   decided: z.number().int().min(0),
 });
 
+/** Why an apply or an undo left a file where it was (AC 28, AC 29, AC 32). */
+const CLEANUP_SKIP_REASONS = ["changed", "missing", "exists", "forbidden_path"] as const;
+const CleanupSkippedSchema = z.array(z.object({ path: z.string(), reason: z.enum(CLEANUP_SKIP_REASONS) }));
+const CleanupMovesSchema = z.array(z.object({ from: z.string(), to: z.string() }));
+
+const CleanupDecisionsBody = z.object({
+  scanId: z.string().min(1).max(64),
+  decisions: z
+    .array(
+      z.object({
+        /** A finding's key, as the scan reported it. */
+        key: z.string().min(1).max(200),
+        decision: z.enum(CLEANUP_DECISIONS),
+        /** `merge`: the member that stays. */
+        keepFileId: z.number().int().optional(),
+        /** `snooze`: until when, in milliseconds since the epoch (later than now). */
+        until: z.number().int().optional(),
+      }),
+    )
+    .min(1)
+    .max(5000),
+});
+
+const cleanupScanStale = err(409, "scan_stale", "A newer scan of the same scope replaced this one");
+const cleanupRestoreInProgress = err(
+  409,
+  "restore_in_progress",
+  "A restore holds the home; try again when it has finished",
+);
+
 const cleanupScopeRequired = err(
   400,
   "scope_required",
@@ -824,6 +854,63 @@ export const memoryRoutes = {
     params: IdParams,
     responses: { 200: CleanupScanSchema },
     errors: [notFound("The scan")],
+  }),
+  "memory.cleanup.decisions": route({
+    method: "PUT",
+    path: "/api/memory/cleanup/decisions",
+    summary:
+      "Store the owner's answers to findings of a scan (keep, archive, merge, snooze, unsure), one per finding of the scope; all or none",
+    tag: "memory",
+    scope: "owner",
+    body: CleanupDecisionsBody,
+    responses: { 200: z.object({ saved: z.number().int().min(0) }) },
+    errors: [notFound("The scan"), cleanupScanStale],
+  }),
+  "memory.cleanup.apply": route({
+    method: "POST",
+    path: "/api/memory/cleanup/apply",
+    summary:
+      "Apply the decisions on a finished scan: move what is under memory/ to memory/archive/AAAA-MM-DD-<id>/ with a manifest, and list what lies outside memory/ as proposals",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({ scanId: z.string().min(1).max(64) }),
+    responses: {
+      200: z.object({
+        /** The manifest of the moves; null when nothing moved. */
+        manifest: z.string().nullable(),
+        moved: CleanupMovesSchema,
+        skipped: CleanupSkippedSchema,
+        /** The proposal list under artifacts/cleanup/; null when there is none. */
+        proposals: z.string().nullable(),
+      }),
+    },
+    errors: [
+      notFound("The scan"),
+      err(409, "scan_running", "The scan has not finished; the message names it"),
+      cleanupScanStale,
+      cleanupRestoreInProgress,
+    ],
+  }),
+  "memory.cleanup.undo": route({
+    method: "POST",
+    path: "/api/memory/cleanup/undo",
+    summary:
+      "Move back what an apply archived, by its manifest: each file still as it was left and whose origin is free",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      manifest: z.string().min(1).max(4096).refine(isAbsolutePath, "manifest: an absolute path"),
+    }),
+    responses: { 200: z.object({ restored: CleanupMovesSchema, skipped: CleanupSkippedSchema }) },
+    errors: [
+      notFound("The manifest"),
+      err(
+        409,
+        "undo_conflict",
+        "The manifest is not one this version can undo (its v is not 1, or it names a path outside its archive)",
+      ),
+      cleanupRestoreInProgress,
+    ],
   }),
   "memory.routers": route({
     method: "POST",

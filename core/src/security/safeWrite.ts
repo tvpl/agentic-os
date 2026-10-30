@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { EditConflictError } from "../errors.js";
-import { realpathLenient } from "./paths.js";
+import { EditConflictError, PathAccessError } from "../errors.js";
+import { isInside, realpathLenient } from "./paths.js";
 import {
   O_NOFOLLOW,
   O_NONBLOCK,
@@ -364,6 +364,129 @@ function removeIfStillOurs(real: string, ours: fs.Stats): void {
     if (named.isFile() && named.ino === ours.ino && named.dev === ours.dev) fs.unlinkSync(real);
   } catch {
     /* gone already, or not ours to remove */
+  }
+}
+
+/** What `moveWorkspaceFile` did: the real paths, the bytes' SHA-256 (hex) and size, and how. */
+export interface MovedFile {
+  from: string;
+  to: string;
+  sha256: string;
+  size: number;
+  /** `rename` on one device, or a confirmed copy and then the removal of the origin. */
+  how: "rename" | "copy";
+}
+
+/** `to` is taken (a file, a folder or a link, a dangling one included): nothing was moved. */
+function destinationExists(to: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(`The destination exists: ${to}`), { code: "EEXIST" });
+}
+
+/**
+ * Refuse a link on the way to `candidate`, the last component included (`moveWorkspaceFile`): every component below
+ * the scope's root that holds it, as given, is looked at with `lstat` and never followed. A path under no root of the
+ * scope, as given, is refused.
+ */
+function assertNoLinkOnTheWay(scope: ReadScope, candidate: string): void {
+  const full = path.resolve(candidate);
+  const root = scope.roots
+    .map((r) => path.resolve(r))
+    .filter((r) => isInside(r, full))
+    .sort((a, b) => b.length - a.length)[0];
+  if (root === undefined) throw new PathAccessError(candidate);
+  let at = root;
+  for (const part of path.relative(root, full).split(path.sep).filter(Boolean)) {
+    at = path.join(at, part);
+    let info: fs.Stats;
+    try {
+      info = fs.lstatSync(at);
+    } catch {
+      return; // nothing further exists: nothing further can be a link
+    }
+    if (info.isSymbolicLink())
+      throw new PathAccessError(candidate, `Refusing to move through a link: ${candidate}`);
+  }
+}
+
+/**
+ * Move a file the engine owns inside the scope (.specs/features/cerebro-faxina-guiada, door 1), never deleting one
+ * without a confirmed copy:
+ *
+ *  - a link anywhere on the way to `from` or to `to` (the last component included) is refused, and so is a path the
+ *    filter refuses (`PathAccessError`);
+ *  - `to` must not exist, a dangling link included (`EEXIST`);
+ *  - `from` is opened `O_NOFOLLOW` and hashed through that descriptor; other bytes than `expectSha256`, or another
+ *    file under the name after the open, is `EditConflictError`, before anything moves;
+ *  - on one device the file is renamed (the same inode); on another (`EXDEV`) it is written to `to` by
+ *    `writeWorkspaceFile(..., { mode: "create" })`, the copy is hashed again from the disk, and only a copy with the
+ *    same SHA-256 lets the origin go. A copy that differs is taken away again (only that very file, by device and
+ *    inode) and `from` stays.
+ *
+ * Missing parent folders of `to` are made. The whole file is held in memory for a copy across devices.
+ */
+export function moveWorkspaceFile(
+  scope: ReadScope,
+  from: string,
+  to: string,
+  options: { expectSha256?: string } = {},
+): MovedFile {
+  assertNoLinkOnTheWay(scope, from);
+  // the folders on the way to `to`; a name already at `to` itself, a link included, is `EEXIST`
+  assertNoLinkOnTheWay(scope, path.dirname(path.resolve(to)));
+  const taken = (at: string): boolean => {
+    try {
+      fs.lstatSync(at);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (taken(path.resolve(to))) throw destinationExists(to);
+  const realTo = assertWritablePath(scope, to);
+  const file = openWorkspaceFile(scope, from);
+  try {
+    const realFrom = file.path;
+    const sha256 = file.sha256();
+    if (options.expectSha256 !== undefined && sha256 !== options.expectSha256) throw new EditConflictError();
+    const stillOrigin = (): boolean => {
+      if (process.platform === "win32") return true;
+      try {
+        const named = fs.lstatSync(realFrom);
+        return named.ino === file.stat.ino && named.dev === file.stat.dev;
+      } catch {
+        return false;
+      }
+    };
+    // The bytes were read through the descriptor: the name must still be that file, or what moves is not what was seen.
+    if (!stillOrigin()) throw new EditConflictError();
+    fs.mkdirSync(path.dirname(realTo), { recursive: true });
+    assertNoLinkOnTheWay(scope, path.dirname(path.resolve(to)));
+    if (taken(realTo)) throw destinationExists(to);
+    if (assertWritablePath(scope, to) !== realTo) throw changed(to);
+    const size = file.stat.size;
+    try {
+      fs.renameSync(realFrom, realTo);
+      return { from: realFrom, to: realTo, sha256, size, how: "rename" };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EXDEV") throw err;
+    }
+    // Another device: a copy, confirmed by its hash read back from the disk, and only then the origin goes.
+    const { bytes } = file.readBytes(size);
+    if (crypto.createHash("sha256").update(bytes).digest("hex") !== sha256) throw new EditConflictError();
+    writeWorkspaceFile(scope, realTo, bytes, { mode: "create", fileMode: file.stat.mode & 0o777 });
+    const copy = openWorkspaceFile(scope, realTo);
+    try {
+      if (copy.sha256() !== sha256 || !stillOrigin()) {
+        removeIfStillOurs(realTo, copy.stat);
+        throw new EditConflictError();
+      }
+    } finally {
+      copy.close();
+    }
+    fs.unlinkSync(realFrom);
+    return { from: realFrom, to: realTo, sha256, size, how: "copy" };
+  } finally {
+    file.close();
   }
 }
 

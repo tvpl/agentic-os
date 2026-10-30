@@ -863,6 +863,45 @@ describe("S3 the API and the CLI start nothing of their own", () => {
         "      ]);",
       ],
     },
+    // cerebro-faxina-guiada, batch B, added three owner routes (the decisions, the apply and the undo): only the totals
+    // the suite pins moved again, on top of batch A's.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada batch B: three routes more under /api",
+      base: ["    expect(routes).toHaveLength(140);"],
+      head: ["    expect(routes).toHaveLength(143);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada batch B: owners and scoped routes",
+      base: ["    expect([owners, scoped]).toEqual([71, 69]);"],
+      head: ["    expect([owners, scoped]).toEqual([74, 69]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada batch B: the registered routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(140);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(143);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada batch B: the routes of each scope, in the router and in the document",
+      times: 2,
+      base: ["toEqual({ owner: 71, monitor: 33, content: 29, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 74, monitor: 33, content: 29, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada batch B: the routes after the pairing passes",
+      base: ["    expect(apiRoutes()).toHaveLength(140);"],
+      head: ["    expect(apiRoutes()).toHaveLength(143);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-faxina-guiada batch B: the operations of the route document",
+      base: ["    expect(operations).toBe(142);"],
+      head: ["    expect(operations).toBe(145);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {
