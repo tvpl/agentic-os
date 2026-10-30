@@ -491,3 +491,6 @@ Status of batch B (updated in the commit that closes each piece):
 - the tabs, the Home, the reader and the panel (S5): C43-C45, C47-C53 and C55 closed, every proof green in
   `apps/command-centre/src/brain/notes/NoteTabs.test.tsx`, `NoteReader.test.tsx` and `NotePanel.test.tsx`; C46 and
   C54 have their unit proofs green there, and close with their browser proofs
+- one data layer for the three screens (S8: C72-C74): closed, every proof green in
+  `apps/command-centre/src/brain/memoryData.test.ts`; "Grafo | Notas" and its commands and key (C30) closed in
+  `notesCommands.test.ts`; C29 has its unit proof green in `NotesView.test.tsx` and closes with its browser proof

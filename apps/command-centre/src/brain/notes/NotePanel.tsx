@@ -1,7 +1,7 @@
 /**
  * The note panel (.specs/features/cerebro-vista-notas, AC 22; design.md "Painel da nota"): three sections that fold,
  * in this order: the links section of `cerebro-v2` ("Backlinks" and "Links quebrados", unchanged), "Relacionadas" from
- * `GET /api/memory/related` in the active context with each `why`, and "Nesta nota", the `##` headings of the body
+ * the index (`useRelatedFiles` of `brain/memoryData.ts`) in the active context with each `why`, and "Nesta nota", the `##` headings of the body
  * (choosing one scrolls to it). Each section loads and fails on its own.
  */
 import { useId, useMemo, useState, type ReactNode } from "react";
