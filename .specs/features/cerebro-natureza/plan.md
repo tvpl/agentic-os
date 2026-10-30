@@ -37,38 +37,47 @@ sentinelas com chave de dedupe por dia (`sentinels/runner.ts`, `types.ts`), o gr
 (`notifications/recorder.ts`), a tabela `facts` e o bloco de regras do compilador (`sync/compiler.ts`); nada de agendador,
 de escritor de nota nem de inbox novos.
 
-1. Indexação → `MemoryIndexer` (exists) lê do cabeçalho `natureza`, `escopo` e `review_every` (door 1) junto com `type`,
-   `status`, `updated` e `last_reviewed` (já da porta 6 de `cerebro-organizar`) para `fields`, e os blocos `> [!natureza]`
-   do corpo para `note_passages` (door 2), com a linha de início e de fim.
+1. Indexação → `MemoryIndexer` (exists) já guarda em `files.fields` o `natureza`, o `escopo` e o `review_every` do cabeçalho
+   (porta 6 de `cerebro-organizar`, `FRONT_MATTER_FIELDS` de `frontMatter.ts`, que ganha `abandoned`, "Emendas" 13) junto com
+   `type`, `status`, `updated` e `last_reviewed`, como texto; a lista fechada da door 1 vale quando a natureza é lida, não
+   na gravação ("Emendas" 2); os blocos `> [!natureza]` do corpo vão para `note_passages` (door 2, migração 25, "Emendas"
+   1), com a linha de início e de fim, e as notas que não mudaram ganham as passagens do texto de `files_fts`.
 2. Busca → `searchFiles` (exists) e `SemanticSearch.search` (exists) aceitam `natureza` e `escopo`; cada linha ganha a
    natureza da nota.
 3. Recall → `recall` (exists) aceita `natureza` e `escopo` e dá a cada trecho a natureza da passagem que o contém, ou a da
-   nota, ou a da seção dos arquivos gerados (`MEMORY.md`, diário: door 3), ou `null`.
+   nota, ou a da seção dos arquivos gerados (`MEMORY.md`, diário: door 3), ou `null`; a CLI `mordomo recall` (exists) põe o
+   rótulo na linha de cada trecho ("Emendas" 12).
 4. Cadência → `reviewsDue` (new, door 4 e door 5) em `core/src/memory/reviews.ts` (new, no door - placement per conventions)
-   cruza `fields` com a cadência de `settings.memory.reviews` e com `review_state` e devolve o que venceu.
+   cruza `fields` com a cadência de `settings.memory.reviews` e com `review_state`, no escopo de um contexto pela
+   `contextMembership` (exists, `cerebro-contextos`) mais `memory/notes/<id>/` ("Emendas" 5), e devolve o que venceu.
 5. Cobrança → `SentinelRunner.hourly` (exists) chama o sentinela `reviewDue` (door 5), que emite `sentinel.fired` uma vez por
-   dia; o gravador de notificações (exists) cria a linha do inbox com link para "Revisões".
-6. Decisão → `POST /api/memory/reviews` (new, door 4): numa nota de `memory/`, grava pelo `setProperties` de
-   `cerebro-vista-notas` (com `baseVersion`); fora de `memory/`, grava só em `review_state` (door 6); "virou realidade" pode
-   também chamar `assertFact` (exists) com `source_path`.
-7. Agentes → o compilador (exists) e `buildRunPrompt` (exists) levam o bloco fixo "Natureza da informação".
+   dia; o gravador de notificações (exists) cria a linha do inbox com link para "Revisões"; Configurações › Notificações
+   (`SentinelsCard`, exists) ganha a linha que o desliga ("Emendas" 16).
+6. Decisão → `POST /api/memory/reviews` (new, door 4): numa nota editável de `memory/` (`classifyNotePath`, exists), grava
+   pelo `saveProperties` de `cerebro-vista-notas` (com `baseVersion`); em todo arquivo que não é editável, grava só em
+   `review_state` (door 6, "Emendas" 4); "virou realidade" pode também chamar `assertFact` (exists) com `source_path`; pede ao
+   `MemoryIndexer.requestIndexPaths` (exists) a passada daquele caminho; `action: "restore"` devolve uma linha de
+   `review_state` ao que era ("Emendas" 7).
+7. Agentes → o compilador (exists) e `buildRunPrompt` (exists) levam o bloco fixo "Natureza da informação" ("Emendas" 11).
 8. Interface → a tela "Revisões" (new, no door - placement per conventions) nas duas interfaces, os selos e os filtros de
-   natureza na busca e no preview das telas do cérebro (exist).
+   natureza na busca e no preview das telas do cérebro (exist); "Desfazer" volta a nota por
+   `PUT /api/memory/notes/properties` (exists) e o fato por `POST /api/memory/facts/:id/retract` (exists) ("Emendas" 7).
 
 ## Impact
 
-| Front         | What changes                                                                                                                                                                                                                                                                                           |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| domain        | new term: `natureza` - o que uma nota ou passagem é em relação à realidade: `fato`, `opiniao`, `plano`, `hipotese`, `relato`; ausente = não classificada, nunca presumida fato                                                                                                                         |
-| domain        | new term: `escopo` - de quem é a informação: `pessoal`, `equipe`, `externo`; é rótulo, não permissão (o produto é de um dono só; permissão por pasta é de `cerebro-memoria-confiavel`)                                                                                                                 |
-| domain        | new term: `revisão` - a cobrança periódica de uma nota cuja cadência venceu; decidida por "ainda vale", "virou realidade", "mudei de ideia", "adiar" ou "não cobrar mais"                                                                                                                              |
-| domain        | existing term: `fields` de um arquivo ganham `natureza`, `escopo` e `review_every` - quem lê hoje: o grafo (`graph.ts:132`), o preview (`brain/PreviewPanel.tsx`), a consulta por campo (`fields.ts:95-117`)                                                                                           |
-| domain        | existing term: `RecallContext` ganha `natureza` e `escopo` (aditivo) - quem lê hoje: a CLI `mordomo recall`, a ferramenta MCP de recall (`apps/api/src/mcp/mordomo.ts`), a skill `recall`, a consolidação                                                                                              |
-| domain        | existing term: `status: archived` passa a ser o que "mudei de ideia" grava; o recall continua devolvendo a nota, com o selo de abandonada, e a busca a filtra só se pedirem                                                                                                                            |
-| stored data   | migração 22 (ou o próximo número livre na integração): `note_passages` e `review_state`, `CREATE TABLE IF NOT EXISTS`, nada altera linha existente; as passagens das notas que não mudaram são preenchidas do texto que o FTS já guarda (como o `backfillNoteLinks` da migração 20), sem reler o disco |
-| settings      | `settings.memory.reviews` (cadências, padrão abaixo) e `settings.sentinels.reviewDue` (`enabled`, padrão ligado)                                                                                                                                                                                       |
-| contrato REST | `GET /api/memory/search` e `GET /api/memory/recall` aceitam `natureza` e `escopo`; duas rotas novas; o enum `SentinelId` ganha `reviewDue`                                                                                                                                                             |
-| arquivos      | o `AGENTS.md`/`CLAUDE.md` compilado e o prompt das execuções com acesso à memória ganham um bloco de 6 linhas; as notas de `memory/` que a pessoa revisa ganham `last_reviewed` (e, conforme a decisão, `natureza`, `status`, `became_fact`, `abandoned`) no cabeçalho                                 |
+| Front         | What changes                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| domain        | new term: `natureza` - o que uma nota ou passagem é em relação à realidade: `fato`, `opiniao`, `plano`, `hipotese`, `relato`; ausente = não classificada, nunca presumida fato                                                                                                                                                                                                                                                                                             |
+| domain        | new term: `escopo` - de quem é a informação: `pessoal`, `equipe`, `externo`; é rótulo, não permissão (o produto é de um dono só; permissão por pasta é de `cerebro-memoria-confiavel`)                                                                                                                                                                                                                                                                                     |
+| domain        | new term: `revisão` - a cobrança periódica de uma nota cuja cadência venceu; decidida por "ainda vale", "virou realidade", "mudei de ideia", "adiar" ou "não cobrar mais"                                                                                                                                                                                                                                                                                                  |
+| domain        | existing term: `fields` de um arquivo ganham `natureza`, `escopo` e `review_every` - quem lê hoje: o grafo (`graph.ts:132`), o preview (`brain/PreviewPanel.tsx`), a consulta por campo (`fields.ts:95-117`)                                                                                                                                                                                                                                                               |
+| domain        | existing term: `RecallContext` ganha `natureza` e `escopo` (aditivo) - quem lê hoje: a CLI `mordomo recall`, a ferramenta MCP de recall (`apps/api/src/mcp/mordomo.ts`), a skill `recall`, a consolidação                                                                                                                                                                                                                                                                  |
+| domain        | existing term: `status: archived` passa a ser o que "mudei de ideia" grava; o recall continua devolvendo a nota, com o selo de abandonada, e a busca a filtra só se pedirem                                                                                                                                                                                                                                                                                                |
+| stored data   | migração 25 (a 22 é `drop-file-links` da `cerebro-correcoes`, a 23 `run-context` da `cerebro-contextos`, a 24 `cleanup` da `cerebro-faxina-guiada`; "Emendas" 1): `note_passages` e `review_state`, `CREATE TABLE IF NOT EXISTS`, nada altera linha existente; as passagens das notas que não mudaram são preenchidas do texto que o FTS já guarda (como o `backfillNoteLinks` da migração 20), sem reler o disco; `files.fields` continua como a C3 o grava ("Emendas" 2) |
+| settings      | `settings.memory.reviews` (cadências, padrão abaixo) e `settings.sentinels.reviewDue` (`enabled`, padrão ligado); `PUT /api/settings` troca `memory.reviews` inteiro (mescla `memory` um nível só) e `sentinels` inteiro ("Emendas" 16 e 17)                                                                                                                                                                                                                               |
+| contrato REST | `GET /api/memory/search` e `GET /api/memory/recall` aceitam `natureza` e `escopo`; duas rotas novas, com os acréscimos de "Emendas" 4, 6 e 7; o enum `SentinelId` e o schema v1 de `sentinel.fired` ganham `reviewDue`, e `docs/events.md` é regenerado ("Emendas" 16)                                                                                                                                                                                                     |
+| domain        | existing term: `became_fact` e `abandoned` passam a ser chaves de data das propriedades (porta 3 de `cerebro-vista-notas`) - quem lê hoje: a tabela de propriedades da vista de notas e `PUT /api/memory/notes/properties`, que passa a recusar nelas o que não é data ("Emendas" 3)                                                                                                                                                                                       |
+| arquivos      | o `AGENTS.md`/`CLAUDE.md` compilado e o prompt das execuções com acesso à memória ganham um bloco de 6 linhas; as notas de `memory/` que a pessoa revisa ganham `last_reviewed` (e, conforme a decisão, `natureza`, `status`, `became_fact`, `abandoned`) no cabeçalho                                                                                                                                                                                                     |
 
 ## Relations
 
@@ -259,6 +268,180 @@ o cabeçalho volta ao que era.
 | document notificação `reviewDue`                       | structure, what the reader does next       | AC 26                                                                                            |
 | collection fila de revisões                            | grouping, ordering, duplicates, exception  | AC 17-23; um arquivo aparece uma vez; o arquivo fora de `memory/` é a exceção (AC 28, AC 38)     |
 
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+O texto aprovado acima fica como foi aprovado, exceto `Flow` e `Impact`, que se mantêm verdadeiros. O plano e o `design.md`
+foram aprovados antes de `cerebro-correcoes` (C1), `cerebro-contextos` (C2), `cerebro-organizar` (C3),
+`cerebro-vista-notas` (C4) e `cerebro-faxina-guiada` (C5); o que as cinco construíram (AD-037 a AD-042, `git log` até
+`c672981`) e o que a derivação dos checks achou ficam aqui, cada um com o check de `checks.md` que o resolve. A emenda 7
+acrescenta uma ação à door 4 (`restore`) e a emenda 6 dois filtros e dois campos à `Surface` de `GET /api/memory/reviews`;
+as outras não mudam o formato literal de uma door, e as que dizem um código ou uma recusa a mais só estreitam. Nada aqui
+escreve uma natureza que a pessoa não escolheu (AC 48) nem um arquivo fora de `memory/` (door 6). As perguntas 1 e 2 seguem
+sem resposta, e os padrões delas valem: este vocabulário, e a cobrança diária ligada, no máximo uma notificação por dia.
+
+1. **Migração 25 (Impact, AC 6, doors 2 e 6).** A 22 é `drop-file-links` (C1), a 23 `run-context` (C2) e a 24 `cleanup`
+   (C5). `note_passages` e `review_state` nascem na migração 25, com os formatos literais das doors 2 e 6; o AC 6 vale para
+   ela. As passagens dos arquivos que não mudaram vêm do texto de `files_fts`, em fatias, com uma marca em `meta` escrita na
+   última (o padrão de `backfillNoteLinks`), e uma passada cortada no meio as faz de novo (C7, C8).
+2. **A lista fechada vale na leitura, não em `files.fields` (door 1, AC 1-3).** A C3 (door 6) grava em `fields` qualquer
+   texto de até 64 caracteres em `natureza`, `escopo` e `review_every`, e o C33 da C3 afirma que um `escopo` de 64 letras
+   `e` fica lá. A door 1 diz "lido como ausente": a lista fechada, a comparação depois de `normalizeFieldKey` e o limite de
+   `review_every` (1 a 3650 dias, ou `never`) valem onde esta feature lê a natureza (as linhas da busca, os trechos do
+   recall, a lista de revisões e os filtros), e `files.fields` fica como a C3 o grava. "SHALL store no `natureza`" dos AC 2
+   e 3 se lê: a `natureza` (ou o `escopo`, ou a cadência) que a busca, o recall e as revisões respondem é `null`, e a nota
+   aparece em "sem classificação". As linhas indexadas antes desta feature seguem a regra sem passada nova. O `chave:: valor`
+   do corpo vence antes da conferência (a regra da C3): um `natureza:: talvez` no corpo sobre um `natureza: plano` no
+   cabeçalho é ausente, e o cabeçalho não é consultado. A rota de propriedades da C4 continua escrevendo `review_every` só
+   até `999d` (C19 da C4); um `1000d` a `3650d` escrito à mão é lido (C2, C3, C69).
+3. **`became_fact` e `abandoned` são datas (door 4, AC 31, AC 32, porta 3 da C4).** O `setProperties` da C4 escreve entre
+   aspas um texto que começa por dígito (`became_fact: "2026-10-30"`). Para o formato literal da door 4
+   (`became_fact: AAAA-MM-DD`, `abandoned: AAAA-MM-DD`) as duas chaves entram nas chaves de data da porta 3 da C4: são escritas
+   sem aspas, a tabela de propriedades as mostra como data, e `PUT /api/memory/notes/properties` passa a recusar nelas o que
+   não é `AAAA-MM-DD` (`400 validation`), o que só estreita. `was` segue texto (`was: plano`). Todo outro byte fica (C50, C52,
+   C69).
+4. **O que é editável, e os códigos que a door 4 não lista (AC 28-30, AC 33).** Editável é o que `classifyNotePath` (C4)
+   chama de editável: um `.md` de `memory/` que não é `ROUTER.md`, `areas/`, `journal/` nem `contexts/` (a C2 acrescentou
+   `contexts/`, como na emenda 5 da C5). Todo arquivo que não é editável (fora de `memory/`, gerado, `.markdown`, não UTF-8)
+   recebe "ainda vale", "adiar" e "não cobrar mais" em `review_state`, e `403 note_not_editable` em `became_fact`, `abandon` e
+   `classify`. Além dos códigos da door 4, sem escrever nada: `403 forbidden_path` (um link no caminho ou um arquivo privado
+   da home), `409 front_matter_unreadable` (C4); um `path` que não nomeia uma linha do índice que a política de hoje deixa é
+   `404 not_found` e não ganha linha em `review_state`; `baseVersion` é exigida numa escrita em nota editável (`400
+validation` sem ela) e não é lida nos outros arquivos (C47, C53, C55).
+5. **O escopo de um contexto, e o `404` (AC 22, Surface).** Como na emenda 3 da C5: `context=<id>` é o que
+   `contextMembership` deixa (realpath igual ou seguido do separador, só os caminhos `ok`) mais as linhas de
+   `memory/notes/<id>/`; `context=all`, ou nenhum, é o acervo inteiro; um id que não existe é `404 context_not_found` (C2) em
+   `GET /api/memory/reviews`, e continua sendo em `GET /api/memory/search` e `GET /api/memory/recall`, cujas linhas de status
+   na Surface não o nomeavam (C13, C19, C32).
+6. **O que a lista lê e devolve (Surface `GET /api/memory/reviews`, AC 17-23, AC 43, AC 44, AC 46).** Acréscimos à
+   assinatura: a consulta ganha `natureza?` e `escopo?` (listas separadas por vírgula, só os valores das listas fechadas,
+   `400 validation` para outro), para os filtros da tela (AC 44); cada item ganha `mtime` (o "alterado há" do `design.md`) e
+   a resposta ganha `nextDue` (`AAAA-MM-DD` do próximo vencimento, ou `null`), para "Próxima revisão em N dias" (AC 43).
+   `kind` é `due` quando falta e outro valor é `400 validation`; `limit` vai de 1 a 200, padrão `maxPerDay`, e fora disso é
+   `400 validation`; `items` vem do `dueSince` mais velho para o mais novo, empate pelo caminho, e `total` conta tudo o que
+   casa. `dueSince`, `lastReviewed` e `nextDue` são dias locais `AAAA-MM-DD`; a base é o mais recente entre o `last_reviewed`
+   do cabeçalho (um dia de calendário válido) e o `review_state.last_reviewed`, e sem os dois o `mtime`; vence quando hoje ≥
+   base + cadência. Candidatos: os arquivos Markdown que a política de hoje deixa; `memory/archive/` (o arquivo da C5) não
+   entra, e uma nota com `status: archived` nunca vence (é o que "Mudei de ideia" grava, e o AC 41 tira o item da lista). Em
+   `kind=unclassified`, o `mtime` mais velho primeiro, empate pelo caminho; as notas-índice `_index.md` e as notas-resumo
+   `_resumo.md` entram, como no texto aprovado. `review_state` tem uma linha por caminho: "Não classificar" (adiar 90 dias,
+   AC 49) também tira o arquivo de "Para revisar" até a data (C27-C37).
+7. **Desfazer (AC 41, door 4, suposição "Desfazer").** O aviso do shell (`useToast` de `components/ui.tsx`) não tem ação: só
+   texto e tom, 4,2 s. "Desfazer" é um aviso da própria tela (`role="status"`, 8 s). Do lado da nota, desfazer é
+   `PUT /api/memory/notes/properties` com a `version` que o `POST` respondeu como `baseVersion`, devolvendo às chaves que a
+   decisão escreveu o valor de antes e tirando as que ela acrescentou; um `fact` registrado é encerrado por
+   `POST /api/memory/facts/:id/retract` (fica fechado, não apagado). Do lado de `review_state`, nenhuma ação da door 4 devolve
+   uma linha: a door 4 ganha `action: "restore"` com `state`, que é o `previous` que a decisão respondeu
+   (`{ lastReviewed, snoozeUntil, never }` ou `null`), e escreve só `review_state` (`null` apaga a linha), em qualquer
+   arquivo, sem escrever arquivo; toda resposta do `POST` leva `previous`. Um desfazer em duas partes que falha na segunda
+   deixa a primeira feita e mostra "Não foi possível desfazer tudo." com "Tentar de novo", que repete só o que falhou.
+   Pergunta nova 5 (C56, C57, C77, C78).
+8. **"Virou realidade": as ações de cada item e a data (AC 31, AC 37, AC 40, `design.md`).** O `design.md` (binding) põe as
+   ações no detalhe do item escolhido (lista à esquerda, detalhe à direita) e desenha "Virou realidade" só para `plano` e
+   `hipotese`: uma nota editável `plano` ou `hipotese` tem as seis ações do AC 37, uma editável de outra natureza (ou sem)
+   tem cinco, e uma que não é editável tem as três do AC 38. A door 4 não tem data fora de `fact`, e o AC 31 grava hoje em
+   `became_fact`: o "Desde" do diálogo vai como `fact.validFrom` (o dia escolhido à meia-noite local, em ms, como
+   `POST /api/memory/facts` o recebe) quando "Registrar como fato" está aberta; fechada, a data não é enviada. Os três campos
+   do fato vão até 200 caracteres na tela (`design.md`); a rota aceita os 2 000 da rota de fatos. Pergunta nova 6 (C50, C75,
+   C80).
+9. **"Atualizar" (AC 39, `cerebro-v2/design.md`).** A vista de notas da C4 existe, mas abri-la tira a pessoa da tela;
+   "Atualizar" abre o editor de nota (`openNoteEditor({ mode: "edit", path })`) por cima de "Revisões", nas duas
+   interfaces, e o item fica na tela. Depois de salvar no editor, o próximo `GET` calcula a nota como ela está: uma nota sem
+   `last_reviewed` cujo salvamento mudou o `mtime` deixa de vencer (C79).
+10. **Onde as entradas ficam (AC 37, `design.md` "Busca e preview", L-046).** O `design.md` não diz o lugar de cada entrada
+    nos menus que a C4 e a C5 desenharam depois. Na moldura, "Revisões (N)" é o quarto `.btn.sm` de `.brain-topbar-actions`
+    do grafo, depois de "Faxina" e antes dos `os-chip`, só com N > 0, N sendo o `total` de `GET /api/memory/reviews?kind=due`
+    no contexto ativo; o modo Notas da C4 não tem fileira de ações e chega pela paleta e pela notificação. No Núcleo,
+    "Revisões (N)" é a última linha de `bs-menu-acts` do menu da cena, depois de "Faxina", só com N > 0, e o comando
+    "Revisões" da paleta abre o painel do cérebro em `/brain/reviews`. A notificação leva a `/brain/reviews`. No preview, os
+    selos de natureza, de escopo e de abandono vêm nessa ordem no fim da fileira de selos que já existe, e "Revisar agora"
+    (`.btn.sm`) logo depois da fileira, num arquivo Markdown, abre `/brain/reviews?path=<caminho>`, com o item escolhido
+    quando ele está na lista e o primeiro quando não está (C70, C87).
+11. **O bloco para os agentes: onde e para quem (AC 15, `design.md` "Texto do bloco").** No `AGENTS.md` e no `CLAUDE.md`
+    compilados (as duas vistas) o bloco é a última seção, depois de `## Ground rules`. "Uma execução com acesso à memória" é
+    a de uma skill de `settings.memorySkills` (a que recebe a pasta de memória e a API, `locationsBlock` de
+    `skills/catalog.ts`); nela o bloco vem logo depois desse trecho. Uma skill fora da lista não o recebe. A ferramenta MCP
+    `recall` não muda: pergunta nova 7 (C24, C25, C20).
+12. **A linha da CLI (AC 13, AC 14, door 3, Observable).** Hoje cada trecho abre com `● <caminho> § <seção> (score <n>)`. Sem
+    as cores, essa linha começa com o rótulo e um espaço (`[Plano — ainda não é realidade] ● …`); `fato` e `relato` não têm
+    rótulo e a linha fica como antes. `(abandonado em AAAA-MM-DD)` e, para um trecho de `## Superseded` (door 3, o selo
+    "substituído", que `RecallContext` não tem campo para dizer: a `section` `Superseded` o diz), `(substituído)` vão no fim
+    da linha. `--json` leva `natureza` e `escopo`; `--natureza` e `--escopo` aceitam as listas da rota, e um valor fora delas
+    sai com o código 2 (`EXIT_USAGE`), os valores aceitos no stderr e nada registrado em `recall.stats` (C21-C23).
+13. **`abandoned` em `fields` (AC 14).** O recall e o preview só leem `fields`, que guarda as sete chaves da C3:
+    `FRONT_MATTER_FIELDS` ganha `abandoned`, nas mesmas regras (texto de até 64 caracteres); o C33 da C3 continua valendo, já
+    que o cabeçalho dele não tem a chave (C22, C69).
+14. **Seções dos arquivos gerados e o trecho que contém uma passagem (door 3, AC 11).** Os títulos da door 3 são lidos como
+    a skill `consolidate-memory` e o diário (`JOURNAL_SECTIONS`) os escrevem, em nível 2, só em `<home>/memory/MEMORY.md` e em
+    `<home>/memory/journal/AAAA-MM-DD.md`. Um trecho do recall é uma seção inteira (`splitSections`), que pode ter um callout
+    e outras linhas: pelo AC 11 só o trecho que está dentro das linhas de uma passagem ganha a natureza dela, e o que a contém
+    sem estar dentro fica com a da nota (um `> [!plano]` numa seção de uma nota `natureza: fato` sai `fato`). Vale o texto
+    aprovado, afirmado por um check próprio; pergunta nova 4 (C15-C17).
+15. **Os filtros de natureza (`design.md` "Busca e preview", AC 9, AC 44).** O `design.md` desenha os seis selos como
+    filtros, mas as rotas aceitam só as cinco naturezas (AC 9 recusa outro valor): as fileiras de filtro têm cinco botões, sem
+    "Não classificado", e a de escopo três. A fileira da busca existe nas três telas que listam o que `useBrainSearch` acha (o
+    grafo da moldura, a cena do cérebro do Núcleo e a busca da vista de notas) (C84, C86).
+16. **O sentinela: o texto, o evento e Configurações (AC 24-26, suposição "Sentinela ligado por padrão").** O schema v1 de
+    `sentinel.fired` (`eventSchemas.ts`) e `SENTINEL_IDS` ganham `reviewDue`, com fixture v1 e `docs/events.md` regenerado.
+    O evento leva `title` "N items to review" (o servidor escreve em inglês, como os outros sentinelas),
+    `messageParams.count` (o número) e `messageParams.display` ("20+" acima de `maxPerDay`, o número senão), `href`
+    `/brain/reviews`, `severity` `info` e `dedupeKey` `sentinel:reviewDue:<dia local>:all`; a interface traduz
+    `sentinel.reviewDue` para "N itens para revisar" (`hooks/notificationText.ts`). N conta o acervo inteiro, sem contexto.
+    "O dono desliga em Configurações": Configurações › Notificações › Sentinelas ganha a linha "Revisões vencidas", depois de
+    "Folder watch" e antes da triagem, e o botão manda `{ sentinels: { ...sentinels, reviewDue: { enabled } } }`, porque
+    `PUT /api/settings` troca `sentinels` inteiro. Uma falha da consulta vai a `onError(err, "reviewDue")` e os outros
+    sentinelas da passada rodam (C40-C44, C88).
+17. **`settings.memory.reviews` (door 5, Impact).** `PUT /api/settings` mescla `memory` um nível só (C3 doors 12 e 13, emenda
+    14 da C5): `{ memory: { reviews: { maxPerDay: 10 } } }` troca `memory.reviews` inteiro (`cadence` e `byType` voltam ao
+    padrão) e mantém `notes`, `cleanup`, `journalBudgetTokens`, `agentStance` e `embeddings`. Cada cadência é `<n>d` de 1 a
+    3650 ou `never`, `maxPerDay` vai de 1 a 200, e fora disso é `400 validation`; a lista lê os valores a cada pedido (C38,
+    C39).
+18. **`type: status` e `type: conceito` (door 5, AC 20).** As chaves de `byType` casam com `fields.type` depois de
+    `normalizeFieldKey`. O vocabulário de `type` do guia da C3 (onze valores, check C3 da C3) não tem `status` nem `conceito`:
+    com o padrão, só uma nota que a pessoa tipou à mão assim ganha essas cadências. Esta feature não muda o guia. Pergunta
+    nova 9 (C30).
+19. **O que a C5 deixou para esta feature (Out of scope da C5, emenda 8 da C5).** O plano da C5 diz que esta feature
+    acrescenta ao inventário da faxina os cartões por natureza e escopo, ao lint dois `kind` novos ("plano antigo" e "nota
+    sem natureza") e ao achado `stale` o `review_every`. Os critérios aprovados aqui não têm nenhum dos três, e esta emenda
+    não os acrescenta: a mesma necessidade é atendida pela fila desta feature (um `plano` que passou de 30 dias é um item de
+    "Para revisar", AC 17 e AC 20; uma nota sem natureza está em `kind=unclassified`, AC 46). Os oito `kind` da faxina, as
+    chaves do inventário e a regra do `stale` (C19 da C5: `review_every` não conta) ficam como estão, afirmados por valor.
+    Pergunta nova 3 (C68).
+20. **A heurística da sugestão (AC 47).** O AC 47 não lista os marcadores de passado. São: "fizemos", "lançamos",
+    "entregamos", "concluímos", "aconteceu", "we did", "we launched", "we shipped". Conta-se cada ocorrência de palavra
+    inteira, sem caixa e sem acento, no texto que o índice guarda (`files_fts`, sem abrir o arquivo); a regra do `plano` vem
+    primeiro (C61).
+21. **Teto de peso (AC 45, `design-system/design.md`).** Como na C4 (emenda 14) e na C5 (emenda 13), `bundle:check` mede
+    contra a entrada mais nova de `scripts/bundle-baseline.json` × 1,05, e a desta feature seria a mais nova. O teto é sobre a
+    entrada anterior (`cerebro-faxina-guiada`, 546 409 B de JS gzip e 76 471 B de CSS gzip): no máximo 12 KB de JS gzip e
+    2 KB de CSS gzip a mais, com a tela "Revisões" e o diálogo num pedaço próprio por `import()`. Pergunta nova 8 (C92).
+22. **Quem chama (AC 35).** Nenhuma das duas rotas entra em `RUN_API_READ_ROUTES` ou `RUN_API_WRITE_ROUTES`: a credencial de
+    uma execução recebe `403 forbidden` das duas. Um dispositivo com `content` recebe `200` do `GET`, um só com `monitor`
+    `403 scope_required`, e todo dispositivo `403 owner_only` do `POST` (C66).
+23. **O texto que a tabela "Texto" do `design.md` não tem.** O `design.md` cita "(ou o texto da ação)" e desenha textos fora
+    da tabela; as chaves entram em `locales/brain.ts` (e a do sentinela em `locales/apps.ts`), `en` e `ptBR`:
+    `reviews.done.snooze` "Adiado por {n} dias." / "Snoozed for {n} days."; `reviews.done.never` "Não vou cobrar mais." /
+    "Won't remind you again."; `reviews.done.abandon` "Marcado como abandonado." / "Marked as abandoned.";
+    `reviews.done.becameFact` "Marcado como realidade." / "Marked as real."; `reviews.done.classify` "Classificado como
+    {natureza}." / "Classified as {natureza}."; `reviews.undoPartial` "Não foi possível desfazer tudo." / "Could not undo
+    everything."; `reviews.noSuggestion` "Sem sugestão" / "No suggestion"; `reviews.reviewNow` "Revisar agora" / "Review now";
+    `reviews.filters` "Filtros" / "Filters"; `reviews.filter.nature` "Natureza" / "Nature"; `reviews.filter.scope` "Escopo" /
+    "Scope"; `reviews.button` "Revisões ({n})" / "Reviews ({n})"; `reviews.context` "Contexto: {name}" / "Context: {name}";
+    `nature.abandoned` "Abandonado em {date}" / "Abandoned on {date}"; `apps.settings.sentinel.reviewDue` "Revisões vencidas"
+    / "Reviews due" e `apps.settings.sentinel.reviewDueHint` "Uma vez por dia, as notas que venceram a revisão." / "Once a
+    day, the notes due for review." (C93).
+
+Perguntas novas ao dono, levantadas pela reconciliação; o padrão vale até a resposta:
+
+| #   | Kind | Question                                                                                                                                                                                                                                                                                                                       | Until answered                                                                                        |
+| --- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| 3   | open | A C5 contava com esta feature para os cartões por natureza no inventário da faxina, os achados "plano antigo" e "nota sem natureza" e o `review_every` no `stale` (emenda 19). Acrescentar? Recomendo não: o mesmo item ficaria em duas filas com duas decisões guardadas em lugares diferentes; "Revisões" já é a fila deles. | não entram; a faxina fica com os oito `kind` e a regra de hoje                                        |
+| 4   | open | Um trecho do recall que contém uma passagem `plano`, `hipotese` ou `opiniao` sem estar dentro dela fica com a natureza da nota (emenda 14). Rotular esse trecho com a natureza da passagem, a mais cautelosa? Recomendo sim: é o caso que mais engana o agente.                                                                | vale o AC 11 aprovado (a natureza da nota), afirmado por um check próprio                             |
+| 5   | open | A door 4 ganha `action: "restore"` e o `POST` passa a responder `previous` (emenda 7), sem os quais o AC 41 não desfaz uma decisão guardada só em `review_state`. Aceitar? Recomendo sim: só devolve uma linha de `review_state` ao que a própria rota respondeu e nunca escreve arquivo.                                      | entra como escrito; recusada, "Desfazer" só aparece nas decisões que escreveram a nota                |
+| 6   | open | O "Desde" do diálogo "Virou realidade" só vai como `fact.validFrom`, e `became_fact` é sempre hoje (emenda 8). Acrescentar à door 4 um `since?` que vá para `became_fact`? Recomendo não: a data do fato é a que importa para o recall e para a tabela `facts`.                                                                | "Desde" só conta com "Registrar como fato" aberta                                                     |
+| 7   | open | A ferramenta MCP `recall` não rotula nem filtra por natureza, e o bloco para os agentes manda usar `natureza=fato` (emenda 11). Dar à ferramenta `natureza`/`escopo` e o rótulo da CLI? Recomendo sim, numa feature própria pequena: muda um contrato que clientes MCP leem.                                                   | a ferramenta fica como está; quem chama `GET /api/memory/recall` direto recebe os campos e o filtro   |
+| 8   | open | O teto de peso desta feature: 12 KB de JS gzip e 2 KB de CSS gzip acima de `cerebro-faxina-guiada` (emenda 21)?                                                                                                                                                                                                                | 12 KB e 2 KB; se a construção passar, para e pergunta                                                 |
+| 9   | open | O `byType` padrão usa `type: status` e `type: conceito`, que o guia da `organize-brain` não define (emenda 18). Acrescentar os dois ao vocabulário de `type` do guia? Recomendo sim, numa mudança da C3 com o check C3 dela atualizado.                                                                                        | o guia fica com os onze valores; só uma nota tipada à mão ganha as cadências de `status` e `conceito` |
+
 ## Sources
 
 - Pedido do dono em 29/10/2026 (segregar fatos, opiniões, planos e relatos pessoais e de equipe; cobrar revisão periódica com
@@ -267,3 +450,6 @@ o cabeçalho volta ao que era.
   porta 2 (`PUT /api/memory/notes/properties` guardada por versão) — as duas peças que esta feature estende.
 - `.specs/features/design-system/design.md`, `.specs/features/primitivas/design.md` e `design.md` desta feature — binding para a
   tela.
+- `.specs/STATE.md` AD-037 a AD-042 e os `plan.md`, `checks.md` e `verification.md` de `cerebro-correcoes`, `cerebro-contextos`,
+  `cerebro-organizar`, `cerebro-vista-notas` e `cerebro-faxina-guiada` — o que as cinco construíram antes desta ("Emendas
+  depois da aprovação").
