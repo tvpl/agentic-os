@@ -330,10 +330,9 @@ describe("S4 became real, changed my mind", () => {
     expect(text).toContain(`became_fact: ${TODAY}\n`);
   });
 
-  // C52 is open: its claim says the same inode, and the guarded properties write door 4 names (saveProperties ->
-  // writeWorkspaceFile replace) replaces the file by a temporary file and a rename, so the inode always changes. This
-  // test holds the rest of C52's claim and is not its proof (its title does not carry the id).
-  it("abandon writes status: archived and abandoned bare, keeps natureza: plano and the path, creates or removes nothing under the home, and the note leaves the list (the rest of C52: its inode clause is open)", async () => {
+  // The guarded properties write (door 4) replaces the file by a temporary file and a rename, so the path stays and the
+  // inode does not (amendment 24).
+  it("C52 abandon writes status: archived and abandoned bare, keeps natureza: plano and the path, creates or removes nothing under the home, and the note leaves the list", async () => {
     const dir = notesDir("c52");
     const file = put(path.join(dir, "p.md"), ["natureza: plano", `last_reviewed: ${day(-60)}`]);
     await indexed(file);

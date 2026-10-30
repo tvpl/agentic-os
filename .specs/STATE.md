@@ -351,6 +351,7 @@ Decisões de produto e de processo que a feature `cerebro-v2` tomou com o padrã
 7. **(open) Dar à ferramenta MCP `recall` os filtros `natureza`/`escopo` e os rótulos?** Padrão: sem mudança; recomendado como feature pequena própria.
 8. **(open) O teto de peso: 12 KB de JS gzip e 2 KB de CSS gzip acima de `cerebro-faxina-guiada` (emenda 21)?** Padrão: esse teto; a construção para e pergunta se passar.
 9. **(open) Acrescentar `status` e `conceito` ao vocabulário de `type` do guia de `organize-brain` (emenda 18)?** Padrão: não.
+10. **(open) O C52 não pede mais "o mesmo inode" ao abandonar um plano (emenda 24).** O AC 32 não fala de inode, e a escrita guardada da door 4 troca o arquivo por renomeação. Padrão: o mesmo caminho, sem nome criado nem removido. Alternativa: escrever no lugar só para `abandon`, fora da escrita guardada (pior: perde a troca atômica). Reverter: o texto do C52 e a emenda 24.
 
 ### distribuicao
 

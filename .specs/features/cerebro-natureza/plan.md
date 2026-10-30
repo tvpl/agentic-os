@@ -454,3 +454,8 @@ Perguntas novas ao dono, levantadas pela reconciliação; o padrão vale até a 
 - `.specs/STATE.md` AD-037 a AD-042 e os `plan.md`, `checks.md` e `verification.md` de `cerebro-correcoes`, `cerebro-contextos`,
   `cerebro-organizar`, `cerebro-vista-notas` e `cerebro-faxina-guiada` — o que as cinco construíram antes desta ("Emendas
   depois da aprovação").
+
+24. **C52 sem "o mesmo inode" (AC 32, emenda do check na construção, lote B).** O AC 32 não fala de inode; o check dizia "o
+    mesmo inode", mas a door 4 manda a decisão pela escrita guardada das propriedades (`saveProperties` →
+    `writeWorkspaceFile`), que grava num arquivo temporário e renomeia sobre a nota, e o inode muda sempre. O C52 passa a
+    dizer o mesmo caminho, sem nome criado nem removido sob a home (a listagem antes e depois). Pergunta cerebro-natureza 10.

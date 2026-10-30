@@ -341,7 +341,7 @@ keeps the new front matter (the partial outcome is the note written and no fact)
 Proof: `npx vitest run tests/natureza.decisions.test.ts -t "C51 "`
 
 **C52** - `action: "abandon"` on an editable `natureza: plano` note writes `status: archived` and `abandoned: <today>` (bare),
-keeps `natureza: plano`, and leaves the file at the same path with the same inode, with no file created or removed under
+keeps `natureza: plano`, and leaves the file at the same path (amendment 24: not the same inode), with no file created or removed under
 the home (a listing of every name before and after); the note then leaves the due list (AC 32, amendment 6)
 Proof: `npx vitest run tests/natureza.decisions.test.ts -t "C52 "`
 
@@ -864,6 +864,8 @@ Status of batch B (updated in the commit that closes each piece):
   `core/src/security/safeWrite.ts`) replaces a note by a temporary file and a `rename`, so the inode always changes (the
   run gave 704521 before and 704522 after). Every other clause of C52 is asserted by a test in
   `tests/natureza.decisions.test.ts` whose title does not carry the id, so C52's selector finds no test
+  **Closed by the coordinator after the batch:** amendment 24 drops "the same inode" (AC 32 never said it); the test
+  now carries the id and C52's proof passes (1 test).
 
 - **Boundary (batch B):** C10, C27-C51 and C53-C63 closed at `16573a4`; C52 open (stop-and-ask, above). On the tree of
   `16573a4`: `npm run build`, `npm run typecheck` and `npm run lint` exit 0, `npx vitest run` at the root is green
