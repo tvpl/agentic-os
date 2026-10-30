@@ -411,6 +411,28 @@ describe("C16 door 3's table, one case per heading", () => {
     ["MEMORY.md ## Notas", MEMORY_MD, "Notas", 2, null],
     ["memory/notes/x.md ## Facts (not a generated file)", NOTE_X, "Facts", 2, null],
     ["MEMORY.md ### Facts (level 3)", MEMORY_MD, "Facts", 3, null],
+    // Door 3's place rule (amendment 14, round 3): only <home>/memory/MEMORY.md and <home>/memory/journal/AAAA-MM-DD.md.
+    [
+      "memory/notes/MEMORY.md ## Facts (a user's note named MEMORY.md)",
+      () => path.join(memory, "notes", "MEMORY.md"),
+      "Facts",
+      2,
+      null,
+    ],
+    [
+      "memory/journal/notas.md ## Today (not a dated journal file)",
+      () => path.join(memory, "journal", "notas.md"),
+      "Today",
+      2,
+      null,
+    ],
+    [
+      "memory/journal/2026/2026-10-29.md ## Today (a dated file one folder down)",
+      () => path.join(memory, "journal", "2026", "2026-10-29.md"),
+      "Today",
+      2,
+      null,
+    ],
   ];
   for (const [name, file, heading, level, want] of CASES) {
     it(`C16 ${name} reads ${String(want)}`, () => {
