@@ -24,6 +24,13 @@ export interface FileDef {
   bodyStart?: number;
   editable?: boolean;
   reason?: "outside_memory" | "generated" | "not_markdown";
+  /** What `GET /api/memory/note` answers of its front matter (batch C); none by default. */
+  properties?: Array<{ key: string; kind: string; value: string | string[] }>;
+  otherProperties?: string | null;
+  /** The note's version (`sha256:<id>` by default); a test bumps it to say the file changed. */
+  version?: string;
+  /** The reason `GET /api/memory/note` gives a note that cannot be edited. */
+  noteReason?: string;
 }
 
 export interface RootDef {
@@ -87,6 +94,8 @@ export const net = {
   /** Answers that win over the table, tried in order (a failure, a pending request, another body). */
   overrides: [] as Answer[],
   calls: [] as Call[],
+  /** `settings.memory.notes.fixedStructure` (door 5), as `GET /api/settings` answers it. */
+  fixedStructure: false,
   writes: new Map<string, (body: unknown) => Promise<unknown>>(),
 };
 
@@ -110,6 +119,7 @@ export function resetNet(): void {
   };
   net.overrides = [];
   net.calls = [];
+  net.fixedStructure = false;
   net.writes.clear();
 }
 
@@ -241,13 +251,14 @@ function read(url: string): Promise<unknown> {
         return Promise.resolve({
           path: pathOf(f),
           name: nameOf(f.rel),
-          version: `sha256:${f.id}`,
+          version: f.version ?? `sha256:${f.id}`,
           size: content.length,
           mtime: f.mtime ?? 1,
           content,
           editable: f.editable ?? f.root === MEM,
-          properties: [],
-          otherProperties: null,
+          ...(f.noteReason ? { reason: f.noteReason } : {}),
+          properties: structuredClone(f.properties ?? []),
+          otherProperties: f.otherProperties ?? null,
           bodyStart: f.bodyStart ?? 0,
         });
       }
@@ -268,15 +279,23 @@ function read(url: string): Promise<unknown> {
         );
       }
       case "/api/memory/search": {
-        const q = (u.searchParams.get("q") ?? "").toLowerCase();
+        // The index's tokenizer (`unicode61`) takes the accents off, as this does.
+        const fold = (x: string) => x.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+        const q = fold(u.searchParams.get("q") ?? "");
         return Promise.resolve(
           net.files
-            .filter((f) => (f.title ?? f.rel).toLowerCase().includes(q))
+            .filter((f) => fold(f.title ?? f.rel).includes(q))
             .map((f) => ({ ...fileRow(f), snippet: null, score: 1, via: "text" })),
         );
       }
       case "/api/memory/graph":
         return Promise.resolve({ nodes: [], edges: [], truncated: false, totalFiles: 0 });
+      case "/api/settings":
+        return Promise.resolve({
+          areas: [],
+          limits: { maxIndexedFileBytes: 1024 * 1024 },
+          memory: { notes: { fixedStructure: net.fixedStructure } },
+        });
       case "/api/system/info":
         return Promise.resolve({ home: HOME });
     }

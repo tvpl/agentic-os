@@ -13,6 +13,8 @@ import { useNoteLinks, useTreeLevel, withoutExt } from "./notesData";
 import type { FolderSelection, NoteMeta, NotesSort } from "./useNotesState";
 
 export interface FolderViewProps extends Pick<NoteReaderProps, "onShowInGraph" | "onSetHome"> {
+  /** "Editar" on the index note: it opens in its own tab, in edit mode. */
+  onEditInTab: (path: string, meta: NoteMeta) => void;
   folder: FolderSelection;
   context?: string;
   sort: NotesSort;
@@ -58,6 +60,7 @@ export function FolderView(p: FolderViewProps) {
         onOpen={p.onOpen}
         onShowInGraph={p.onShowInGraph}
         onSetHome={p.onSetHome}
+        onEdit={() => p.onEditInTab(file.path, { id: file.id, title: file.title })}
         badge={<span className="notes-badge notes-index-badge">{t("notes.reader.folderIndex")}</span>}
       />
     );

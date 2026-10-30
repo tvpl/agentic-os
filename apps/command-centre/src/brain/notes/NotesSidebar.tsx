@@ -32,6 +32,7 @@ import { SWITCH_CONTEXT_ID } from "../../contexts/ContextSelector";
 import type { WorkContextState } from "../../contexts/useWorkContext";
 import { errorMessage } from "../../views/shared";
 import type { BrainHit } from "../memoryData";
+import { CreateControls, EmptyNewNote } from "./NoteCreate";
 import { NoteSearch } from "./NoteSearch";
 import { NotesTree } from "./NotesTree";
 import type { TreeFile, TreeLevel, TreeRoot } from "./notesData";
@@ -51,7 +52,8 @@ export interface NotesSidebarProps {
   selected: string | null;
   onOpen: (path: string, meta: { id?: number; title?: string | null }) => void;
   onSelectFolder: (folder: FolderSelection) => void;
-  onNewNote: () => void;
+  /** A note made from the sidebar ("Nova nota", "Nova pasta"): it opens in a tab, in edit mode. */
+  onCreated: (path: string) => void;
 }
 
 export function rootLabel(
@@ -69,6 +71,9 @@ export function NotesSidebar(p: NotesSidebarProps) {
     ? status.data.lastIndex === null && status.data.facets.total === 0
     : false;
   const index = useIndexState(status.data?.indexing.state === "running", status.data?.lastIndex?.at ?? null);
+  // An empty root has its own "Nova nota" in the tree's place (C37); the heading's come with the entries.
+  const level = p.top.data;
+  const empty = !p.root || (level !== undefined && level.folders.length === 0 && level.files.length === 0);
   return (
     <div className="notes-sidebar-body">
       <ContextLine work={p.work} />
@@ -80,6 +85,9 @@ export function NotesSidebar(p: NotesSidebarProps) {
       <div className="notes-heading-row">
         <h2 className="notes-heading">{t("notes.tree.heading")}</h2>
         <span className="notes-heading-tools">
+          {p.root !== null && p.root === p.memoryRoot && !nothingIndexed && !empty && (
+            <CreateControls folder={p.state.folder} memoryRoot={p.memoryRoot} onCreated={p.onCreated} />
+          )}
           <Tooltip label={t("notes.tree.collapse")}>
             <button
               type="button"
@@ -403,11 +411,7 @@ function TreeArea(p: NotesSidebarProps & { nothingIndexed: boolean; onReindex: (
     return (
       <div className="notes-empty">
         <p>{t("notes.tree.empty")}</p>
-        {p.root !== null && p.root === p.memoryRoot && (
-          <Button size="sm" variant="secondary" onClick={p.onNewNote}>
-            {t("notes.tree.newNote")}
-          </Button>
-        )}
+        {p.root !== null && p.root === p.memoryRoot && <EmptyNewNote onCreated={p.onCreated} />}
       </div>
     );
   return (

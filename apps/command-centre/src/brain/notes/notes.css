@@ -771,3 +771,139 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---- the note's properties, its editor in place, and the new folder (batch C) ---- */
+.notes-readonly {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-3);
+  color: var(--text-dim);
+}
+
+.notes-props {
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+  margin-bottom: var(--s-4);
+  font-size: var(--fs-3);
+}
+
+.notes-props-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.notes-props-table th,
+.notes-props-table td {
+  padding: 2px var(--s-2) 2px 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.notes-props-table th {
+  width: 160px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+.notes-props-table th,
+.notes-prop-value,
+.notes-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.notes-props-table svg,
+.notes-chip svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.notes-prop-value,
+.notes-chips {
+  flex-wrap: wrap;
+}
+
+.notes-prop-input {
+  min-height: 28px;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-3);
+}
+
+.notes-chips {
+  display: flex;
+  gap: var(--s-1);
+}
+
+.notes-chip {
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+}
+
+.notes-chip button,
+.notes-props-add {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.notes-chip button {
+  display: inline-grid;
+  padding: 0;
+}
+
+.notes-prop-error,
+.notes-props-error {
+  display: block;
+  color: var(--danger);
+}
+
+.notes-props-head {
+  font-size: var(--fs-2);
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.notes-props-other pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.notes-props-note {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.notes-props-add {
+  padding: 2px var(--s-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  font-size: var(--fs-3);
+}
+
+.notes-props-new {
+  display: grid;
+  grid-template-columns: auto minmax(0, 260px);
+  gap: var(--s-1) var(--s-2);
+  align-items: center;
+}
+
+.notes-props-new-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: var(--s-1);
+}
+
+.notes-editor {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.modal.notes-folder-dialog {
+  width: min(420px, 100%);
+}

@@ -533,3 +533,9 @@ Status of batch B (updated in the commit that closes each piece):
   `/brain/notes` (its loop and canvas would keep running behind the notes); a `GET /api/memory/tree` with no context
   to find a tab's id (it broke "every tree request carries context=<id>"); `title=` hints on the locks and links (AD-017
   f: hints are `Tooltip`s).
+
+Status of batch C (updated in the commit that closes each piece):
+
+- the properties table and editing in place (S6: C56-C67), and creating a note or a folder in the tree (S7: C68-C71):
+  closed, every proof green in `apps/command-centre/src/brain/notes/PropertiesTable.test.tsx`,
+  `NoteEditInPlace.test.tsx` and `NoteCreate.test.tsx`

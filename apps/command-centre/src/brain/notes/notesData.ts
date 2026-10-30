@@ -13,6 +13,8 @@ export type TreeFolder = TreeLevel["folders"][number];
 export type TreeFile = TreeLevel["files"][number];
 export type TreeRoot = TreeLevel["roots"][number];
 export type NoteLinks = ApiCallResult<"GET /api/memory/links">;
+export type NoteDoc = ApiCallResult<"GET /api/memory/note">;
+export type NoteProperty = NoteDoc["properties"][number];
 
 export interface TreeAsk {
   context?: string;

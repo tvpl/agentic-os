@@ -3,11 +3,12 @@
  * the title (the largest text of the view), its path, "Ver no grafo" and the "Mais" menu ("Definir como Home",
  * "Exportar Markdown", "Abrir no editor do sistema", "Copiar caminho"), then the body from `bodyStart` on, drawn by the
  * one renderer in shape `panel`. Its links are buttons that open the note `GET /api/memory/links` resolves them to, in a
- * tab; one that leads nowhere is text with `Unlink` and its hint. The properties table and the editor come in their
- * own place (between the header and the body), from the next batch.
+ * tab; one that leads nowhere is text with `Unlink` and its hint. Between the header and the body, the properties
+ * table; "Editar" turns the body into the editor of cerebro-v2 in place, and "Ler" back. A note that cannot be edited
+ * says so, with its reason, and has no "Editar" (AC 40).
  */
 import { useMemo, type ReactNode } from "react";
-import { MoreHorizontal, Network, Unlink } from "lucide-react";
+import { BookOpen, MoreHorizontal, Network, Pencil, Unlink } from "lucide-react";
 import { ApiError } from "../../api";
 import { apiCall } from "../../apiCall";
 import { useT } from "../../i18n";
@@ -17,7 +18,9 @@ import { Markdown } from "../../components/Markdown";
 import { DropdownMenu, Tooltip } from "../../ui";
 import { copyText, downloadUrl, errorMessage } from "../../views/shared";
 import { parseMarkdown, type Block } from "../markdown";
+import { NoteEditInPlace, type NoteDraft } from "./NoteEditInPlace";
 import { linkResolver } from "./noteLinks";
+import { PropertiesTable } from "./PropertiesTable";
 import { baseName, useNoteLinks, useNoteRead, withoutExt } from "./notesData";
 import type { NoteMeta } from "./useNotesState";
 
@@ -51,7 +54,19 @@ export interface NoteReaderProps {
   onCloseTab?: () => void;
   /** A badge beside the title ("Índice da pasta"). */
   badge?: ReactNode;
+  /** The body is the editor (AC 37); `onEdit` turns it on and off. */
+  editing?: boolean;
+  onEdit?: (on: boolean) => void;
+  /** The texts of the view's editors that are not saved yet, by path. */
+  drafts?: Map<string, NoteDraft>;
+  /** The note's text has unsaved changes (its tab's mark): the properties only read (AC 35). */
+  unsaved?: boolean;
+  onUnsaved?: (on: boolean) => void;
+  context?: string | undefined;
 }
+
+const NO_DRAFTS = new Map<string, NoteDraft>();
+const ignore = () => undefined;
 
 export function NoteReader(p: NoteReaderProps) {
   const t = useT();
@@ -151,6 +166,19 @@ export function NoteReader(p: NoteReaderProps) {
           <div className="notes-note-path">{p.path}</div>
         </div>
         <div className="notes-note-actions">
+          {!note.data.editable ? (
+            <span className="notes-readonly">
+              <span className="notes-badge">{t("note.readonly")}</span>
+              {note.data.reason}
+            </span>
+          ) : (
+            p.onEdit && (
+              <button type="button" className="btn sm" onClick={() => p.onEdit?.(!p.editing)}>
+                {p.editing ? <BookOpen aria-hidden size={14} /> : <Pencil aria-hidden size={14} />}
+                {p.editing ? t("notes.reader.read") : t("notes.reader.edit")}
+              </button>
+            )
+          )}
           <button
             type="button"
             className="btn sm"
@@ -176,9 +204,21 @@ export function NoteReader(p: NoteReaderProps) {
           />
         </div>
       </header>
-      <div className="notes-note-body">
-        <Markdown blocks={blocks} shape="panel" refs={refs} />
-      </div>
+      <PropertiesTable note={note.data} title={title} locked={p.unsaved === true} onOpen={p.onOpen} />
+      {p.editing && note.data.editable ? (
+        <NoteEditInPlace
+          note={note.data}
+          title={title}
+          drafts={p.drafts ?? NO_DRAFTS}
+          context={p.context}
+          onUnsaved={p.onUnsaved ?? ignore}
+          onOpen={p.onOpen}
+        />
+      ) : (
+        <div className="notes-note-body">
+          <Markdown blocks={blocks} shape="panel" refs={refs} />
+        </div>
+      )}
     </article>
   );
 }

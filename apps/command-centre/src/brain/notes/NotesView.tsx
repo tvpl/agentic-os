@@ -20,9 +20,9 @@ import { useT } from "../../i18n";
 import { Tooltip } from "../../ui";
 import { Button } from "../../components/primitives";
 import { useWorkContext } from "../../contexts/useWorkContext";
-import { openNoteEditor } from "../noteEvents";
 import type { BrainHit } from "../memoryData";
 import { FolderView } from "./FolderView";
+import type { NoteDraft } from "./NoteEditInPlace";
 import { NotePanel } from "./NotePanel";
 import { NoteReader } from "./NoteReader";
 import { NoteSearch } from "./NoteSearch";
@@ -90,6 +90,36 @@ export default function NotesView({ onShowInGraph }: NotesViewProps) {
   }, [shown, identity, remember]);
 
   const open = useCallback((path: string, meta: NoteMeta = {}) => state.open(path, meta), [state]);
+
+  /* ---------- editing in place: which tabs are editors, and their texts not saved yet ---------- */
+  const [editing, setEditing] = useState<ReadonlySet<string>>(() => new Set());
+  const drafts = useRef(new Map<string, NoteDraft>()).current;
+  const edit = useCallback((path: string, on: boolean) => {
+    setEditing((cur) => {
+      if (cur.has(path) === on) return cur;
+      const next = new Set(cur);
+      if (on) next.add(path);
+      else next.delete(path);
+      return next;
+    });
+  }, []);
+  const openToEdit = useCallback(
+    (path: string, meta: NoteMeta = {}) => {
+      if (state.open(path, meta)) edit(path, true);
+    },
+    [state, edit],
+  );
+  // A closed tab forgets its editor and what it held.
+  const openTabs = state.tabs.tabs;
+  useEffect(() => {
+    const kept = new Set(openTabs);
+    for (const path of drafts.keys()) if (!kept.has(path)) drafts.delete(path);
+    setEditing((cur) =>
+      [...cur].every((p) => kept.has(p)) ? cur : new Set([...cur].filter((p) => kept.has(p))),
+    );
+  }, [openTabs, drafts]);
+  const { markUnsaved } = state;
+  const onUnsaved = useCallback((on: boolean) => shown && markUnsaved(shown, on), [shown, markUnsaved]);
   const closeTab = useCloseTab(state);
   const setHome = useCallback((path: string) => root && state.setHome(root, path), [root, state]);
 
@@ -153,7 +183,7 @@ export default function NotesView({ onShowInGraph }: NotesViewProps) {
           selected={selected}
           onOpen={open}
           onSelectFolder={state.selectFolder}
-          onNewNote={() => openNoteEditor({ mode: "new" })}
+          onCreated={openToEdit}
         />
       </aside>
       <button
@@ -186,6 +216,7 @@ export default function NotesView({ onShowInGraph }: NotesViewProps) {
               onSelectFolder={state.selectFolder}
               onShowInGraph={onShowInGraph}
               onSetHome={setHome}
+              onEditInTab={openToEdit}
             />
           ) : shown ? (
             <NoteReader
@@ -197,6 +228,12 @@ export default function NotesView({ onShowInGraph }: NotesViewProps) {
               onShowInGraph={onShowInGraph}
               onSetHome={setHome}
               onCloseTab={active === shown ? () => void closeTab(shown) : undefined}
+              editing={editing.has(shown)}
+              onEdit={(on) => (active === shown ? edit(shown, on) : openToEdit(shown))}
+              drafts={drafts}
+              unsaved={state.unsaved.has(shown)}
+              onUnsaved={onUnsaved}
+              context={work.query}
             />
           ) : (
             <NoHome
