@@ -53,7 +53,7 @@
 **Feature**: cerebro-natureza (C6) fechada com escalonamento (rodada 3 FAIL, testes escritos depois, AD-043; 94 checks); C1 a C6 fechadas; a próxima é cerebro-paineis (C6b)
 **Where**: na branch `chore/tlc-spec-lean-skill`, integradas e com `verification.md` (as que usaram as três rodadas fecharam com escalonamento ao dono, nota no fim de cada relatório): seguranca-p0, ci-gate, motor-composicao, capacidades-aplicadas, contratos, preferencias-ui, provedores-plugaveis, api-v1, adaptadores-tipados, moldura-app, seguranca-p1, dados-v2, comandos-atalhos, design-system, escopos-dispositivo. Também integradas e fechadas com escalonamento: primitivas e sdk-core (três rodadas FAIL). Integradas e ainda em verificação: contratos-rest (rodadas 1 e 2 FAIL, correções integradas), licenca-comercial (rodada 1 FAIL, correção integrada; todo texto jurídico é minuta para o dono), limpeza-legado (integrada, rodada 1). Aceites pendentes do dono: "Perguntas ao dono" (AD-014, AD-018 a AD-025).
 **In progress**: nada em worktree; resta a decisão do dono sobre os FAIL residuais (ver o fim de cada `verification.md`)
-**Next step**: reconciliar o plano de `cerebro-paineis` com o que C1-C6 construíram, escrever os checks e construir; o dono responde cerebro-contextos 1 e cerebro-vista-notas 1 e 2 (padrões valem enquanto isso); as perguntas anteriores (limpeza-legado 1, distribuicao 16-20, cerebro-v2 13-19, licenca-comercial 10-11) seguem
+**Next step**: construir `cerebro-paineis` (97 checks em `437b802`, estimativa ≈445k, corte em quatro lotes A-D); o dono responde cerebro-contextos 1 e cerebro-vista-notas 1 e 2 (padrões valem enquanto isso); as perguntas anteriores (limpeza-legado 1, distribuicao 16-20, cerebro-v2 13-19, licenca-comercial 10-11) seguem
 **Blockers**: dependem do dono: segredos de assinatura e chave do atualizador (nenhum release assinado sem eles), revisão jurídica (EULA, PRIVACY, NOTICE, titular do LICENSE), publicação npm, F2 do limpeza-legado
 **Dependências**: as da fechamento anterior seguem (token do dono em disco, `rc_`/`brk_` no ambiente, agente com shell aprovado). Nova: a raiz já é a minuta FSL (`licenca-comercial`) e os pacotes `core` e `contracts` levam cópia byte a byte dela, com `license` `FSL-1.1-ALv2`; o titular segue `[A PREENCHER PELO DONO]`.
 **Uncommitted**: nenhum
@@ -353,6 +353,19 @@ Decisões de produto e de processo que a feature `cerebro-v2` tomou com o padrã
 8. **(open) O teto de peso: 12 KB de JS gzip e 2 KB de CSS gzip acima de `cerebro-faxina-guiada` (emenda 21)?** Padrão: esse teto; a construção para e pergunta se passar.
 9. **(open) Acrescentar `status` e `conceito` ao vocabulário de `type` do guia de `organize-brain` (emenda 18)?** Padrão: não.
 10. **(open) O C52 não pede mais "o mesmo inode" ao abandonar um plano (emenda 24).** O AC 32 não fala de inode, e a escrita guardada da door 4 troca o arquivo por renomeação. Padrão: o mesmo caminho, sem nome criado nem removido. Alternativa: escrever no lugar só para `abandon`, fora da escrita guardada (pior: perde a troca atômica). Reverter: o texto do C52 e a emenda 24.
+
+### cerebro-paineis
+
+1. **(open) O retrato guarda os títulos vindos dos conectores?** Padrão: guarda, e o `legal/PRIVACY.md` diz isso (C62).
+2. **(open) Pergunta 2 do plano.** Padrão: o do `plan.md`.
+3. **(open) Pergunta 3 do plano.** Padrão: o do `plan.md`.
+4. **(open) Aceitar as chaves fechadas de `source` e `options` dos widgets (emenda 5)?** Padrão: aceitas como escritas.
+5. **(open) `relato` conta como decidido e `opiniao` como aberto (emenda 7)?** Padrão: sim.
+6. **(open) "Em andamento" em dois widgets (projetos e agentes, emenda 6)?** Padrão: dois widgets.
+7. **(open) Mostrar `problems[]` na tela?** Padrão: a rota responde, a tela não mostra.
+8. **(open) Uma citação abre o preview sem rolar até a seção (emenda 18)?** Padrão: só o preview; a seção fica no texto da citação.
+9. **(open) `dashboard-answer` entra nos `memorySkills` padrão, senão `409 skill_unavailable` (emenda 19)?** Padrão: sim; uma home com lista própria mantém a sua.
+10. **(open) O teto de peso: 24 KB de JS gzip e 4 KB de CSS gzip acima de `cerebro-natureza` (emenda 24)?** Padrão: esses valores; a construção para e pergunta se passar.
 
 ### distribuicao
 
