@@ -4,6 +4,8 @@
  * 8): one `Modal` of 480 px with "Desde", the closed section "Registrar como fato" and its three fields, the footer, what
  * "Confirmar" sends closed and open, and a failed save inside the dialog. Opened from the screen, over `./testkit`.
  */
+// The dialog's day is local midnight (amendment 8): a zone away from UTC tells it from UTC midnight (round 3, D1).
+process.env.TZ = "America/Sao_Paulo";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -115,6 +117,9 @@ describe("C80 the dialog Virou realidade", () => {
         },
       ]),
     );
+    // The zone holds: local midnight of 2026-03-15 is 03:00 UTC there, three hours after UTC midnight.
+    expect(new Date(2026, 2, 15).getTimezoneOffset()).toBe(180);
+    expect(new Date(2026, 2, 15).getTime() - Date.UTC(2026, 2, 15)).toBe(3 * 3_600_000);
   });
 
   it("C80 a failed save shows the error inside the dialog, which stays open with what was typed", async () => {
