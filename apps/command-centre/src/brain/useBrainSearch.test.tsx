@@ -9,7 +9,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 const apiCall = vi.fn();
 vi.mock("../apiCall", () => ({ apiCall: (...args: unknown[]) => apiCall(...args) }));
 
-const { useBrainSearch } = await import("./useBrainSearch");
+const { useBrainSearch } = await import("./memoryData");
 
 beforeEach(() => apiCall.mockReset());
 

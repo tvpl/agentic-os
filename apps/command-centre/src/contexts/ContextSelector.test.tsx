@@ -12,7 +12,8 @@ import { installPage, tick } from "../ui/testkit";
 import { Sidebar } from "../moldura/Sidebar";
 import { NAV_GROUPS } from "../moldura/nav";
 import { ContextSelector } from "./ContextSelector";
-import { graphRequest, useWorkContext } from "./useWorkContext";
+import { graphRequest } from "../brain/memoryData";
+import { useWorkContext } from "./useWorkContext";
 import { CONTEXT, net, resetNet } from "./testnet";
 import { renderWith } from "./testkit";
 

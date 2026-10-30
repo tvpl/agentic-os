@@ -114,8 +114,8 @@ import {
 import { distanceForLevel } from "./brainZoom";
 import "./brainScene.css";
 import { RequestFailed } from "../../brain/RequestFailed";
-import { useBrainSearch } from "../../brain/useBrainSearch";
-import { graphRequest, useWorkContext } from "../../contexts/useWorkContext";
+import { graphRequest, useBrainSearch, useRelatedFiles } from "../../brain/memoryData";
+import { useWorkContext } from "../../contexts/useWorkContext";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
 const NO_SKILLS: Skill[] = [];
@@ -690,26 +690,14 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pinnedKey, stage]);
 
-  const [related, setRelated] = useState<Array<{ id: number; why: string }>>([]);
-  // A failed request is said (and can be asked again), never shown as "nothing related" (cerebro-correcoes, AC 25).
-  const [relatedFailed, setRelatedFailed] = useState(false);
-  const [relatedAttempt, setRelatedAttempt] = useState(0);
-  useEffect(() => {
-    setRelated([]);
-    setRelatedFailed(false);
-    if (!selNode) return;
-    let cancelled = false;
-    void apiCall("GET /api/memory/related", { query: { id: selNode.id } })
-      .then((res) => {
-        if (!cancelled) setRelated(res.map((r) => ({ id: r.file.id, why: r.why })));
-      })
-      .catch(() => {
-        if (!cancelled) setRelatedFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selNode, relatedAttempt]);
+  // A failed request is said (and can be asked again), never shown as "nothing related" (cerebro-correcoes, AC 25);
+  // in the active work context, as the graph and the search (cerebro-vista-notas, C74).
+  const relatedFiles = useRelatedFiles(selNode?.id ?? null, work.query);
+  const relatedFailed = relatedFiles.failed;
+  const related = useMemo(
+    () => relatedFiles.related.map((r) => ({ id: r.file.id, why: r.why })),
+    [relatedFiles.related],
+  );
 
   const kindOfIdx = useCallback((i: number): ContentKind => stage.model?.kind[i] ?? "note", [stage]);
   const entryOf = useCallback(
@@ -1771,7 +1759,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
           context={railGroups}
           nearby={nearby}
           relatedFailed={relatedFailed}
-          onRelatedRetry={() => setRelatedAttempt((n) => n + 1)}
+          onRelatedRetry={relatedFiles.retry}
           terms={noteTerms}
           pinned={pinned}
           kindOfId={kindOfId}

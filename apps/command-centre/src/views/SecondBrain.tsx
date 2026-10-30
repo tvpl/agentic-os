@@ -56,8 +56,8 @@ import {
 } from "../brain/engine/world";
 import { saveLocalSettings, settingsFromUi } from "../brain/state";
 import "../brain/brain.css";
-import { useBrainSearch } from "../brain/useBrainSearch";
-import { graphRequest, useWorkContext } from "../contexts/useWorkContext";
+import { graphRequest, useBrainSearch } from "../brain/memoryData";
+import { useWorkContext } from "../contexts/useWorkContext";
 import { useCommands, type Command } from "../commands/registry";
 import { openNoteEditor } from "../brain/noteEvents";
 

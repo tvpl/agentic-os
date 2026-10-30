@@ -5,7 +5,7 @@
  */
 import { useCallback } from "react";
 import type { ApiCallResult } from "@mordomo/contracts";
-import { qk, useOsContexts, useOsUiPreferences, useSaveUiPreferences } from "../queries";
+import { useOsContexts, useOsUiPreferences, useSaveUiPreferences } from "../queries";
 
 export type ContextList = ApiCallResult<"GET /api/contexts">["contexts"];
 export type WorkContextView = ContextList[number];
@@ -46,13 +46,4 @@ export function useWorkContext(): WorkContextState {
     [save],
   );
   return { list, contexts, active: listed, query, ready, gone, choose };
-}
-
-/** The graph a screen reads: in the active context when there is one (`context=<id>`), else the whole index. */
-export function graphRequest(maxNodes: number, context: string | undefined) {
-  const params = context ? { maxNodes, context } : { maxNodes };
-  return {
-    key: qk.memoryGraph(params),
-    path: `/api/memory/graph?maxNodes=${maxNodes}${context ? `&context=${encodeURIComponent(context)}` : ""}`,
-  };
 }
