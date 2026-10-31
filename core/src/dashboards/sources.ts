@@ -483,12 +483,13 @@ function factsSource(deps: SourceDeps): DashboardSourceFn {
     const settings = deps.settings();
     const policy = storedRowFilter(settings.excludes, { homeDir: deps.paths.home });
     const rowOf = deps.db.prepare("SELECT root, rel FROM files WHERE path = ?");
+    // A fact from a file is shown only while that file is a row of the index that today's policy shows (and inside
+    // the scope): a source with no row - never indexed, or purged after an exclusion - fails closed (round 1, F1).
     const allowed = (sourcePath: string | null): boolean => {
       if (sourcePath === null) return call.scope === null;
       const row = rowOf.get(sourcePath) as { root: string; rel: string } | undefined;
-      const asRow = row ?? { root: path.dirname(sourcePath), rel: path.basename(sourcePath) };
-      if (row && !policy(row)) return false;
-      return call.scope === null || call.scope.within(asRow);
+      if (!row || !policy(row)) return false;
+      return call.scope === null || call.scope.within(row);
     };
     const facts = queryFacts(deps.db, { limit: 2000 }).filter((f) => allowed(f.sourcePath));
     const items = facts.slice(0, call.limit).map((f) => ({

@@ -9,7 +9,7 @@ import type { OsEvent } from "../core/src/events.js";
 import { assertFact } from "../core/src/memory/facts.js";
 import * as reviews from "../core/src/memory/reviews.js";
 import * as safeFs from "../core/src/security/safeFs.js";
-import { auditFiles } from "./fsReadAudit.js";
+import { auditFiles, recordFileReads } from "./fsReadAudit.js";
 import { makeTempHome } from "./helpers.js";
 import { movingClock } from "./helpers/movingClock.js";
 import {
@@ -614,6 +614,8 @@ describe("C14 today's policy and no file read", () => {
       );
       // The inbox starts the day again, so what the next refresh writes is what it found.
       world.ctx.db.prepare("DELETE FROM notifications").run();
+      // ... and the record of what the day already gave (amendment 30), so the "after" refresh may give them again.
+      world.ctx.db.prepare("DELETE FROM meta WHERE key LIKE 'dashboards.reminders.%'").run();
 
       world.update((s) => {
         s.excludes = [...s.excludes, "privado"];
@@ -623,23 +625,16 @@ describe("C14 today's policy and no file read", () => {
       });
 
       const home = fs.realpathSync(world.home);
-      const opened: string[] = [];
-      const realOpen = fs.openSync;
-      const openSpy = vi.spyOn(fs, "openSync").mockImplementation(((
-        file: fs.PathLike,
-        ...rest: unknown[]
-      ) => {
-        const p = String(file);
-        if (p.startsWith(home) || p.startsWith(root)) opened.push(p);
-        return (realOpen as (...a: unknown[]) => number)(file, ...rest);
-      }) as typeof fs.openSync);
+      // Every read entry of node:fs, not only openSync (round 1, F6: a utf8 readFileSync never calls it).
+      const recorder = await recordFileReads((p) => p.startsWith(home) || p.startsWith(root));
+      const opened = recorder.paths;
       const reads = [vi.mocked(safeFs.readWorkspaceText), vi.mocked(safeFs.readWorkspaceFile)];
       reads.forEach((r) => r.mockClear());
       let after: Json;
       try {
         after = (await world.refresh("visao-geral")).body.snapshot;
       } finally {
-        openSpy.mockRestore();
+        recorder.restore();
       }
       const text = JSON.stringify(after);
       expect(text).not.toContain(hidden);

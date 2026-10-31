@@ -18,6 +18,8 @@ import { refreshDue, snapshotStale } from "../core/src/dashboards/schedule.js";
 import { dashboardSources, projectHealth, type DashboardSourceMap } from "../core/src/dashboards/sources.js";
 import { parseTasks } from "../core/src/memory/tasks.js";
 import { makeTempHome } from "./helpers.js";
+import { assertFact } from "../core/src/memory/facts.js";
+import { runRow } from "./helpers/paineisWorld.js";
 import { ACCEPTED, REFUSALS, valid } from "./helpers/paineisDefinitions.js";
 
 /**
@@ -1024,5 +1026,259 @@ describe("C57 the export renderer at its own layer", () => {
       },
     ]);
     expect(html).toContain("<li>plano.md § Metas</li>");
+  });
+});
+
+// ---- round 1, F5 and F1: the source rules at their own layer, with no HTTP ---------------------------------------
+
+describe("Test policy row 1: the sources' rules at their own layer (round 1)", () => {
+  let home2: ReturnType<typeof makeTempHome>;
+  let ctx2: AppContext;
+  let w2: string;
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  const DAY = 24 * HOUR;
+  const call = (over: Json = {}) => ({
+    now: NOW,
+    limit: 50,
+    scope: null,
+    context: null,
+    fresh: false,
+    ...over,
+  });
+  const deps = (over: Json = {}) => ({
+    db: ctx2.db,
+    paths: ctx2.paths,
+    settings: () => ctx2.settings(),
+    metricsHistory: ctx2.metricsHistory,
+    connectors: ctx2.connectors,
+    connectorCache: ctx2.connectorCache,
+    ...over,
+  });
+  const put = (file: string, text: string, mtime?: number) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+    if (mtime !== undefined) fs.utimesSync(file, mtime / 1000, mtime / 1000);
+    return file;
+  };
+  const fm = (fields: Record<string, string>) =>
+    `---\n${Object.entries(fields)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("\n")}\n---\n# N\n`;
+  const ok = async (out: unknown) => {
+    const got = (await out) as Json;
+    expect(got.status).toBe("ok");
+    return got.data as Json;
+  };
+
+  beforeAll(async () => {
+    home2 = makeTempHome("mordomo-paineis-layer-sources-");
+    ctx2 = new AppContext(home2.paths.home);
+    w2 = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-paineis-layer-sources-work-")));
+    const s = ctx2.settings();
+    s.indexedFolders = [{ path: w2, area: null, enabled: true }];
+    s.contexts = [{ id: "projeto-x", name: "Projeto X", paths: [path.join(w2, "proj")] }];
+    ctx2.settingsStore.save(s);
+    const notes = path.join(ctx2.paths.memory, "notes", "f5");
+    put(
+      path.join(notes, "decisao-velha.md"),
+      fm({ type: "decision", status: "draft", updated: "2026-10-01" }),
+      NOW - 2 * DAY,
+    );
+    put(
+      path.join(notes, "decisao-nova.md"),
+      fm({ type: "decision", status: "active", updated: "2026-10-20" }),
+      NOW - 3 * DAY,
+    );
+    put(path.join(notes, "projeto.md"), fm({ type: "project", status: "active" }), NOW - DAY);
+    put(path.join(notes, "sem-status.md"), fm({ type: "project" }), NOW - 4 * DAY);
+    put(path.join(w2, "proj", "fonte.md"), "# Fonte\n");
+    put(path.join(w2, "proj-old", "fonte.md"), "# Velha\n");
+    put(path.join(w2, "fechado", "segredo.md"), "# Segredo\n");
+    await ctx2.indexer.indexAllAsync();
+  });
+  afterAll(() => {
+    ctx2.close();
+    home2.cleanup();
+    fs.rmSync(w2, { recursive: true, force: true });
+  });
+
+  it("C29 notes, at its layer: a type filter, the limit with the total, updated then mtime descending, groupBy status in the vocabulary's order then none", async () => {
+    const { notes } = dashboardSources(deps() as never);
+    const folder = path.join(ctx2.paths.memory, "notes", "f5");
+    const decisions = await ok(notes!({ kind: "notes", type: ["decision"], folder }, call()));
+    expect(decisions.items.map((i: Json) => path.basename(i.path))).toEqual([
+      "decisao-nova.md",
+      "decisao-velha.md",
+    ]);
+    const one = await ok(notes!({ kind: "notes", folder }, call({ limit: 1 })));
+    expect([one.items.length, one.total]).toEqual([1, 4]);
+    const grouped = await ok(notes!({ kind: "notes", folder, groupBy: "status" }, call()));
+    expect(grouped.categories).toEqual([
+      { label: "active", count: 2 },
+      { label: "draft", count: 1 },
+      { label: null, count: 1 },
+    ]);
+  });
+
+  it("C34 reviews, at its layer: the items and the total are C6's queue's, handed the context and the widget's limit", async () => {
+    const asked: Json[] = [];
+    const stub = ((_db: unknown, _env: unknown, query: Json) => {
+      asked.push(query);
+      return { items: [{ path: "/x/a.md" }], total: 9, nextDue: null };
+    }) as never;
+    const { reviews } = dashboardSources(deps({ reviewsDue: stub }) as never);
+    const context = ctx2.settings().contexts[0]!;
+    const got = await ok(reviews!({ kind: "reviews" }, call({ limit: 3, context })));
+    expect(got).toEqual({ items: [{ path: "/x/a.md" }], total: 9 });
+    expect(asked).toEqual([{ kind: "due", context, limit: 3, now: NOW }]);
+  });
+
+  it("C35 facts, at its layer: open facts newest first; never one whose source today's policy excludes or the index has no row of; in a context only those inside", async () => {
+    const at = (rel: string) => path.join(w2, rel);
+    const fact = (subject: string, validFrom: number, sourcePath: string | null) =>
+      assertFact(ctx2.db, {
+        subject,
+        predicate: "é",
+        object: "x",
+        validFrom,
+        ...(sourcePath ? { sourcePath } : {}),
+      }).fact;
+    fact("Dentro", NOW - 3 * DAY, at("proj/fonte.md"));
+    fact("Parecida", NOW - 2 * DAY, at("proj-old/fonte.md"));
+    fact("Excluída", NOW - DAY, at("fechado/segredo.md"));
+    fact("Sem linha", NOW - HOUR, at("proj/nunca-indexada.md"));
+    fact("Sem fonte", NOW - 4 * DAY, null);
+    // the folder is excluded after it was indexed: its row is still in files, only today's policy hides it
+    const s = ctx2.settings();
+    s.excludes = [...s.excludes, "fechado"];
+    ctx2.settingsStore.save(s);
+    expect(
+      ctx2.db.prepare("SELECT COUNT(*) c FROM files WHERE path = ?").get(at("fechado/segredo.md")),
+    ).toEqual({ c: 1 });
+    const { facts } = dashboardSources(deps() as never);
+    const all = await ok(facts!({ kind: "facts" }, call()));
+    expect(all.items.map((i: Json) => i.subject)).toEqual(["Parecida", "Dentro", "Sem fonte"]);
+    const scope = resolveCleanupScope(
+      { paths: ctx2.paths, settings: ctx2.settings() },
+      { context: "projeto-x" },
+    );
+    const scoped = await ok(facts!({ kind: "facts" }, call({ scope })));
+    expect(scoped.items.map((i: Json) => i.subject)).toEqual(["Dentro"]);
+  });
+
+  it("C30 runs and approvals, at their layer: active first then finished in 24 h newest first; pending approvals oldest first with ageMs", async () => {
+    runRow(
+      { ctx: ctx2 },
+      {
+        id: "r-fim-1h",
+        status: "done",
+        createdAt: NOW - 2 * HOUR,
+        startedAt: NOW - 2 * HOUR,
+        finishedAt: NOW - HOUR,
+        durationMs: HOUR,
+      },
+    );
+    runRow(
+      { ctx: ctx2 },
+      { id: "r-fim-velho", status: "done", createdAt: NOW - 2 * DAY, finishedAt: NOW - DAY - MIN },
+    );
+    runRow(
+      { ctx: ctx2 },
+      {
+        id: "r-rodando",
+        status: "running",
+        skill: "recall",
+        createdAt: NOW - 10 * MIN,
+        startedAt: NOW - 10 * MIN,
+      },
+    );
+    runRow({ ctx: ctx2 }, { id: "r-fila", status: "queued", createdAt: NOW - MIN });
+    const { runs, approvals } = dashboardSources(deps() as never);
+    const r = await ok(runs!({ kind: "runs" }, call()));
+    expect(r.items.map((i: Json) => [i.id, i.state])).toEqual([
+      ["r-fila", "queued"],
+      ["r-rodando", "running"],
+      ["r-fim-1h", "done"],
+    ]);
+    expect(r.items[2].durationMs).toBe(HOUR);
+    const add = ctx2.db.prepare(
+      "INSERT INTO approvals (id, created_at, kind, description, status) VALUES (?, ?, 'run_write', 'x', ?)",
+    );
+    add.run("a-nova", NOW - 5 * MIN, "pending");
+    add.run("a-antiga", NOW - 2 * HOUR, "pending");
+    add.run("a-feita", NOW - 3 * HOUR, "approved");
+    const a = await ok(approvals!({ kind: "approvals" }, call()));
+    expect(a.items.map((i: Json) => [i.id, i.ageMs])).toEqual([
+      ["a-antiga", 2 * HOUR],
+      ["a-nova", 5 * MIN],
+    ]);
+  });
+
+  it("C31 metrics, at its layer: no sample is a null value; the newest sample's field and the daily points", async () => {
+    const { metrics } = dashboardSources(deps() as never);
+    expect((await ok(metrics!({ kind: "metrics", series: "runs24h" }, call()))).value).toBeNull();
+    const sample = (at: number, runs: number) =>
+      ctx2.metricsHistory.sample(
+        {
+          runs: {
+            total: runs,
+            last24h: runs,
+            failed24h: 0,
+            costTodayUsd: 0,
+            tokensToday: 0,
+            spendWeekUsd: 0,
+          },
+          inboxUnread: 0,
+          approvalsPending: 0,
+          approvalWaitAvgMs: null,
+        },
+        at,
+      );
+    sample(NOW - 3 * HOUR, 7);
+    sample(NOW - HOUR, 5);
+    const got = await ok(metrics!({ kind: "metrics", series: "runs24h" }, call()));
+    expect(got.value).toBe(5);
+    expect(got.points.at(-1).value).toBe(5);
+  });
+
+  it("C32 connector, at its layer: list cut at the limit with the six keys, flagged, a summary key, no mapping and not in the registry are not_configured", async () => {
+    const repoConnector = JSON.parse(
+      fs.readFileSync(
+        path.join(path.resolve(import.meta.dirname, ".."), "connectors", "calendar-google.json"),
+        "utf8",
+      ),
+    );
+    const mapped = { ...repoConnector, id: "agenda", name: "Agenda" };
+    const bare = { ...repoConnector, id: "cru", name: "Cru" };
+    delete bare.dataMapping;
+    const registry = { get: (id: string) => (id === "agenda" ? mapped : id === "cru" ? bare : undefined) };
+    const items = Array.from({ length: 5 }, (_, i) => ({
+      id: `e${i}`,
+      title: `T${i}`,
+      ts: NOW + i,
+      flagged: i % 2 === 0,
+      body: "raw",
+      href: `https://x/${i}`,
+    }));
+    const cache = { read: async () => ({ status: "ok", syncedAt: NOW, items, summary: { unread: 4 } }) };
+    const { connector } = dashboardSources(deps({ connectors: registry, connectorCache: cache }) as never);
+    const list = await ok(connector!({ kind: "connector", id: "agenda", read: "list" }, call({ limit: 3 })));
+    expect(list.items).toEqual(items.slice(0, 3).map(({ body: _b, ...rest }) => rest));
+    expect(list.total).toBe(5);
+    const flagged = await ok(connector!({ kind: "connector", id: "agenda", read: "flagged" }, call()));
+    expect(flagged.items.map((i: Json) => i.id)).toEqual(["e0", "e2", "e4"]);
+    const summary = await ok(
+      connector!({ kind: "connector", id: "agenda", read: "summary", key: "unread" }, call()),
+    );
+    expect(summary.value).toBe(4);
+    const none = (await connector!({ kind: "connector", id: "cru", read: "list" }, call())) as Json;
+    expect(none.status).toBe("not_configured");
+    expect(none.data.connector).toEqual({ id: "cru", name: "Cru" });
+    const missing = (await connector!({ kind: "connector", id: "nenhum", read: "list" }, call())) as Json;
+    expect([missing.status, missing.data.connector]).toEqual([
+      "not_configured",
+      { id: "nenhum", name: "nenhum" },
+    ]);
   });
 });

@@ -135,6 +135,13 @@ describe("C49 the note changed", () => {
     write(file, `${BODY}- [ ] Outra\n`);
     await conflict(file, { line: 4, done: true, baseVersion: read });
   });
+  // Round 1 (minor): the version is checked before the box, so a box already as asked does not hide a stale version.
+  it("C49 a baseVersion the file no longer has on a box already as asked is 409 edit_conflict and changes no byte", async () => {
+    const file = write(notes("ja-marcada"), "# N\n\ntexto\n- [x] Feita\n");
+    const read = sha(fs.readFileSync(file));
+    write(file, "# N\n\ntexto\n- [x] Feita\n- [ ] Outra\n");
+    await conflict(file, { line: 4, done: true, baseVersion: read });
+  });
   it("C49 a line that holds text but no task is 409 edit_conflict", async () => {
     const file = write(notes("texto"), BODY);
     await conflict(file, { line: 3, done: true, baseVersion: sha(fs.readFileSync(file)) });

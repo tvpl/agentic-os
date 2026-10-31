@@ -271,17 +271,20 @@ returned and `total` is 9; `limit: 50`), ordered by `updated` descending, then `
 one-item list; `groupBy: "status"` returns `bars` categories in the order `active`, `draft`, `paused`, `done`, `archived`,
 then other values alphabetically, then the notes with no status, each with its count (AC 20, amendment 5)
 Proof: `npx vitest run tests/paineis.sources.test.ts -t "C29 "`
+Proof: `npx vitest run tests/paineis.layer.test.ts -t "C29 "`
 
 **C30** - A `runs` source returns the `running` and `queued` runs first, then the runs that finished in the last 24 hours
 newest first, each with `skill`, `state` and `durationMs`, and not a run that finished 24 h + 1 min ago; an `approvals` source
 returns the `pending` approvals oldest first with `ageMs` (`now - createdAt`), and not a resolved one (AC 21, amendment 8)
 Proof: `npx vitest run tests/paineis.sources.test.ts -t "C30 "`
+Proof: `npx vitest run tests/paineis.layer.test.ts -t "C30 "`
 
 **C31** - A `metrics` source, table-driven over the six names `runs24h`, `failed24h`, `costTodayUsd`, `tokensToday`,
 `inboxUnread`, `approvalsPending`, returns as `value` the field of the newest hourly sample and as `points` the 14 days of
 `dailyPoints` for that field (with two samples on one day, 0.40 and 0.25 of `costTodayUsd` give that day 0.40, and 7 and 5 of
 `runs24h` give 5, the day's last); with no sample the widget is `empty` (AC 22, amendment 9)
 Proof: `npx vitest run tests/paineis.sources.test.ts -t "C31 "`
+Proof: `npx vitest run tests/paineis.layer.test.ts -t "C31 "`
 
 **C32** - A `connector` source of a connector with a read mapping returns, through `fetchConnectorData` called with
 `timeoutMs` = `settings.connectors.dataTimeoutMs`, `allowedCommands` and `tz` from the settings, its `list` items (`id`,
@@ -290,6 +293,7 @@ back holds 8); `read: "flagged"` keeps only `flagged: true`; `read: "summary"` w
 connector with no mapping is `not_configured` with its `name` and its `setup` lines (`toEqual` the connector file's); an id
 the registry does not have is `not_configured` with `name` = the id (AC 23, amendment 10)
 Proof: `npx vitest run tests/paineis.sources.test.ts -t "C32 "`
+Proof: `npx vitest run tests/paineis.layer.test.ts -t "C32 "`
 
 **C33** - The connector cache is one per service: `GET /api/connectors/calendar-google/data` followed, within the TTL, by a
 refresh the service's tick starts calls the fake fetch once; `POST /api/dashboards/visao-geral/refresh` then calls it again
@@ -303,11 +307,14 @@ Proof: `npx vitest run tests/paineis.sources.test.ts -t "C33 "`
 `memory.reviews.cadence` 90 days, a note last reviewed 91 days ago is an item and one snoozed until tomorrow is not; in a
 context dashboard the stub receives that context (AC 24, amendment 8)
 Proof: `npx vitest run tests/paineis.sources.test.ts -t "C34 "`
+Proof: `npx vitest run tests/paineis.layer.test.ts -t "C34 "`
 
 **C35** - A `facts` source returns the open facts newest first with `subject`, `predicate`, `object`, `validFrom` and
-`sourcePath`, and not a retracted one; in a context dashboard only the facts whose `sourcePath` is inside the context's scope
-(amendment 8)
+`sourcePath`, and not a retracted one; in a context dashboard only the facts whose `sourcePath` is inside the context's scope;
+(round 1) a fact whose source is in a folder today's policy excludes (its row still in `files`), or whose source has no
+row in the index (never indexed, or the row purged), is not shown, in its list nor in a `count` KPI (amendment 8, AC 13)
 Proof: `npx vitest run tests/paineis.sources.test.ts -t "C35 "`
+Proof: `npx vitest run tests/paineis.layer.test.ts -t "C35 "`
 
 **C36** - Every item a source returns from a note carries the note's `natureza` read through C6's closed list, in `notes`,
 `tasks`, `decisions`, `projects` and `reviews`: `natureza: hipotese` → `"hipotese"`, `natureza: talvez` → `null`, none →
@@ -417,6 +424,16 @@ its `CHECK` refuses `kind: "lembrete"`; on a database migrated to 26 holding two
 `idx_notifications_ts` and `idx_notifications_read` exist; running the migrations again leaves the same schema (door 8,
 Impact)
 Proof: `npx vitest run tests/paineis.layer.test.ts -t "C98 "`
+
+**C99** - (Added in round 1, finding 2, amendment 30.) In the pinned zone, with `settings.dashboards.reminders`
+`{ maxPerDay: 2, at: "08:30" }` and four candidates (an overdue task, two due today, a project `behind`): after the 08:31
+refresh of 2026-10-30 wrote 2 reminders, `DELETE /api/notifications/:id` of one and a refresh at 10:00 write none (the
+deleted one is not written again, and the cap still counts it), deleting the other and a refresh at 10:15 write none, and
+a refresh at 08:30 of 2026-10-31 writes 2 with keys of that day; at its own layer `deliverReminders` reads and writes the
+day's record (`meta` `dashboards.reminders.<AAAA-MM-DD>`): before `at` none, `maxPerDay: 0` none, the cap 2 of 3, the
+same day again none, a dismissed row frees neither its item nor the cap, with room under the cap a dismissed item still
+does not come back, and the next day gives again and drops the record of the day before (AC 46, AC 47, amendment 30)
+Proof: `npx vitest run tests/paineis.localday.test.ts -t "C99 "`
 
 ### S4 - pergunta e exportação (plan S6) · 9 files · 115 KB · ~29k
 
@@ -718,6 +735,36 @@ Proof: `npm run test -w apps/command-centre -- src/dashboards/dashboardsCopy.tes
   `context_id`; nothing else of C56 changed. `STATE.md` question 15 stays open with `context_id` as its default and
   "widen the pattern for every skill" as the alternative.
 
+## Correções da rodada 1
+
+Changes added after approval, from round 1 of the verification (`verification.md`, FAIL), each in the commit that makes
+it:
+
+- **Finding 1, the facts source's policy (a product fix).** `core/src/dashboards/sources.ts` showed a fact whose source
+  file had no `files` row, and skipped today's policy for it. A fact from a file is now shown only while that file is a
+  row the policy shows (and inside the scope): a source with no row fails closed; a fact with no source stays as it was.
+  C35's claim gains the excluded folder and the missing row, its proof gains the route case and its own layer
+  (`tests/paineis.layer.test.ts -t "C35 "`), so AC 13's "every path an item arrives by" covers facts. m5 (the policy
+  check dropped) and the code before the fix (no row skips the policy) are killed by both C35 proofs.
+- **Finding 2, a dismissed reminder (a product fix, amendment 30).** The day's cap and the dedupe read the inbox rows,
+  which `DELETE /api/notifications/:id` removes. What was given on a local day is now kept in the existing `meta` table
+  under `dashboards.reminders.<AAAA-MM-DD>` (the `dedupeKey`s of that day), read and written in one transaction; the cap
+  counts it and the dedupe reads it; the records of earlier days are dropped when a later day writes. No new table, so no
+  new door. C99 is new (route and own layer, São Paulo pinned) and gets a Coverage row. C14's "after" refresh now clears
+  that record as well as the inbox, since deleting the inbox no longer frees the day.
+- **Finding 5, Test policy row 1.** Own-layer cases, the sources and `deliverReminders` called with no HTTP: the tasks of
+  today and of the week, the six natures of a decision note and the passage, the open loops (in
+  `tests/paineis.localday.test.ts`, pinned, titled "C25/C26/C27 …, at its layer"); notes, reviews, facts, runs,
+  approvals, metrics and connector (`tests/paineis.layer.test.ts`, "C29/C30/C31/C32/C34/C35 …, at its layer", with
+  their Proof lines added); the reminders' cap, `at`, dedupe and `maxPerDay: 0` (C99's layer case).
+- **Finding 6, C14's read audit.** `tests/fsReadAudit.ts` gains `recordFileReads`, which wraps `openSync`, `open`,
+  `readFileSync`, `readFile`, `createReadStream`, `fs.promises.open` and `fs.promises.readFile` and syncs the ESM named
+  exports; C14 records through it instead of a spy on `openSync` alone. m7 (the refresh reading every `files.path`
+  through `realProbeIo.readText`, a utf8 `readFileSync`) is killed by C14.
+- **Minor, C49.** A stale `baseVersion` on a box already as asked answers `409 edit_conflict` and changes no byte (AC
+  50, amendment 17: the version is checked before the box); one more C49 case.
+- Findings 3, 4 and 7 (the screens) are the second builder's; finding 8 is the owner's question 1.
+
 ## Coverage
 
 | Set (size)                                                         | Member -> proof                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Unproven |
@@ -759,6 +806,7 @@ Proof: `npm run test -w apps/command-centre -- src/dashboards/dashboardsCopy.tes
 | highlight rules of door 5 (8)                                      | `overdue` C43, C42 · `due_today` C43 · `decided_this_week` C43 · `open_decision_7d` C43 · `project_behind` C43 · `review_due` C43, C42 · `connector_flagged` C43, C42 · `new_since_visit` C43, C42                                                                                                                                                                                                                                                                                                                          | -        |
 | reminder rules (3)                                                 | `overdue` C44 · `due_today` C44 · `project_behind` C44                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | -        |
 | reminder outcomes (5)                                              | created up to the cap C44 · deduped the same day C44 · next day C44 · before `at` C44 · `maxPerDay: 0` C45                                                                                                                                                                                                                                                                                                                                                                                                                  | -        |
+| reminder outcomes after a dismissal, round 1 (3)                   | the deleted one not written again C99 · the cap still counts it C99 · the next day gives again C99                                                                                                                                                                                                                                                                                                                                                                                                                          | -        |
 | places a task is not editable (5)                                  | outside `memory/` C48, C71 · `journal/` C48, C71 · `ROUTER.md` C48 · `areas/` C48 · `contexts/` C48                                                                                                                                                                                                                                                                                                                                                                                                                         | -        |
 | question result refusals (9)                                       | schema C54 · no citation C54 · not indexed C54 · policy C54 · outside the context C54 · unlabelled `plano` C54 · 7 widgets C54 · size C54 · run failed C54                                                                                                                                                                                                                                                                                                                                                                  | -        |
 | paths a cited file arrives by (3)                                  | `citations[]` C55 · a `list` item's `path` C55 · a `table` row's `path` C55                                                                                                                                                                                                                                                                                                                                                                                                                                                 | -        |
@@ -776,7 +824,8 @@ Proof: `npm run test -w apps/command-centre -- src/dashboards/dashboardsCopy.tes
 
 - Claims naming a status code, route or response shape: C1-C4, C6, C7, C9, C11-C16, C25-C36, C42, C44-C54, C57-C59, and
   also C63 and C64, each proven through `app.inject` against `buildServer`; C5, C8, C10, C17, C19-C21, C28, C40, C43, C54, C55, C57 also
-  or only at their own layer, with no HTTP
+  or only at their own layer, with no HTTP; and, since round 1 (Test policy row 1), C25, C26, C27, C29-C32, C34, C35 and C99
+  also at their own layer, the sources and `deliverReminders` called with no HTTP
 - Claims about the screens: C65-C93, C97 in rendered components; C81, C90, C94, C95 also in a real browser, both shells
   where the claim names them
 

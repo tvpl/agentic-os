@@ -91,6 +91,13 @@ async function evaluate(
   expect(back.body.snapshot).toEqual(res.body.snapshot);
   return Object.fromEntries(back.body.snapshot.widgets.map((x: Json) => [x.id, x]));
 }
+const kpiCount = (id: string, source: Json): Json => ({
+  id,
+  kind: "kpi",
+  title: id,
+  source,
+  options: { measure: "count" },
+});
 const list = (id: string, source: Json, options: Json = { limit: 50 }): Json => ({
   id,
   kind: "list",
@@ -702,6 +709,40 @@ describe("C35 the facts source", () => {
       world.context("projeto-x", "Projeto X", [path.join(root, "proj")]);
       const scoped = await evaluate(world, [list("f", { kind: "facts" })], "projeto-x");
       expect(scoped.f!.data.items.map((i: Json) => i.subject)).toEqual(["A"]);
+    });
+  });
+
+  // Round 1, F1: today's policy on the facts' path too (AC 13, L-055), and a source the index has no row of fails closed.
+  it("C35 a fact whose source is in a folder today's policy excludes, or whose source has no row in the index, is not shown", async () => {
+    await fresh(async (world) => {
+      const root = world.indexedRoot("c35-policy");
+      const shown = world.note(path.join(root, "aberta.md"), {});
+      const hidden = world.note(path.join(root, "privado", "segredo.md"), {});
+      const purged = world.note(path.join(root, "apagada.md"), {});
+      await world.index();
+      const fact = (subject: string, sourcePath: string) =>
+        assertFact(world.ctx.db, { subject, predicate: "é", object: "x", validFrom: NOW - DAY, sourcePath });
+      fact("Visível", shown);
+      fact("Excluída", hidden);
+      fact("Nunca indexada", path.join(root, "nunca.md"));
+      fact("Sem linha", purged);
+      const before = await evaluate(world, [list("f", { kind: "facts" })]);
+      expect(before.f!.data.items.map((i: Json) => i.subject).sort()).toEqual([
+        "Excluída",
+        "Sem linha",
+        "Visível",
+      ]);
+      world.update((s) => {
+        s.excludes = [...s.excludes, "privado"];
+      });
+      world.ctx.db.prepare("DELETE FROM files WHERE path = ?").run(purged);
+      const after = await evaluate(world, [list("f", { kind: "facts" }), kpiCount("k", { kind: "facts" })]);
+      expect(after.f!.data.items.map((i: Json) => i.subject)).toEqual(["Visível"]);
+      expect(after.f!.data.total).toBe(1);
+      expect(kpiOf(after.k!.data)).toEqual({ value: 1 });
+      const text = JSON.stringify(after);
+      for (const gone of ["Excluída", "Nunca indexada", "Sem linha", hidden, purged])
+        expect(text).not.toContain(gone);
     });
   });
 });

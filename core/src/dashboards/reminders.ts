@@ -3,13 +3,15 @@ import type { Settings } from "../config/schema.js";
 import type { Db } from "../db/db.js";
 import { localDay } from "../memory/reviews.js";
 import type { NotificationInput, NotificationRecord } from "../notifications/store.js";
+import { readMetaJson, writeMetaJson } from "../sentinels/meta.js";
 
 /**
- * The reminders of door 5 (.specs/features/cerebro-paineis, AC 46, AC 47, amendment 16): from
+ * The reminders of door 5 (.specs/features/cerebro-paineis, AC 46, AC 47, amendments 16 and 30): from
  * `settings.dashboards.reminders.at` local time on, a refresh turns an overdue or due-today task, or a project
- * behind, into a `reminder` row of the inbox, once per item per local day (the `dedupeKey` holds the day) and at most
- * `maxPerDay` a day, counted over the `reminder` rows whose key holds that day. The title is English like the
- * sentinels'; the screen reads `messageKey` and `messageParams.text`.
+ * behind, into a `reminder` row of the inbox, once per item per local day and at most `maxPerDay` a day. What was
+ * given on a day is kept in `meta` under `dashboards.reminders.<AAAA-MM-DD>` (the `dedupeKey`s of that day), not read
+ * from the inbox: a row the owner deletes neither frees the day's cap nor lets its item come again (amendment 30).
+ * The title is English like the sentinels'; the screen reads `messageKey` and `messageParams.text`.
  */
 
 export const REMINDER_RULES = ["overdue", "due_today", "project_behind"] as const;
@@ -87,7 +89,16 @@ const minutesOf = (hhmm: string): number => {
 
 export interface ReminderSink {
   add(input: NotificationInput): NotificationRecord;
-  hasDedupeKey(key: string, since?: number): boolean;
+}
+
+/** The `meta` key that holds the `dedupeKey`s given on a local day (amendment 30). */
+export const REMINDER_DAY_PREFIX = "dashboards.reminders.";
+export const reminderDayKey = (day: string): string => `${REMINDER_DAY_PREFIX}${day}`;
+
+/** The `dedupeKey`s of the reminders given on `day`, whatever became of their rows. */
+export function remindersGiven(db: Db, day: string): string[] {
+  const stored = readMetaJson<unknown>(db, reminderDayKey(day));
+  return Array.isArray(stored) ? stored.filter((k): k is string => typeof k === "string") : [];
 }
 
 /** Write the reminders `candidates` ask for, as far as the settings and the day's cap allow; answers what it wrote. */
@@ -101,30 +112,34 @@ export function deliverReminders(
   const local = new Date(now);
   if (local.getHours() * 60 + local.getMinutes() < minutesOf(at)) return [];
   const day = localDay(now);
-  const given = (
-    deps.db
-      .prepare("SELECT COUNT(*) c FROM notifications WHERE kind = 'reminder' AND dedupe_key LIKE ?")
-      .get(`reminder:%:${day}`) as { c: number }
-  ).c;
-  let room = maxPerDay - given;
-  const out: NotificationRecord[] = [];
-  for (const c of candidates) {
-    if (room <= 0) break;
-    const dedupeKey = `reminder:${c.rule}:${c.item}:${day}`;
-    if (deps.notifications.hasDedupeKey(dedupeKey)) continue;
-    out.push(
-      deps.notifications.add({
-        kind: "reminder",
-        tone: c.rule === "due_today" ? "info" : "warn",
-        title: `${TITLES[c.rule]}: ${c.text}`,
-        messageKey: `reminder.${c.rule}`,
-        messageParams: { text: c.text },
-        href: `/brain?sel=${c.fileId}`,
-        dedupeKey,
-        ts: now,
-      }),
-    );
-    room--;
-  }
-  return out;
+  return deps.db.transaction(() => {
+    const given = remindersGiven(deps.db, day);
+    const out: NotificationRecord[] = [];
+    for (const c of candidates) {
+      if (given.length >= maxPerDay) break;
+      const dedupeKey = `reminder:${c.rule}:${c.item}:${day}`;
+      if (given.includes(dedupeKey)) continue;
+      out.push(
+        deps.notifications.add({
+          kind: "reminder",
+          tone: c.rule === "due_today" ? "info" : "warn",
+          title: `${TITLES[c.rule]}: ${c.text}`,
+          messageKey: `reminder.${c.rule}`,
+          messageParams: { text: c.text },
+          href: `/brain?sel=${c.fileId}`,
+          dedupeKey,
+          ts: now,
+        }),
+      );
+      given.push(dedupeKey);
+    }
+    if (out.length > 0) {
+      writeMetaJson(deps.db, reminderDayKey(day), given);
+      // Only the day that can still be asked about is kept: the records of earlier days go.
+      deps.db
+        .prepare("DELETE FROM meta WHERE key LIKE ? AND key < ?")
+        .run(`${REMINDER_DAY_PREFIX}%`, reminderDayKey(day));
+    }
+    return out;
+  })();
 }

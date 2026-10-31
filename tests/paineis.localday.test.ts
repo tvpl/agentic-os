@@ -7,6 +7,14 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as client from "../core/src/connectors/client.js";
 import { refreshDue } from "../core/src/dashboards/schedule.js";
+import {
+  deliverReminders,
+  remindersGiven,
+  type ReminderCandidate,
+} from "../core/src/dashboards/reminders.js";
+import { dashboardSources } from "../core/src/dashboards/sources.js";
+import { AppContext } from "../apps/api/src/context.js";
+import { makeTempHome } from "./helpers.js";
 import * as safeFs from "../core/src/security/safeFs.js";
 import { movingClock } from "./helpers/movingClock.js";
 import {
@@ -56,7 +64,7 @@ afterEach(() => {
 });
 
 describe("the local day and the UTC day differ here", () => {
-  it("C10 C15 C25 C26 C27 C28 C44 C57 the zone is pinned: 23:30 of 2026-10-30 local is 2026-10-31 in UTC", () => {
+  it("C10 C15 C25 C26 C27 C28 C44 C57 C99 the zone is pinned: 23:30 of 2026-10-30 local is 2026-10-31 in UTC", () => {
     expect(process.env.TZ).toBe("America/Sao_Paulo");
     expect(new Date(NOW).getDate()).toBe(30);
     expect(new Date(NOW).toISOString().slice(0, 10)).toBe("2026-10-31");
@@ -739,5 +747,221 @@ describe("C57 POST /api/dashboards/:id/export", () => {
     } finally {
       await world.close();
     }
+  });
+});
+
+// ---- round 1, F2 and F5: a dismissed reminder, and the day's rules at their own layer -----------------------------
+
+describe("C99 a dismissed reminder is not written again the same local day", () => {
+  const local = (d: number, h: number, m: number) => new Date(2026, 9, d, h, m).getTime();
+
+  it("C99 through the routes: after 08:31 gave 2, deleting one and refreshing at 10:00 writes none (the cap counts it), deleting the other and refreshing at 10:15 writes none, 08:30 of the next day writes 2", async () => {
+    await fresh(async (world) => {
+      world.update((s) => {
+        s.dashboards = { reminders: { maxPerDay: 2, at: "08:30" } };
+      });
+      const dir = path.join(world.memory, "notes");
+      world.note(
+        path.join(dir, "tarefas.md"),
+        {},
+        "# Tarefas\n\n- [ ] Mandar a proposta 📅 2026-10-29\n- [ ] Ligar ⏫ 📅 2026-10-30\n- [ ] Revisar 📅 2026-10-30\n",
+      );
+      world.note(
+        path.join(dir, "site.md"),
+        { type: "project", status: "active", due: "2026-10-28" },
+        "# Site novo\n",
+      );
+      await world.index();
+      expect((await world.create({ template: "overview" })).status).toBe(201);
+      const refreshAt = async (when: number) => {
+        clock.set(when);
+        vi.useFakeTimers({ toFake: ["Date"], now: when });
+        try {
+          expect((await world.refresh("visao-geral")).status).toBe(200);
+        } finally {
+          vi.useRealTimers();
+        }
+      };
+      const reminders = async () =>
+        ((await world.call("GET", "/api/notifications")).body.items as Json[]).filter(
+          (n) => n.kind === "reminder",
+        );
+      const made = () =>
+        (
+          world.ctx.db.prepare("SELECT COUNT(*) c FROM notifications WHERE kind = 'reminder'").get() as {
+            c: number;
+          }
+        ).c;
+
+      await refreshAt(local(30, 8, 31));
+      const first = await reminders();
+      expect(first).toHaveLength(2);
+      const [one, two] = first;
+      const del = await world.call("DELETE", `/api/notifications/${one!.id}`);
+      expect(del.status, JSON.stringify(del.body)).toBe(200);
+      await refreshAt(local(30, 10, 0));
+      expect((await reminders()).map((n) => n.dedupeKey)).toEqual([two!.dedupeKey]);
+      expect(made()).toBe(1);
+
+      expect((await world.call("DELETE", `/api/notifications/${two!.id}`)).status).toBe(200);
+      await refreshAt(local(30, 10, 15));
+      expect(await reminders()).toEqual([]);
+
+      await refreshAt(local(31, 8, 30));
+      const next = await reminders();
+      expect(next).toHaveLength(2);
+      expect(next.every((n) => String(n.dedupeKey).endsWith(":2026-10-31"))).toBe(true);
+    });
+  });
+
+  it("C99 at its own layer: the cap, at, the same-day dedupe, a dismissal and maxPerDay 0 follow the day's record in meta", () => {
+    const home = makeTempHome("mordomo-paineis-c99-");
+    const ctx = new AppContext(home.paths.home);
+    try {
+      const settings = (maxPerDay: number) => ({
+        ...ctx.settings(),
+        dashboards: { reminders: { maxPerDay, at: "08:30" } },
+      });
+      const c = (n: number): ReminderCandidate => ({
+        rule: "overdue",
+        item: `task:/m/t.md:${n}`,
+        text: `T${n}`,
+        fileId: n,
+      });
+      const all = [c(1), c(2), c(3)];
+      const give = (maxPerDay: number, when: number) =>
+        deliverReminders(
+          { db: ctx.db, notifications: ctx.notifications, settings: settings(maxPerDay) },
+          all,
+          when,
+        ).map((n) => n.dedupeKey);
+      // at: before 08:30 nothing, maxPerDay 0 nothing
+      expect(give(2, local(30, 8, 29))).toEqual([]);
+      expect(give(0, local(30, 9, 0))).toEqual([]);
+      // the cap: 2 of 3
+      expect(give(2, local(30, 8, 30))).toEqual([
+        "reminder:overdue:task:/m/t.md:1:2026-10-30",
+        "reminder:overdue:task:/m/t.md:2:2026-10-30",
+      ]);
+      expect(remindersGiven(ctx.db, "2026-10-30")).toHaveLength(2);
+      // the same day again: none
+      expect(give(2, local(30, 10, 0))).toEqual([]);
+      // a dismissal frees nothing: neither the item nor the cap
+      const rows = ctx.notifications.list().filter((n) => n.kind === "reminder");
+      ctx.notifications.delete(rows[0]!.id);
+      expect(give(2, local(30, 10, 15))).toEqual([]);
+      for (const n of ctx.notifications.list()) ctx.notifications.delete(n.id);
+      expect(give(2, local(30, 10, 30))).toEqual([]);
+      // the next local day gives again, and the record of the day before goes
+      expect(give(2, local(31, 8, 30))).toHaveLength(2);
+      expect(remindersGiven(ctx.db, "2026-10-30")).toEqual([]);
+      // with room under the cap, a dismissed item still does not come back (the dedupe alone)
+      expect(give(5, local(32, 8, 30))).toHaveLength(3);
+      for (const n of ctx.notifications.list()) ctx.notifications.delete(n.id);
+      expect(give(5, local(32, 9, 0))).toEqual([]);
+    } finally {
+      ctx.close();
+      home.cleanup();
+    }
+  });
+});
+
+describe("Test policy row 1: the day's source rules at their own layer (round 1)", () => {
+  let home: ReturnType<typeof makeTempHome>;
+  let ctx: AppContext;
+  const call = { now: NOW, limit: 50, scope: null, context: null, fresh: false };
+  const sources = () =>
+    dashboardSources({
+      db: ctx.db,
+      paths: ctx.paths,
+      settings: () => ctx.settings(),
+      metricsHistory: ctx.metricsHistory,
+      connectors: ctx.connectors,
+      connectorCache: ctx.connectorCache,
+    });
+  const put = (rel: string, text: string) => {
+    const file = path.join(ctx.paths.memory, rel);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+    return file;
+  };
+
+  beforeAll(async () => {
+    home = makeTempHome("mordomo-paineis-localday-layer-");
+    ctx = new AppContext(home.paths.home);
+    put(
+      "notes/tarefas.md",
+      [
+        "# Tarefas",
+        "",
+        "- [ ] A 📅 2026-10-28",
+        "- [ ] B ⏫ 📅 2026-10-29",
+        "- [ ] C 📅 2026-10-30",
+        "- [x] D 📅 2026-10-30",
+        "- [ ] E",
+        "- [ ] F 📅 2026-10-31",
+        "- [ ] G 📅 2026-11-05",
+        "- [ ] H 📅 2026-11-06",
+        "",
+      ].join("\n"),
+    );
+    for (const natureza of ["fato", "relato", "", "plano", "hipotese", "opiniao"]) {
+      const name = natureza || "nenhuma";
+      put(
+        `notes/decisoes/${name}.md`,
+        `---\ntype: decision\n${natureza ? `natureza: ${natureza}\n` : ""}---\n# Decisão ${name}\n`,
+      );
+    }
+    put(
+      "journal/2026-10-30.md",
+      "# 2026-10-30\n\n## Decisions\n\n- 10:00 Fechar o contrato\n\n> [!plano]\n> - 11:00 Contratar alguém\n\n## Open loops\n\n- 12:00 Ligar para a Ana\n",
+    );
+    put("journal/2026-10-25.md", "# 2026-10-25\n\n## Decisions\n\n- 09:00 Da semana passada\n");
+    await ctx.indexer.indexAllAsync();
+  });
+  afterAll(() => {
+    ctx.close();
+    home.cleanup();
+  });
+
+  it("C25 tasks, at its layer: today is the overdue then today's open tasks, overdue first, then priority, then due; week adds through 2026-11-05", async () => {
+    const { tasks } = sources();
+    const today = ((await tasks!({ kind: "tasks", window: "today" }, call)) as Json).data;
+    expect(today.items.map((i: Json) => [i.text, i.overdue])).toEqual([
+      ["B", true],
+      ["A", true],
+      ["C", false],
+    ]);
+    expect([today.total, today.dueToday, today.doneDueToday]).toEqual([3, 2, 1]);
+    const week = ((await tasks!({ kind: "tasks", window: "week" }, call)) as Json).data;
+    expect(week.items.map((i: Json) => i.text)).toEqual(["B", "A", "C", "F", "G"]);
+  });
+
+  it("C26 decisions, at its layer: one state per nature of a decision note (fato, relato, none decided; plano, hipotese, opiniao open), the journal's bullet fato and the one in a plano passage open, not the week before", async () => {
+    const { decisions } = sources();
+    const got = ((await decisions!({ kind: "decisions", window: "week" }, call)) as Json).data;
+    const state = Object.fromEntries(got.items.map((i: Json) => [i.text, i.state]));
+    expect(state).toEqual({
+      "Decisão fato": "decided",
+      "Decisão relato": "decided",
+      "Decisão nenhuma": "decided",
+      "Decisão plano": "open",
+      "Decisão hipotese": "open",
+      "Decisão opiniao": "open",
+      "Fechar o contrato": "decided",
+      "Contratar alguém": "open",
+    });
+    expect(got.open).toBe(4);
+    const open = ((await decisions!({ kind: "decisions", window: "week", state: "open" }, call)) as Json)
+      .data;
+    expect(open.items.map((i: Json) => i.text).sort()).toEqual(
+      ["Contratar alguém", "Decisão hipotese", "Decisão opiniao", "Decisão plano"].sort(),
+    );
+  });
+
+  it("C27 open loops, at its layer: the week's bullets, each plano", async () => {
+    const { openLoops } = sources();
+    const got = ((await openLoops!({ kind: "openLoops", window: "week" }, call)) as Json).data;
+    expect(got.items.map((i: Json) => [i.text, i.natureza])).toEqual([["Ligar para a Ana", "plano"]]);
   });
 });
