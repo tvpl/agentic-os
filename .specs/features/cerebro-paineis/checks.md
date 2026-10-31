@@ -1115,3 +1115,61 @@ Status of batch D (updated in the commit that closes each piece):
 - the browser half (C81's key 6, C90's three widths, C94 in both themes and both shells, C95's gallery entry): closed,
   every proof green in `tests/e2e/dashboards.spec.ts` on a fresh build; `tests/e2e/nucleo-shell.spec.ts` follows C81
   (six main scenes, `[` from the Núcleo lands on the dashboards)
+
+- **Boundary (batch D):** C65 to C97 closed (C73 with C6's `NatureBadge`, amendment 22). Commits: `fd41788` (the
+  screens, their unit proofs, the chart tokens, `UiPreferences.dashboards`, the gallery story and the weight entry),
+  `0d84552` (the browser proofs and the Núcleo shell's spine test). On the final tree: `npm run build`, `npm run
+typecheck`, `npm run lint` and `npm run bundle:check` exit 0, `npx vitest run` at the root is green (170 files, 2422
+  tests, 1 skipped), `npm run test -w apps/command-centre` is green (176 files, 1522 tests), and
+  `tests/e2e/dashboards.spec.ts`, `reviews.spec.ts`, `cleanup.spec.ts`, `a11y.spec.ts`, `gallery.spec.ts` and
+  `gallery-contrast.spec.ts` run together are 113 passed, with `moldura.spec.ts` and `nucleo-shell.spec.ts` 48 passed and the spine test, moved by C81 (below), passing alone after the move.
+  Each of the 38 `Proof:` lines of C65-C97 passes run alone and runs only its check's tests. Weight on the final build:
+  574 034 B JS gzip and 80 175 B CSS gzip, 17 913 B and 2 412 B above `cerebro-natureza` (cap 24 KB and 4 KB). The pins
+  this batch moved, each because C81 or the new files say so: `moldura.test.tsx` C3, C4, C6, C49 and C62 (eleven
+  sidebar items, "Painéis" second, the main group six), `nucleo/shell.test.ts` (five main scenes became C81's six),
+  `tests/e2e/nucleo-shell.spec.ts` (MAIN six, PATHS with `dashboards`, one more `[` step, 60 s), the
+  `legacy.graph.test.ts` C1 list (`dashboards/testkit.tsx`, `dashboards/testnet.ts`, test material) and the
+  `states.test.ts` C16 list (`.dsh-pill.ok`, `.warn`, `.danger`: a pill carries its rule's icon and its text;
+  `.dsh-delta.bad`: the delta is written as a signed number or an arrow and a percentage).
+- **Settled mid-build (batch D):** nothing by the owner. Builder decisions inside the approved shape: (a) the screens are
+  `apps/command-centre/src/dashboards/` (`dashboardsData` the route, the list, the read with `since`, the refresh, the
+  first overview and the archive; `DashboardBoard` what both shells draw; `DashboardsPage` the moldura's page and
+  `DashboardsScene` the Núcleo's scene, each an `import()`; `widgets`, `charts`, `DashboardDialogs`,
+  `dashboards.css`), with the app kind `dashboards` last in `APP_KINDS` (so the palette's panels list `app:dashboards`
+  too) and the scene after `routines` in `SCENES`; (b) a refresh keeps what is on screen until `dashboard.refreshed` of
+  that id, except when nothing was (no snapshot): then the POST's snapshot is shown at once, which is C65's first
+  overview; `409 refresh_in_progress` keeps "Atualizando…" until the event; (c) `since` is read once per opening and
+  leaving (another dashboard or the page unmounted) sends the whole `lastViewed`, merged with what this screen wrote; a
+  value of `UiPreferences.dashboards` this version cannot read is `{ lastViewed: {} }`; (d) a KPI's delta is the signed
+  difference for `day` ("−1 hoje") and the arrow and percentage for `week` with a base ("↑ 15% na semana", the signed
+  difference when `deltaPct` is null); a value under 10 000 is grouped ("1.284"), above it compact with one decimal
+  ("12,9 mil", Intl's no-break space); the sparkline's current period is the points at or after the newest minus the
+  period; a chart is one tab stop whose arrows move the point, `Escape` closes the tooltip; (e) a funnel's conversion
+  is each step over the step before (6 of 13 is 46%), the first row blank; the agenda's "now" is the last event begun,
+  until the next begins (one hour for the last), since a connector item has only `ts`; (f) a `highlights` widget is the
+  highlights row, never a card; a widget's title is its definition's, else the answer's `data.title`; a question
+  dashboard's title is its `question`, its KPI tiles carry citations too, and "Como esta resposta foi feita" links its
+  date to `/runs/<runId>`; (g) every empty text carries an `Inbox` icon (C69: every state an icon and a text); the
+  card's counter is the source's `total` as a bare number; a table is the answer's `columns`/`rows` or one column of
+  the source's rows, with a badge column, "Ver todas (N)" opening `/brain`, `/runs` or `/connectors`; (h) a task's box
+  is editable when its path is under `<home>/memory/` (from `GET /api/system/info`) outside `ROUTER.md`, `areas/`,
+  `journal/` and `contexts/`; (i) "Novo painel"'s "Contexto" card is `scene.brain.context`, "Pergunta"
+  `dash.kind.question`, the contexts' settings `/settings?tab=memory`; "Personalizar" moves a row with its grip button
+  (a key handler on an `li` is refused by jsx-a11y), "Salvar" is `common.save`; the export says "Exportado do MordomoOS
+  em <data>: <path>"; `dash.agents` names a list answer that has no title; the inbox writes a `reminder` row from its
+  `messageKey` in both languages; (j) **copy no table names** (additive, `locales/dashboards.ts`, after the 77 keys):
+  `dash.source.notes`, `tasks`, `decisions`, `openLoops`, `projects`, `reviews`, `facts`, `runs`, `approvals`,
+  `metrics` (the header's source badges), `dash.delta.day` / `week` ("{d} hoje", "{d} na semana"), `dash.customize.show`
+  ("mostrar"), `dash.ref` and `dash.desc` (the app's `@ref` and palette line); (k) proof readings: C69's loading is a
+  card whose body holds only the skeleton; C81's "same snapshot and selector entries" is the widget ids on screen and
+  the selector's dashboards; C89's "no camera movement" is no import of travel, camera, `Lamina` or `flip` and no moving
+  declaration under `.dsn`; C90's widths are the viewport's (the media queries are on the viewport); C93's ten pairs read
+  `--bg-raise` of the ten theme and preset blocks; C94's "every action by Tab" is every visible enabled focusable of the
+  page in document order, and Enter is shown on the table switch and on the refresh (the header's button, the scene
+  menu's row)
+- **Abandoned (batch D):** a focusable `li` carrying the reorder keys (jsx-a11y); an opacity change on the pointed bar
+  and a colour on the source badges' icons (C16 of `states.test.ts` reads both as colour alone: a ring and the icon
+  that changes per status stand instead); a global `.num` class (it would restyle other screens; `.dsh-num`);
+  "Ainda sem dados" while the read is still on its way
+- **For the owner (batch D):** no new one-way door. The fifteen words of (j) are copy the design's table and
+  amendment 26 do not name; each is reversible, and their wording is the owner's to change
