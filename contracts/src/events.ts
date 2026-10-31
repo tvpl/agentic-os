@@ -27,6 +27,8 @@ export type OsEventType =
   | "cleanup.progress"
   | "cleanup.finished"
   | "cleanup.failed"
+  /** A dashboard was refreshed and its snapshot stored (.specs/features/cerebro-paineis, door 6). */
+  | "dashboard.refreshed"
   | "approval.requested"
   | "approval.resolved"
   | "approval.expired"
@@ -168,6 +170,7 @@ export interface OsEventMap {
   "cleanup.progress": { scanId: string; phase: CleanupPhase; done: number; total: number };
   "cleanup.finished": { scanId: string; findings: number };
   "cleanup.failed": { scanId: string; code: string };
+  "dashboard.refreshed": { id: string; generatedAt: number; status: "ok" | "partial" | "error" };
   "approval.requested": { id: string; kind: ApprovalKind; description: string; runId?: string | null };
   "approval.resolved": { id: string; kind: ApprovalKind; status: Approval["status"]; runId: string | null };
   "approval.expired": { count: number };

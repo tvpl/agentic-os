@@ -15,7 +15,8 @@ export interface FrontMatter {
 
 /**
  * The front-matter keys that enter a file's `fields` (.specs/features/cerebro-organizar, door 6): the vocabulary of the
- * organize-brain guide, and `abandoned` (the day "Mudei de ideia" wrote, .specs/features/cerebro-natureza amendment 13).
+ * organize-brain guide, `abandoned` (the day "Mudei de ideia" wrote, .specs/features/cerebro-natureza amendment 13) and
+ * `due` (the day a project is due, .specs/features/cerebro-paineis amendment 2).
  * A value longer than `FRONT_MATTER_FIELD_MAX` characters is not one of these and is left out.
  */
 export const FRONT_MATTER_FIELDS = [
@@ -27,6 +28,7 @@ export const FRONT_MATTER_FIELDS = [
   "escopo",
   "review_every",
   "abandoned",
+  "due",
 ] as const;
 export const FRONT_MATTER_FIELD_MAX = 64;
 

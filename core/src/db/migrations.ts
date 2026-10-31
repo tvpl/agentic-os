@@ -592,4 +592,36 @@ CREATE TABLE IF NOT EXISTS review_state (
 );
 `,
   },
+  {
+    version: 26,
+    name: "dashboards",
+    // cerebro-paineis, doors 3 and 4: the Markdown tasks of an indexed file (they go with its row), the last snapshot of
+    // each dashboard, and one point per KPI per local hour (90 days). Created empty; nothing changes a row that exists.
+    // The tasks of the files that do not change are filled by the next pass from the text the index already stores
+    // (`index.note_tasks` in `meta`), which also adds `due` to their `fields`.
+    sql: `
+CREATE TABLE IF NOT EXISTS note_tasks (
+  src_id INTEGER NOT NULL,
+  line INTEGER NOT NULL,
+  done INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  due TEXT,
+  priority INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (src_id, line)
+);
+CREATE INDEX IF NOT EXISTS idx_note_tasks_due ON note_tasks(done, due);
+CREATE TABLE IF NOT EXISTS dashboard_snapshots (
+  dashboard_id TEXT PRIMARY KEY,
+  generated_at INTEGER NOT NULL,
+  json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dashboard_series (
+  dashboard_id TEXT NOT NULL,
+  widget_id TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  value REAL NOT NULL,
+  PRIMARY KEY (dashboard_id, widget_id, at)
+);
+`,
+  },
 ];

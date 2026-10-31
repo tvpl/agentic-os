@@ -890,3 +890,14 @@ batches sequential, each only on green).
   - B + C ≈ 166k and A + C ≈ 196k are over the budget, so C stays apart; A lands first because B's KPIs, highlights and
     question read A's evaluator and sources, C asserts the routes of A and B, and D calls the routes of A and B
 - Mechanism: handoff, four batches A, B, C, D (owner, 31/10/2026)
+
+Status of batch A (updated in the commit that closes each piece):
+
+- the definition, the evaluation and the snapshot (S1: C1-C18) and the tasks in the index and the eleven sources (S2:
+  C19-C36), with migration 26, `due` in `FRONT_MATTER_FIELDS`, the six routes of `/api/dashboards` (export and
+  `PUT /api/memory/tasks` are batch B's), `dashboard.refreshed` v1, one connector cache per service and the service's
+  one-minute clock: closed, every proof green in `tests/paineis.routes.test.ts`, `tests/paineis.refresh.test.ts`,
+  `tests/paineis.index.test.ts`, `tests/paineis.sources.test.ts`, `tests/paineis.layer.test.ts`,
+  `tests/paineis.localday.test.ts` and `tests/paineis.contract.test.ts` (C18). Two clauses can only be vacuous before
+  batch B: C14's "no highlight and no reminder names it" (`highlights` is `[]` and no reminder exists until S3's rules)
+  and C12's `highlights` key (always `[]`); batch B re-runs both proofs over its rules

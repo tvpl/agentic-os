@@ -11,6 +11,7 @@ import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
 import { parseFrontMatter } from "./frontMatter.js";
 import { parsePassages, type Passage } from "./natureza.js";
+import { parseTasks, type ParsedTask } from "./tasks.js";
 import { extractLinks, type ParsedLink } from "./linkParser.js";
 import { embedPending } from "./vectors.js";
 import type { IndexPhase, IndexProgress, IndexStats } from "@mordomo/contracts";
@@ -64,6 +65,13 @@ const NOTE_LINKS_VERSION = "2";
  */
 const NOTE_PASSAGES_KEY = "index.note_passages";
 const NOTE_PASSAGES_VERSION = "1";
+/**
+ * Which version of the task reading the stored `note_tasks` come from (.specs/features/cerebro-paineis, door 3): the
+ * first full pass after migration 26 fills them from the stored text, opening no file, adds `due` to the `fields` of
+ * the rows indexed before (amendment 2), and then writes it.
+ */
+const NOTE_TASKS_KEY = "index.note_tasks";
+const NOTE_TASKS_VERSION = "1";
 /** When the related-by-content edges were last refreshed: the files whose terms are newer than this still owe them. */
 const RELATED_AT_KEY = "index.related_at";
 
@@ -140,6 +148,8 @@ interface PreparedFile {
   noteLinks: ParsedLink[];
   /** The `> [!natureza]` passages (Markdown only, door 2 of cerebro-natureza). */
   passages: Passage[];
+  /** The `- [ ]` tasks (Markdown only, door 3 of cerebro-paineis). */
+  tasks: ParsedTask[];
   markdown: boolean;
 }
 
@@ -655,6 +665,7 @@ export class MemoryIndexer {
       // Files that did not change since migration 20 get their links from the stored text.
       if (!only) yield* this.backfillNoteLinks();
       if (!only) yield* this.backfillNotePassages();
+      if (!only) yield* this.backfillNoteTasks();
 
       // Phase 4: related-by-content edges for what changed (IDF over the whole corpus).
       emit(total, "related");
@@ -813,6 +824,7 @@ export class MemoryIndexer {
       noteLinks: markdown ? extractLinks(content, full) : [],
       // From the text the index stores, as the backfill reads it: both give a file the same rows.
       passages: markdown ? parsePassages(content.slice(0, 200_000)) : [],
+      tasks: markdown ? parseTasks(content.slice(0, 200_000)) : [],
       markdown,
     };
   }
@@ -853,7 +865,17 @@ export class MemoryIndexer {
     if (file.markdown) {
       this.writeNoteLinks(id, file.noteLinks);
       this.writePassages(id, file.passages);
+      this.writeTasks(id, file.tasks);
     }
+  }
+
+  /** Replace the tasks of one Markdown file (`note_tasks`): the rows of a file are replaced, never added to. */
+  private writeTasks(id: number, tasks: readonly ParsedTask[]): void {
+    this.db.prepare("DELETE FROM note_tasks WHERE src_id = ?").run(id);
+    const insert = this.db.prepare(
+      "INSERT OR IGNORE INTO note_tasks (src_id, line, done, text, due, priority) VALUES (?, ?, ?, ?, ?, ?)",
+    );
+    for (const t of tasks) insert.run(id, t.line, t.done, t.text, t.due, t.priority);
   }
 
   /** Replace the passages of one Markdown file (`note_passages`): the rows of a file are replaced, never added to. */
@@ -931,6 +953,44 @@ export class MemoryIndexer {
     );
   }
 
+  /**
+   * After migration 26 the Markdown files that did not change have no `note_tasks` and no `due` in their `fields` yet:
+   * both come from the text the index already stores (`parseTasks`, and `parseFrontMatter` then `parseInlineFields`
+   * for `due`, the inline field winning), so no file is opened for it, and no other key of `fields` changes. A file
+   * that holds tasks or a `due` is written in its own short transaction, with a safe point after it and after every
+   * `INDEX_CHUNK_SIZE` rows read; the marker is written after the last one, so a pass that stops halfway does it again.
+   */
+  private *backfillNoteTasks(): Generator<void> {
+    const stored = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(NOTE_TASKS_KEY) as
+      | { value: string }
+      | undefined;
+    if (stored?.value === NOTE_TASKS_VERSION) return;
+    const rows = this.db
+      .prepare("SELECT id, fields FROM files WHERE ext IN ('.md', '.markdown') ORDER BY id")
+      .all() as Array<{ id: number; fields: string | null }>;
+    const textOf = this.db.prepare("SELECT content FROM files_fts WHERE rowid = ?");
+    for (let i = 0; i < rows.length; i++) {
+      const { id } = rows[i]!;
+      const text = (textOf.get(id) as { content: string } | undefined)?.content ?? "";
+      const tasks = parseTasks(text);
+      const due = parseInlineFields(text).due ?? parseFrontMatter(text)?.fields.due;
+      const fields = fieldsFromDb(rows[i]!.fields);
+      const fieldsChange = due !== undefined && fields.due !== due ? JSON.stringify({ ...fields, due }) : null;
+      if (tasks.length > 0 || fieldsChange !== null) {
+        this.write(() => {
+          this.writeTasks(id, tasks);
+          if (fieldsChange !== null) this.db.prepare("UPDATE files SET fields = ? WHERE id = ?").run(fieldsChange, id);
+        });
+        yield;
+      } else if ((i + 1) % INDEX_CHUNK_SIZE === 0) yield;
+    }
+    this.write(() =>
+      this.db
+        .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .run(NOTE_TASKS_KEY, NOTE_TASKS_VERSION),
+    );
+  }
+
   /** Ids of the files whose terms were stored after the last refresh of the related edges. */
   private relatedOwed(): Set<number> {
     const at = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(RELATED_AT_KEY) as { value: string } | undefined;
@@ -945,6 +1005,8 @@ export class MemoryIndexer {
     this.db.prepare("DELETE FROM note_links WHERE src_id = ?").run(id);
     // The passages go with the file, in the same transaction; its `review_state` (keyed by path, door 6) stays.
     this.db.prepare("DELETE FROM note_passages WHERE file_id = ?").run(id);
+    // The tasks go with the file too (door 3 of cerebro-paineis).
+    this.db.prepare("DELETE FROM note_tasks WHERE src_id = ?").run(id);
     this.db.prepare("DELETE FROM file_vectors WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_minhash WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_terms WHERE file_id = ?").run(id);

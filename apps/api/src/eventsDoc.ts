@@ -38,6 +38,8 @@ const EVENT_DESCRIPTIONS: Record<OsEventTypeName, string> = {
   "cleanup.finished":
     "A cleanup scan finished; `findings` is how many it reports (`GET /api/memory/cleanup/scans/:id`).",
   "cleanup.failed": "A cleanup scan could not finish; the signatures it had stored stay.",
+  "dashboard.refreshed":
+    "A dashboard was refreshed and its snapshot stored (`GET /api/dashboards/:id`); `status` is ok, partial (a source failed) or error (every widget failed).",
   "approval.requested": "An approval is waiting for a human.",
   "approval.resolved": "An approval was decided.",
   "approval.expired": "Pending approvals past their time to live were swept to expired.",

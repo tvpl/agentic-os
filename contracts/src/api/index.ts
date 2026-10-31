@@ -5,6 +5,7 @@
  */
 import { deepFreeze } from "../freeze.js";
 import { contextRoutes } from "./contexts.js";
+import { dashboardRoutes } from "./dashboards.js";
 import { deviceRoutes } from "./devices.js";
 import { memoryRoutes } from "./memory.js";
 import { routineRoutes } from "./routines.js";
@@ -22,6 +23,7 @@ export const API = deepFreeze({
   ...routineRoutes,
   ...memoryRoutes,
   ...contextRoutes,
+  ...dashboardRoutes,
   ...deviceRoutes,
   ...streamRoutes,
 } as const);
@@ -57,3 +59,20 @@ export { SettingsPatchSchema, UiPreferencesPatchSchema, type SettingsPatch } fro
 export { isJournalDate } from "./memory.js";
 export { QUERY_FLAG_TEXTS, QueryFlag, RUN_LIMITS } from "./common.js";
 export { NAMED_SCHEMAS } from "./schemas.js";
+export {
+  DASHBOARD_ID,
+  DASHBOARD_MAX_BYTES,
+  DashboardSnapshotSchema,
+  DashboardSpecSchema,
+  serializeDashboard,
+  type DashboardKind,
+  type DashboardSnapshot,
+  type DashboardSource,
+  type DashboardSpec,
+  type DashboardWidget,
+  type SnapshotSource,
+  type SnapshotWidget,
+  type SourceKind,
+  type WidgetKind,
+  type WidgetOptions,
+} from "./dashboards.js";

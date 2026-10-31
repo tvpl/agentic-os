@@ -351,6 +351,13 @@ const uuid = () => crypto.randomUUID();
 const noteOf = (w: World, title: string) =>
   createNote({ paths: w.ctx.paths, settings: w.ctx.settings() }, { title });
 
+/** The dashboard of the contract's context (cerebro-paineis), made by the engine when it is not there yet. */
+function dashboardOf(w: World): { id: string; definition: unknown; version: string } {
+  const found = w.ctx.dashboards.store.read("contexto-contract-context");
+  if (found !== null && !("problem" in found)) return found;
+  return w.ctx.dashboards.create({ template: "area", contextId: "contract-context" });
+}
+
 /** Wait for a cleanup scan to end (a scan runs on after its 202). */
 async function scanEnded(w: World, scanId: string | undefined): Promise<void> {
   if (!scanId) return;
@@ -522,6 +529,29 @@ export const SCENARIOS: Record<string, Scenario> = {
         baseVersion: note.version,
       });
     },
+  },
+  // cerebro-paineis, batch A: the dashboards, each over one the engine made of the contract's context (no connector).
+  [key("GET", "/api/dashboards")]: {
+    run: (w) => {
+      dashboardOf(w);
+      return w.call("GET", "/api/dashboards");
+    },
+  },
+  [key("POST", "/api/dashboards")]: {
+    run: (w) => w.call("POST", "/api/dashboards", { template: "question", question: "Cenário de painel" }),
+  },
+  [key("GET", "/api/dashboards/:id")]: { run: (w) => w.call("GET", `/api/dashboards/${dashboardOf(w).id}`) },
+  [key("PUT", "/api/dashboards/:id")]: {
+    run: (w) => {
+      const d = dashboardOf(w);
+      return w.call("PUT", `/api/dashboards/${d.id}`, { definition: d.definition, baseVersion: d.version });
+    },
+  },
+  [key("POST", "/api/dashboards/:id/refresh")]: {
+    run: (w) => w.call("POST", `/api/dashboards/${dashboardOf(w).id}/refresh`),
+  },
+  [key("DELETE", "/api/dashboards/:id")]: {
+    run: (w) => w.call("DELETE", `/api/dashboards/${w.ctx.dashboards.create({ template: "overview" }).id}`),
   },
   [key("GET", "/api/memory/recall")]: { run: (w) => w.call("GET", "/api/memory/recall?q=Alfa&record=false") },
   [key("GET", "/api/memory/recall/stats")]: { run: (w) => w.call("GET", "/api/memory/recall/stats") },

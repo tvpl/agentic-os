@@ -1,8 +1,12 @@
 import crypto from "node:crypto";
 import type { HealthStatus, PermissionBroker, ProviderCapabilities, RunMode } from "@mordomo/core";
 import {
+  ConnectorDataCache,
+  DashboardService,
+  DashboardStore,
   MordomoEngine,
   ProviderSettingsSchema,
+  dashboardSources,
   budgetDedupeKey,
   localDay,
   installedVersion,
@@ -82,6 +86,15 @@ export class AppContext extends MordomoEngine {
   /** The tickets that open the two SSE streams without a credential in the URL (`POST /api/stream-tickets`). */
   readonly streamTickets = new TicketStore();
 
+  /**
+   * The connectors' data cache of this service (.specs/features/cerebro-paineis, amendment 10): one, read by the
+   * connector data route and by the dashboards' evaluator, with the TTL of the settings.
+   */
+  readonly connectorCache: ConnectorDataCache;
+
+  /** The dashboards: their files, their snapshots, one refresh at a time each, and the clock's tick. */
+  readonly dashboards: DashboardService;
+
   private healthCache = new Map<ProviderId, { at: number; health: HealthStatus }>();
   private healthInFlight = new Map<ProviderId, Promise<HealthStatus>>();
 
@@ -94,6 +107,21 @@ export class AppContext extends MordomoEngine {
       applyPendingRestore: opts.applyPendingRestore === true,
       ...(opts.pushResolver ? { pushResolver: opts.pushResolver } : {}),
       ...(opts.restoreWaitMs !== undefined ? { restoreWaitMs: opts.restoreWaitMs } : {}),
+    });
+    this.connectorCache = new ConnectorDataCache(this.settings().connectors.dataCacheTtlMs);
+    const env = { paths: this.paths, settings: () => this.settings() };
+    this.dashboards = new DashboardService({
+      store: new DashboardStore(this.db, this.paths, env.settings),
+      sources: dashboardSources({
+        db: this.db,
+        paths: this.paths,
+        settings: env.settings,
+        metricsHistory: this.metricsHistory,
+        connectors: this.connectors,
+        connectorCache: this.connectorCache,
+      }),
+      env,
+      events: this.events,
     });
     this.unsubscribeCredentials = this.events.subscribe((e) => {
       if (e.type !== "run.finished") return;

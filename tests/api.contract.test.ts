@@ -138,7 +138,10 @@ async function freshResources() {
     kind: "every",
     every: { value: 1, unit: "hours" },
   });
-  return { objective, run };
+  const dashboard = (await world.call("POST", "/api/dashboards", { template: "overview" })).body as {
+    id: string;
+  };
+  return { objective, run, dashboard };
 }
 
 describe("S1 the route table and the registration", () => {
@@ -159,7 +162,7 @@ describe("S1 the route table and the registration", () => {
   });
 
   it("C53 the table holds the five routes of the second brain with scope, what they read, a schema per success status and their declared errors", () => {
-    expect(entries).toHaveLength(147);
+    expect(entries).toHaveLength(153);
     for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
       const entry = API[want.id];
       expect(entry, key).toBeDefined();
@@ -185,10 +188,12 @@ describe("S1 the route table and the registration", () => {
       .sort();
     // cerebro-vista-notas: the properties of a note are written by a route of their own, with the same codes.
     // cerebro-natureza: a review decision writes a note's properties through the same write (door 4).
+    // cerebro-paineis: a dashboard's definition is written with the guarded write of a note (door 1, AD-031).
     expect(named).toEqual([
       "GET /api/memory/note",
       "POST /api/memory/notes",
       "POST /api/memory/reviews",
+      "PUT /api/dashboards/:id",
       "PUT /api/memory/notes",
       "PUT /api/memory/notes/properties",
     ]);
@@ -199,10 +204,10 @@ describe("S1 the route table and the registration", () => {
     try {
       const router = app.apiRoutes.map((r) => `${r.method} ${r.url}`).sort();
       const table = entries.map(([, e]) => routeKey(e)).sort();
-      expect(router).toHaveLength(147);
+      expect(router).toHaveLength(153);
       expect(table).toEqual(router);
-      expect(new Set(table).size).toBe(147);
-      expect(new Set(entries.map(([id]) => id)).size).toBe(147);
+      expect(new Set(table).size).toBe(153);
+      expect(new Set(entries.map(([id]) => id)).size).toBe(153);
       for (const [id, entry] of entries) {
         expect(id, id).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)+$/);
         expect(entry.summary.length, `${id} summary`).toBeGreaterThan(8);
@@ -231,7 +236,7 @@ describe("S1 the route table and the registration", () => {
         const k = e.public ? "public" : e.scope!;
         counts[k] = (counts[k] ?? 0) + 1;
       }
-      expect(counts).toEqual({ owner: 75, monitor: 33, content: 30, run: 6, approve: 1, public: 2 });
+      expect(counts).toEqual({ owner: 79, monitor: 33, content: 32, run: 6, approve: 1, public: 2 });
       expect(entries.filter(([, e]) => e.public && e.scope !== undefined)).toEqual([]);
 
       expect(
@@ -454,7 +459,7 @@ describe("S1 the route table and the registration", () => {
   it("C5 every part an entry declares is validated before the handler runs", async () => {
     const asked: string[] = [];
     const accepting: Record<string, string[]> = {};
-    // These four look their resource up before they read the body (`precheck`), so a bad body reaches the schema
+    // These five look their resource up before they read the body (`precheck`), so a bad body reaches the schema
     // only for a resource that exists.
     const fresh = await freshResources();
     const existing: Record<string, string> = {
@@ -462,6 +467,7 @@ describe("S1 the route table and the registration", () => {
       "POST /api/runs/:id/children": `/api/runs/${fresh.run.runId}/children`,
       "PUT /api/connectors/:id": "/api/connectors/order-connector",
       "PUT /api/routines/:id": "/api/routines/order-routine",
+      "PUT /api/dashboards/:id": `/api/dashboards/${fresh.dashboard.id}`,
     };
     for (const [, entry] of entries) {
       const k = routeKey(entry);
@@ -765,7 +771,7 @@ describe("S2 the real answer is checked", () => {
     // A route with no scenario, or a scenario for no route: both are a hole in this proof.
     expect(Object.keys(SCENARIOS).sort()).toEqual(router);
     expect(Object.keys(SCENARIOS).sort()).toEqual(tabled);
-    expect(results).toHaveLength(147);
+    expect(results).toHaveLength(153);
     const problems: string[] = [];
     for (const { key, entry, answer, id } of results) {
       const scenario = SCENARIOS[key]!;
@@ -1043,7 +1049,8 @@ describe("S2 the real answer is checked", () => {
     // cerebro-vista-notas: three more (unknown_root, front_matter_unreadable, structure_fixed).
     // cerebro-faxina-guiada: two more (400 scope_required of a cleanup scope, scan_running), and two in batch B
     // (scan_stale, undo_conflict).
-    expect(raised.size).toBe(73);
+    // cerebro-paineis, batch A: three more (dashboard_not_found, dashboard_exists, refresh_in_progress).
+    expect(raised.size).toBe(76);
     expect([...raised.keys()].filter((pair) => pair.includes("<unresolved>"))).toEqual([]);
     expect(raised.has("409 approval_resolved")).toBe(true);
     // The other way: every pair an entry lists as its own is raised somewhere in the tree. A documented answer no code

@@ -38,8 +38,8 @@ const names = (dir: string) =>
 
 describe("S4 the registry", () => {
   it("C22 every event type has a version list", () => {
-    expect(OS_EVENT_TYPES).toHaveLength(28);
-    expect(new Set(OS_EVENT_TYPES).size).toBe(28);
+    expect(OS_EVENT_TYPES).toHaveLength(29);
+    expect(new Set(OS_EVENT_TYPES).size).toBe(29);
     expect(Object.keys(EVENT_VERSIONS).sort()).toEqual([...OS_EVENT_TYPES].sort());
     expect(Object.keys(EVENT_SCHEMAS).sort()).toEqual([...OS_EVENT_TYPES].sort());
     for (const type of OS_EVENT_TYPES) {
@@ -259,7 +259,7 @@ describe("S4 the bus and the document", () => {
       const entry = EVENT_ENVELOPES.find((e) => e.type === type && e.v === sent.v)!;
       expect(checkBody(entry.schema, sent), type).toEqual([]);
     }
-    expect(Object.keys(SCENARIOS)).toHaveLength(147);
+    expect(Object.keys(SCENARIOS)).toHaveLength(153);
   });
 
   it("C53 docs/events.md describes the two events of the index worker and the phases of its progress, and equals the generated text", () => {

@@ -120,6 +120,11 @@ tem no máximo um snapshot guardado (door 4); uma série é chaveada por (`dashb
 | `POST /api/dashboards/:id/export`  | —                                                                                | `path` (o HTML em `artifacts/dashboards/`)                                                  | `200`, `404`, `409`               |
 | `PUT /api/memory/tasks`            | `path`, `line`, `done`, `baseVersion`                                            | `path` · `version` · `task`                                                                 | `200`, `400`, `403`, `404`, `409` |
 
+- Grown while building (batch A, additive): `GET /api/dashboards` and `POST /api/dashboards` also answer
+  `403 forbidden_path`, as every route that lists or writes a folder through the safe primitives does (the refusal probe of
+  `tests/api.refusals.test.ts` found them, and `FORBIDDEN_PATH_ROUTES` names them); `GET /api/dashboards/:id` answers
+  `stale` beside the four keys of its row, as its `stale` rule asks.
+
 ## Landing
 
 | One-way door                | Literal shape                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Alternative rejected                                                                                                                                                                                                                                                             |

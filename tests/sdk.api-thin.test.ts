@@ -973,6 +973,78 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(145);"],
       head: ["    expect(operations).toBe(147);"],
     },
+    // cerebro-paineis, batch A, added migration 26 (the tasks of a note, the snapshots and series of the dashboards)
+    // and six routes of the dashboards (two content, four owner): only the list of later migrations and the totals
+    // the suite pins moved, on top of cerebro-natureza's.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis: migration 26 after the scopes one",
+      base: [
+        "      // note and the review state of a file (cerebro-natureza), two more.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        '        "note-links",',
+        '        "file-vectors",',
+        '        "drop-file-links",',
+        '        "run-context",',
+        '        "cleanup",',
+        '        "natureza",',
+        "      ]);",
+      ],
+      head: [
+        "      // note and the review state of a file (cerebro-natureza), two more, and the tasks of a note and the snapshots",
+        "      // and series of the dashboards (cerebro-paineis), three more.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        '        "note-links",',
+        '        "file-vectors",',
+        '        "drop-file-links",',
+        '        "run-context",',
+        '        "cleanup",',
+        '        "natureza",',
+        '        "dashboards",',
+        "      ]);",
+      ],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch A: six routes more under /api",
+      base: ["    expect(routes).toHaveLength(145);"],
+      head: ["    expect(routes).toHaveLength(151);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch A: owners and scoped routes",
+      base: ["    expect([owners, scoped]).toEqual([75, 70]);"],
+      head: ["    expect([owners, scoped]).toEqual([79, 72]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch A: the registered routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(145);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(151);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch A: the routes of each scope, in the router and in the document",
+      times: 2,
+      base: ["toEqual({ owner: 75, monitor: 33, content: 30, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 79, monitor: 33, content: 32, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch A: the routes after the pairing passes",
+      base: ["    expect(apiRoutes()).toHaveLength(145);"],
+      head: ["    expect(apiRoutes()).toHaveLength(151);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch A: the operations of the route document",
+      base: ["    expect(operations).toBe(147);"],
+      head: ["    expect(operations).toBe(153);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

@@ -151,6 +151,10 @@ describe("S5 the surface is a closed list", () => {
         // cerebro-natureza, batch B: the review queue and the decisions on it (doors 4 to 6)
         "decideReview",
         "reviewsDue",
+        // cerebro-paineis: the dashboards of a service, their store and the eleven sources (doors 1, 2 and 4)
+        "DashboardService",
+        "DashboardStore",
+        "dashboardSources",
       ].sort(),
     );
   });

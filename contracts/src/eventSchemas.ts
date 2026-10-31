@@ -106,6 +106,11 @@ const PAYLOADS_V1 = {
   }),
   "cleanup.finished": z.object({ scanId: z.string(), findings: z.number().int().min(0) }),
   "cleanup.failed": z.object({ scanId: z.string(), code: z.string().min(1) }),
+  "dashboard.refreshed": z.object({
+    id: z.string(),
+    generatedAt: z.number().int().min(0),
+    status: z.enum(["ok", "partial", "error"]),
+  }),
   "approval.requested": z.object({
     id: z.string(),
     kind: ApprovalKindSchema,

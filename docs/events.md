@@ -25,7 +25,7 @@ The version of an event is the `v` in its envelope (or its frame).
 The schemas are the contract: `EVENT_SCHEMAS[type][v]` for the bus and `RUN_FRAME_SCHEMAS[type][v]` for the run stream. The files
 `tests/fixtures/events/v1/` are frozen examples of version 1 of every type, and the tests fail if a change makes one stop parsing.
 
-## Events of the bus (28)
+## Events of the bus (29)
 
 ### `run.created`
 
@@ -245,6 +245,20 @@ Payload, version 1:
 | --- | --- | --- |
 | `scanId` | string | yes |
 | `code` | string | yes |
+
+### `dashboard.refreshed`
+
+A dashboard was refreshed and its snapshot stored (`GET /api/dashboards/:id`); `status` is ok, partial (a source failed) or error (every widget failed).
+
+Versions: 1 (current 1).
+
+Payload, version 1:
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `id` | string | yes |
+| `generatedAt` | integer | yes |
+| `status` | "ok" \| "partial" \| "error" | yes |
 
 ### `approval.requested`
 

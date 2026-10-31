@@ -1,6 +1,5 @@
 import type { FastifyInstance } from "fastify";
 import {
-  ConnectorDataCache,
   ConnectorSchema,
   fetchConnectorData,
   homeConfigFilesOf,
@@ -12,8 +11,8 @@ import { bind } from "../contract.js";
 import { httpError } from "./common.js";
 
 export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): void {
-  // One cache per server process; the TTL comes from settings at read time.
-  const cache = new ConnectorDataCache(ctx.settings().connectors.dataCacheTtlMs);
+  // One cache per service, the one the dashboards read through too (cerebro-paineis, amendment 10).
+  const cache = ctx.connectorCache;
 
   bind(app, "connectors.list", async () => ctx.connectors.list());
 

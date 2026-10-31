@@ -474,10 +474,10 @@ describe("S3 migration 23", () => {
 
       const { db, migration } = openDb(home.paths);
       try {
-        // cerebro-faxina-guiada added migration 24 after this one, and cerebro-natureza 25: a home migrates to them in the
-        // same pass.
-        expect(migration.toVersion).toBe(25);
-        expect(db.pragma("user_version", { simple: true })).toBe(25);
+        // cerebro-faxina-guiada added migration 24 after this one, cerebro-natureza 25 and cerebro-paineis 26: a home
+        // migrates to them in the same pass.
+        expect(migration.toVersion).toBe(26);
+        expect(db.pragma("user_version", { simple: true })).toBe(26);
         const added = { name: "context_id", type: "TEXT", notnull: 0, dflt_value: null, pk: 0 };
         expect(columns(db, "runs")).toEqual([...before.runs, added]);
         expect(columns(db, "sessions")).toEqual([...before.sessions, added]);
@@ -496,8 +496,8 @@ describe("S3 migration 23", () => {
         if (m23.up) m23.up(db);
         if (m23.sql) db.exec(m23.sql);
         expect(schema()).toEqual(once);
-        expect(MIGRATIONS.at(-1)!.version).toBe(25);
-        expect(MIGRATIONS.at(-1)!.name).toBe("natureza");
+        expect(MIGRATIONS.at(-1)!.version).toBe(26);
+        expect(MIGRATIONS.at(-1)!.name).toBe("dashboards");
       } finally {
         db.close();
       }
