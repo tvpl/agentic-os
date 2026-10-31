@@ -993,6 +993,32 @@ Proof: `npm run build -w apps/command-centre && npm run bundle:check`
   open facts only, as before; the alternative is to show closed facts there, a product change that also changes
   cerebro-paineis's facts source.
 
+### Correções de construção (G6)
+
+- **G6, a real bug of batch A2 found in batch A3 (C63), fixed.** `writeAll` in `core/src/memory/proposals.ts` put back
+  only the files a failed decision had replaced: a file the same decision had created stayed on disk with no version.
+  With two `move_to_topic` ops creating `topics/a.md` and `topics/b.md` and the create of `b.md` failing, the decision
+  answered `500`, put `MEMORY.md` back, left `topics/a.md`, and a second decision answered `200` and wrote its lines
+  twice. A2's Settled mid-build (g) had recorded the gap as a limit ("a file the decision created before a later create
+  failed stays") instead of a defect; the A3 status line "A defect found, not fixed (C63, G6)" is closed by this fix.
+  The claims of G6 and C63 do not change; the build now meets them:
+  - `core/src/security/safeWrite.ts` gains `createWorkspaceFile` (a `create` that answers the real path and the device
+    and inode of the very file it made) and `removeCreatedFile` (removes that file only while the same real path inside
+    the scope still names a regular file with that device and inode; a file someone else wrote in between, or one that
+    is gone, is left alone), built on the private `removeIfStillOurs`; no raw `fs` call outside the primitive, so the
+    raw-fs list of `tests/security-reads.test.ts` keeps its size (C84);
+  - a failed decision takes back every file it wrote, and only those: a replaced file gets its bytes back (guarded by
+    the bytes the decision wrote), a created file is removed; the same holds when a step after the writes fails (the
+    versions, the decision's row), for consolidations and `memory_edit`;
+  - an accepted `note_create` or `note_save` removes the note it created when anything after `createNote` throws inside
+    the decision (`NoteContext.created` tells the decision the file), so a retry makes the note under its own name,
+    never a `-2`;
+  - proof: C63 gains two cases under its title (`"C63 "`, `tests/memoria.proposals.test.ts`): the two topics with an
+    EIO injected into the guarded create of `topics/b.md` (the test of `bug/cerebro-memoria-g6`, folded in), and a
+    `note_create` whose version cannot be recorded after the note is made. With the old `writeAll` put back, the topic
+    case fails (`topics/a.md` exists); with the note's take-back removed, the note case fails (`notes/nota-g6.md`
+    exists); with the whole file of before, both fail
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None

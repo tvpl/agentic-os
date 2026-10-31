@@ -83,6 +83,53 @@ export function writeWorkspaceFile(
   data: string | Uint8Array,
   options: WriteOptions = {},
 ): string {
+  return writeFile(scope, candidate, data, options).real;
+}
+
+/** A file `createWorkspaceFile` made: its real path, and the device and inode it was made with. */
+export interface CreatedFile {
+  path: string;
+  dev: number;
+  ino: number;
+}
+
+/**
+ * `writeWorkspaceFile` in `create` mode, answering what was made: the real path and the identity of the very file the
+ * call created, so a caller that must take its work back (a decision whose later write failed) removes that file and
+ * only that file (`removeCreatedFile`).
+ */
+export function createWorkspaceFile(
+  scope: ReadScope,
+  candidate: string,
+  data: string | Uint8Array,
+  options: Pick<WriteOptions, "fileMode"> = {},
+): CreatedFile {
+  const { real, stat } = writeFile(scope, candidate, data, { ...options, mode: "create" });
+  if (!stat)
+    throw new Error(`The file ${candidate} was created but cannot be told apart: it is not removable`);
+  return { path: real, dev: stat.dev, ino: stat.ino };
+}
+
+/**
+ * Remove a file `createWorkspaceFile` made, only while it is still that very file: the same real path inside the scope
+ * (no folder on the way became a link), a regular file, the same device and inode. A file someone else wrote under the
+ * name in between, or one that is gone, is left alone. Returns whether the file was removed.
+ */
+export function removeCreatedFile(scope: ReadScope, created: CreatedFile): boolean {
+  try {
+    if (assertWritablePath(scope, created.path) !== created.path) return false;
+  } catch {
+    return false;
+  }
+  return removeIfStillOurs(created.path, created);
+}
+
+function writeFile(
+  scope: ReadScope,
+  candidate: string,
+  data: string | Uint8Array,
+  options: WriteOptions,
+): { real: string; stat: fs.Stats | null } {
   const mode = options.mode ?? "replace";
   const expected = options.expectSha256;
   if (expected !== undefined && mode !== "replace") {
@@ -140,11 +187,11 @@ export function writeWorkspaceFile(
         fs.closeSync(fd);
       });
       if (!replaced) replaceInPlace(scope, candidate, real, expected, bytes);
-      return real;
+      return { real, stat: null };
     }
     if (mode === "replace") fs.ftruncateSync(fd, 0);
     writeAll(fd, bytes, mode === "append");
-    return real;
+    return { real, stat };
   } catch (err) {
     if (!existed && stat?.isFile()) removeIfStillOurs(real, stat);
     throw err;
@@ -358,12 +405,14 @@ function sha256OfDescriptor(fd: number, size: number): string {
 }
 
 /** Remove the file this call created and then refused, only if `real` still names that very file. */
-function removeIfStillOurs(real: string, ours: fs.Stats): void {
+function removeIfStillOurs(real: string, ours: Pick<fs.Stats, "ino" | "dev">): boolean {
   try {
     const named = fs.lstatSync(real);
     if (named.isFile() && named.ino === ours.ino && named.dev === ours.dev) fs.unlinkSync(real);
+    else return false;
+    return true;
   } catch {
-    /* gone already, or not ours to remove */
+    return false; // gone already, or not ours to remove
   }
 }
 

@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as History from "../core/src/memory/history.js";
 import { storeProposal } from "../core/src/memory/proposals.js";
+import type * as SafeWrite from "../core/src/security/safeWrite.js";
 import { unifiedDiff } from "../core/src/sync/diff.js";
 import { code, memoriaWorld, sha, type Json, type MemoriaWorld } from "./helpers/memoriaWorld.js";
 
@@ -13,6 +15,34 @@ import { code, memoriaWorld, sha, type Json, type MemoriaWorld } from "./helpers
  * MEMORY.md is the local day of the acceptance; this file runs on the real clock (an index pass waits for it to move)
  * and computes that day itself: `memoria.localday.test.ts` pins a zone where the local and the UTC day differ.
  */
+
+/**
+ * Faults for C63 (G6), where a disk or a later step would fail: the guarded writer's create of a file whose path ends
+ * with `fault.create` throws EIO, and recording the version of a file whose path ends with `fault.version` throws. Off,
+ * both pass straight through.
+ */
+const fault = vi.hoisted(() => ({ create: null as null | string, version: null as null | string }));
+vi.mock("../core/src/security/safeWrite.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof SafeWrite>();
+  const eio = () => Object.assign(new Error("EIO: i/o error, open"), { code: "EIO" });
+  const writeWorkspaceFile: typeof actual.writeWorkspaceFile = (scope, candidate, data, options) => {
+    if (fault.create && candidate.endsWith(fault.create) && options?.mode === "create") throw eio();
+    return actual.writeWorkspaceFile(scope, candidate, data, options);
+  };
+  const createWorkspaceFile: typeof actual.createWorkspaceFile = (scope, candidate, data, options) => {
+    if (fault.create && candidate.endsWith(fault.create)) throw eio();
+    return actual.createWorkspaceFile(scope, candidate, data, options);
+  };
+  return { ...actual, writeWorkspaceFile, createWorkspaceFile };
+});
+vi.mock("../core/src/memory/history.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof History>();
+  const recordFileVersion: typeof actual.recordFileVersion = (env, file, ...rest) => {
+    if (fault.version && file.endsWith(fault.version)) throw new Error("the history could not be written");
+    return actual.recordFileVersion(env, file, ...rest);
+  };
+  return { ...actual, recordFileVersion };
+});
 
 let w: MemoriaWorld;
 
@@ -714,6 +744,77 @@ describe("C63 a file that cannot be written", () => {
       "MEMORY.md",
       "topics/turmas.md",
     ]);
+  });
+});
+
+describe("C63 a file the failed decision created (G6, a bug found in batch A3)", () => {
+  it("C63 a decision whose second topic cannot be created is 500 internal and leaves neither topic behind; once the fault is gone the same decision writes each topic's lines once", async () => {
+    const BASE6 = [
+      "# Long-term memory",
+      "",
+      "## Facts",
+      "",
+      "- Um",
+      "",
+      "## Decisions",
+      "",
+      "- Dois",
+      "",
+    ].join("\n");
+    const topic = (slug: string) => path.join(w.memory, "topics", `${slug}.md`);
+    w.put(memoryFile(), BASE6);
+    const p = consolidation([
+      { op: "move_to_topic", lines: ["- Um"], topic: "a" },
+      { op: "move_to_topic", lines: ["- Dois"], topic: "b" },
+    ]);
+    // the index passes earlier decisions asked for are done before the versions are counted (on the real clock)
+    await w.index();
+    const before = versions().length;
+    const body = { action: "accept", baseVersion: sha(BASE6) };
+    fault.create = path.join("topics", "b.md");
+    let failed: { status: number; body: Json };
+    try {
+      failed = await decide(p.id, body);
+    } finally {
+      fault.create = null;
+    }
+    expect(code(failed)).toEqual([500, "internal"]);
+    expect(fs.readFileSync(memoryFile(), "utf8")).toBe(BASE6);
+    expect(versions().length).toBe(before);
+    expect((await read(p.id)).body.status).toBe("pending");
+    // G6: "the earlier files are put back": a file this decision created is one of them
+    expect(fs.existsSync(topic("a"))).toBe(false);
+    expect(fs.existsSync(topic("b"))).toBe(false);
+
+    // G6: "a second decide works", and writes each line once
+    const done = await decide(p.id, body);
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    expect(fs.readFileSync(topic("a"), "utf8")).toBe("---\ntype: memoria-topico\n---\n\n- Um\n");
+    expect(fs.readFileSync(topic("b"), "utf8")).toBe("---\ntype: memoria-topico\n---\n\n- Dois\n");
+  });
+
+  it("C63 a note_create whose acceptance fails after the note is made is 500 internal and leaves no note; the retry makes it under its own name, never a -2", async () => {
+    const id = (
+      await w.call("POST", "/api/memory/proposals", { kind: "note_create", title: "Nota G6", content: "x" })
+    ).body.proposal.id as string;
+    const file = path.join(w.memory, "notes", "nota-g6.md");
+    await w.index();
+    const before = versions().length;
+    fault.version = path.join("notes", "nota-g6.md");
+    let failed: { status: number; body: Json };
+    try {
+      failed = await decide(id, { action: "accept" });
+    } finally {
+      fault.version = null;
+    }
+    expect(code(failed)).toEqual([500, "internal"]);
+    expect(fs.existsSync(file)).toBe(false);
+    expect(versions().length).toBe(before);
+    expect((await read(id)).body.status).toBe("pending");
+    const done = await decide(id, { action: "accept" });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    expect(done.body.written).toEqual([{ path: "notes/nota-g6.md", version: sha(fs.readFileSync(file)) }]);
+    expect(fs.existsSync(path.join(w.memory, "notes", "nota-g6-2.md"))).toBe(false);
   });
 });
 

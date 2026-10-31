@@ -10,7 +10,12 @@ import type { Db } from "../db/db.js";
 import { EditConflictError } from "../errors.js";
 import type { MordomoPaths } from "../paths.js";
 import { homeReadScope, readWorkspaceFile, type ReadScope } from "../security/safeFs.js";
-import { writeWorkspaceFile } from "../security/safeWrite.js";
+import {
+  createWorkspaceFile,
+  removeCreatedFile,
+  writeWorkspaceFile,
+  type CreatedFile,
+} from "../security/safeWrite.js";
 import { unifiedDiff } from "../sync/diff.js";
 import { assertFact, type Fact, type FactTrust } from "./facts.js";
 import { recordFileVersion } from "./history.js";
@@ -649,49 +654,73 @@ interface PlannedWrite {
 }
 
 /**
- * Write the planned files, the replaced ones first (each guarded by the bytes it was read with), then the new ones. A
- * write that fails puts back the files written before it (G6) and throws: an edit conflict as it is, anything else as
- * a plain error (`500 internal`).
+ * Write the planned files, the replaced ones first (each guarded by the bytes it was read with), then the new ones, and
+ * answer how to take them all back. A write that fails takes back the ones written before it (G6) and throws: an edit
+ * conflict as it is, anything else as a plain error (`500 internal`). Taking back puts a replaced file's bytes back
+ * (guarded by the bytes this call wrote) and removes a file this call created (only while it is still that very file:
+ * `removeCreatedFile`); a file someone else changed in between is left as it is.
  */
-function writeAll(env: ProposalEnv, writes: readonly PlannedWrite[]): void {
+function writeAll(env: ProposalEnv, writes: readonly PlannedWrite[]): () => void {
   const scope = memoryScope(env);
   const ordered = [...writes.filter((w) => w.before !== null), ...writes.filter((w) => w.before === null)];
-  const done: PlannedWrite[] = [];
+  const done: Array<{ w: PlannedWrite; created: CreatedFile | null }> = [];
+  const undo = () => {
+    for (const { w, created } of done.splice(0).reverse()) {
+      try {
+        if (created) removeCreatedFile(scope, created);
+        else if (w.before !== null) {
+          writeWorkspaceFile(scope, w.file, w.before, { mode: "replace", expectSha256: sha(w.after) });
+        }
+      } catch {
+        /* someone else's bytes are there now: leave them */
+      }
+    }
+  };
   try {
     for (const w of ordered) {
       if (w.before !== null) {
         writeWorkspaceFile(scope, w.file, w.after, { mode: "replace", expectSha256: sha(w.before) });
+        done.push({ w, created: null });
       } else {
         try {
-          writeWorkspaceFile(scope, w.file, w.after, { mode: "create" });
+          done.push({ w, created: createWorkspaceFile(scope, w.file, w.after) });
         } catch (err) {
           if ((err as NodeJS.ErrnoException).code === "EEXIST") throw new EditConflictError();
           throw err;
         }
       }
-      done.push(w);
     }
   } catch (err) {
-    for (const w of done.reverse()) {
-      if (w.before === null) continue; // no primitive removes a file of memory/: a file this decision made stays
-      try {
-        writeWorkspaceFile(scope, w.file, w.before, { mode: "replace", expectSha256: sha(w.after) });
-      } catch {
-        /* someone else's bytes are there now: leave them */
-      }
-    }
+    undo();
     if (err instanceof EditConflictError) throw err;
     throw new Error(`A file of the proposal could not be written: ${err instanceof Error ? err.message : String(err)}`);
   }
+  return undo;
 }
 
-function noteContext(env: ProposalEnv, author: string, proposalId: string): NoteContext {
+/** Run `rest` after the files are written; if it throws, the files are taken back first (G6). */
+function thenOrUndo<T>(undo: () => void, rest: () => T): T {
+  try {
+    return rest();
+  } catch (err) {
+    undo();
+    throw err;
+  }
+}
+
+function noteContext(
+  env: ProposalEnv,
+  author: string,
+  proposalId: string,
+  created?: (file: CreatedFile) => void,
+): NoteContext {
   return {
     paths: env.paths,
     settings: env.settings,
     history: (file, bytes) => {
       recordFileVersion(env, file, bytes, author as "mcp", "proposal", proposalId);
     },
+    ...(created ? { created } : {}),
   };
 }
 
@@ -741,16 +770,27 @@ export function decideProposal(
     return { proposal: getProposal(env.db, id)!, written: [], facts };
   }
   if (record.kind === "note_create" || record.kind === "note_save") {
-    return env.db.transaction((): Decided => {
-      const ctx = noteContext(env, author, id);
-      const note =
-        record.kind === "note_create"
-          ? createNote(ctx, p as { title: string }, now)
-          : saveNote(ctx, { path: String(p.path), content: String(p.content), baseVersion: String(p.baseVersion) });
-      const written = [{ path: relOf(env, note.path), version: note.version }];
-      writeDecision(env.db, id, "accepted", at, { action: "accept", written });
-      return { proposal: getProposal(env.db, id)!, written, facts: [] };
-    })();
+    // A note this decision created is taken back when anything after it fails (its version, the decision): a retry
+    // then creates it again under the same name, never a `-2` beside a note nobody accepted (G6).
+    let made: CreatedFile | null = null;
+    try {
+      return env.db.transaction((): Decided => {
+        const ctx = noteContext(env, author, id, (file) => {
+          made = file;
+        });
+        const note =
+          record.kind === "note_create"
+            ? createNote(ctx, p as { title: string }, now)
+            : saveNote(ctx, { path: String(p.path), content: String(p.content), baseVersion: String(p.baseVersion) });
+        const written = [{ path: relOf(env, note.path), version: note.version }];
+        writeDecision(env.db, id, "accepted", at, { action: "accept", written });
+        return { proposal: getProposal(env.db, id)!, written, facts: [] };
+      })();
+    } catch (err) {
+      const taken = made as CreatedFile | null; // set by createNote's callback, inside the transaction
+      if (taken) removeCreatedFile(memoryScope(env), taken);
+      throw err;
+    }
   }
 
   // consolidation and memory_edit: MEMORY.md as the owner saw it
@@ -763,11 +803,13 @@ export function decideProposal(
     if (!sameBase) throw new EditConflictError();
     const after = String(p.content ?? "");
     return env.db.transaction((): Decided => {
-      writeAll(env, [{ rel: MEMORY_FILE, file: memoryFile, before: current, after }]);
-      recordFileVersion(env, memoryFile, after, author as "mcp", "proposal", id);
-      const written = [{ path: MEMORY_FILE, version: versionOf(after) }];
-      writeDecision(env.db, id, "accepted", at, { action: "accept", written });
-      return { proposal: getProposal(env.db, id)!, written, facts: [] };
+      const undo = writeAll(env, [{ rel: MEMORY_FILE, file: memoryFile, before: current, after }]);
+      return thenOrUndo(undo, () => {
+        recordFileVersion(env, memoryFile, after, author as "mcp", "proposal", id);
+        const written = [{ path: MEMORY_FILE, version: versionOf(after) }];
+        writeDecision(env.db, id, "accepted", at, { action: "accept", written });
+        return { proposal: getProposal(env.db, id)!, written, facts: [] };
+      });
     })();
   }
 
@@ -829,12 +871,14 @@ export function decideProposal(
         }).fact,
       );
     }
-    writeAll(env, writes);
-    const written = writes.map((w) => {
-      recordFileVersion(env, w.file, w.after, author as "mcp", "proposal", id);
-      return { path: w.rel, version: versionOf(w.after) };
+    const undo = writeAll(env, writes);
+    return thenOrUndo(undo, () => {
+      const written = writes.map((w) => {
+        recordFileVersion(env, w.file, w.after, author as "mcp", "proposal", id);
+        return { path: w.rel, version: versionOf(w.after) };
+      });
+      writeDecision(env.db, id, status, at, { action: "accept", ops: chosen, written, facts: facts.map((f) => f.id) });
+      return { proposal: getProposal(env.db, id)!, written, facts };
     });
-    writeDecision(env.db, id, status, at, { action: "accept", ops: chosen, written, facts: facts.map((f) => f.id) });
-    return { proposal: getProposal(env.db, id)!, written, facts };
   })();
 }

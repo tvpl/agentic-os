@@ -5,7 +5,7 @@ import { EditConflictError, PathAccessError } from "../errors.js";
 import type { MordomoPaths } from "../paths.js";
 import { realpathLenient } from "../security/paths.js";
 import { homeReadScope, openWorkspaceFile, statWorkspacePath, type ReadScope } from "../security/safeFs.js";
-import { writeWorkspaceFile } from "../security/safeWrite.js";
+import { createWorkspaceFile, writeWorkspaceFile, type CreatedFile } from "../security/safeWrite.js";
 import {
   parseProperties,
   setProperties,
@@ -106,6 +106,12 @@ export interface NoteContext {
    * the history records them as a version. Absent: nothing is recorded.
    */
   history?: ((file: string, bytes: Uint8Array | string, origin: "create" | "save" | "properties" | "task") => void) | undefined;
+  /**
+   * Told the file `createNote` made, right after it is made and before anything else (the history): a caller that must
+   * take the note back when a later step fails removes that very file (an accepted proposal, cerebro-memoria-confiavel
+   * G6). Absent: nothing is told.
+   */
+  created?: ((file: CreatedFile) => void) | undefined;
 }
 
 export interface NoteWritten {
@@ -374,12 +380,14 @@ export function createNote(ctx: NoteContext, input: CreateNoteInput, now: Date =
   for (let n = 1; n <= MAX_SAME_NAME; n++) {
     const name = `${n === 1 ? slug : `${slug}-${n}`}.md`;
     const target = path.join(dir, name);
+    let made: CreatedFile;
     try {
-      writeWorkspaceFile(scope, target, text, { mode: "create" });
+      made = createWorkspaceFile(scope, target, text);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "EEXIST") continue;
       throw err;
     }
+    ctx.created?.(made);
     ctx.history?.(target, text, "create");
     const stat = statWorkspacePath(scope, target).stat;
     return { path: target, name, version: versionOf(text), size: Buffer.byteLength(text, "utf8"), mtime: Math.floor(stat.mtimeMs) };
