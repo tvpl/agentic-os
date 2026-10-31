@@ -678,3 +678,123 @@ describe("C85 memory.history.maxBytes through PUT /api/settings", () => {
     }
   });
 });
+
+// ---- C86: what the earlier features answer as before ---------------------------------------------------------------
+
+describe("C86 the earlier behaviour this feature must not change", () => {
+  it('C86 "Virou realidade" asserts a fact that reads back with author owner, trust usuario and sourcePath the note', async () => {
+    const n = await note("Virou realidade C86", "O curso custa 700.\n");
+    await w.index();
+    const res = await w.call("POST", "/api/memory/reviews", {
+      path: n.file,
+      action: "became_fact",
+      baseVersion: n.version,
+      fact: { subject: "Curso C86", predicate: "preço", object: "700" },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const listed = (await w.call("GET", `/api/memory/facts?subject=${encodeURIComponent("curso c86")}`)).body
+      .facts as Json[];
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({
+      subject: "Curso C86",
+      predicate: "preço",
+      object: "700",
+      author: "owner",
+      trust: "usuario",
+      sourcePath: n.file,
+      proposalId: null,
+    });
+    expect(res.body.fact).toEqual(listed[0]);
+  });
+
+  it("C86 the dashboards' facts source shows an open fact and leaves out a fact retracted as wrong and one closed as ended, as the source did at the feature's base (Correções de construção)", async () => {
+    const assert = async (subject: string) => {
+      const res = await w.call("POST", "/api/memory/facts", { subject, predicate: "estado", object: "x" });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      return res.body.fact.id as number;
+    };
+    await assert("Aberto C86");
+    const wrong = await assert("Errado C86");
+    const ended = await assert("Encerrado C86");
+    expect((await w.call("POST", `/api/memory/facts/${wrong}/retract`, { reason: "wrong" })).status).toBe(
+      200,
+    );
+    expect((await w.call("POST", `/api/memory/facts/${ended}/retract`)).status).toBe(200);
+    const made = await w.call("POST", "/api/dashboards", { template: "overview" });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const definition = {
+      ...made.body.definition,
+      refresh: "manual",
+      widgets: [{ id: "f", kind: "list", title: "F", source: { kind: "facts" }, options: { limit: 50 } }],
+    };
+    const put = await w.call("PUT", `/api/dashboards/${made.body.id}`, {
+      definition,
+      baseVersion: made.body.version,
+    });
+    expect(put.status, JSON.stringify(put.body)).toBe(200);
+    const refreshed = await w.call("POST", `/api/dashboards/${made.body.id}/refresh`, {});
+    expect(refreshed.status, JSON.stringify(refreshed.body)).toBe(200);
+    const widget = (refreshed.body.snapshot.widgets as Json[]).find((x) => x.id === "f")!;
+    const subjects = (widget.data.items as Json[])
+      .map((i) => i.subject as string)
+      .filter((s) => ["Aberto C86", "Errado C86", "Encerrado C86"].includes(s));
+    expect(subjects).toEqual(["Aberto C86"]);
+  });
+
+  it("C86 the approvals keep limits.approvalTtlDays (7 days by default) and POST /api/approvals/:id/resolve stores no proposal", async () => {
+    expect(w.ctx.settings().limits.approvalTtlDays).toBe(7);
+    const approval = w.ctx.approvals.request("tool_use", "Write: c86", { runId: "r-c86" });
+    expect(approval.expiresAt - approval.createdAt).toBe(7 * 86_400_000);
+    const proposals = state().proposals;
+    const res = await w.call("POST", `/api/approvals/${approval.id}/resolve`, { decision: "denied" });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(state().proposals).toEqual(proposals);
+    const stale = w.ctx.approvals.request("tool_use", "Write: c86 stale", { runId: "r-c86-stale" });
+    expect(w.ctx.approvals.expireStale(stale.createdAt + 7 * 86_400_000 - 1).map((a) => a.id)).not.toContain(
+      stale.id,
+    );
+    expect(w.ctx.approvals.expireStale(stale.createdAt + 7 * 86_400_000 + 1).map((a) => a.id)).toContain(
+      stale.id,
+    );
+    expect(state().proposals).toEqual(proposals);
+  });
+
+  it("C86 a finished run's line under ## Runs has the text of before, with no authorship mark", async () => {
+    const record = w.ctx.runs.create({
+      origin: "skill",
+      provider: "claude",
+      prompt: "held open",
+      model: null,
+      effort: "default",
+      mode: "write",
+      timeoutMs: 60_000,
+      profile: "controlled_write",
+      skillSlug: "organize-brain",
+      startedBy: null,
+    } as never);
+    w.ctx.events.emit("run.finished", { runId: record.id, status: "done", durationMs: 3_000 });
+    const pad = (x: number) => String(x).padStart(2, "0");
+    const d = new Date();
+    const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const lines = fs.readFileSync(path.join(w.memory, "journal", `${day}.md`), "utf8").split("\n");
+    const line = lines.find((l) => l.includes(`run ${record.id} `));
+    expect(line).toMatch(new RegExp(`^- \\d{2}:\\d{2} run ${record.id} → done in 3s · /organize-brain$`));
+    const runs = lines.indexOf("## Runs");
+    expect(runs).toBeGreaterThanOrEqual(0);
+    expect(lines.indexOf(line!)).toBeGreaterThan(runs);
+  });
+
+  it("C86 MEMORY_WRITES_PER_RUN is 100: a write run's 100 journal lines are written and the 101st is 429 too_many_requests", async () => {
+    const context = fs.readFileSync(path.join(repoRoot, "apps", "api", "src", "context.ts"), "utf8");
+    expect(context).toContain("const MEMORY_WRITES_PER_RUN = 100;");
+    const run = w.run("write").headers;
+    for (let i = 1; i <= 100; i++) {
+      const res = await w.call("POST", "/api/memory/journal/append", { text: `C86 linha ${i}` }, run);
+      expect(res.status, `${i} ${JSON.stringify(res.body).slice(0, 200)}`).toBe(200);
+    }
+    expect(code(await w.call("POST", "/api/memory/journal/append", { text: "C86 linha 101" }, run))).toEqual([
+      429,
+      "too_many_requests",
+    ]);
+  }, 60_000);
+});

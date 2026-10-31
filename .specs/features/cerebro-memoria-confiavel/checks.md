@@ -583,7 +583,8 @@ Proof: `npx vitest run tests/memoria.contract.test.ts -t "C85 "`
 
 **C86** - Existing behaviour that must not change, each asserted by value: "Virou realidade" (`POST /api/memory/reviews`,
 `became_fact`) asserts a fact that reads back with `author: "owner"`, `trust: "usuario"` and `sourcePath` = the note;
-the dashboards' `facts` source leaves out a fact retracted as `wrong` and keeps one closed as `ended`; the approvals keep
+the dashboards' `facts` source shows an open fact and leaves out a fact retracted as `wrong` and one closed as `ended`, as
+it left out a closed fact at the feature's base ("Correções de construção"); the approvals keep
 `limits.approvalTtlDays` and `POST /api/approvals/:id/resolve` creates no proposal; the `## Runs` journal line of a finished
 run is still written with the text of before; `MEMORY_WRITES_PER_RUN` is 100 (Flow, Impact "domain")
 Proof: `npx vitest run tests/memoria.contract.test.ts -t "C86 "`
@@ -981,6 +982,16 @@ Proof: `npm run build -w apps/command-centre && npm run bundle:check`
   door 10 left out, no scope changed, and each of the six is proven answered (C80's second test). An owner
   question (G26): the safe default is the codes as built; the alternative is to map the acceptance's refusals onto door
   10's codes, a product change that loses the reason today's code gives.
+
+- **C86, batch A3.** The approved claim said the dashboards' `facts` source "keeps one closed as `ended`". That source
+  reads the open facts only (`queryFacts` with no `includeExpired`, `core/src/dashboards/sources.ts:494`), at the
+  feature's base and after it, and cerebro-paineis proves that a closed fact leaves the dashboard
+  (`tests/paineis.sources.test.ts`, the facts case that retracts `gone`). Keeping it would change the behaviour C86
+  exists to pin, and break that check, so no implementation can pass the clause as written. The claim asserts the
+  behaviour of before by value instead: the open fact is shown, the one retracted as `wrong` and the one closed as
+  `ended` are left out. No product code changed. An owner question (G27): the safe default is that the dashboards show
+  open facts only, as before; the alternative is to show closed facts there, a product change that also changes
+  cerebro-paineis's facts source.
 
 ## Gaps found by this derivation
 
