@@ -73,7 +73,7 @@ flowchart TD
    "Emendas" 12) roda cada painel no seu `refresh`; a rota de atualizar roda na hora; o barramento anuncia
    `dashboard.refreshed` (door 6) e a tela troca o snapshot.
 7. Pergunta → `POST /api/dashboards/:id/refresh` de um painel `question` inicia a skill `dashboard-answer` (door 7, uma skill
-   de `settings.memorySkills`, "Emendas" 19) por `launchSkillRun` (exists) com recall; o resultado é validado (esquema e
+   de `settings.memorySkills`, "Emendas" 19) por `launchSkillRun` (exists, pelo `execution.startSkill` do motor) com recall; o resultado é validado (esquema e
    citações) antes de virar snapshot.
 8. Tela → a página "Painéis" da moldura e uma cena do Núcleo (AD-005) leem `GET /api/dashboards/:id` (door 6) e desenham os widgets em SVG
    feito à mão; um item de nota abre `/brain?sel=<id>` ("Emendas" 18); "Exportar" grava um HTML local em `artifacts/dashboards/`.
@@ -125,6 +125,10 @@ tem no máximo um snapshot guardado (door 4); uma série é chaveada por (`dashb
   `403 forbidden_path`, as every route that lists or writes a folder through the safe primitives does (the refusal probe of
   `tests/api.refusals.test.ts` found them, and `FORBIDDEN_PATH_ROUTES` names them); `GET /api/dashboards/:id` answers
   `stale` beside the four keys of its row, as its `stale` rule asks.
+- Grown while building (batch B, additive): `POST /api/dashboards/:id/export` also answers `403 forbidden_path`, as the
+  other routes that write through the guarded writer do (the refusal probe found it; `FORBIDDEN_PATH_ROUTES` names it);
+  `PUT /api/memory/tasks` answers the codes amendment 17 adds (`403 forbidden_path`, `404 note_missing`, `404 not_a_file`,
+  `413 note_too_large`); `GET /api/dashboards/:id` computes `highlights` from the stored snapshot.
 
 ## Landing
 
@@ -525,7 +529,7 @@ Perguntas novas ao dono, levantadas pela reconciliação; o padrão vale até a 
 | 8   | open | Uma citação abre o preview do arquivo, sem rolar até a seção (emenda 18): o preview não tem âncora. Dar ao preview (ou à vista de notas) um endereço com seção? Recomendo sim, numa feature própria do cérebro: muda a C4 ou o preview.                                                                                                 | o preview do arquivo, a seção só no texto da citação                         |
 | 9   | open | `dashboard-answer` entra no padrão de `settings.memorySkills` e, fora dele, `refresh` responde `409 skill_unavailable` (emenda 19). Aceitar? Recomendo sim: sem a memória a skill não cita, e todo resultado seria recusado depois de custar uma execução.                                                                              | entra no padrão; uma casa com outra lista guardada a mantém e recebe o `409` |
 | 10  | open | O teto de peso desta feature: 24 KB de JS gzip e 4 KB de CSS gzip acima de `cerebro-natureza` (emenda 24)?                                                                                                                                                                                                                              | 24 KB e 4 KB; se a construção passar, para e pergunta                        |
-| 11  | open | O `kind` `reminder` não cabe no `CHECK` da tabela `notifications` (migração 6); a migração 27 refaz a tabela com o `CHECK` que o inclui, copiando as linhas (door 8, batch B, C98). Aceitar? Recomendo sim: é a única forma de gravar o `kind` que a door 5 pede; a alternativa é o lembrete como `kind: system`, que a door 5 recusou. | a migração 27 vale como escrita                                              |
+| 14  | open | O `kind` `reminder` não cabe no `CHECK` da tabela `notifications` (migração 6); a migração 27 refaz a tabela com o `CHECK` que o inclui, copiando as linhas (door 8, batch B, C98). Aceitar? Recomendo sim: é a única forma de gravar o `kind` que a door 5 pede; a alternativa é o lembrete como `kind: system`, que a door 5 recusou. | a migração 27 vale como escrita                                              |
 
 ## Sources
 

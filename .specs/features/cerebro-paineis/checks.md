@@ -996,3 +996,56 @@ Status of batch B (updated in the commit that closes each piece):
   C56 and amendment 19 to an input named `context_id` (no question dashboard can have a context today, amendment 6 e)
 - the export (C57): closed, both proofs green in `tests/paineis.localday.test.ts` and `tests/paineis.layer.test.ts`;
   the eight routes of the Surface exist
+
+- **Boundary (batch B):** C37 to C55 and C57 closed, and C98 (door 8, added in this batch); C56 closed but for its
+  `contextId` input (above, STATE question 15). Commits: `a55e20e` (C37-C46, C98, and C12 and C14 made real), `ea57f02`
+  (C47-C51), `c9561c3` (C52-C56), `77f0b9b` (C57). On the tree of `77f0b9b`: `npm run build`, `npm run typecheck` and
+  `npm run lint` exit 0, `npx vitest run` at the root is green (170 files, 2405 tests, 1 skipped), and `npm run test -w
+apps/command-centre` is green (168 files, 1414 tests). Each of the 31 `Proof:` lines of C12, C13, C14, C19, C31, C32,
+  C34, C37-C57 and C98 passes run alone and runs only its check's tests. What batch B leaves for C and D: the eight
+  routes of the Surface; a KPI's `data` is `{ value, of?, delta?, deltaPct?, direction?, good?, chip?, series, items? }`
+  (`series` `[{ at, value }]`, at most 30, oldest first); `GET /api/dashboards/:id` answers `highlights` of
+  `{ rule, title, tone, target }`; a reminder row is `kind: "reminder"` with `messageKey` `reminder.<rule>` and
+  `messageParams.text`; a question snapshot's widgets carry `data.title` and `data.citations[]` (`path`, `section`,
+  `name`, `fileId`) and end with the host's `note` card `como-foi-feita` (`data: { runId, finishedAt }`). The pins
+  batch B moved, so that C adds on top: 155 routes and scenarios, 81 owner and 32 content routes (with the chained
+  amendments in `sdk.api-thin`), 153 checked responses, 77 raised pairs, `PUT /api/memory/tasks` among the routes that
+  name `edit_conflict`, `POST /api/dashboards/:id/export` in `FORBIDDEN_PATH_ROUTES`, migration 27 in the lists of
+  `data.migration`, `contexts.runs`, `device-scopes`, `natureza.layer` C7 and `paineis.layer` C19, 29 settings keys and
+  the two `dashboards.reminders` leaves (`data.settings` C19, C46), the default `memorySkills` (`builtin-context`,
+  `organize.skill` C9), the v1 `settings.changed` fixture and a v1 `notification.created.reminder` fixture,
+  `docs/events.md`, the scope table, the owner row of `docs/security.md` (81), five names of the contracts root
+  (`contracts.test` C41) and `saveTask` in the internal barrel (`sdk.surface` C38). Batch A's KPI value assertions
+  (C13, C14, C31, C32, C34) pick `value` and `of`, since a KPI's `data` now carries its trend beside them.
+- **Settled mid-build (batch B):** nothing by the owner. Builder decisions inside the approved shape: (a) door 8,
+  migration 27 (Landing row 8, C98, STATE question 14), because the `CHECK` of migration 6 refuses `reminder`; (b) the
+  KPI maths are `core/src/dashboards/kpi.ts`: the evaluator is handed the stored points (`history`) and adds this local
+  hour's (`seriesWith`, the rule `savePoints` writes by), the delta's base is the oldest point at or after the newest's
+  `at` minus the period, `deltaPct` has one decimal, a flat delta is `good: true`, an empty KPI's `data` is
+  `{ series, items? }`, and a KPI keeps its source's `items` so `review_due` reads the queue (amendment 8, STATE question
+  17); (c) the highlights are `core/src/dashboards/highlights.ts`, computed at the `GET` from the stored snapshot's `ok`
+  widgets' items: `overdue` and `due_today` compare `due` with the local day, `decided_this_week` needs the decision's day
+  in the local week, a candidate is given once, and a task claims its note's path, so the note's project or its
+  `new_since_visit` is not given after it (C42's "once, under overdue"); `new_since_visit` reads every note-backed or
+  connector item with a time; the title is the item's text; a connector item with no `href` targets
+  `/connectors#<id>`; (d) the reminders are `core/src/dashboards/reminders.ts`, from the `tasks` and `projects`
+  widgets' items of the snapshot, in rule order then item order, written at the refresh's clock; the cap counts the
+  `reminder` rows whose `dedupe_key` ends in `:<day>`; (e) `PUT /api/memory/tasks` is the route `memory.tasks.save` and
+  `saveTask` in `core/src/memory/notes.ts`, checked in the order validation, place (403), file (404, 413), not UTF-8
+  (`403 note_not_editable`), version and line (409); a box already as asked answers the `baseVersion` and writes
+  nothing; (f) a question dashboard: `DashboardService.ask` with `question: { available, start }` wired by `AppContext`
+  through `execution.startSkill` (which calls `launchSkillRun`), `startedBy: "owner"`, `inputs: { question }`; the
+  pending runs are the instance's `asking` map; amendment 19's "succeeded" is the run's `done`, any other end refuses
+  with "The run of the question finished <status>."; the answer is `{ v: 1, widgets: [{ id, kind, title, status?, data,
+citations }] }` (1 to 6, ids unique and not `como-foi-feita`); a refusal keeps the snapshot and replaces only its
+  `question` source (a new snapshot with no widget when there was none); (g) the export is
+  `core/src/dashboards/export.ts`, in pt-BR with the light theme's hexes, every text escaped with `(`, `@` and `=` as
+  references too, only an `http(s)` `href` a link, written by the guarded writer in `create` mode; (h) the skill names
+  the local recall route without `curl` (a `curl` line is a new network point, against C62), and a test home is seeded
+  from the repository as the bundle seeds a real one; (i) proof readings: C44's "the overdue first" is creation order
+  (`GET /api/notifications` lists the newest first); C14 sets `maxPerDay` to 20 so every candidate is written, and
+  clears the inbox between its "before" and "after"; C39's "with none" is a KPI with no value; C54's context case is at
+  the validator's layer only (a question dashboard has no `contextId`, amendment 6 e)
+- **Abandoned (batch B):** an input named `contextId` in the `SKILL.md` (`SkillInputSchema` refuses it); the highlights
+  stored in the snapshot (door 4's keys are exactly five, C7); changing migration 26 in place (a database at 26 keeps
+  the old `CHECK`); a `runId` in `sources[]` (a new key of door 4)
