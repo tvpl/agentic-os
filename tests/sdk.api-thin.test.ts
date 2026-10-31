@@ -1045,6 +1045,43 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(147);"],
       head: ["    expect(operations).toBe(153);"],
     },
+    // cerebro-paineis, batch B, added migration 27 (the reminder kind of the inbox, door 8) on top of batch A's.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: migration 27 after 26",
+      base: [
+        "      // note and the review state of a file (cerebro-natureza), two more, and the tasks of a note and the snapshots",
+        "      // and series of the dashboards (cerebro-paineis), three more.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        '        "note-links",',
+        '        "file-vectors",',
+        '        "drop-file-links",',
+        '        "run-context",',
+        '        "cleanup",',
+        '        "natureza",',
+        '        "dashboards",',
+        "      ]);",
+      ],
+      head: [
+        "      // note and the review state of a file (cerebro-natureza), two more, and the tasks of a note and the snapshots",
+        "      // and series of the dashboards (cerebro-paineis), three more, and the reminder kind of the inbox (cerebro-paineis",
+        "      // batch B), a table made again with the same rows.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        '        "note-links",',
+        '        "file-vectors",',
+        '        "drop-file-links",',
+        '        "run-context",',
+        '        "cleanup",',
+        '        "natureza",',
+        '        "dashboards",',
+        '        "notification-reminder",',
+        "      ]);",
+      ],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

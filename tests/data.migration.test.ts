@@ -544,10 +544,10 @@ describe("C30 migration 20 on a database that already holds an index", () => {
       // cerebro-correcoes added migration 22 (the end of file_links) after these two, cerebro-contextos 23 (the
       // work context of a run and of a conversation), cerebro-faxina-guiada 24 (the signatures and the decisions of
       // the cleanup), cerebro-natureza 25 (the passages of a note and the review state of a file), and cerebro-paineis
-      // 26 (the tasks of a note, the snapshots and the series of the dashboards)
-      expect(db.pragma("user_version", { simple: true })).toBe(26);
-      expect(MIGRATIONS.at(-1)!.version).toBe(26);
-      expect(MIGRATIONS.slice(-7).map((m) => m.name)).toEqual([
+      // 26 (the tasks of a note, the snapshots and the series of the dashboards) and 27 (the reminder kind of the inbox)
+      expect(db.pragma("user_version", { simple: true })).toBe(27);
+      expect(MIGRATIONS.at(-1)!.version).toBe(27);
+      expect(MIGRATIONS.slice(-8).map((m) => m.name)).toEqual([
         "note-links",
         "file-vectors",
         "drop-file-links",
@@ -555,6 +555,7 @@ describe("C30 migration 20 on a database that already holds an index", () => {
         "cleanup",
         "natureza",
         "dashboards",
+        "notification-reminder",
       ]);
       // the migration SQL twice leaves the table as it was
       const sql = MIGRATIONS.find((m) => m.version === 21)!.sql!;

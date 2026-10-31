@@ -27,7 +27,7 @@ export interface Approval {
   expiresAt: number;
 }
 
-export type NotificationKind = "approval" | "run" | "routine" | "index" | "system";
+export type NotificationKind = "approval" | "run" | "routine" | "index" | "system" | "reminder";
 export type NotificationTone = "ok" | "warn" | "danger" | "info";
 
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
@@ -36,6 +36,8 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "routine",
   "index",
   "system",
+  // cerebro-paineis (door 5, amendment 16): what a dashboard's refresh finds due; silenced apart from the system's.
+  "reminder",
 ];
 
 /** A row of the inbox: an approval, a failed run, an alert, a budget warning. */

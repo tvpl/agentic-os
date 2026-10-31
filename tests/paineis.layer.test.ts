@@ -9,6 +9,8 @@ import { openDb } from "../core/src/db/db.js";
 import { MIGRATIONS } from "../core/src/db/migrations.js";
 import { ensureDirs, resolvePaths } from "../core/src/paths.js";
 import { DashboardEvaluator, snapshotStatus } from "../core/src/dashboards/evaluator.js";
+import { dashboardHighlights } from "../core/src/dashboards/highlights.js";
+import { kpiDelta } from "../core/src/dashboards/kpi.js";
 import { refreshDue, snapshotStale } from "../core/src/dashboards/schedule.js";
 import { dashboardSources, projectHealth, type DashboardSourceMap } from "../core/src/dashboards/sources.js";
 import { parseTasks } from "../core/src/memory/tasks.js";
@@ -20,6 +22,7 @@ import { ACCEPTED, REFUSALS, valid } from "./helpers/paineisDefinitions.js";
  * 1 and 2), with no HTTP: door 1's validator (`DashboardSpecSchema`), the evaluator over a source map, the scheduling
  * and `stale` maths, migration 26, the task parser and a project's health. The claims that name a local day are in
  * `paineis.localday.test.ts`; the HTTP side of each is in `paineis.routes.test.ts` and `paineis.refresh.test.ts`.
+ * Batch B (S3) adds the delta rules (C40), the highlight rules (C43) and migration 27 (C98).
  */
 
 type Json = Record<string, any>;
@@ -330,7 +333,11 @@ describe("C19 migration 26", () => {
       [24, "cleanup"],
       [25, "natureza"],
     ]);
-    expect(MIGRATIONS.at(-1)!.version).toBe(26);
+    // batch B adds migration 27 (door 8, the reminder kind of the inbox) after it
+    expect(MIGRATIONS.slice(-2).map((m) => [m.version, m.name])).toEqual([
+      [26, "dashboards"],
+      [27, "notification-reminder"],
+    ]);
   });
 
   it("C19 a database migrated from 25 keeps its files, note_links, note_passages and review_state rows", () => {
@@ -375,7 +382,8 @@ describe("C19 migration 26", () => {
       old.close();
       const { db, migration } = openDb(paths);
       try {
-        expect(migration).toMatchObject({ fromVersion: 25, toVersion: 26 });
+        // to the latest, 27 (batch B, door 8), through 26
+        expect(migration).toMatchObject({ fromVersion: 25, toVersion: 27 });
         expect(rows(db)).toEqual(before);
         expect(db.prepare("SELECT COUNT(*) c FROM note_tasks").get()).toEqual({ c: 0 });
       } finally {
@@ -469,4 +477,274 @@ describe("C28 a project's health at its own layer", () => {
       expect(projectHealth(status, due, TODAY)).toBe(health);
     });
   }
+});
+
+// ---- batch B: the KPI's delta (C40) ------------------------------------------------------------------------------
+
+describe("C40 the delta rules at their own layer", () => {
+  const H = 3_600_000;
+  const D = 24 * H;
+  const pts = (...list: Array<[number, number]>) => list.map(([at, value]) => ({ at: NOW + at, value }));
+
+  it("C40 period week compares with the oldest point of the last 7 days: 10 at -8 d, 4 at -6 d, 6 now → delta 2", () => {
+    expect(kpiDelta(pts([-8 * D, 10], [-6 * D, 4], [0, 6]), "week")).toMatchObject({
+      delta: 2,
+      direction: "up",
+    });
+    // the same points over a day compare with the newest one alone (nothing else is within 24 h)
+    expect(kpiDelta(pts([-8 * D, 10], [-6 * D, 4], [0, 6]), "day")).toMatchObject({ delta: 0 });
+  });
+  it("C40 upIsGood false with direction up → good false", () => {
+    expect(kpiDelta(pts([-H, 1], [0, 2]), "day", false)).toMatchObject({ direction: "up", good: false });
+  });
+  it("C40 upIsGood absent, up → good true; down → good false", () => {
+    expect(kpiDelta(pts([-H, 1], [0, 2]))).toMatchObject({ direction: "up", good: true });
+    expect(kpiDelta(pts([-H, 2], [0, 1]))).toMatchObject({ direction: "down", good: false });
+  });
+  it("C40 base 0 → deltaPct null", () => {
+    expect(kpiDelta(pts([-H, 0], [0, 3]))).toEqual({ delta: 3, deltaPct: null, direction: "up", good: true });
+  });
+  it("C40 equal values → direction flat, delta 0", () => {
+    expect(kpiDelta(pts([-H, 4], [0, 4]))).toMatchObject({ delta: 0, direction: "flat" });
+  });
+  it("C40 base 20, now 23 → deltaPct 15", () => {
+    expect(kpiDelta(pts([-H, 20], [0, 23]))).toEqual({ delta: 3, deltaPct: 15, direction: "up", good: true });
+  });
+  it("C40 fewer than two points → no delta", () => {
+    expect(kpiDelta(pts([0, 5]))).toBeNull();
+    expect(kpiDelta([])).toBeNull();
+  });
+});
+
+// ---- batch B: the highlight rules (C43) --------------------------------------------------------------------------
+
+describe("C43 the highlight rules at their own layer", () => {
+  /** The local day `offset` days from NOW's, as `AAAA-MM-DD`. */
+  const day = (offset: number) => {
+    const d = new Date(NOW);
+    const at = new Date(d.getFullYear(), d.getMonth(), d.getDate() + offset);
+    return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+  };
+  let n = 0;
+  const widget = (source: Json): Json => ({ id: `w${++n}`, kind: "list", title: "W", source });
+  /** The highlights of one widget per `[source, items]`, at NOW. */
+  const run = (parts: Array<[Json, Json[]]>, since?: number) => {
+    const widgets = parts.map(([source]) => widget(source));
+    const snapshot = {
+      v: 1 as const,
+      dashboardId: "t",
+      generatedAt: NOW,
+      sources: [],
+      widgets: widgets.map((w, i) => ({
+        id: w.id,
+        kind: "list" as const,
+        status: "ok" as const,
+        data: { items: parts[i]![1] },
+      })),
+    };
+    return dashboardHighlights({ widgets: widgets as never }, snapshot, { now: NOW, since });
+  };
+  const TASKS = { kind: "tasks", window: "week" };
+  const DECISIONS = { kind: "decisions", window: "week" };
+  const task = (id: number, due: string, extra: Json = {}): Json => ({
+    path: `/m/t${id}.md`,
+    line: 3,
+    fileId: id,
+    text: `Tarefa ${id}`,
+    done: false,
+    due,
+    mtime: 1,
+    ...extra,
+  });
+  const decision = (id: number, state: string, day: string): Json => ({
+    text: `Decisão ${id}`,
+    state,
+    day,
+    path: `/m/d${id}.md`,
+    fileId: id,
+    line: null,
+    mtime: 1,
+  });
+  const rules = (out: Json[]) => out.map((h) => [h.rule, h.title]);
+
+  it("C43 overdue: due yesterday → in, today → out (it is due_today)", () => {
+    expect(rules(run([[TASKS, [task(1, day(-1))]]]))).toEqual([["overdue", "Tarefa 1"]]);
+    expect(run([[TASKS, [task(1, day(0))]]]).map((h) => h.rule)).not.toContain("overdue");
+  });
+  it("C43 due_today: today → in, tomorrow → out", () => {
+    expect(rules(run([[TASKS, [task(1, day(0))]]]))).toEqual([["due_today", "Tarefa 1"]]);
+    expect(run([[TASKS, [task(1, day(1))]]])).toEqual([]);
+  });
+  it("C43 decided_this_week: a decided decision of the week → in, an open one → out", () => {
+    expect(rules(run([[DECISIONS, [decision(1, "decided", day(0))]]]))).toEqual([
+      ["decided_this_week", "Decisão 1"],
+    ]);
+    expect(run([[DECISIONS, [decision(1, "open", day(0))]]])).toEqual([]);
+  });
+  it("C43 open_decision_7d: an open decision 8 local days old → in, 7 → out", () => {
+    expect(rules(run([[DECISIONS, [decision(1, "open", day(-8))]]]))).toEqual([
+      ["open_decision_7d", "Decisão 1"],
+    ]);
+    expect(run([[DECISIONS, [decision(1, "open", day(-7))]]])).toEqual([]);
+  });
+  it("C43 project_behind: a behind project → in, an on_track one → out", () => {
+    const project = (health: string): Json => ({
+      fileId: 5,
+      path: "/m/p.md",
+      title: "Site novo",
+      health,
+      mtime: 1,
+    });
+    expect(run([[{ kind: "projects" }, [project("behind")]]])).toEqual([
+      { rule: "project_behind", title: "Site novo", tone: "danger", target: "/brain?sel=5" },
+    ]);
+    expect(run([[{ kind: "projects" }, [project("on_track")]]])).toEqual([]);
+  });
+  it("C43 review_due: an item of the review queue → in, with its target", () => {
+    expect(run([[{ kind: "reviews" }, [{ path: "/m/r a.md", name: "r a.md", mtime: 1 }]]])).toEqual([
+      { rule: "review_due", title: "r a.md", tone: "info", target: "/brain/reviews?path=%2Fm%2Fr%20a.md" },
+    ]);
+  });
+  it("C43 connector_flagged: flagged true → in (its href), false → out", () => {
+    const source = { kind: "connector", id: "mail", read: "list" };
+    expect(
+      run([[source, [{ id: "e1", title: "Urgente", flagged: true, href: "https://m/e1", ts: 1 }]]]),
+    ).toEqual([{ rule: "connector_flagged", title: "Urgente", tone: "info", target: "https://m/e1" }]);
+    expect(run([[source, [{ id: "e1", title: "Urgente", flagged: false, ts: 1 }]]])).toEqual([]);
+  });
+  it("C43 new_since_visit: an item whose time is after since → in, equal → out, no time → out, no since → none", () => {
+    const source = { kind: "connector", id: "mail", read: "list" };
+    const items = [
+      { id: "a", title: "Depois", ts: 101 },
+      { id: "b", title: "Igual", ts: 100 },
+      { id: "c", title: "Sem hora" },
+    ];
+    expect(rules(run([[source, items]], 100))).toEqual([["new_since_visit", "Depois"]]);
+    expect(run([[source, items]])).toEqual([]);
+    const note = { fileId: 9, path: "/m/n.md", title: "Nota", mtime: 101 };
+    expect(rules(run([[{ kind: "notes" }, [note]]], 100))).toEqual([["new_since_visit", "Nota"]]);
+  });
+  it("C43 the output follows the order of door 5 whatever the order of the input, an item once under its first rule, at most 8", () => {
+    const parts: Array<[Json, Json[]]> = [
+      [
+        { kind: "connector", id: "mail", read: "list" },
+        [{ id: "e", title: "Marcado", flagged: true, ts: 500 }],
+      ],
+      [{ kind: "reviews" }, [{ path: "/m/r.md", name: "r.md", mtime: 500 }]],
+      [
+        { kind: "projects" },
+        [{ fileId: 1, path: "/m/t1.md", title: "Projeto da tarefa", health: "behind", mtime: 500 }],
+      ],
+      [DECISIONS, [decision(7, "open", day(-9)), decision(8, "decided", day(0))]],
+      [TASKS, [task(2, day(0)), task(1, day(-2), { mtime: 500 })]],
+    ];
+    expect(rules(run(parts, 100))).toEqual([
+      ["overdue", "Tarefa 1"],
+      ["due_today", "Tarefa 2"],
+      ["decided_this_week", "Decisão 8"],
+      ["open_decision_7d", "Decisão 7"],
+      // the project of the overdue task is the same note: it is not given again
+      ["review_due", "r.md"],
+      ["connector_flagged", "Marcado"],
+    ]);
+    const many: Json[] = Array.from({ length: 10 }, (_, i) => task(100 + i, day(-1)));
+    expect(run([[TASKS, many]])).toHaveLength(8);
+  });
+});
+
+// ---- batch B: migration 27 (C98, door 8) -------------------------------------------------------------------------
+
+describe("C98 migration 27, the reminder kind of the inbox", () => {
+  const columns = (db: Database.Database) =>
+    (db.pragma("table_info(notifications)") as Json[]).map(({ name, type, notnull, dflt_value, pk }) => ({
+      name,
+      type,
+      notnull,
+      dflt_value,
+      pk,
+    }));
+  const indexes = (db: Database.Database) =>
+    (
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'notifications' ORDER BY name",
+        )
+        .all() as Json[]
+    ).map((r) => r.name);
+  const insert = (db: Database.Database, id: string, kind: string, extra: Json = {}) =>
+    db
+      .prepare(
+        "INSERT INTO notifications (id, kind, tone, title, body, href, approval_id, run_id, ts, read, dedupe_key, message_key, message_params) VALUES (@id, @kind, @tone, @title, NULL, @href, NULL, NULL, @ts, @read, @dedupe, @key, @params)",
+      )
+      .run({
+        id,
+        kind,
+        tone: "warn",
+        title: `T ${id}`,
+        href: null,
+        ts: 5,
+        read: 0,
+        dedupe: null,
+        key: null,
+        params: null,
+        ...extra,
+      });
+
+  it("C98 MIGRATIONS ends with 26 dashboards and 27 notification-reminder; a database migrated from 26 keeps its rows, columns and indexes, takes kind reminder and refuses lembrete; again leaves the same schema", () => {
+    expect(MIGRATIONS.slice(-2).map((m) => [m.version, m.name])).toEqual([
+      [26, "dashboards"],
+      [27, "notification-reminder"],
+    ]);
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-paineis-m27-"));
+    const paths = resolvePaths(home);
+    ensureDirs(paths);
+    try {
+      const old = openDb(
+        paths,
+        MIGRATIONS.filter((m) => m.version <= 26),
+      ).db;
+      expect(old.pragma("user_version", { simple: true })).toBe(26);
+      insert(old, "n_a", "run");
+      insert(old, "n_b", "system", {
+        href: "/x",
+        read: 1,
+        dedupe: "k",
+        key: "sentinel.reviewDue",
+        params: '{"count":2}',
+      });
+      expect(() => insert(old, "n_c", "reminder")).toThrow(/CHECK/);
+      const rows = (db: Database.Database) => db.prepare("SELECT * FROM notifications ORDER BY id").all();
+      const before = { rows: rows(old), columns: columns(old), indexes: indexes(old) };
+      expect(before.indexes).toEqual(
+        expect.arrayContaining(["idx_notifications_read", "idx_notifications_ts"]),
+      );
+      old.close();
+      const { db, migration } = openDb(paths);
+      try {
+        expect(migration).toMatchObject({ fromVersion: 26, toVersion: 27 });
+        expect(rows(db)).toEqual(before.rows);
+        expect(columns(db)).toEqual(before.columns);
+        expect(indexes(db)).toEqual(
+          expect.arrayContaining(["idx_notifications_read", "idx_notifications_ts"]),
+        );
+        insert(db, "n_r", "reminder");
+        expect(db.prepare("SELECT kind FROM notifications WHERE id = 'n_r'").get()).toEqual({
+          kind: "reminder",
+        });
+        expect(() => insert(db, "n_l", "lembrete")).toThrow(/CHECK/);
+        const schema = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'notifications'").get();
+        db.exec(
+          MIGRATIONS.find((m) => m.version === 27)!.sql!.replace(/notifications_v27/g, "notifications_again"),
+        );
+        expect(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'notifications'").get()).toEqual(
+          schema,
+        );
+        expect(columns(db)).toEqual(before.columns);
+      } finally {
+        db.close();
+      }
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
 });

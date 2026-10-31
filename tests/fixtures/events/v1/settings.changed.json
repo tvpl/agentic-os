@@ -196,6 +196,12 @@
           "minTone": "warn",
           "subject": "mailto:mordomo@localhost"
         }
+      },
+      "dashboards": {
+        "reminders": {
+          "maxPerDay": 3,
+          "at": "08:30"
+        }
       }
     }
   }

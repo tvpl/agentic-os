@@ -177,7 +177,7 @@ export const ApprovalSchema = z.object({
 
 export const NotificationRecordSchema = z.object({
   id: z.string(),
-  kind: z.enum(["approval", "run", "routine", "index", "system"]),
+  kind: z.enum(["approval", "run", "routine", "index", "system", "reminder"]),
   tone: z.enum(["ok", "warn", "danger", "info"]).nullable(),
   messageKey: z.string().nullable().optional(),
   messageParams: z

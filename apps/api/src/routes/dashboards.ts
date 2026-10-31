@@ -18,8 +18,8 @@ export function registerDashboardRoutes(app: FastifyInstance, ctx: AppContext): 
     return created;
   });
 
-  bind(app, "dashboards.get", async ({ params: { id } }) => {
-    const found = dashboards.get(id);
+  bind(app, "dashboards.get", async ({ params: { id }, query: { since } }) => {
+    const found = dashboards.get(id, Date.now(), since);
     if (found.stale) {
       // Answer with the stored snapshot, then refresh (amendment 13): the refresh starts after this answer is made.
       setImmediate(() => dashboards.refreshIfStale(id));
@@ -29,8 +29,7 @@ export function registerDashboardRoutes(app: FastifyInstance, ctx: AppContext): 
       version: found.version,
       snapshot: found.snapshot,
       stale: found.stale,
-      // The rules of door 5 come with S5 (batch B).
-      highlights: [],
+      highlights: found.highlights,
     };
   });
 

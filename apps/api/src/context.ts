@@ -122,6 +122,8 @@ export class AppContext extends MordomoEngine {
       }),
       env,
       events: this.events,
+      db: this.db,
+      notifications: this.notifications,
     });
     this.unsubscribeCredentials = this.events.subscribe((e) => {
       if (e.type !== "run.finished") return;

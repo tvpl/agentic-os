@@ -550,6 +550,24 @@ export const SettingsSchema = z.object({
   sentinels: SentinelSettingsSchema.default({}),
   /** External delivery channels (Onda 2, item 4). Tokens live in the environment, never here. */
   channels: ChannelSettingsSchema.default({}),
+  /**
+   * The dashboards (.specs/features/cerebro-paineis, door 5, amendment 16): a refresh from `reminders.at` local time
+   * on turns an overdue or due-today task, or a project behind, into a `reminder` in the inbox, once per item per local
+   * day and at most `maxPerDay` a day (0 turns them off). `PUT /api/settings` replaces `dashboards` whole.
+   */
+  dashboards: z
+    .object({
+      reminders: z
+        .object({
+          maxPerDay: z.number().int().min(0).max(20).default(3),
+          at: z
+            .string()
+            .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/, "at: HH:MM, 00:00 to 23:59")
+            .default("08:30"),
+        })
+        .default({}),
+    })
+    .default({}),
 });
 /** The settings document (`config/settings.json`). */
 export type Settings = z.infer<typeof SettingsSchema>;

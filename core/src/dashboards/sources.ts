@@ -266,6 +266,8 @@ function tasksSource(deps: SourceDeps): DashboardSourceFn {
       priority: t.priority,
       title: t.note.title,
       natureza: t.note.natureza,
+      // the note's time, which `new_since_visit` reads (amendment 15)
+      mtime: t.note.row.mtime,
     }));
     return { status: "ok", data: { items, total: open.length, dueToday, doneDueToday } };
   };
@@ -370,6 +372,7 @@ function decisionsSource(deps: SourceDeps): DashboardSourceFn {
           line: i.line,
           title: i.note.title,
           from: i.from,
+          mtime: i.note.row.mtime,
         };
       }),
       ...notes
@@ -384,6 +387,7 @@ function decisionsSource(deps: SourceDeps): DashboardSourceFn {
           line: null,
           title: n.title,
           from: "note" as const,
+          mtime: n.row.mtime,
         })),
     ].filter((d) => source.state === undefined || d.state === source.state);
     all.sort((a, b) => byText(b.day, a.day) || byText(a.path, b.path) || (a.line ?? 0) - (b.line ?? 0));

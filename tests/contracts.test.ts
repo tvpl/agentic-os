@@ -110,6 +110,8 @@ describe("S1 the contracts package", () => {
         "ErrorEnvelope",
         "EverySchema",
         "FieldSpecSchema",
+        // cerebro-paineis, batch B: the rules of door 5, in their order, which the engine's highlights follow
+        "HIGHLIGHT_RULES",
         "HeartbeatSchema",
         "INDEX_PHASES",
         "IndexedFolderSchema",

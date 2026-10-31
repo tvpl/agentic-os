@@ -7,6 +7,7 @@ import { DashboardEvaluator } from "../core/src/dashboards/evaluator.js";
 import { ACCEPTED, REFUSALS, valid } from "./helpers/paineisDefinitions.js";
 import {
   calendarItems,
+  dayOf,
   fakeConnectorFetch,
   paineisWorld,
   type Json,
@@ -371,6 +372,16 @@ const simple = (refresh: string) => ({
 describe("C12 GET reads no source", () => {
   it("C12 GET evaluates no source and answers definition, version, snapshot and highlights; a missing dashboard is 404", async () => {
     await fresh(async (world) => {
+      // A task due today and the calendar's flagged event: the stored snapshot gives two highlights (batch B, door 5),
+      // which the GET computes from it without reading any source.
+      const note = world.note(
+        path.join(world.memory, "notes", "ligar.md"),
+        {},
+        `# Ligar\n\n- [ ] Ligar 📅 ${dayOf(NOW)}\n`,
+      );
+      await world.index();
+      const fileId = (world.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(note) as { id: number })
+        .id;
       const created = await world.create({ template: "overview" });
       vi.useFakeTimers({ toFake: ["Date"], now: NOW });
       const refreshed = await world.refresh("visao-geral");
@@ -392,6 +403,15 @@ describe("C12 GET reads no source", () => {
         expect(res.body.version).toBe(created.body.version);
         expect(res.body.snapshot).toEqual(refreshed.body.snapshot);
         expect(res.body.stale).toBe(false);
+        expect(res.body.highlights).toEqual([
+          { rule: "due_today", title: "Ligar", tone: "warn", target: `/brain?sel=${fileId}` },
+          {
+            rule: "connector_flagged",
+            title: "Almoço com cliente",
+            tone: "info",
+            target: "/connectors#calendar-google",
+          },
+        ]);
         await new Promise((r) => setImmediate(r));
         expect(evaluate).toHaveBeenCalledTimes(0);
         expect(fetch).toHaveBeenCalledTimes(0);

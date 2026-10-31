@@ -41,6 +41,8 @@ const NOW = new Date(2026, 9, 30, 12, 0, 0).getTime();
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
 const MIN = 60_000;
+/** What a KPI counts (batch B's trend, chip and items ride beside it in `data`). */
+const kpiOf = (data: Json) => ({ value: data.value, of: data.of });
 const repo = path.resolve(import.meta.dirname, "..");
 let clock: ReturnType<typeof movingClock>;
 let seq = 0;
@@ -412,7 +414,7 @@ describe("C31 the metrics source", () => {
       };
       // the widget data of a kpi is its value; the points are the source's, read through a list of it
       for (const series of SERIES)
-        expect(got[series.toLowerCase()]!.data, series).toEqual({ value: want[series]!.value });
+        expect(kpiOf(got[series.toLowerCase()]!.data), series).toEqual({ value: want[series]!.value });
       const points = await evaluate(
         world,
         SERIES.map((series) => list(series.toLowerCase(), { kind: "metrics", series })),
@@ -483,7 +485,7 @@ describe("C32 the connector source", () => {
       }
       expect(got.lista!.data.items).toEqual(items.slice(0, 8).map(({ tag: _tag, ...item }) => item));
       expect(got.marcados!.data.items.map((i: Json) => i.id)).toEqual(["e0", "e4", "e8"]);
-      expect(got.resumo!.data).toEqual({ value: 7 });
+      expect(kpiOf(got.resumo!.data)).toEqual({ value: 7 });
       const snap = (await world.get("visao-geral")).body.snapshot;
       expect(snap.sources.find((s: Json) => s.id === "connector:sem-mapa")).toMatchObject({
         status: "not_configured",
@@ -628,7 +630,7 @@ describe("C34 the reviews source is C6's queue", () => {
         "projeto-x",
       );
       expect(got.fila!.data.items).toEqual([{ path: "/x/stub.md" }]);
-      expect(got.k!.data).toEqual({ value: 7 });
+      expect(kpiOf(got.k!.data)).toEqual({ value: 7 });
       expect(stub).toHaveBeenCalled();
       for (const [, , query] of stub.mock.calls) expect(query?.context?.id).toBe("projeto-x");
     });

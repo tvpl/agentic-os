@@ -1,9 +1,12 @@
-import type { DashboardKind, DashboardSnapshot, DashboardSpec } from "@mordomo/contracts";
+import type { DashboardKind, DashboardSnapshot, DashboardSpec, Highlight } from "@mordomo/contracts";
 import type { Settings, WorkContext } from "../config/schema.js";
+import type { Db } from "../db/db.js";
 import type { EventBus } from "../events.js";
 import { findContext } from "../memory/contexts.js";
 import { localDay } from "../memory/reviews.js";
 import { DashboardEvaluator, snapshotStatus, type EvaluatorEnv } from "./evaluator.js";
+import { dashboardHighlights } from "./highlights.js";
+import { deliverReminders, reminderCandidates, type ReminderSink } from "./reminders.js";
 import { refreshDue, snapshotStale } from "./schedule.js";
 import type { DashboardSourceMap } from "./sources.js";
 import { CleanupContextNotFoundError } from "../memory/cleanup.js";
@@ -27,6 +30,9 @@ export interface DashboardServiceDeps {
   sources: DashboardSourceMap;
   env: EvaluatorEnv;
   events: EventBus;
+  /** Where the reminders of door 5 go (the inbox) and the database whose rows count them. */
+  db: Db;
+  notifications: ReminderSink;
 }
 
 export interface DashboardListItem {
@@ -94,17 +100,22 @@ export class DashboardService {
     return this.store.create(templateBaseId(template), templateDefinition(template));
   }
 
-  /** The stored dashboard with its snapshot; no source is read (AC 11). */
+  /**
+   * The stored dashboard with its snapshot and the highlights of door 5 over it; no source is read (AC 11, AC 44).
+   * `since` is the last visit (ms), for `new_since_visit`.
+   */
   get(
     id: string,
     now = Date.now(),
-  ): StoredDashboard & { snapshot: DashboardSnapshot | null; stale: boolean } {
+    since?: number,
+  ): StoredDashboard & { snapshot: DashboardSnapshot | null; stale: boolean; highlights: Highlight[] } {
     const stored = this.store.require(id);
     const snapshot = this.store.snapshot(id);
     return {
       ...stored,
       snapshot,
       stale: snapshotStale(stored.definition, snapshot?.generatedAt ?? null, now),
+      highlights: dashboardHighlights(stored.definition, snapshot, { now, since }),
     };
   }
 
@@ -150,10 +161,20 @@ export class DashboardService {
         : null;
     const snapshot = await this.evaluator.evaluate(
       { ...definition, id: stored.id },
-      { now, context, fresh: options.fresh === true },
+      {
+        now,
+        context,
+        fresh: options.fresh === true,
+        history: (widgetId) => this.store.points(stored.id, widgetId),
+      },
     );
     this.store.saveSnapshot(snapshot);
     this.store.savePoints(stored.id, kpiPoints(definition, snapshot), now);
+    deliverReminders(
+      { db: this.deps.db, notifications: this.deps.notifications, settings: this.settings() },
+      reminderCandidates(definition, snapshot, now),
+      now,
+    );
     this.deps.events.emit("dashboard.refreshed", {
       id: stored.id,
       generatedAt: snapshot.generatedAt,

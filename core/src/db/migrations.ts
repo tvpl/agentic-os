@@ -624,4 +624,34 @@ CREATE TABLE IF NOT EXISTS dashboard_series (
 );
 `,
   },
+  {
+    version: 27,
+    name: "notification-reminder",
+    // cerebro-paineis, door 8: the inbox gains the kind `reminder` (door 5). SQLite cannot widen a CHECK in place, so
+    // the table is made again with the same columns (those of migrations 6 and 13) and the CHECK that names
+    // `reminder`, every row copied as it is, and its two indexes. No table refers to it.
+    sql: `
+CREATE TABLE notifications_v27 (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('approval','run','routine','index','system','reminder')),
+  tone TEXT,
+  title TEXT NOT NULL,
+  body TEXT,
+  href TEXT,
+  approval_id TEXT,
+  run_id TEXT,
+  ts INTEGER NOT NULL,
+  read INTEGER NOT NULL DEFAULT 0,
+  dedupe_key TEXT,
+  message_key TEXT,
+  message_params TEXT
+);
+INSERT INTO notifications_v27 (id, kind, tone, title, body, href, approval_id, run_id, ts, read, dedupe_key, message_key, message_params)
+  SELECT id, kind, tone, title, body, href, approval_id, run_id, ts, read, dedupe_key, message_key, message_params FROM notifications;
+DROP TABLE notifications;
+ALTER TABLE notifications_v27 RENAME TO notifications;
+CREATE INDEX IF NOT EXISTS idx_notifications_ts ON notifications(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+`,
+  },
 ];

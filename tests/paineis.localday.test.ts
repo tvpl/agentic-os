@@ -55,7 +55,7 @@ afterEach(() => {
 });
 
 describe("the local day and the UTC day differ here", () => {
-  it("C10 C15 C25 C26 C27 C28 the zone is pinned: 23:30 of 2026-10-30 local is 2026-10-31 in UTC", () => {
+  it("C10 C15 C25 C26 C27 C28 C44 C57 the zone is pinned: 23:30 of 2026-10-30 local is 2026-10-31 in UTC", () => {
     expect(process.env.TZ).toBe("America/Sao_Paulo");
     expect(new Date(NOW).getDate()).toBe(30);
     expect(new Date(NOW).toISOString().slice(0, 10)).toBe("2026-10-31");
@@ -517,6 +517,98 @@ describe("C28 the projects", () => {
       expect((got.atrasados!.data.items as Json[]).map((i) => i.title).sort()).toEqual([
         "atrasado",
         "rascunho-atrasado",
+      ]);
+    });
+  });
+});
+
+// ---- batch B: the reminders of the local day (C44) ---------------------------------------------------------------
+
+describe("C44 the reminders of a refresh", () => {
+  const local = (d: number, h: number, m: number) => new Date(2026, 9, d, h, m).getTime();
+  /** Refresh `visao-geral` at `when` (the Date frozen there); the reminders the inbox lists, oldest first. */
+  async function refreshAt(world: PaineisWorld, when: number): Promise<Json[]> {
+    clock.set(when);
+    vi.useFakeTimers({ toFake: ["Date"], now: when });
+    try {
+      expect((await world.refresh("visao-geral")).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+    const listed = (await world.call("GET", "/api/notifications")).body.items as Json[];
+    // GET /api/notifications lists the newest first; the order they were made in is the other way round.
+    return listed.filter((n) => n.kind === "reminder").reverse();
+  }
+
+  it("C44 maxPerDay 2 at 08:30: at 08:31 two reminders, the overdue then the first due today; none again at 10:00; none at 08:29 of the next day and two at 08:30", async () => {
+    await fresh(async (world) => {
+      world.update((s) => {
+        s.dashboards = { reminders: { maxPerDay: 2, at: "08:30" } };
+      });
+      const dir = path.join(world.memory, "notes");
+      const tasks = world.note(
+        path.join(dir, "tarefas.md"),
+        {},
+        "# Tarefas\n\n- [ ] Mandar a proposta 📅 2026-10-29\n- [ ] Ligar ⏫ 📅 2026-10-30\n- [ ] Revisar 📅 2026-10-30\n",
+      );
+      world.note(
+        path.join(dir, "site.md"),
+        { type: "project", status: "active", due: "2026-10-28" },
+        "# Site novo\n",
+      );
+      await world.index();
+      const fileId = (
+        world.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(tasks) as { id: number }
+      ).id;
+      expect((await world.create({ template: "overview" })).status).toBe(201);
+
+      const first = await refreshAt(world, local(30, 8, 31));
+      expect(first).toHaveLength(2);
+      expect(first[0]).toMatchObject({
+        kind: "reminder",
+        dedupeKey: `reminder:overdue:task:${tasks}:3:2026-10-30`,
+        tone: "warn",
+        messageKey: "reminder.overdue",
+        messageParams: { text: "Mandar a proposta" },
+        href: `/brain?sel=${fileId}`,
+        title: "Overdue: Mandar a proposta",
+      });
+      expect(first[1]).toMatchObject({
+        kind: "reminder",
+        dedupeKey: `reminder:due_today:task:${tasks}:4:2026-10-30`,
+        tone: "info",
+        messageKey: "reminder.due_today",
+        messageParams: { text: "Ligar" },
+      });
+
+      expect(await refreshAt(world, local(30, 10, 0))).toEqual(first);
+      expect(await refreshAt(world, local(31, 8, 29))).toEqual(first);
+      const next = await refreshAt(world, local(31, 8, 30));
+      expect(next).toHaveLength(4);
+      // on the 31st the three tasks are overdue: the first two by the tasks' order (priority first)
+      expect(next.slice(2).map((n) => n.dedupeKey)).toEqual([
+        `reminder:overdue:task:${tasks}:4:2026-10-31`,
+        `reminder:overdue:task:${tasks}:3:2026-10-31`,
+      ]);
+    });
+  });
+
+  it("C44 with only one candidate, one reminder", async () => {
+    await fresh(async (world) => {
+      world.note(
+        path.join(world.memory, "notes", "site.md"),
+        { type: "project", status: "active", due: "2026-10-28" },
+        "# Site novo\n",
+      );
+      await world.index();
+      expect((await world.create({ template: "overview" })).status).toBe(201);
+      const got = await refreshAt(world, local(30, 9, 0));
+      expect(got.map((n) => [n.title, n.dedupeKey, n.tone])).toEqual([
+        [
+          "Project behind: Site novo",
+          `reminder:project_behind:project:${path.join(world.memory, "notes", "site.md")}:2026-10-30`,
+          "warn",
+        ],
       ]);
     });
   });

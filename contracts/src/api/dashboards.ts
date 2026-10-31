@@ -300,13 +300,27 @@ export type DashboardSnapshot = z.infer<typeof DashboardSnapshotSchema>;
 export type SnapshotSource = z.infer<typeof SnapshotSourceSchema>;
 export type SnapshotWidget = z.infer<typeof SnapshotWidgetSchema>;
 
-/** A highlight of door 5 (filled by the rules of S5). */
+/** The rules of door 5, in the order their highlights come. */
+export const HIGHLIGHT_RULES = [
+  "overdue",
+  "due_today",
+  "decided_this_week",
+  "open_decision_7d",
+  "project_behind",
+  "review_due",
+  "connector_flagged",
+  "new_since_visit",
+] as const;
+export type HighlightRule = (typeof HIGHLIGHT_RULES)[number];
+
+/** A highlight of door 5: the rule, the item's text, its tone and what it opens (amendment 15). */
 export const HighlightSchema = z.object({
-  rule: z.string(),
+  rule: z.enum(HIGHLIGHT_RULES),
   title: z.string(),
   tone: z.enum(["ok", "warn", "danger", "info"]),
   target: z.string(),
 });
+export type Highlight = z.infer<typeof HighlightSchema>;
 
 // ---- door 6: the routes ----------------------------------------------------------------------------------------
 

@@ -419,7 +419,7 @@ Payload, version 1:
 | Field | Type | Required |
 | --- | --- | --- |
 | `id` | string | yes |
-| `kind` | "approval" \| "run" \| "routine" \| "index" \| "system" | yes |
+| `kind` | "approval" \| "run" \| "routine" \| "index" \| "system" \| "reminder" | yes |
 | `tone` | "ok" \| "warn" \| "danger" \| "info" \| null | yes |
 | `messageKey` | string \| null | no |
 | `messageParams` | map of string \| number \| boolean \| null | no |

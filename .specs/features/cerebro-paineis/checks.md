@@ -409,6 +409,15 @@ Proof: `npx vitest run tests/paineis.tasks.test.ts -t "C50 "`
 1`, `of: 1`, read from what the route and the refresh wrote, not from seeded rows (L-051, amendment 17)
 Proof: `npx vitest run tests/paineis.tasks.test.ts -t "C51 "`
 
+**C98** - (Added in batch B with door 8, L-047.) After migration 27 `notification-reminder`, `MIGRATIONS` ends with
+versions 26 `dashboards` and 27 `notification-reminder`; the `notifications` table accepts a row of `kind: "reminder"` and
+its `CHECK` refuses `kind: "lembrete"`; on a database migrated to 26 holding two notification rows (one with
+`message_key` and `message_params`), the rows read back after 27 are equal to before (`toEqual` over `SELECT *` by
+`id`), `PRAGMA table_info(notifications)` is equal to before (name, type, notnull, default, pk) and the indexes
+`idx_notifications_ts` and `idx_notifications_read` exist; running the migrations again leaves the same schema (door 8,
+Impact)
+Proof: `npx vitest run tests/paineis.layer.test.ts -t "C98 "`
+
 ### S4 - pergunta e exportação (plan S6) · 9 files · 115 KB · ~29k
 
 **C52** - `POST /api/dashboards/pergunta/refresh` answers `202` with `runId`; that run is the skill `dashboard-answer` with
@@ -715,6 +724,7 @@ Proof: `npm run test -w apps/command-centre -- src/dashboards/dashboardsCopy.tes
 | `PUT /api/memory/tasks` statuses, with amendment 17's 413 (6)      | 200 C47 · 400 C50 · 403 C48, C50 · 404 C50 · 409 C49 · 413 C50                                                                                                                                                                                                                                                                                                                                                                                                                                                              | -        |
 | named error codes, as (status, code) pairs (17)                    | `400 validation` C2, C3, C5, C45, C50 · `404 dashboard_not_found` C6, C9, C12, C15, C16, C57 · `404 context_not_found` C2 · `409 dashboard_exists` C4 · `409 edit_conflict` C6, C49 · `409 refresh_in_progress` C9, C52 · `409 no_snapshot` C57 · `409 skill_unavailable` C53 · `409 budget_exhausted` C53 · `403 note_not_editable` C48 · `403 forbidden_path` C50 · `404 note_missing` C50 · `404 not_a_file` C50 · `413 note_too_large` C50 · `403 owner_only` C59 · `403 scope_required` C59, C83 · `403 forbidden` C59 | -        |
 | doors of Landing (7)                                               | 1 C1, C5, C6 · 2 C12, C14, C17 · 3 C19, C20, C21, C22 · 4 C7, C19, C38, C63 · 5 C42, C43, C44 · 6 C18, C58, C59 · 7 C52, C54, C56                                                                                                                                                                                                                                                                                                                                                                                           | -        |
+| door of Landing added in batch B (1)                               | 8 C98                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | -        |
 | entities and stored shapes (7)                                     | `memory/dashboards/<id>.json` C1, C6, C15 · `note_tasks` (with the file) C19, C22 · `dashboard_snapshots` (one per dashboard) C7, C15, C63 · `dashboard_series` (per hour, 90 days) C38, C15 · `fields.due` C23, C24 · `settings.dashboards.reminders` C45 · `UiPreferences.dashboards` C84                                                                                                                                                                                                                                 | -        |
 | startup config: shared connector cache and the tick (2 assemblies) | the service's start (`server.ts` after `ctx.start()`) C10, C33 · the test harness `buildServer` C7, C33                                                                                                                                                                                                                                                                                                                                                                                                                     | -        |
 | templates (3)                                                      | `overview` C1 · `area` C2 · `question` C3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | -        |
@@ -962,3 +972,13 @@ points: [{ day, value }] }`, a connector `{ connector: { id, name }, items, tota
   `DashboardError(status, code)` class (the error scanner of `api.contract` C13 cannot read it); a strict empty body on
   `refresh` (`api.contract` C5 cannot make it refuse); exporting the kind lists from the contracts root (only the five
   names the engine reads are exported)
+
+Status of batch B (updated in the commit that closes each piece):
+
+- the KPIs, the highlights and the reminders (C37 to C46) and door 8, migration 27 (C98, added with door 8 in this
+  batch, L-047): closed, every proof green in `tests/paineis.kpi.test.ts`, `tests/paineis.localhour.test.ts`,
+  `tests/paineis.highlights.test.ts`, `tests/paineis.layer.test.ts` and `tests/paineis.localday.test.ts`. C12's
+  `highlights` and C14's "no highlight and no reminder names it" re-run over the rules and now assert something real:
+  C12's GET answers the two highlights of its stored snapshot (a task due today, the calendar's flagged event) with no
+  source evaluated, and C14 proves first that, while its folder is not excluded, the hidden note reaches the highlights
+  and the reminders, then that after the exclusion they are written for the home's other tasks and none names it

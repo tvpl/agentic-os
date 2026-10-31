@@ -113,7 +113,8 @@ const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
 describe("S3 settings tolerate an invalid field", () => {
   it("C19 an invalid value in any top-level field costs only that field", () => {
     const keys = Object.keys(SettingsSchema.shape);
-    expect(keys).toHaveLength(28);
+    // cerebro-paineis: `dashboards` (door 5, amendment 16)
+    expect(keys).toHaveLength(29);
     const good: Record<string, unknown> = {};
     for (const key of keys) good[key] = key === "version" ? defaults.version : variantOf(key, defaults[key]);
     // The base document is itself accepted as written.
@@ -619,6 +620,10 @@ describe("S3 settings tolerate an invalid field", () => {
       "channels.push.enabled": "default off; an unreadable value reads off",
       "channels.push.minTone": "what is worth a message",
       "channels.push.subject": "a contact address for the push service",
+      "dashboards.reminders.maxPerDay":
+        "how many reminders of the dashboards the inbox gets a day; it writes no file and opens nothing (cerebro-paineis door 5)",
+      "dashboards.reminders.at":
+        "from what local time the dashboards' reminders are written; it opens nothing (cerebro-paineis door 5)",
     };
     const unclassified = [...normalized].filter(
       (leaf) => !closed.some((re) => re.test(leaf)) && !(leaf in OPENS_NOTHING),

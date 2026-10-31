@@ -1098,7 +1098,8 @@ describe("S3 who asked does not approve", () => {
       // none of them, and the work context of a run (cerebro-contextos), a column that reads NULL on the old run, and
       // the signatures and decisions of the cleanup (cerebro-faxina-guiada), two new tables, and the passages of a
       // note and the review state of a file (cerebro-natureza), two more, and the tasks of a note and the snapshots
-      // and series of the dashboards (cerebro-paineis), three more.
+      // and series of the dashboards (cerebro-paineis), three more, and the reminder kind of the inbox (cerebro-paineis
+      // batch B), a table made again with the same rows.
       expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([
         "push-subscription-device",
         "run-action-receipt-requester",
@@ -1109,6 +1110,7 @@ describe("S3 who asked does not approve", () => {
         "cleanup",
         "natureza",
         "dashboards",
+        "notification-reminder",
       ]);
       const raw = new Database(tmp.paths.dbFile);
       for (const m of MIGRATIONS.filter((x) => x.version < target)) {

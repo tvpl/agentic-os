@@ -48,6 +48,8 @@ vi.mock("../core/src/security/safeFs.js", async (importOriginal) => {
 const NOW = new Date(2026, 9, 30, 12, 0, 0).getTime();
 const MIN = 60_000;
 const TODAY = dayOf(NOW);
+/** What a KPI counts (batch B's trend, chip and items ride beside it in `data`). */
+const kpiOf = (data: Json) => ({ value: data.value, of: data.of });
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 let seq = 0;
@@ -546,11 +548,11 @@ describe("C13 the context of an area", () => {
         ).toBe(false);
       }
       // one project, one decision, one task and one fact per place, two places
-      expect(snap.widgets.find((x: Json) => x.id === "projects-kpi").data).toEqual({ value: 2 });
-      expect(snap.widgets.find((x: Json) => x.id === "decisions-kpi").data).toEqual({ value: 2 });
-      expect(snap.widgets.find((x: Json) => x.id === "tasks-kpi").data).toEqual({ value: 2 });
-      expect(snap.widgets.find((x: Json) => x.id === "facts-kpi").data).toEqual({ value: 2 });
-      expect(snap.widgets.find((x: Json) => x.id === "reviews-kpi").data).toEqual({ value: 2 });
+      expect(kpiOf(snap.widgets.find((x: Json) => x.id === "projects-kpi").data)).toEqual({ value: 2 });
+      expect(kpiOf(snap.widgets.find((x: Json) => x.id === "decisions-kpi").data)).toEqual({ value: 2 });
+      expect(kpiOf(snap.widgets.find((x: Json) => x.id === "tasks-kpi").data)).toEqual({ value: 2 });
+      expect(kpiOf(snap.widgets.find((x: Json) => x.id === "facts-kpi").data)).toEqual({ value: 2 });
+      expect(kpiOf(snap.widgets.find((x: Json) => x.id === "reviews-kpi").data)).toEqual({ value: 2 });
       expect(snap.widgets.find((x: Json) => x.id === "notes").data.total).toBe(4);
 
       world.update((s) => {
@@ -581,12 +583,37 @@ describe("C14 today's policy and no file read", () => {
         `# Segredo\n\n- [ ] Tarefa secreta 📅 ${TODAY}\n`,
       );
       await world.index();
+      // Room for every reminder the home asks for, so that the hidden note's would be among them (batch B: the
+      // highlights and the reminders exist, and the "before" below proves they would name it).
+      world.update((s) => {
+        s.dashboards = { reminders: { maxPerDay: 20, at: "08:30" } };
+      });
       vi.useFakeTimers({ toFake: ["Date"], now: NOW });
       const before = (await world.refresh("visao-geral")).body.snapshot;
       expect(JSON.stringify(before)).toContain(hidden);
-      const kpi = (snap: Json, id: string) => snap.widgets.find((x: Json) => x.id === id).data;
+      const kpi = (snap: Json, id: string) => kpiOf(snap.widgets.find((x: Json) => x.id === id).data);
       expect(kpi(before, "prioridades-kpi")).toEqual({ value: 0, of: 3 });
       expect(kpi(before, "projetos-kpi")).toEqual({ value: 1, of: 2 });
+      const hiddenId = (
+        world.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(hidden) as { id: number }
+      ).id;
+      // While the folder is not excluded, the note reaches the highlights by both paths (its task due today, its
+      // project behind) and the reminders by both rules.
+      const shown = (await world.get("visao-geral")).body.highlights as Json[];
+      expect(shown).toContainEqual({
+        rule: "due_today",
+        title: "Tarefa secreta",
+        tone: "warn",
+        target: `/brain?sel=${hiddenId}`,
+      });
+      const remindedBefore = world.ctx.db
+        .prepare("SELECT * FROM notifications WHERE kind = 'reminder'")
+        .all() as Json[];
+      expect(remindedBefore.map((r) => r.title)).toEqual(
+        expect.arrayContaining(["Due today: Tarefa secreta", "Project behind: Segredo"]),
+      );
+      // The inbox starts the day again, so what the next refresh writes is what it found.
+      world.ctx.db.prepare("DELETE FROM notifications").run();
 
       world.update((s) => {
         s.excludes = [...s.excludes, "privado"];
@@ -621,10 +648,26 @@ describe("C14 today's policy and no file read", () => {
       expect(kpi(after, "prioridades-kpi")).toEqual({ value: 0, of: 2 });
       expect(kpi(after, "projetos-kpi")).toEqual({ value: 1, of: 1 });
       const got = await world.get("visao-geral");
-      expect(JSON.stringify(got.body.highlights)).not.toContain(hidden);
-      const reminders = world.ctx.db.prepare("SELECT * FROM notifications").all();
+      const highlights = got.body.highlights as Json[];
+      // the highlights are there (the two tasks due today of the home) and none is the hidden note's
+      expect(highlights.map((h) => h.title)).toEqual(
+        expect.arrayContaining(["Mandar a proposta", "Avisar o time"]),
+      );
+      expect(highlights.filter((h) => h.target === `/brain?sel=${hiddenId}`)).toEqual([]);
+      expect(JSON.stringify(highlights)).not.toContain("Tarefa secreta");
+      expect(JSON.stringify(highlights)).not.toContain("Segredo");
+      const reminders = world.ctx.db
+        .prepare("SELECT * FROM notifications WHERE kind = 'reminder'")
+        .all() as Json[];
+      // the reminders are written (the same two tasks) and none names the hidden note
+      expect(reminders.map((r) => r.title).sort()).toEqual([
+        "Due today: Avisar o time",
+        "Due today: Mandar a proposta",
+      ]);
       expect(JSON.stringify(reminders)).not.toContain(hidden);
       expect(JSON.stringify(reminders)).not.toContain("Tarefa secreta");
+      expect(JSON.stringify(reminders)).not.toContain("Segredo");
+      expect(reminders.filter((r) => r.href === `/brain?sel=${hiddenId}`)).toEqual([]);
 
       // The files a refresh opens are the data of the routes - the dashboard's own definition and the connector's
       // configuration - and never a note or an indexed file (door 2: the index and the routes' data only).

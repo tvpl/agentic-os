@@ -8,7 +8,9 @@ import type {
 import type { Settings, WorkContext } from "../config/schema.js";
 import type { MordomoPaths } from "../paths.js";
 import { CleanupContextNotFoundError, resolveCleanupScope, type CleanupScope } from "../memory/cleanup.js";
+import { kpiData, seriesWith, type KpiPoint } from "./kpi.js";
 import type { DashboardSourceMap, SourceCall, SourceOutput } from "./sources.js";
+import { SERIES_RETENTION_MS, localHourStart } from "./store.js";
 
 /**
  * Door 2 of .specs/features/cerebro-paineis: `evaluate(def, { now, since, context }) → Snapshot`, deterministic, with
@@ -31,6 +33,8 @@ export interface EvaluateOptions {
   context: WorkContext | null;
   /** Pass over the connectors' cache ("Atualizar"); the clock reads through it. */
   fresh?: boolean;
+  /** The points `dashboard_series` holds for a KPI, before this refresh (door 4); none when absent. */
+  history?: (widgetId: string) => readonly KpiPoint[];
 }
 
 export interface EvaluatorEnv {
@@ -101,12 +105,26 @@ export function kpiValue(
   }
 }
 
-/** A widget's status from what its source gave: `empty` for a list with no item or a value that is missing. */
-function widgetFrom(widget: DashboardWidget, data: Record<string, unknown>): SnapshotWidget {
+/**
+ * A widget's status from what its source gave: `empty` for a list with no item or a value that is missing. A `kpi`
+ * carries its trend: the series as this refresh leaves it (its point at the local hour, AC 27) and the delta (AC 26).
+ */
+function widgetFrom(
+  widget: DashboardWidget,
+  data: Record<string, unknown>,
+  now: number,
+  history: readonly KpiPoint[],
+): SnapshotWidget {
   const base = { id: widget.id, kind: widget.kind };
   if (widget.kind === "kpi") {
     const value = kpiValue(widget, data);
-    return value === null ? { ...base, status: "empty", data: {} } : { ...base, status: "ok", data: value };
+    const points = seriesWith(
+      history,
+      value === null ? null : { at: localHourStart(now), value: value.value },
+      now,
+      SERIES_RETENTION_MS,
+    );
+    return { ...base, status: value === null ? "empty" : "ok", data: kpiData(widget, value, data, points) };
   }
   const items = Array.isArray(data.items) ? data.items : null;
   const categories = Array.isArray(data.categories) ? data.categories : null;
@@ -179,7 +197,10 @@ export class DashboardEvaluator {
     const widgets: SnapshotWidget[] = def.widgets.map((widget, i) => {
       const outcome = outcomes[i]!;
       const base = { id: widget.id, kind: widget.kind };
-      if (outcome.kind === "ok") return widgetFrom(widget, outcome.output.data);
+      if (outcome.kind === "ok") {
+        const history = widget.kind === "kpi" ? (options.history?.(widget.id) ?? []) : [];
+        return widgetFrom(widget, outcome.output.data, now, history);
+      }
       if (outcome.kind === "unavailable") return { ...base, status: "error", error: SOURCE_UNAVAILABLE };
       if (outcome.kind === "not_configured") {
         return { ...base, status: "error", error: outcome.output.message, data: outcome.output.data };
