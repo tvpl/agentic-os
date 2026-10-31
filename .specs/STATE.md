@@ -374,6 +374,8 @@ Decisões de produto e de processo que a feature `cerebro-v2` tomou com o padrã
 16. **(open) A raiz de `@mordomo/contracts` ganha mais cinco nomes no lote B (`HIGHLIGHT_RULES`, `DASHBOARD_ANSWER_SKILL`, `QUESTION_MAX_WIDGETS`, `QUESTION_RESULT_MAX_BYTES`, `QuestionResultSchema`), e o barril interno `saveTask`.** Padrão: aceitos como a superfície das doors 5 e 7 e da rota de tarefas.
 17. **(open) O snapshot aceito de um painel pergunta termina com um cartão `note` do host, de id `como-foi-feita` e `data` `{ runId, finishedAt }` (o cartão "Como esta resposta foi feita" do `design.md`), e o `data` de um `kpi` guarda os `items` da sua fonte (o destaque `review_due` lê os itens da fila, emenda 8) (lote B).** Padrão: assim; a door 4 fica com as suas chaves. A alternativa é um campo novo na door 4 (`runId` em `sources[]`), que pediria outra pergunta.
 
+18. **(open) O `legal/PRIVACY.md` também deve dizer que o retrato guarda, de cada item de conector, o id, a hora, a marca e o link (lote C, C63)?** Hoje a frase do C62 nomeia títulos e subtítulos; o item guardado tem também `id`, `ts`, `flagged` e `href`, que o link do item (AC 37), a agenda e os destaques usam. Padrão: a frase como está, para a revisão jurídica do `PRIVACY.md` (pendente) decidir; acrescentar é uma frase e a prova do C62.
+
 ### distribuicao
 
 Decisões de produto e de processo que a feature `distribuicao` tomou com o padrão seguro, sob delegação do dono; o dono pode revê-las. Cada uma tem o padrão adotado e como desfazê-la. **O que nunca rodou aqui** (Windows, macOS, notarização, o workflow no GitHub, uma atualização real) está em `docs/release.md` §8 e em `checks.md`, "Não verificado".
