@@ -40,6 +40,22 @@ const AUTHOR: Record<string, [Icon, TKey]> = {
   unknown: [CircleHelp, "author.unknown"],
 };
 
+export const ORIGIN: Record<string, TKey> = {
+  create: "origin.create",
+  save: "origin.save",
+  properties: "origin.properties",
+  task: "origin.task",
+  review: "origin.review",
+  cleanup: "origin.cleanup",
+  proposal: "origin.proposal",
+  restore: "origin.restore",
+  guard: "origin.guard",
+  external: "origin.external",
+  baseline: "origin.baseline",
+  removed: "origin.removed",
+  import: "origin.import",
+};
+
 /** The run of an author `run:<id>`, or null. */
 export const runOf = (author: string) => (author.startsWith("run:") ? author.slice(4) : null);
 
@@ -93,4 +109,17 @@ export function notesHref(path: string, line?: number | null): string {
   const q = new URLSearchParams({ open: path });
   if (line) q.set("line", String(line));
   return `#/brain/notes?${q}`;
+}
+
+/** A version's date and local time, `31/10/2026 23:30` ("Versão de <data e hora>", and the row's `Tooltip`). */
+export function whenText(at: number, locale: string): string {
+  const d = new Date(at);
+  const day = d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
+  return `${day} ${d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+}
+
+/** How anything opens "Histórico da memória" (the NOTAS menu, the command): `MemoryHistoryHost` hears it. */
+export const OPEN_MEMORY_HISTORY_EVENT = "mordomo:open-memory-history";
+export function openMemoryHistory(): void {
+  window.dispatchEvent(new Event(OPEN_MEMORY_HISTORY_EVENT));
 }

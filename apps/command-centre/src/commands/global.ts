@@ -14,6 +14,7 @@ import {
   CircleCheck,
   FilePlus,
   Grid3x3,
+  History,
   Keyboard,
   LayoutDashboard,
   LayoutGrid,
@@ -41,6 +42,7 @@ import { errorMessage } from "../views/shared";
 import { openOnboarding } from "../onboarding/state";
 import { openNoteEditor } from "../brain/noteEvents";
 import { openCleanup } from "../brain/cleanupEvents";
+import { openMemoryHistory } from "../brain/memoria";
 import { REVIEWS_PATH } from "../brain/natureza";
 import { useCommands, type Command } from "./registry";
 
@@ -240,6 +242,26 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["reviews", "revisoes", "revisões", "revisar", "review", "natureza"],
         palette: true,
         run: go(REVIEWS_PATH),
+      },
+      {
+        // "Histórico da memória" (cerebro-memoria-confiavel, AC 44): the newest changes of memory/, in a dialog.
+        id: "action:memory-history",
+        title: "history.memory",
+        group: "actions",
+        scope: "global",
+        icon: History,
+        keywords: [
+          "history",
+          "historico",
+          "histórico",
+          "versions",
+          "versoes",
+          "versões",
+          "memory",
+          "memoria",
+        ],
+        palette: true,
+        run: () => openMemoryHistory(),
       },
       {
         // "Abrir painéis" (cerebro-paineis, amendment 25): the dashboards, in both shells; distinct from

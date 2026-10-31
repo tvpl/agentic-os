@@ -1,8 +1,9 @@
 /**
  * The notes sidebar (.specs/features/cerebro-vista-notas, design.md "Barra das notas" and its amendments): the line of
  * the active work context (it opens the shell's own selector: no second one is mounted, C31), the root and its menu,
- * the state of the index with "Reindexar" / "Cancelar", the Home, the heading "NOTAS" with "Recolher tudo" and
- * "Ordenar", and the tree with its empty, loading and failed states.
+ * the state of the index with "Reindexar" / "Cancelar", the Home, the heading "NOTAS" with "Recolher tudo",
+ * "Ordenar" and its `Menu` ("Histórico da memória", cerebro-memoria-confiavel G18), and the tree with its empty,
+ * loading and failed states.
  */
 import { useRef, useState } from "react";
 import {
@@ -14,8 +15,10 @@ import {
   CircleAlert,
   Crosshair,
   FolderOpen,
+  History,
   Home,
   Loader,
+  MoreHorizontal,
   RefreshCw,
   X,
 } from "lucide-react";
@@ -30,6 +33,7 @@ import { qk, useInvalidate, useRouteQuery } from "../../queries";
 import { useRegisteredCommands } from "../../commands/registry";
 import { SWITCH_CONTEXT_ID, type WorkContextState } from "../../contexts/useWorkContext";
 import { errorMessage } from "../../views/shared";
+import { openMemoryHistory } from "../memoria";
 import type { BrainHit } from "../memoryData";
 import { CreateControls, EmptyNewNote } from "./NoteCreate";
 import { NoteSearch } from "./NoteSearch";
@@ -98,6 +102,7 @@ export function NotesSidebar(p: NotesSidebarProps) {
             </button>
           </Tooltip>
           <SortMenu state={p.state} />
+          <HeadingMenu />
         </span>
       </div>
       <TreeArea {...p} nothingIndexed={nothingIndexed} onReindex={index.reindex} />
@@ -369,6 +374,29 @@ function SortMenu({ state }: { state: NotesState }) {
       trigger={
         <button type="button" className="notes-icon-btn" aria-label={t("notes.tree.sort")}>
           <ArrowDownWideNarrow aria-hidden />
+        </button>
+      }
+    />
+  );
+}
+
+/** The NOTAS heading's `Menu`, its last tool (G18). */
+function HeadingMenu() {
+  const t = useT();
+  return (
+    <DropdownMenu
+      tip={t("notes.tree.more")}
+      items={[
+        {
+          id: "memory-history",
+          icon: <History aria-hidden />,
+          label: t("history.memory"),
+          onSelect: openMemoryHistory,
+        },
+      ]}
+      trigger={
+        <button type="button" className="notes-icon-btn" aria-label={t("notes.tree.more")}>
+          <MoreHorizontal aria-hidden />
         </button>
       }
     />

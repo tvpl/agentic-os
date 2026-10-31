@@ -737,6 +737,47 @@ describe("C16 the migrated screens own no keydown listener", () => {
     },
   );
 
+  it(
+    "C96 trustworthy memory adds no key listener: its new files and its entries own none, the page's listeners are still exactly the allowlist, and the allowlist does not grow (cerebro-memoria-confiavel)",
+    { timeout: 60_000 },
+    () => {
+      const all = sources();
+      const mine = [
+        "brain/reviews/AgentTab.tsx",
+        "brain/memoria.tsx",
+        "brain/memoriaDiff.tsx",
+        "brain/MemoryHistoryHost.tsx",
+        "brain/notes/HistoryFold.tsx",
+        "brain/notes/VersionDialog.tsx",
+        "brain/notes/MemoryHistoryDialog.tsx",
+      ];
+      expect(all).toEqual(expect.arrayContaining(mine));
+      const entries = [
+        "brain/reviews/ReviewsScreen.tsx",
+        "brain/notes/NotePanel.tsx",
+        "brain/notes/NotesSidebar.tsx",
+        "brain/notes/NotesView.tsx",
+        "desktop/widgets/FactsWidget.tsx",
+        "commands/global.ts",
+      ];
+      const perFile = new Map<string, number>();
+      for (const file of all) {
+        const path = join(SRC, file);
+        const here = readListeners(readFileSync(path, "utf8"), file, {
+          importConst: (from, name) => importedConst(path, from, name),
+        });
+        if (here.keydown.length > 0) perFile.set(file, here.keydown.length);
+      }
+      for (const file of [...mine, ...entries]) expect(perFile.get(file) ?? 0, file).toBe(0);
+      expect(Object.fromEntries(perFile)).toEqual(
+        Object.fromEntries(Object.entries(OUTSIDE_THE_REGISTRY).map(([f, [n]]) => [f, n])),
+      );
+      // the allowlist as cerebro-paineis left it: ten files, eleven listeners
+      expect(Object.keys(OUTSIDE_THE_REGISTRY)).toHaveLength(10);
+      expect(Object.values(OUTSIDE_THE_REGISTRY).reduce((n, [c]) => n + c, 0)).toBe(11);
+    },
+  );
+
   it("C16 no retired event is defined, used or listened for", { timeout: 60_000 }, () => {
     for (const file of sources())
       expect(namesUsed(readFileSync(join(SRC, file), "utf8"), [...RETIRED, ...RETIRED_EVENTS]), file).toEqual(

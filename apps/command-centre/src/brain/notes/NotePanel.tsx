@@ -1,8 +1,9 @@
 /**
- * The note panel (.specs/features/cerebro-vista-notas, AC 22; design.md "Painel da nota"): three sections that fold,
+ * The note panel (.specs/features/cerebro-vista-notas, AC 22; design.md "Painel da nota"): sections that fold,
  * in this order: the links section of `cerebro-v2` ("Backlinks" and "Links quebrados", unchanged), "Relacionadas" from
  * the index (`useRelatedFiles` of `brain/memoryData.ts`) in the active context with each `why`, and "Nesta nota", the `##` headings of the body
- * (choosing one scrolls to it). Each section loads and fails on its own.
+ * (choosing one scrolls to it), then "Histórico", the note's versions (cerebro-memoria-confiavel, AC 39). Each section
+ * loads and fails on its own.
  */
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -11,6 +12,7 @@ import { LinksSection } from "../LinksSection";
 import { RequestFailed } from "../RequestFailed";
 import { parseMarkdown } from "../markdown";
 import { useRelatedFiles } from "../memoryData";
+import { HistoryFold } from "./HistoryFold";
 import { bodyOf, outlineOf } from "./NoteReader";
 import { useNoteLinks, useNoteRead, withoutExt } from "./notesData";
 import type { NoteMeta } from "./useNotesState";
@@ -46,6 +48,9 @@ export function NotePanel({ path, id, context, onOpen }: NotePanelProps) {
       </Fold>
       <Fold title={t("notes.panel.outline")}>
         <Outline path={path} />
+      </Fold>
+      <Fold title={t("history.title")}>
+        <HistoryFold path={path} />
       </Fold>
     </div>
   );

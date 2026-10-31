@@ -64,7 +64,8 @@ describe("C52 the note panel", () => {
     );
     const panel = document.querySelector<HTMLElement>(".notes-panel-body")!;
     await within(panel).findByText("Backlinks (1)");
-    expect(sections()).toEqual(["Links", "Relacionadas", "Nesta nota"]);
+    // cerebro-memoria-confiavel AC 39 adds "Histórico" as the fourth fold (its own proof is HistoryFold.test.tsx C97).
+    expect(sections()).toEqual(["Links", "Relacionadas", "Nesta nota", "Histórico"]);
     expect(within(panel).getByText("Links quebrados (1)")).toBeTruthy();
     const why = await within(panel).findByText("Compartilham: oferta, acelerador.");
     expect(why.className).toBe("notes-why");
@@ -100,7 +101,8 @@ describe("C52 the note panel", () => {
       lang: "pt-BR",
     });
     const folds = () => [...document.querySelectorAll<HTMLElement>(".notes-fold")];
-    await waitFor(() => expect(folds()).toHaveLength(3));
+    // the fourth fold, "Histórico", waits on its own request too (cerebro-memoria-confiavel AC 39, 43)
+    await waitFor(() => expect(folds()).toHaveLength(4));
     for (const fold of folds()) {
       expect(fold.querySelector(".spinner"), fold.textContent!).not.toBeNull();
       expect(fold.textContent).toContain("Carregando…");

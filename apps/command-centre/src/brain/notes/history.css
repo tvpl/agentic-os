@@ -1,0 +1,113 @@
+/* The note's history and its dialogs (.specs/features/cerebro-memoria-confiavel, design.md): 12px floor, 13px prose, tokens only. */
+.hf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hf-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s-2);
+  width: 100%;
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-3);
+  text-align: left;
+  cursor: pointer;
+}
+
+.hf-pick:hover {
+  border-color: var(--border);
+}
+
+.hf-origin,
+.hf-path {
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+}
+
+.hf-path {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.hf-state,
+.hf-notice,
+.vd-failure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--fs-3);
+}
+
+.vd-failure {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--warn);
+}
+
+.vd-failure svg,
+.hf-notice svg,
+.mh-deleted svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.modal.mc-wide {
+  width: min(720px, 100%);
+}
+
+.vd-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-width: 0;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.vd-title {
+  margin: 0;
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+
+.vd-text {
+  margin: 0;
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mh-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto;
+  gap: var(--s-2);
+  align-items: center;
+  font-size: var(--fs-3);
+}
+
+.mh-deleted {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--warn);
+  font-size: var(--fs-2);
+}
