@@ -90,11 +90,11 @@
     },
     {
       "feature": "cerebro-paineis",
-      "reason": "the dashboards as chunks of their own (DashboardsPage for the moldura and DashboardsScene for the Núcleo, over one DashboardBoard chunk with the eight widgets, the hand-made sparkline and bars, the two dialogs and their stylesheet, fetched the first time /dashboards opens; the gallery's dashboards story loads that same chunk), the Painéis entries of both shells (the sidebar item, the sixth scene, the two palette commands), Today's link, the reminder rows of the inbox, the four chart tokens and the strings in two languages; measured on the build of batch D: 17.5 KB JS gzip and 2.4 KB CSS gzip above cerebro-natureza (C96, amendment 24)",
-      "jsRaw": 1757677,
-      "jsGzip": 574034,
-      "cssRaw": 367822,
-      "cssGzip": 80175
+      "reason": "the dashboards as chunks of their own (DashboardsPage for the moldura and DashboardsScene for the Núcleo, over one DashboardBoard chunk with the eight widgets, the hand-made sparkline and bars, the two dialogs and their stylesheet, fetched the first time /dashboards opens; the gallery's dashboards story loads that same chunk), the Painéis entries of both shells (the sidebar item, the sixth scene, the two palette commands), Today's link, the reminder rows of the inbox, the four chart tokens and the strings in two languages; measured on the build of round 1 of its verification: 17.8 KB JS gzip and 2.4 KB CSS gzip above cerebro-natureza (C96, amendment 24)",
+      "jsRaw": 1758900,
+      "jsGzip": 574327,
+      "cssRaw": 367911,
+      "cssGzip": 80203
     }
   ]
 }

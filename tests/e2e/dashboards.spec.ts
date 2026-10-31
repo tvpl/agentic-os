@@ -189,7 +189,12 @@ const LIST = {
   problems: [],
 };
 
-async function seed(page: Page, shell: Shell, theme: Theme): Promise<{ refreshes: string[] }> {
+async function seed(
+  page: Page,
+  shell: Shell,
+  theme: Theme,
+  read: unknown = READ,
+): Promise<{ refreshes: string[] }> {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const fed = (patch: Record<string, unknown>) => async (route: Route) => {
     try {
@@ -208,7 +213,7 @@ async function seed(page: Page, shell: Shell, theme: Theme): Promise<{ refreshes
     const path = url.pathname.replace(/^\/api\/v1\//, "/api/");
     const method = route.request().method();
     if (method === "GET" && path === "/api/dashboards") return route.fulfill({ json: LIST });
-    if (method === "GET" && path === "/api/dashboards/visao-geral") return route.fulfill({ json: READ });
+    if (method === "GET" && path === "/api/dashboards/visao-geral") return route.fulfill({ json: read });
     if (method === "POST" && path === "/api/dashboards/visao-geral/refresh") {
       refreshes.push(path);
       return route.fulfill({ json: { snapshot: SNAPSHOT } });
@@ -221,8 +226,16 @@ async function seed(page: Page, shell: Shell, theme: Theme): Promise<{ refreshes
   return { refreshes };
 }
 
-async function open(page: Page, shell: Shell, theme: Theme, at: string, width = 1440, height = 900) {
-  const net = await seed(page, shell, theme);
+async function open(
+  page: Page,
+  shell: Shell,
+  theme: Theme,
+  at: string,
+  width = 1440,
+  height = 900,
+  read: unknown = READ,
+) {
+  const net = await seed(page, shell, theme, read);
   await page.setViewportSize({ width, height });
   await page.goto(`/#${at}`);
   await expect(page.locator(".boot-screen")).toHaveCount(0);
@@ -309,6 +322,58 @@ for (const [width, perRow] of [
     // Equal width within a row (a tile alone on the last row of two takes one column, not the row).
     for (const r of rows.values()) expect(Math.max(...r) - Math.min(...r)).toBeLessThanOrEqual(1);
   });
+
+/* ---------------- C101: the header wraps below 720 px ---------------- */
+
+for (const [width, lines] of [
+  [1280, 1],
+  [700, 2],
+] as const)
+  test(`C101 in the moldura at ${width} px the header is ${lines} line(s): the actions ${lines === 1 ? "beside" : "below"} the title block`, async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await open(page, "moldura", "dark", "/dashboards", width, 900);
+    const left = await page.locator(".dsh-head-l").boundingBox();
+    const actions = await page.locator(".dsh-actions").boundingBox();
+    expect(left && actions).toBeTruthy();
+    if (lines === 1) {
+      expect(actions!.y).toBeLessThan(left!.y + left!.height);
+      expect(actions!.x).toBeGreaterThan(left!.x + left!.width - 1);
+    } else {
+      expect(actions!.y).toBeGreaterThanOrEqual(left!.y + left!.height - 1);
+    }
+  });
+
+/* ---------------- C102: the highlights row is one line that scrolls sideways ---------------- */
+
+test("C102 at 520 px eight highlights stay on one line and the row scrolls sideways", async ({ page }) => {
+  test.setTimeout(90_000);
+  const eight = Array.from({ length: 8 }, (_, i) => ({
+    rule: "new_since_visit",
+    title: `Uma nota nova de número ${i + 1}`,
+    tone: "info",
+    target: `/brain?sel=${i + 10}`,
+  }));
+  await open(page, "moldura", "dark", "/dashboards", 520, 900, { ...READ, highlights: eight });
+  const row = page.locator(".dsh-highlights");
+  await expect(row.locator(".dsh-pill")).toHaveCount(8);
+  const tops = await row
+    .locator(".dsh-pill")
+    .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  expect(new Set(tops).size).toBe(1);
+  const box = await row.evaluate((el) => ({
+    overflowX: getComputedStyle(el).overflowX,
+    scroll: el.scrollWidth,
+    client: el.clientWidth,
+  }));
+  expect(box.overflowX).toBe("auto");
+  expect(box.scroll).toBeGreaterThan(box.client);
+  // The page itself does not scroll sideways: the row does.
+  expect(await page.locator(".page.dsh").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await row.evaluate((el) => el.scrollBy({ left: 200 }));
+  await expect.poll(() => row.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+});
 
 /* ---------------- C94: the page, both themes, both shells ---------------- */
 

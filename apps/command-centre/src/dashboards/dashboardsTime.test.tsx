@@ -277,6 +277,8 @@ describe("C76 the agenda at 14:20", () => {
       "dsh-event-prep",
     ]);
     expect(rows[1]!.querySelector(".dsh-event-prep")!.textContent).toBe("Ler o contrato");
+    // The prep note carries the connector's icon (design.md `agenda`; the connectors' own Plug, round 1, minor).
+    expect(icons(rows[1]!.querySelector(".dsh-event-prep")!)).toEqual(["lucide-plug"]);
     expect(rows[1]!.querySelector(".dsh-event-time")!.classList.contains("dsh-num")).toBe(true);
     const css = postcss.parse(readFileSync(join(__dirname, "dashboards.css"), "utf8"));
     let numeric = "";

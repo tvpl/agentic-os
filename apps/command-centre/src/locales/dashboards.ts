@@ -98,6 +98,13 @@ export const en = {
   "dash.customize.show": "show",
   "dash.ref": "dashboards",
   "dash.desc": "Your day, its numbers and what asks for attention",
+  // ---- round 1 of the verification, finding 4: the card's counter (design.md "Widgets") ----
+  "dash.count.doneOf": "{done} of {n}",
+  "dash.count.open": "{n} open",
+  "dash.count.items": "{n} item[|s]",
+  "dash.count.rows": "{n} row[|s]",
+  "dash.count.events": "{n} event[|s]",
+  "dash.count.total": "{n} in all",
 } as const;
 
 export const ptBR = {
@@ -193,4 +200,10 @@ export const ptBR = {
   "dash.customize.show": "mostrar",
   "dash.ref": "paineis",
   "dash.desc": "O dia, os números e o que pede atenção",
+  "dash.count.doneOf": "{done} de {n}",
+  "dash.count.open": "{n} [aberta|abertas]",
+  "dash.count.items": "{n} [item|itens]",
+  "dash.count.rows": "{n} [linha|linhas]",
+  "dash.count.events": "{n} [evento|eventos]",
+  "dash.count.total": "{n} no total",
 } as const satisfies Record<keyof typeof en, string>;

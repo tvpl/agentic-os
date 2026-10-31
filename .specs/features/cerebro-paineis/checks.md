@@ -671,9 +671,10 @@ seção`; a last `note` card "Como esta resposta foi feita" with the run's date 
 `question` is `error`, the message and "Tentar de novo" (AC 53, AC 54)
 Proof: `npm run test -w apps/command-centre -- src/dashboards/DashboardsPage.test.tsx -t "C88 "`
 
-**C89** - In the Núcleo, the scene shows the header as the voice line, the KPIs in a strip at the top, then the cards as
-lâminas in the definition's order in two columns, and the selector in the scene's menu; it has no camera movement (design
-"Cena - Painéis")
+**C89** - (Amended in round 1, finding 3, amendment 31.) In the Núcleo, the scene shows the header as the voice line, then
+the highlights row and then the KPIs in a strip at the top (the page's order, C78), then the cards as lâminas in the
+definition's order in two columns, and the selector in the scene's menu; it has no camera movement (design "Cena -
+Painéis": "a mesma composição")
 Proof: `npm run test -w apps/command-centre -- src/dashboards/dashboardsEntries.test.tsx -t "C89 "`
 
 **C90** - In the moldura, the body is, top to bottom, the highlights row, the KPI row (up to 5 tiles of equal width) and the
@@ -727,6 +728,27 @@ and `ptBR` in `locales/dashboards.ts` with that text, both locales hold the same
 (`i18n.orphans.test.ts`) (design.md "Texto", amendment 26)
 Proof: `npm run test -w apps/command-centre -- src/dashboards/dashboardsCopy.test.ts -t "C97 "`
 
+**C100** - (Added in round 1, finding 4.) A card's counter, at the right of its title in 12px `--text-dim`, reads by kind
+(design.md "Widgets": "3 de 5", "4 feitas", "26 abertos"): a `checklist` with tasks due today "3 de 5" (`doneDueToday` of
+`dueToday`), with none due today "26 abertas" (the open ones, `total`); a `list` "26 itens" (`total`; one is "1 item"); a
+`table` "23 linhas"; an `agenda` "3 eventos"; `bars` "22 no total" (the sum of the counts); a `note`, a card in error and
+an empty card have none; in English "3 of 5", "26 open", "26 items"
+Proof: `npm run test -w apps/command-centre -- src/dashboards/widgets.test.tsx -t "C100 "`
+
+**C101** - (Added in round 1, finding 7.) The header is one line, the title block then the actions, and two lines below
+720 px (design.md "Cabeçalho (uma linha, quebra em duas abaixo de 720px)"): the stylesheet keeps `.dsh-head` from wrapping
+(`flex-wrap: nowrap`, the title block `min-width: 0` and the actions `flex: none`) and makes it a column under `(max-width:
+719px)`; in a real browser at 1280 px the actions sit beside the title block and at 700 px below it
+Proof: `npm run test -w apps/command-centre -- src/dashboards/dashboardsEntries.test.tsx -t "C101 "`
+Proof: `npm run build:server && npm run build -w apps/command-centre && MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts dashboards.spec.ts -g "C101 "`
+
+**C102** - (Added in round 1, finding 7.) The highlights row is one line that scrolls sideways (design.md "Corpo": "numa
+linha que rola na horizontal"): `.dsh-highlights` is a flex line that does not wrap, `overflow-x: auto`, `width: 0` with
+`min-width: 100%` (it lends the page no width), a pill `flex: none` and `white-space: nowrap`; in a real browser at 520 px
+eight pills share one top, the row's `scrollWidth` exceeds its `clientWidth` and it scrolls, and the page does not
+Proof: `npm run test -w apps/command-centre -- src/dashboards/dashboardsEntries.test.tsx -t "C102 "`
+Proof: `npm run build:server && npm run build -w apps/command-centre && MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts dashboards.spec.ts -g "C102 "`
+
 ## Correções de construção
 
 - **C56, batch B (amendment 29).** The approved claim named the optional input `contextId`; a skill input's name is
@@ -764,6 +786,40 @@ it:
 - **Minor, C49.** A stale `baseVersion` on a box already as asked answers `409 edit_conflict` and changes no byte (AC
   50, amendment 17: the version is checked before the box); one more C49 case.
 - Findings 3, 4 and 7 (the screens) are the second builder's; finding 8 is the owner's question 1.
+- **Finding 3, the scene's highlights (amendment 31, STATE question cerebro-paineis 19).** By the coordinator's decision
+  (open for the owner), the scene follows design.md "Cena" ("a mesma composição") and C78: the voice line, then the
+  highlights row, then the KPI strip, in both shells (`DashboardsScene.tsx`). C89's claim and proof are amended to that
+  order; C78's proof gains the scene case, an order assertion (`widgets.test.tsx -t "C78 "`). The mutant that puts the
+  scene's KPIs back before the highlights is killed by C78 and by C89.
+- **Finding 4, the card's counter.** A counter by kind replaces the bare number (`widgets.tsx` `counterText`), with six
+  keys in `locales/dashboards.ts` (`dash.count.doneOf`, `open`, `items`, `rows`, `events`, `total`, in both languages and
+  with the plural brackets of `i18n.ts`). C100 is new and asserts the text by value per kind; the mutant that writes the
+  list's counter as a bare number is killed by C100. "4 feitas" is not a reading of its own: with tasks due today the
+  checklist says "N de M".
+- **Finding 7, the two arrangements.** C101 (the header) and C102 (the highlights row) are new, each with a jsdom proof of
+  the stylesheet and the DOM order and a browser proof at the widths. The browser found two real faults, now fixed in
+  `dashboards.css`: at 1280 px the header already wrapped (`flex-wrap: wrap` let the actions drop under a long title
+  block; now `nowrap`, the block `flex: 1; min-width: 0`, the actions `flex: none`), and at 520 px eight pills widened the
+  whole page instead of scrolling (the page is a column flex item sized to its min-content; the row now has `width: 0;
+min-width: 100%`). Faults killed: `wrap` on `.dsh-head` (C101's jsdom proof); the code before the fix, `wrap` without
+  the block's `flex: 1` (C101's browser proof at 1280 px); the row without `width: 0; min-width: 100%` and with `wrap`
+  (C102, both proofs).
+- **Minor, the sixth KPI.** design.md says the KPI row holds "até 5 stat tiles" and nothing says what becomes of a sixth
+  (door 1 allows 12 widgets of any kind). Settled: a KPI past the fifth is a tile on the grid (4 columns, `.dsh-grid >
+.dsh-kpi`) and a lâmina in the scene, in the definition's order, never dropped. C90's proof asserts it (`k6` first on the
+  grid) and C81's lists it; the mutant that drops it is killed by C90.
+- **Minor, the Switch's font-size.** `.dsh-astable` is gone (`primitivas/design.md`: no CSS outside `ui/ui.css` draws a
+  part of a primitive); C93's proof gains "no rule of `dashboards.css` styles a primitive" (`.ui-`, a primitive's role,
+  `.modal`, `.badge`), which kills the rule put back.
+- **Minor, the agenda's icon.** The prep note carries the connectors' own icon, `Plug` (`APPS.connectors.Icon`; a
+  connector has no icon of its own), as design.md `agenda` says ("com o ícone do conector"); C76's proof asserts it and
+  kills `CalendarDays`.
+- **Minor, the new pill.** Only a pill that was not on screen before fades in (design.md "Movimento": "a pastilha nova");
+  the first paint has none (`data-fresh`, set once the dashboard's read has arrived). C92's proof reads the animation on
+  `.dsh-pill[data-fresh]` only and gains a case: none marked on the first paint, only the one a refresh brings marked
+  after it; both mutants (every pill marked, the animation on every pill) are killed.
+- Weight, re-measured on the build of these fixes: 574 327 B JS gzip and 80 203 B CSS gzip, 18 206 B and 2 440 B above
+  `cerebro-natureza` (cap 24 KB and 4 KB); the `cerebro-paineis` entry holds these numbers.
 
 ## Coverage
 
@@ -785,6 +841,8 @@ it:
 | templates (3)                                                      | `overview` C1 · `area` C2 · `question` C3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | -        |
 | refresh values (5)                                                 | `15m` C10, C12 · `1h` C10, C12 · `6h` C10, C12 · `daily@HH:MM` C10, C12 · `manual` C10, C11, C12                                                                                                                                                                                                                                                                                                                                                                                                                            | -        |
 | definition refusals (C5's cases) (19)                              | C5, table-driven over all 19 (and the 5 accepted edges)                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | -        |
+| card counters by widget kind, round 1 (6)                          | `checklist` C100 · `list` C100 · `table` C100 · `agenda` C100 · `bars` C100 · `note` (none) C100                                                                                                                                                                                                                                                                                                                                                                                                                            | -        |
+| arrangements of design.md "Página", round 1 (3)                    | header wraps below 720 px C101 · highlights on one scrolling line C102 · the scene's highlights above the KPIs C78, C89                                                                                                                                                                                                                                                                                                                                                                                                     | -        |
 | widget kinds (8)                                                   | `kpi` C37, C70 · `checklist` C25, C71 · `list` C73 · `table` C74 · `bars` C29, C75 · `agenda` C76 · `highlights` C42, C78 · `note` C77                                                                                                                                                                                                                                                                                                                                                                                      | -        |
 | source kinds (11)                                                  | `notes` C29 · `tasks` C25 · `decisions` C26 · `openLoops` C27 · `projects` C28 · `reviews` C34 · `facts` C35 · `runs` C30 · `approvals` C30 · `metrics` C31 · `connector` C32                                                                                                                                                                                                                                                                                                                                               | -        |
 | memory sources under a context (7)                                 | `notes` C13 · `tasks` C13 · `decisions` C13 · `projects` C13 · `reviews` C13, C34 · `facts` C13, C35 · `openLoops` C27                                                                                                                                                                                                                                                                                                                                                                                                      | -        |
@@ -831,16 +889,16 @@ it:
 
 ## Binding sources
 
-| Source                                                                                                                          | Checked by                          |
-| ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| `cerebro-paineis/design.md` (the page, the scene, the three templates, each widget and its states, motion, Today, export, copy) | C1, C2, C57, C65-C92, C94, C95, C97 |
-| `design-system/design.md` (12px floor, 13px prose, tokens, state never by colour alone, axe, the gallery)                       | C69, C93, C94, C95                  |
-| `primitivas/design.md` (`DropdownMenu`, `Switch`, `Modal`, `Badge`, motion inside `no-preference`)                              | C66, C79, C85, C86, C92             |
-| `moldura-app/design.md` (main group after "Hoje", `.page`, no right detail panel, the chat stays)                               | C81, C90                            |
-| `comandos-atalhos/design.md` (registry commands `global`, the Núcleo's key through the scene list)                              | C81                                 |
-| `cerebro-natureza/design.md` (the nature label with its icon, a plan never "Decidido")                                          | C73                                 |
-| method of the `dataviz` skill (stat tile, one series, thin marks, tooltip never the only path, table view, validated colour)    | C70, C75, C79, C93                  |
-| `limpeza-legado/design.md` (one Markdown renderer, no unused CSS or key)                                                        | C77, C97                            |
+| Source                                                                                                                          | Checked by                                     |
+| ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `cerebro-paineis/design.md` (the page, the scene, the three templates, each widget and its states, motion, Today, export, copy) | C1, C2, C57, C65-C92, C94, C95, C97, C100-C102 |
+| `design-system/design.md` (12px floor, 13px prose, tokens, state never by colour alone, axe, the gallery)                       | C69, C93, C94, C95                             |
+| `primitivas/design.md` (`DropdownMenu`, `Switch`, `Modal`, `Badge`, motion inside `no-preference`)                              | C66, C79, C85, C86, C92, C93                   |
+| `moldura-app/design.md` (main group after "Hoje", `.page`, no right detail panel, the chat stays)                               | C81, C90                                       |
+| `comandos-atalhos/design.md` (registry commands `global`, the Núcleo's key through the scene list)                              | C81                                            |
+| `cerebro-natureza/design.md` (the nature label with its icon, a plan never "Decidido")                                          | C73                                            |
+| method of the `dataviz` skill (stat tile, one series, thin marks, tooltip never the only path, table view, validated colour)    | C70, C75, C79, C93                             |
+| `limpeza-legado/design.md` (one Markdown renderer, no unused CSS or key)                                                        | C77, C97                                       |
 
 ## Test policy
 

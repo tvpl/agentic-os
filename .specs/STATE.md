@@ -375,6 +375,7 @@ Decisões de produto e de processo que a feature `cerebro-v2` tomou com o padrã
 17. **(open) O snapshot aceito de um painel pergunta termina com um cartão `note` do host, de id `como-foi-feita` e `data` `{ runId, finishedAt }` (o cartão "Como esta resposta foi feita" do `design.md`), e o `data` de um `kpi` guarda os `items` da sua fonte (o destaque `review_due` lê os itens da fila, emenda 8) (lote B).** Padrão: assim; a door 4 fica com as suas chaves. A alternativa é um campo novo na door 4 (`runId` em `sources[]`), que pediria outra pergunta.
 
 18. **(open) O `legal/PRIVACY.md` também deve dizer que o retrato guarda, de cada item de conector, o id, a hora, a marca e o link (lote C, C63)?** Hoje a frase do C62 nomeia títulos e subtítulos; o item guardado tem também `id`, `ts`, `flagged` e `href`, que o link do item (AC 37), a agenda e os destaques usam. Padrão: a frase como está, para a revisão jurídica do `PRIVACY.md` (pendente) decidir; acrescentar é uma frase e a prova do C62.
+19. **(open) Na cena do Núcleo, a fileira de destaques fica acima da faixa de KPIs, como na página (verificação da rodada 1, achado 3; emenda 31)?** O `design.md` diz "a mesma composição" e também "os KPIs ficam numa faixa no alto". Padrão: a mesma composição (destaques acima dos KPIs) nas duas interfaces, C78 e C89 como emendados. Alternativa: a cena mantém os KPIs primeiro, e o C78 é emendado para a cena.
 
 ### distribuicao
 

@@ -370,14 +370,20 @@ export function QuestionError({ s }: { s: BoardScreen }) {
   );
 }
 
+/** The KPI row holds at most this many tiles (design.md "Corpo"). */
+const KPI_ROW_MAX = 5;
+
 /** The KPIs (up to five) and the cards, apart. */
 export function splitWidgets(s: BoardScreen) {
   const all = widgetsOf(s.read);
   const kind = (w: { def?: DefWidget; snap?: SnapWidget }) => w.def?.kind ?? w.snap?.kind;
+  const kpis = all.filter((w) => kind(w) === "kpi");
+  const row = kpis.slice(0, KPI_ROW_MAX);
   return {
-    kpis: all.filter((w) => kind(w) === "kpi").slice(0, 5),
-    // A `highlights` widget is the row of pills at the top (design.md "highlights": "ver a fileira de destaques").
-    cards: all.filter((w) => kind(w) !== "kpi" && kind(w) !== "highlights"),
+    kpis: row,
+    // The row holds five (design.md "Fileira de KPIs: até 5"); a KPI past the fifth is a tile on the grid, in the
+    // definition's order, never dropped. A `highlights` widget is the row of pills at the top ("ver a fileira").
+    cards: all.filter((w) => kind(w) !== "highlights" && !row.includes(w)),
   };
 }
 
@@ -394,7 +400,7 @@ export function KpiRow({ s, className }: { s: BoardScreen; className: string }) 
 }
 
 export function Highlights({ s }: { s: BoardScreen }) {
-  return <HighlightsRow highlights={s.read?.highlights ?? []} env={s.env} />;
+  return <HighlightsRow highlights={s.read?.highlights ?? []} env={s.env} ready={s.read !== undefined} />;
 }
 
 /** A card of the body. */
@@ -407,6 +413,7 @@ export function Card({
   w: { def?: DefWidget; snap?: SnapWidget };
   as?: "section" | "article";
 }) {
+  if ((w.def?.kind ?? w.snap?.kind) === "kpi") return <KpiTile def={w.def} snap={w.snap} env={s.env} />;
   return <WidgetCard def={w.def} snap={w.snap} env={s.env} as={as} />;
 }
 

@@ -532,6 +532,13 @@ validation`; `PUT /api/settings` troca `dashboards` inteiro, como `sentinels` (e
     apagar uma notificação não a muda. Quando um dia novo escreve, as chaves dos dias anteriores são apagadas. Nenhuma
     tabela nova (C99).
 
+31. **Os destaques da cena do Núcleo (C78, C89; verificação, rodada 1, achado 3).** O `design.md` "Cena" diz "A mesma
+    composição" e também "os KPIs ficam numa faixa no alto"; o C78 põe a fileira de destaques acima dos KPIs sem nomear a
+    interface, e a prova do C89 fixava os KPIs logo depois da linha de voz. Vale a mesma composição nas duas interfaces: a
+    linha de voz, a fileira de destaques, a faixa de KPIs e as lâminas; o C89 passa a dizer essa ordem e a prova do C78
+    ganha a cena. A alternativa (a cena com os KPIs primeiro, e o C78 emendado para a cena) é a pergunta 19 do
+    `STATE.md`.
+
 Perguntas novas ao dono, levantadas pela reconciliação; o padrão vale até a resposta:
 
 | #   | Kind | Question                                                                                                                                                                                                                                                                                                                                | Until answered                                                               |

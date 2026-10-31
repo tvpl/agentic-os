@@ -4,16 +4,21 @@
    block at the end. */
 
 /* ---- the header ------------------------------------------------------------------------------------------------ */
+/* One line, two below 720px (design.md "Cabeçalho"): above it the title block takes what is left and wraps inside. */
 .dsh-head {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--s-3) var(--s-4);
   margin-bottom: var(--s-4);
 }
 .dsh-head-l {
+  flex: 1;
   min-width: 0;
+}
+.dsh-actions {
+  flex: none;
 }
 .dsh-title {
   margin: 0;
@@ -83,8 +88,12 @@
   flex-direction: column;
   gap: var(--s-4);
 }
+/* One line that scrolls (design.md "Corpo"): it lends the page no width of its own (width 0) and takes the row's
+   (min-width 100%), so eight pills scroll inside it instead of widening the page (C102). */
 .dsh-highlights {
   display: flex;
+  width: 0;
+  min-width: 100%;
   gap: var(--s-2);
   margin: 0;
   padding: 0 0 var(--s-1);
@@ -147,7 +156,11 @@
 .dsh-card[data-size="xl"] {
   grid-column: span 12;
 }
+.dsh-grid > .dsh-kpi {
+  grid-column: span 4;
+}
 @media (max-width: 719px) {
+  .dsh-grid > .dsh-kpi,
   .dsh-grid > .dsh-card {
     grid-column: span 12;
   }
@@ -404,9 +417,6 @@ p.dsh-empty svg {
 .dsh-delta.flat {
   color: var(--text-dim);
 }
-.dsh-astable {
-  font-size: var(--fs-2);
-}
 
 /* ---- the charts ---------------------------------------------------------------------------------------------- */
 .dsh-spark,
@@ -642,7 +652,7 @@ p.dsh-empty svg {
   .dsh-bar {
     animation: dsh-grow 300ms ease-out;
   }
-  .dsh-pill {
+  .dsh-pill[data-fresh] {
     animation: dsh-fade 150ms ease-out;
   }
   .dsh-skel {

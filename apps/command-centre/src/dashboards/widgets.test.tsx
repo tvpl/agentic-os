@@ -393,6 +393,24 @@ describe("C78 the highlights row", () => {
     await waitFor(() => expect(`${where.pathname}${where.search}`).toBe("/brain?sel=6"));
   });
 
+  it("C78 in the Núcleo's scene too, the highlights row sits above the KPI strip (amendment 31)", async () => {
+    serve(
+      "visao-geral",
+      read(definition("overview", widgets), snapshot("visao-geral", snaps), { highlights: H as never }),
+    );
+    mountBoard({ shell: "scene" });
+    await waitFor(() => expect(document.querySelector(".dsn .dsh-highlights")).not.toBeNull());
+    const row = document.querySelector(".dsn .dsh-highlights")!;
+    const strip = document.querySelector(".dsn .dsn-kpis")!;
+    expect(row.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(row.parentElement).toBe(strip.parentElement);
+    expect([...row.querySelectorAll(".dsh-pill")].map((p) => p.textContent)).toEqual([
+      "Mandar a proposta",
+      "Ligar",
+      "Nova nota",
+    ]);
+  });
+
   it("C78 with highlights: [] the row is absent; with one, one pill", async () => {
     const view = one(widgets, snaps, { highlights: [] });
     await waitFor(() => expect(tile("k").querySelector(".dsh-kpi-value")).not.toBeNull());
@@ -467,5 +485,97 @@ describe("C80 where an item goes", () => {
     mountBoard({ path: "/dashboards/pergunta" });
     fireEvent.click(await within(document.body).findByRole("button", { name: "plano.md § Metas" }));
     await waitFor(() => expect(`${where.pathname}${where.search}`).toBe("/brain?sel=7"));
+  });
+});
+
+describe("C100 the card's counter", () => {
+  const items = (n: number) => Array.from({ length: n }, (_, i) => ({ title: `Item ${i + 1}` }));
+  const COUNTERS: Array<
+    [string, Parameters<typeof w>[1], Parameters<typeof w>[2], Record<string, unknown>, string]
+  > = [
+    [
+      "a checklist with tasks due today",
+      "checklist",
+      { kind: "tasks", window: "today" },
+      { items: [{ text: "Ligar", path: "/x/a.md", line: 1 }], total: 2, dueToday: 5, doneDueToday: 3 },
+      "3 de 5",
+    ],
+    [
+      "a checklist with none due today",
+      "checklist",
+      { kind: "tasks", window: "week" },
+      { items: [{ text: "Ligar", path: "/x/a.md", line: 1 }], total: 26, dueToday: 0, doneDueToday: 0 },
+      "26 abertas",
+    ],
+    ["a list", "list", { kind: "notes" }, { items: items(8), total: 26 }, "26 itens"],
+    ["a list of one", "list", { kind: "notes" }, { items: items(1), total: 1 }, "1 item"],
+    [
+      "a table",
+      "table",
+      { kind: "notes" },
+      { columns: ["A"], rows: Array.from({ length: 23 }, (_, i) => ({ cells: [`r${i}`] })) },
+      "23 linhas",
+    ],
+    [
+      "an agenda",
+      "agenda",
+      { kind: "connector", id: "calendar-google", read: "list" },
+      {
+        items: [
+          { title: "a", ts: 1 },
+          { title: "b", ts: 2 },
+          { title: "c", ts: 3 },
+        ],
+        total: 3,
+      },
+      "3 eventos",
+    ],
+    [
+      "bars",
+      "bars",
+      { kind: "notes", groupBy: "status" },
+      {
+        categories: [
+          { label: "draft", count: 13 },
+          { label: "done", count: 9 },
+        ],
+      },
+      "22 no total",
+    ],
+  ];
+  for (const [name, kind, source, data, text] of COUNTERS)
+    it(`C100 ${name}: “${text}” at the right of the title, 12px --text-dim`, async () => {
+      one([w("c", kind, source)], [ok("c", kind, data)]);
+      await waitFor(() => expect(card("c").querySelector(".dsh-count")).not.toBeNull());
+      const counter = card("c").querySelector(".dsh-count")!;
+      expect(counter.textContent).toBe(text);
+      expect(counter.previousElementSibling!.className).toBe("dsh-card-t");
+      expect(decl(".dsh-count", "font-size")).toBe("var(--fs-2)");
+      expect(decl(".dsh-count", "color")).toBe("var(--text-dim)");
+    });
+
+  it("C100 a note has no counter, nor a card in error or empty", async () => {
+    one(
+      [
+        w("n", "note", { kind: "notes" }),
+        w("e", "list", { kind: "notes" }),
+        w("v", "list", { kind: "projects" }),
+      ],
+      [
+        ok("n", "note", { text: "Texto", total: 3 }),
+        { id: "e", kind: "list", status: "error", error: "boom" },
+        { id: "v", kind: "list", status: "empty", data: { items: [], total: 0 } },
+      ],
+    );
+    await waitFor(() => expect(card("n").querySelector(".apps-md")).not.toBeNull());
+    for (const id of ["n", "e", "v"]) expect(card(id).querySelector(".dsh-count")).toBeNull();
+  });
+
+  it("C100 in English: 3 of 5, 26 open, 26 items", async () => {
+    const { tf } = await import("../i18n");
+    expect(tf("en", "dash.count.doneOf", { done: 3, n: 5 })).toBe("3 of 5");
+    expect(tf("en", "dash.count.open", { n: 26 })).toBe("26 open");
+    expect(tf("en", "dash.count.items", { n: 26 })).toBe("26 items");
+    expect(tf("en", "dash.count.items", { n: 1 })).toBe("1 item");
   });
 });

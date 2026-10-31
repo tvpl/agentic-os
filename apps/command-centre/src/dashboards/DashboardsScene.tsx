@@ -1,6 +1,6 @@
 /**
  * "Painéis", the Núcleo's scene (.specs/features/cerebro-paineis, design.md "Cena - Painéis"): the same composition
- * under the Núcleo's frame. The header is the scene's voice line, the KPIs a strip at the top, the cards lâminas in the
+ * under the Núcleo's frame. The header is the scene's voice line, the highlights row and the KPIs a strip at the top, the cards lâminas in the
  * definition's order in two columns, the selector the scene's menu. No camera moves. A chunk of its own (amendment 24).
  */
 import { MoreHorizontal } from "lucide-react";
@@ -58,8 +58,9 @@ export default function DashboardsScene(_props: SceneViewProps) {
         />
       </div>
       <QuestionError s={s} />
-      <KpiRow s={s} className="dsh-kpis dsn-kpis" />
+      {/* The same composition as the page (C78, amendment 31): the highlights, then the KPI strip. */}
       <Highlights s={s} />
+      <KpiRow s={s} className="dsh-kpis dsn-kpis" />
       <div className="dsn-laminas">
         {cards.map((w) => (
           <Card key={w.def?.id ?? w.snap?.id} s={s} w={w} as="article" />

@@ -174,7 +174,8 @@ describe("C81 the entries", () => {
     };
     const frame = await read("moldura");
     const nucleo = await read("nucleo");
-    expect(frame.widgets).toEqual(["k1", "k2", "k3", "k4", "k5", "s", "m", "l", "x"]);
+    // The sixth KPI is a tile on the grid (round 1 of the verification, minor: never dropped).
+    expect(frame.widgets).toEqual(["k1", "k2", "k3", "k4", "k5", "k6", "s", "m", "l", "x"]);
     expect(nucleo).toEqual(frame);
     expect(frame.entries).toEqual(["Visão geral", "Projeto X"]);
   });
@@ -211,7 +212,7 @@ describe("C82 Today's link", () => {
 });
 
 describe("C89 the Núcleo's scene", () => {
-  it("C89 the header as the voice line, the KPIs a strip at the top, the cards lâminas in order in two columns, the selector in the scene's menu", async () => {
+  it("C89 the header as the voice line, then the highlights row and the KPI strip at the top (amendment 31), the cards lâminas in order in two columns, the selector in the scene's menu", async () => {
     net.prefs.shell = "nucleo";
     serveTwo();
     await mountShell("/dashboards", "nucleo", "pt-BR");
@@ -221,9 +222,11 @@ describe("C89 the Núcleo's scene", () => {
     const parts = [...scene.children].map(
       (c) => c.className.split(" ").find((k) => k.startsWith("dsn-")) ?? c.className,
     );
+    // Amendment 31 (round 1, finding 3): the voice line, then the highlights row, then the KPI strip.
     expect(parts.indexOf("dsn-voice")).toBe(0);
-    expect(parts.indexOf("dsn-kpis")).toBe(1);
-    expect(parts.indexOf("dsn-laminas")).toBeGreaterThan(1);
+    expect(parts.indexOf("dsh-highlights")).toBe(1);
+    expect(parts.indexOf("dsn-kpis")).toBe(2);
+    expect(parts.indexOf("dsn-laminas")).toBeGreaterThan(2);
     const voice = scene.querySelector(".dsn-voice")!;
     expect(voice.querySelector(".dsh-title")!.textContent).toMatch(/^(Bom dia|Boa tarde|Boa noite)$/);
     expect(voice.querySelector(".dsh-when")!.textContent).toMatch(/^Atualizado às \d\d:\d\d$/);
@@ -231,6 +234,9 @@ describe("C89 the Núcleo's scene", () => {
     expect(
       [...scene.querySelectorAll<HTMLElement>(".dsn-laminas > .dsh-card")].map((c) => c.dataset.widget),
     ).toEqual(["s", "m", "l", "x"]);
+    expect(
+      [...scene.querySelectorAll<HTMLElement>(".dsn-laminas > [data-widget]")].map((c) => c.dataset.widget),
+    ).toEqual(["k6", "s", "m", "l", "x"]);
     expect(decl(".dsn-laminas", "grid-template-columns")).toBe("repeat(2, minmax(0, 1fr))");
     expect(voice.querySelector(".dsn-menu")).not.toBeNull();
     expect(scene.querySelector(".dsh-pick")).toBeNull();
@@ -266,7 +272,7 @@ describe("C89 the Núcleo's scene", () => {
 });
 
 describe("C90 the page's body", () => {
-  it("C90 top to bottom: the highlights, the KPI row (five tiles of the six), the cards in the definition's order on the grid", async () => {
+  it("C90 top to bottom: the highlights, the KPI row (five tiles; the sixth is a tile on the grid, never dropped), the cards in the definition's order on the grid", async () => {
     serveTwo();
     mountBoard();
     await screen.findByText("Uma nota");
@@ -277,6 +283,12 @@ describe("C90 the page's body", () => {
     expect(
       [...document.querySelectorAll<HTMLElement>(".dsh-grid > .dsh-card")].map((c) => c.dataset.size),
     ).toEqual(["s", "m", "l", "xl"]);
+    // Settled (round 1, minor): a KPI past the fifth sits on the grid, first in the definition's order, 4 columns.
+    const grid = [...document.querySelectorAll<HTMLElement>(".dsh-grid > [data-widget]")];
+    expect(grid.map((c) => c.dataset.widget)).toEqual(["k6", "s", "m", "l", "x"]);
+    expect(grid[0]!.classList.contains("dsh-kpi")).toBe(true);
+    expect(grid[0]!.querySelector(".dsh-kpi-label")!.textContent).toBe("KPI 6");
+    expect(decl(".dsh-grid > .dsh-kpi", "grid-column")).toBe("span 4");
   });
 
   it("C90 the stylesheet: five equal columns of KPIs, two below 960 px, one below 560 px; 12 columns, and s, m, l, xl span 4, 6, 8, 12", () => {
@@ -298,5 +310,43 @@ describe("C90 the page's body", () => {
       "span 8",
       "span 12",
     ]);
+  });
+});
+
+describe("C101 the header wraps below 720 px", () => {
+  it("C101 the left block comes before the actions, and below 720 px the header is a column (two lines)", async () => {
+    serveTwo();
+    mountBoard();
+    await screen.findByText("Uma nota");
+    const head = document.querySelector(".dsh-head")!;
+    expect([...head.children].map((c) => c.className)).toEqual(["dsh-head-l", "dsh-actions"]);
+    expect(decl(".dsh-head", "display")).toBe("flex");
+    // One line above 720 px: the actions never wrap under the title block there; the block wraps inside itself.
+    expect(decl(".dsh-head", "flex-wrap")).toBe("nowrap");
+    expect(decl(".dsh-head-l", "min-width")).toBe("0");
+    expect(decl(".dsh-actions", "flex")).toBe("none");
+    let column = "";
+    CSS.walkAtRules("media", (m) => {
+      if (m.params === "(max-width: 719px)")
+        m.walkRules(".dsh-head", (r) => r.walkDecls("flex-direction", (d) => void (column = d.value)));
+    });
+    expect(column).toBe("column");
+  });
+});
+
+describe("C102 the highlights row is one line that scrolls sideways", () => {
+  it("C102 the pills sit in one flex line that never wraps and scrolls on x; a pill neither shrinks nor wraps its text", async () => {
+    serveTwo();
+    mountBoard();
+    await screen.findByText("Uma nota");
+    expect(document.querySelector(".dsh-highlights")!.children).toHaveLength(1);
+    // The row lends the page no width (width 0) and takes the row's (min-width 100%), so the row is what scrolls.
+    expect(decl(".dsh-highlights", "width")).toBe("0");
+    expect(decl(".dsh-highlights", "min-width")).toBe("100%");
+    expect(decl(".dsh-highlights", "display")).toBe("flex");
+    expect(["", "nowrap"]).toContain(decl(".dsh-highlights", "flex-wrap"));
+    expect(decl(".dsh-highlights", "overflow-x")).toBe("auto");
+    expect(decl(".dsh-pill", "flex")).toBe("none");
+    expect(decl(".dsh-pill", "white-space")).toBe("nowrap");
   });
 });

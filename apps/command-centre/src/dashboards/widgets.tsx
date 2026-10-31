@@ -573,7 +573,7 @@ function AgendaBody({ items, env }: { items: Row[]; env: WidgetEnv }) {
             <RowTitle row={row} env={env} className="dsh-event-t" />
             {text(item.subtitle) && (
               <span className="dsh-event-prep">
-                <CalendarDays aria-hidden />
+                <Plug aria-hidden />
                 {text(item.subtitle)}
               </span>
             )}
@@ -623,6 +623,31 @@ function NoteBody({ data, env }: { data: Row; env: WidgetEnv }) {
       )}
     </div>
   );
+}
+
+/**
+ * The counter at a card's right (design.md "Widgets": "3 de 5", "4 feitas", "26 abertos"), by kind: a checklist says how
+ * many of today's are done ("3 de 5") or, with none due today, how many are open ("26 abertas"); a list counts its items,
+ * a table its rows, an agenda its events, bars the sum of their counts; a note has none.
+ */
+export function counterText(kind: string, data: Row, t: T): string | null {
+  const items = rows(data.items);
+  const total = num(data.total);
+  if (kind === "checklist") {
+    const due = num(data.dueToday);
+    const done = num(data.doneDueToday);
+    if (due !== null && due > 0) return t("dash.count.doneOf", { done: done ?? 0, n: due });
+    return t("dash.count.open", { n: total ?? items.filter((i) => i.done !== true).length });
+  }
+  if (kind === "list") return t("dash.count.items", { n: total ?? items.length });
+  if (kind === "table")
+    return t("dash.count.rows", {
+      n: Array.isArray(data.rows) ? rows(data.rows).length : (total ?? items.length),
+    });
+  if (kind === "agenda") return t("dash.count.events", { n: total ?? items.length });
+  if (kind === "bars")
+    return t("dash.count.total", { n: rows(data.categories).reduce((a, c) => a + (num(c.count) ?? 0), 0) });
+  return null;
 }
 
 /* ---- the card ----------------------------------------------------------------------------------------------- */
@@ -686,7 +711,7 @@ export function WidgetCard({
   const source = def ? def.source.kind : null;
   const funnel = Boolean(def?.options?.ordered && def.options.funnel);
   const bars = kind === "bars" && snap?.status === "ok" ? barData(data, funnel, locale) : [];
-  const total = num(data.total);
+  const counter = counterText(kind, data, t);
   let body: ReactNode;
   if (!snap) body = <div className="dsh-skel" aria-hidden />;
   else if (snap.status === "error") body = <WidgetError snap={snap} def={def} env={env} />;
@@ -719,9 +744,9 @@ export function WidgetCard({
         <h3 className="dsh-card-t" id={titleId}>
           {snap?.id === "como-foi-feita" ? t("dash.question.how") : title}
         </h3>
-        {total !== null && snap?.status === "ok" && <span className="dsh-count dsh-num">{total}</span>}
+        {snap?.status === "ok" && counter !== null && <span className="dsh-count dsh-num">{counter}</span>}
         {kind === "bars" && snap?.status === "ok" && (
-          <Switch checked={asTable} onCheckedChange={setAsTable} className="dsh-astable">
+          <Switch checked={asTable} onCheckedChange={setAsTable}>
             {t("dash.widget.asTable")}
           </Switch>
         )}
@@ -861,7 +886,7 @@ export function KpiTile({
             </Badge>
           )}
           {hasTrend && (
-            <Switch checked={asTable} onCheckedChange={setAsTable} className="dsh-astable">
+            <Switch checked={asTable} onCheckedChange={setAsTable}>
               {t("dash.widget.asTable")}
             </Switch>
           )}
@@ -869,7 +894,7 @@ export function KpiTile({
       </>
     );
   return (
-    <section className="dsh-kpi" data-widget={def?.id ?? snap?.id} aria-label={label}>
+    <section className="dsh-kpi" data-widget={def?.id ?? snap?.id} data-size="s" aria-label={label}>
       <span className="dsh-kpi-label">{label}</span>
       {body}
       <Citations data={data} env={env} />
@@ -890,18 +915,35 @@ const RULE_ICON: Record<string, LucideIcon> = {
   new_since_visit: Sparkles,
 };
 
-export function HighlightsRow({ highlights, env }: { highlights: readonly Highlight[]; env: WidgetEnv }) {
+export function HighlightsRow({
+  highlights,
+  env,
+  ready = true,
+}: {
+  highlights: readonly Highlight[];
+  env: WidgetEnv;
+  /** The dashboard's read has arrived: from here on, a pill not seen before is new. */
+  ready?: boolean;
+}) {
+  // Only a pill that was not there before fades in (design.md "Movimento": "a pastilha nova"); the first paint has none.
+  const keyOf = (h: Highlight) => `${h.rule}:${h.target}`;
+  const seen = useRef<Set<string> | null>(null);
+  const before = seen.current;
+  useEffect(() => {
+    if (ready) seen.current = new Set([...(seen.current ?? []), ...highlights.map(keyOf)]);
+  });
   if (highlights.length === 0) return null;
   return (
     <ul className="dsh-highlights">
       {highlights.slice(0, 8).map((h, i) => {
         const Icon = RULE_ICON[h.rule] ?? Sparkles;
         return (
-          <li key={`${h.rule}:${h.target}:${i}`}>
+          <li key={`${keyOf(h)}:${i}`}>
             <button
               type="button"
               className={`dsh-pill ${h.tone}`}
               data-rule={h.rule}
+              data-fresh={before !== null && !before.has(keyOf(h)) ? "" : undefined}
               onClick={() => env.open(h.target)}
             >
               <Icon aria-hidden />

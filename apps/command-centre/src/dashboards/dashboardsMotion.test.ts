@@ -117,8 +117,32 @@ describe("C92 nothing moves for someone who asked for less", () => {
     let origin = "";
     CSS.walkRules(".dsh-bar", (r) => r.walkDecls("transform-origin", (d) => void (origin = d.value)));
     expect(origin).toBe("left center");
-    expect(inNoPreference(".dsh-pill")).toEqual(["dsh-fade", "150ms", "ease-out"]);
+    // Only a new pill fades (round 1 of the verification, minor; design.md "a pastilha nova").
+    expect(inNoPreference(".dsh-pill[data-fresh]")).toEqual(["dsh-fade", "150ms", "ease-out"]);
+    expect(inNoPreference(".dsh-pill")).toEqual([""]);
     expect(keyframes("dsh-fade")).toEqual({ opacity: "0" });
+  });
+
+  it("C92 only a pill that arrives with a refresh is marked new: none on the first paint", async () => {
+    const first = [
+      { rule: "overdue" as const, title: "Ligar", tone: "danger" as const, target: "/brain?sel=1" },
+    ];
+    const added = {
+      rule: "due_today" as const,
+      title: "Mandar",
+      tone: "warn" as const,
+      target: "/brain?sel=2",
+    };
+    serve("visao-geral", read(kpiDef, kpiSnap(1), { highlights: first }));
+    mountBoard();
+    await screen.findByText("Ligar");
+    expect(document.querySelectorAll(".dsh-pill[data-fresh]")).toHaveLength(0);
+    answerRead("visao-geral", read(kpiDef, kpiSnap(1), { highlights: [...first, added] }));
+    act(() => emit("dashboard.refreshed", { id: "visao-geral", generatedAt: Date.now(), status: "ok" }));
+    await screen.findByText("Mandar");
+    expect([...document.querySelectorAll(".dsh-pill[data-fresh]")].map((p) => p.textContent)).toEqual([
+      "Mandar",
+    ]);
   });
 
   it("C92 with motion allowed the KPI counts from the old value to the new one in 400 ms after dashboard.refreshed", async () => {
@@ -250,6 +274,19 @@ describe("C93 the chart tokens and the stylesheet", () => {
         presetBlocks.push(r.selector);
     });
     expect(presetBlocks).toEqual([]);
+  });
+
+  it("C93 no rule of the dashboards' stylesheet draws a part of a primitive (primitivas/design.md: only ui/ui.css does)", () => {
+    const primitive: string[] = [];
+    CSS.walkRules((r) => {
+      if (
+        /\.ui-|\[role="?(switch|dialog|menu|menuitem|tab)\b|\.dsh-astable|\.modal\b|\.badge\b/.test(
+          r.selector,
+        )
+      )
+        primitive.push(r.selector);
+    });
+    expect(primitive).toEqual([]);
   });
 
   it("C93 no chart mark is painted with --accent", () => {
