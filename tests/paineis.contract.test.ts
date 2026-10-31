@@ -17,6 +17,7 @@ import {
 } from "@mordomo/contracts";
 import type * as client from "../core/src/connectors/client.js";
 import { ConnectorDataCache } from "../core/src/connectors/client.js";
+import { UiPreferencesSchema } from "../contracts/src/preferences.js";
 import type { OsEvent } from "../core/src/events.js";
 import { SCENARIOS, buildWorld } from "./helpers/contractWorld.js";
 import { movingClock } from "./helpers/movingClock.js";
@@ -949,5 +950,66 @@ describe("C96 the screens' chunks and their weight (amendment 24, question 10)",
       expect(Number.isInteger(entry[k]) && entry[k] > 0, k).toBe(true);
     expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(24 * 1024);
     expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(4 * 1024);
+  });
+});
+
+// ---- round 2, finding 2: UiPreferences.dashboards (amendment 28) -------------------------------------------------
+
+describe("C103 the stored shape of UiPreferences.dashboards", () => {
+  const entries = (n: number) =>
+    Object.fromEntries(Array.from({ length: n }, (_, i) => [`painel-${i}`, NOW - i]));
+
+  it("C103 at the contract: 200 entries are kept, 201 read as { lastViewed: {} }, and an unreadable value reads as { lastViewed: {} } with every other key of the document kept", () => {
+    expect(
+      UiPreferencesSchema.parse({ dashboards: { lastViewed: entries(200) } }).dashboards.lastViewed,
+    ).toEqual(entries(200));
+    expect(UiPreferencesSchema.parse({ dashboards: { lastViewed: entries(201) } }).dashboards).toEqual({
+      lastViewed: {},
+    });
+    for (const bad of ["x", 7, { lastViewed: "x" }, { lastViewed: { a: -1 } }, { lastViewed: { a: 1.5 } }]) {
+      const parsed = UiPreferencesSchema.parse({ activeContext: "projeto-x", dashboards: bad });
+      expect(parsed.dashboards, JSON.stringify(bad)).toEqual({ lastViewed: {} });
+      expect(parsed.activeContext, JSON.stringify(bad)).toBe("projeto-x");
+    }
+    expect(UiPreferencesSchema.parse({}).dashboards).toEqual({ lastViewed: {} });
+  });
+
+  it("C103 the stored file: one with 201 entries, or with an unreadable value, reads as { lastViewed: {} } and keeps its other keys", async () => {
+    const world = await paineisWorld("mordomo-paineis-c103-file-");
+    try {
+      const file = world.ctx.paths.uiPreferencesFile;
+      for (const dashboards of [{ lastViewed: entries(201) }, { lastViewed: "x" }, "x"]) {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify({ shell: "moldura", activeContext: "projeto-x", dashboards }));
+        const loaded = world.ctx.uiPreferences.load();
+        expect(loaded.dashboards, JSON.stringify(dashboards).slice(0, 40)).toEqual({ lastViewed: {} });
+        expect(loaded.activeContext).toBe("projeto-x");
+      }
+    } finally {
+      await world.close();
+    }
+  });
+
+  it("C103 PUT /api/ui-preferences: the shape goes and comes back the same (answer, GET and file), another entry keeps the first, and 201 entries store none of them", async () => {
+    const world = await paineisWorld("mordomo-paineis-c103-route-");
+    try {
+      const put = (dashboards: unknown) => world.call("PUT", "/api/ui-preferences", { dashboards });
+      const stored = () => JSON.parse(fs.readFileSync(world.ctx.paths.uiPreferencesFile, "utf8")).dashboards;
+      const one = { lastViewed: { "visao-geral": NOW } };
+      const first = await put(one);
+      expect(first.status, JSON.stringify(first.body)).toBe(200);
+      expect(first.body.dashboards).toEqual(one);
+      expect((await world.call("GET", "/api/ui-preferences")).body.dashboards).toEqual(one);
+      expect(stored()).toEqual(one);
+      const both = { lastViewed: { "visao-geral": NOW, "contexto-a": NOW + 1 } };
+      expect((await put({ lastViewed: { "contexto-a": NOW + 1 } })).body.dashboards).toEqual(both);
+      expect(stored()).toEqual(both);
+      const many = await put({ lastViewed: entries(201) });
+      expect(many.status).toBe(200);
+      expect(many.body.dashboards).toEqual(both);
+      expect(stored()).toEqual(both);
+    } finally {
+      await world.close();
+    }
   });
 });

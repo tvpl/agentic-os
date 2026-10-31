@@ -1121,6 +1121,37 @@ describe("Test policy row 1: the sources' rules at their own layer (round 1)", (
     ]);
   });
 
+  // Round 2, finding 5: the other filter rows of `notes` at their layer (`changed: "week"` names a local week: it is in the
+  // pinned tests/paineis.localday.test.ts).
+  it("C29 notes, at its layer: status, tags, natureza, escopo, and a folder and not its look-alike, one asserted case each", async () => {
+    const base = path.join(ctx2.paths.memory, "notes", "f5b");
+    const note = (rel: string, fields: Record<string, string>) => put(path.join(base, rel), fm(fields));
+    const status = note("status-sim.md", { status: "draft" });
+    note("status-nao.md", { status: "active" });
+    const tags = put(path.join(base, "tags-sim.md"), "---\ntags: [cliente, x]\n---\n# Sim\n");
+    put(path.join(base, "tags-nao.md"), "---\ntags: [fornecedor]\n---\n# Não\n");
+    const natureza = note("nat-sim.md", { natureza: "plano" });
+    note("nat-nao.md", { natureza: "fato" });
+    const escopo = note("esc-sim.md", { escopo: "equipe" });
+    note("esc-nao.md", { escopo: "pessoal" });
+    const inA = note("a/um.md", {});
+    note("a-b/dois.md", {});
+    await ctx2.indexer.indexAllAsync();
+    const { notes } = dashboardSources(deps() as never);
+    const only = async (filter: Json) =>
+      ((await ok(notes!({ kind: "notes", folder: base, ...filter }, call()))).items as Json[]).map(
+        (i) => i.path,
+      );
+    expect(await only({ status: ["draft"] })).toEqual([status]);
+    expect(await only({ tags: ["cliente"] })).toEqual([tags]);
+    expect(await only({ natureza: ["plano"] })).toEqual([natureza]);
+    expect(await only({ escopo: ["equipe"] })).toEqual([escopo]);
+    const folder = (
+      (await ok(notes!({ kind: "notes", folder: path.join(base, "a") }, call()))).items as Json[]
+    ).map((i) => i.path);
+    expect(folder).toEqual([inA]);
+  });
+
   it("C34 reviews, at its layer: the items and the total are C6's queue's, handed the context and the widget's limit", async () => {
     const asked: Json[] = [];
     const stub = ((_db: unknown, _env: unknown, query: Json) => {
@@ -1240,6 +1271,53 @@ describe("Test policy row 1: the sources' rules at their own layer (round 1)", (
     const got = await ok(metrics!({ kind: "metrics", series: "runs24h" }, call()));
     expect(got.value).toBe(5);
     expect(got.points.at(-1).value).toBe(5);
+  });
+
+  // Round 2, finding 5: every series name and the daily rule of `dailyPoints` (the day's highest for cost and tokens,
+  // the day's last sample for the others), at the layer.
+  it("C31 metrics, at its layer: each of the six names is the newest sample's field, and today's point is the day's highest cost and tokens and the last value of the others", async () => {
+    const sample = (at: number, v: Record<string, number>) =>
+      ctx2.metricsHistory.sample(
+        {
+          runs: {
+            total: v.runs24h!,
+            last24h: v.runs24h!,
+            failed24h: v.failed24h!,
+            costTodayUsd: v.costTodayUsd!,
+            tokensToday: v.tokensToday!,
+            spendWeekUsd: 0,
+          },
+          inboxUnread: v.inboxUnread!,
+          approvalsPending: v.approvalsPending!,
+          approvalWaitAvgMs: null,
+        },
+        at,
+      );
+    const earlier = {
+      runs24h: 9,
+      failed24h: 4,
+      costTodayUsd: 0.4,
+      tokensToday: 900,
+      inboxUnread: 8,
+      approvalsPending: 2,
+    };
+    const newest = {
+      runs24h: 6,
+      failed24h: 3,
+      costTodayUsd: 0.25,
+      tokensToday: 600,
+      inboxUnread: 5,
+      approvalsPending: 1,
+    };
+    sample(NOW - 2 * HOUR, earlier);
+    sample(NOW - 30 * MIN, newest);
+    const today = { ...newest, costTodayUsd: 0.4, tokensToday: 900 };
+    const { metrics } = dashboardSources(deps() as never);
+    for (const series of Object.keys(newest) as Array<keyof typeof newest>) {
+      const got = await ok(metrics!({ kind: "metrics", series }, call()));
+      expect(got.value, series).toBe(newest[series]);
+      expect(got.points.at(-1).value, series).toBe(today[series]);
+    }
   });
 
   it("C32 connector, at its layer: list cut at the limit with the six keys, flagged, a summary key, no mapping and not in the registry are not_configured", async () => {

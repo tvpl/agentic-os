@@ -674,6 +674,8 @@ describe("C14 today's policy and no file read", () => {
       const seen = [...opened, ...safeReads].map((p) => fs.realpathSync(p));
       // the recorder sees what is opened: the definition is read, by the route, through the safe reader
       expect(seen).toContain(routesData[0]);
+      // and recordFileReads saw that read itself, not only the safe-reader spies (round 2, finding 4): it is awake
+      expect(opened.map((p) => fs.realpathSync(p))).toContain(routesData[0]);
       expect(seen.filter((p) => !routesData.includes(p))).toEqual([]);
       // and the code that evaluates reads no file by itself (the raw-read audit of tests/fsReadAudit.ts)
       const dashboards = path.join(repoRoot, "core", "src", "dashboards");

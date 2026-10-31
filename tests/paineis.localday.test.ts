@@ -64,7 +64,7 @@ afterEach(() => {
 });
 
 describe("the local day and the UTC day differ here", () => {
-  it("C10 C15 C25 C26 C27 C28 C44 C57 C99 the zone is pinned: 23:30 of 2026-10-30 local is 2026-10-31 in UTC", () => {
+  it("C10 C15 C25 C26 C27 C28 C29 C44 C57 C99 the zone is pinned: 23:30 of 2026-10-30 local is 2026-10-31 in UTC", () => {
     expect(process.env.TZ).toBe("America/Sao_Paulo");
     expect(new Date(NOW).getDate()).toBe(30);
     expect(new Date(NOW).toISOString().slice(0, 10)).toBe("2026-10-31");
@@ -866,6 +866,126 @@ describe("C99 a dismissed reminder is not written again the same local day", () 
   });
 });
 
+// Round 2, findings 1 and 3: the reminders' day is the local day (23:30 here is already 2026-10-31 in UTC), and the day's
+// record and its rows are written in one transaction.
+describe("C99 the local day of the reminders, and their one transaction (round 2)", () => {
+  const local = (d: number, h: number, m: number) => new Date(2026, 9, d, h, m).getTime();
+
+  it("C99 through the routes at 23:30 local (02:30 UTC of the next day): the evening refresh reminds nothing again and leaves the next day's record empty, and 08:30 of the next local day sends 2", async () => {
+    await fresh(async (world) => {
+      world.update((s) => {
+        s.dashboards = { reminders: { maxPerDay: 2, at: "08:30" } };
+      });
+      const dir = path.join(world.memory, "notes");
+      world.note(
+        path.join(dir, "tarefas.md"),
+        {},
+        "# Tarefas\n\n- [ ] Mandar a proposta 📅 2026-10-29\n- [ ] Ligar ⏫ 📅 2026-10-30\n- [ ] Revisar 📅 2026-10-30\n",
+      );
+      world.note(
+        path.join(dir, "site.md"),
+        { type: "project", status: "active", due: "2026-10-28" },
+        "# Site novo\n",
+      );
+      await world.index();
+      expect((await world.create({ template: "overview" })).status).toBe(201);
+      const refreshAt = async (when: number) => {
+        clock.set(when);
+        vi.useFakeTimers({ toFake: ["Date"], now: when });
+        try {
+          expect((await world.refresh("visao-geral")).status).toBe(200);
+        } finally {
+          vi.useRealTimers();
+        }
+      };
+      const keys = () =>
+        (
+          world.ctx.db
+            .prepare("SELECT dedupe_key k FROM notifications WHERE kind = 'reminder' ORDER BY rowid")
+            .all() as Array<{ k: string }>
+        ).map((r) => r.k);
+      await refreshAt(local(30, 8, 31));
+      const morning = keys();
+      expect(morning).toHaveLength(2);
+      expect(new Date(local(30, 23, 30)).toISOString().slice(0, 10)).toBe("2026-10-31");
+      await refreshAt(local(30, 23, 30));
+      expect(keys()).toEqual(morning);
+      expect(remindersGiven(world.ctx.db, "2026-10-31")).toEqual([]);
+      await refreshAt(local(31, 8, 30));
+      const next = keys().slice(2);
+      expect(next).toHaveLength(2);
+      expect(next.every((k) => k.endsWith(":2026-10-31"))).toBe(true);
+    });
+  });
+
+  const withCtx = (fn: (ctx: AppContext) => void) => {
+    const home = makeTempHome("mordomo-paineis-c99-r2-");
+    const ctx = new AppContext(home.paths.home);
+    try {
+      fn(ctx);
+    } finally {
+      ctx.close();
+      home.cleanup();
+    }
+  };
+  const c = (n: number): ReminderCandidate => ({
+    rule: "overdue",
+    item: `task:/m/t.md:${n}`,
+    text: `T${n}`,
+    fileId: n,
+  });
+
+  it("C99 at its own layer at 23:30 local: nothing again the same local day, the next day's record empty, the next local morning gives", () => {
+    withCtx((ctx) => {
+      const settings = { ...ctx.settings(), dashboards: { reminders: { maxPerDay: 2, at: "08:30" } } };
+      const give = (when: number) =>
+        deliverReminders(
+          { db: ctx.db, notifications: ctx.notifications, settings },
+          [c(1), c(2), c(3)],
+          when,
+        ).map((n) => n.dedupeKey);
+      expect(give(local(30, 8, 30))).toHaveLength(2);
+      expect(give(local(30, 23, 30))).toEqual([]);
+      expect(remindersGiven(ctx.db, "2026-10-30")).toHaveLength(2);
+      expect(remindersGiven(ctx.db, "2026-10-31")).toEqual([]);
+      expect(give(local(31, 8, 30))).toEqual([
+        "reminder:overdue:task:/m/t.md:1:2026-10-31",
+        "reminder:overdue:task:/m/t.md:2:2026-10-31",
+      ]);
+    });
+  });
+
+  it("C99 at its own layer, the one transaction: when the second reminder's write fails, no reminder row is left and no record is kept; the next refresh gives both", () => {
+    withCtx((ctx) => {
+      const settings = { ...ctx.settings(), dashboards: { reminders: { maxPerDay: 2, at: "08:30" } } };
+      let calls = 0;
+      const failing = {
+        add: (input: Parameters<typeof ctx.notifications.add>[0]) => {
+          calls++;
+          if (calls === 2) throw new Error("the inbox refused the write");
+          return ctx.notifications.add(input);
+        },
+      };
+      expect(() =>
+        deliverReminders({ db: ctx.db, notifications: failing, settings }, [c(1), c(2)], local(30, 9, 0)),
+      ).toThrow("the inbox refused the write");
+      expect(calls).toBe(2);
+      expect(ctx.db.prepare("SELECT COUNT(*) c FROM notifications WHERE kind = 'reminder'").get()).toEqual({
+        c: 0,
+      });
+      expect(remindersGiven(ctx.db, "2026-10-30")).toEqual([]);
+      expect(
+        deliverReminders(
+          { db: ctx.db, notifications: ctx.notifications, settings },
+          [c(1), c(2)],
+          local(30, 9, 5),
+        ),
+      ).toHaveLength(2);
+      expect(remindersGiven(ctx.db, "2026-10-30")).toHaveLength(2);
+    });
+  });
+});
+
 describe("Test policy row 1: the day's source rules at their own layer (round 1)", () => {
   let home: ReturnType<typeof makeTempHome>;
   let ctx: AppContext;
@@ -963,5 +1083,20 @@ describe("Test policy row 1: the day's source rules at their own layer (round 1)
     const { openLoops } = sources();
     const got = ((await openLoops!({ kind: "openLoops", window: "week" }, call)) as Json).data;
     expect(got.items.map((i: Json) => [i.text, i.natureza])).toEqual([["Ligar para a Ana", "plano"]]);
+  });
+  // Round 2, finding 5: `changed: "week"` of `notes` at its layer (Monday 2026-10-26 00:00 local opens the week).
+  it("C29 notes, at its layer: changed week is an mtime from the local Monday or an updated day from it, and not a note of last week", async () => {
+    const dir = path.join(ctx.paths.memory, "notes", "semana");
+    const mtimeOf = (file: string, at: number) => fs.utimesSync(file, at / 1000, at / 1000);
+    const byMtime = put("notes/semana/terca.md", "# Terça\n");
+    mtimeOf(byMtime, new Date(2026, 9, 27, 10, 0).getTime());
+    const byUpdated = put("notes/semana/atualizada.md", "---\nupdated: 2026-10-26\n---\n# Atualizada\n");
+    mtimeOf(byUpdated, new Date(2026, 9, 20, 10, 0).getTime());
+    const sunday = put("notes/semana/domingo.md", "# Domingo\n");
+    mtimeOf(sunday, new Date(2026, 9, 25, 23, 59).getTime());
+    await ctx.indexer.indexAllAsync();
+    const { notes } = sources();
+    const got = ((await notes!({ kind: "notes", folder: dir, changed: "week" }, call)) as Json).data;
+    expect(got.items.map((i: Json) => path.basename(i.path)).sort()).toEqual(["atualizada.md", "terca.md"]);
   });
 });
