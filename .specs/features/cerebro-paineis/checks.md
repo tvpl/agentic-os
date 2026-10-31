@@ -1112,3 +1112,6 @@ Status of batch D (updated in the commit that closes each piece):
   `DashboardDialogs.test.tsx`, `dashboardsMotion.test.ts`, `dashboardsCopy.test.ts`, `src/nucleo/shell.test.ts` (C81),
   `src/hooks/notificationText.test.ts` (C91) and `tests/paineis.contract.test.ts` (C96); `scripts/bundle-baseline.json`
   has its `cerebro-paineis` entry (re-measured on the batch's last build)
+- the browser half (C81's key 6, C90's three widths, C94 in both themes and both shells, C95's gallery entry): closed,
+  every proof green in `tests/e2e/dashboards.spec.ts` on a fresh build; `tests/e2e/nucleo-shell.spec.ts` follows C81
+  (six main scenes, `[` from the Núcleo lands on the dashboards)
