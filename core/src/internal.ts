@@ -124,7 +124,14 @@ export {
   type CreateObjectiveInput,
 } from "./objectives/objectiveStore.js";
 export { linksOf } from "./memory/links.js";
-export { classifyNotePath, createNote, readNote, saveNote, saveProperties } from "./memory/notes.js";
+export {
+  classifyNotePath,
+  createNote,
+  readNote,
+  saveNote,
+  saveProperties,
+  saveTask,
+} from "./memory/notes.js";
 export { memoryTree } from "./memory/tree.js";
 export { cleanupInventory, resolveCleanupScope } from "./memory/cleanup.js";
 export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from "./memory/cleanupApply.js";

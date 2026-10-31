@@ -135,6 +135,8 @@ describe("S5 the surface is a closed list", () => {
         // cerebro-vista-notas: the notes tree and the properties route (doors 1 and 2)
         "memoryTree",
         "saveProperties",
+        // cerebro-paineis, batch B: a task's box checked from a dashboard (amendment 17)
+        "saveTask",
         // cerebro-faxina-guiada: the scope of a cleanup and its inventory (door 5)
         "cleanupInventory",
         "resolveCleanupScope",

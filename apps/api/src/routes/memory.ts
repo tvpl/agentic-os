@@ -36,6 +36,7 @@ import {
   runMapReach,
   saveNote,
   saveProperties,
+  saveTask,
   statWorkspacePath,
   workspaceScope,
   parseEscopoList,
@@ -261,6 +262,13 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   bind(app, "memory.notes.properties", async ({ body }) => {
     const written = saveProperties(noteContext(), body);
+    reindex(written.path);
+    return written;
+  });
+
+  // A task checked from a dashboard (cerebro-paineis, amendment 17): the box of one line, then the index learns it.
+  bind(app, "memory.tasks.save", async ({ body }) => {
+    const written = saveTask(noteContext(), body);
     reindex(written.path);
     return written;
   });

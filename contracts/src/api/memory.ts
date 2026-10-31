@@ -823,6 +823,43 @@ export const memoryRoutes = {
       err(413, "note_too_large", "The note is larger than the editing limit"),
     ],
   }),
+  "memory.tasks.save": route({
+    method: "PUT",
+    path: "/api/memory/tasks",
+    summary:
+      "Check or uncheck one Markdown task of a note under memory/ (.specs/features/cerebro-paineis, AC 48 to AC 50), only if the note is still the version the caller read: only the box of that line changes",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      path: z.string().min(1),
+      line: z.number().int().min(1),
+      done: z.boolean(),
+      baseVersion: NoteVersionSchema,
+    }),
+    responses: {
+      200: z.object({
+        path: z.string(),
+        version: NoteVersionSchema,
+        task: z.object({ line: z.number(), done: z.boolean(), text: z.string() }),
+      }),
+    },
+    errors: [
+      err(403, "forbidden_path", "A link on the way or a private file would be written through"),
+      err(
+        403,
+        "note_not_editable",
+        "Not a .md file under memory/, or a file the engine generates (ROUTER.md, areas/, journal/, contexts/)",
+      ),
+      err(404, "not_a_file", "The path names something that is not a regular file"),
+      err(404, "note_missing", "The note does not exist"),
+      err(
+        409,
+        "edit_conflict",
+        "The file changed after it was read, or the line holds no task any more; nothing was written",
+      ),
+      err(413, "note_too_large", "The note is larger than the editing limit"),
+    ],
+  }),
   "memory.notes.save": route({
     method: "PUT",
     path: "/api/memory/notes",

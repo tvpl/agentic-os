@@ -804,6 +804,21 @@ export const SCENARIOS: Record<string, Scenario> = {
       });
     },
   },
+  // cerebro-paineis, batch B: a task of a new note checked (its box is line 3, under the heading and a blank line).
+  [key("PUT", "/api/memory/tasks")]: {
+    run: (w) => {
+      const note = createNote(
+        { paths: w.ctx.paths, settings: w.ctx.settings() },
+        { title: "Cenário de tarefa", content: "- [ ] Tarefa do cenário" },
+      );
+      return w.call("PUT", "/api/memory/tasks", {
+        path: note.path,
+        line: 3,
+        done: true,
+        baseVersion: note.version,
+      });
+    },
+  },
   [key("POST", "/api/contexts")]: {
     run: (w) => w.call("POST", "/api/contexts", { name: "Cenário de contexto", paths: [w.workspace] }),
   },

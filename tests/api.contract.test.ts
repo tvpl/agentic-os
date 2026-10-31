@@ -162,7 +162,7 @@ describe("S1 the route table and the registration", () => {
   });
 
   it("C53 the table holds the five routes of the second brain with scope, what they read, a schema per success status and their declared errors", () => {
-    expect(entries).toHaveLength(153);
+    expect(entries).toHaveLength(154);
     for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
       const entry = API[want.id];
       expect(entry, key).toBeDefined();
@@ -188,7 +188,8 @@ describe("S1 the route table and the registration", () => {
       .sort();
     // cerebro-vista-notas: the properties of a note are written by a route of their own, with the same codes.
     // cerebro-natureza: a review decision writes a note's properties through the same write (door 4).
-    // cerebro-paineis: a dashboard's definition is written with the guarded write of a note (door 1, AD-031).
+    // cerebro-paineis: a dashboard's definition is written with the guarded write of a note (door 1, AD-031), and a
+    // task's box too (amendment 17).
     expect(named).toEqual([
       "GET /api/memory/note",
       "POST /api/memory/notes",
@@ -196,6 +197,7 @@ describe("S1 the route table and the registration", () => {
       "PUT /api/dashboards/:id",
       "PUT /api/memory/notes",
       "PUT /api/memory/notes/properties",
+      "PUT /api/memory/tasks",
     ]);
   });
 
@@ -204,10 +206,10 @@ describe("S1 the route table and the registration", () => {
     try {
       const router = app.apiRoutes.map((r) => `${r.method} ${r.url}`).sort();
       const table = entries.map(([, e]) => routeKey(e)).sort();
-      expect(router).toHaveLength(153);
+      expect(router).toHaveLength(154);
       expect(table).toEqual(router);
-      expect(new Set(table).size).toBe(153);
-      expect(new Set(entries.map(([id]) => id)).size).toBe(153);
+      expect(new Set(table).size).toBe(154);
+      expect(new Set(entries.map(([id]) => id)).size).toBe(154);
       for (const [id, entry] of entries) {
         expect(id, id).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)+$/);
         expect(entry.summary.length, `${id} summary`).toBeGreaterThan(8);
@@ -236,7 +238,7 @@ describe("S1 the route table and the registration", () => {
         const k = e.public ? "public" : e.scope!;
         counts[k] = (counts[k] ?? 0) + 1;
       }
-      expect(counts).toEqual({ owner: 79, monitor: 33, content: 32, run: 6, approve: 1, public: 2 });
+      expect(counts).toEqual({ owner: 80, monitor: 33, content: 32, run: 6, approve: 1, public: 2 });
       expect(entries.filter(([, e]) => e.public && e.scope !== undefined)).toEqual([]);
 
       expect(
@@ -771,7 +773,7 @@ describe("S2 the real answer is checked", () => {
     // A route with no scenario, or a scenario for no route: both are a hole in this proof.
     expect(Object.keys(SCENARIOS).sort()).toEqual(router);
     expect(Object.keys(SCENARIOS).sort()).toEqual(tabled);
-    expect(results).toHaveLength(153);
+    expect(results).toHaveLength(154);
     const problems: string[] = [];
     for (const { key, entry, answer, id } of results) {
       const scenario = SCENARIOS[key]!;

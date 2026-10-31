@@ -16,6 +16,7 @@ import {
 } from "./frontMatter.js";
 import { workspaceScope } from "./preview.js";
 import { areaSlug } from "./routers.js";
+import { parseTasks } from "./tasks.js";
 
 /**
  * Notes: the Markdown files the owner creates and edits under `memory/` (.specs/features/cerebro-v2).
@@ -503,3 +504,73 @@ export function saveProperties(ctx: NoteContext, input: SavePropertiesInput): No
     properties: parseProperties(next).properties,
   };
 }
+
+export interface SaveTaskInput {
+  path: string;
+  /** 1-based, as `note_tasks.line`. */
+  line: number;
+  done: boolean;
+  baseVersion: string;
+}
+
+export interface TaskWritten {
+  path: string;
+  version: string;
+  task: { line: number; done: boolean; text: string };
+}
+
+/**
+ * Check or uncheck one task of a note (.specs/features/cerebro-paineis, AC 48 to AC 50, amendment 17), only if the note
+ * is still the version the caller read: only the box of that line changes (`[ ]` to `[x]`, or `[x]`/`[X]` to `[ ]`),
+ * every other byte is kept, line ends and indentation included. The note is checked as a save checks it (`403`,
+ * `404`, `413`), then its version and the line (`409 edit_conflict` for a line that is no task, or past the end); a
+ * box already as asked writes nothing.
+ */
+export function saveTask(ctx: NoteContext, input: SaveTaskInput): TaskWritten {
+  const match = VERSION_PATTERN.exec(input.baseVersion);
+  if (!match) throw new NoteValidationError("validation", "baseVersion: expected sha256: and 64 hex digits");
+  const classified = classifyNotePath(ctx, input.path);
+  if (!classified.editable) throw new NoteNotEditableError(classified.reason ?? "This file cannot be edited.");
+  const limit = noteLimitBytes(ctx.settings);
+  const scope = memoryScope(ctx);
+  const missing = (err: unknown): never => {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new NoteMissingError("The note does not exist.");
+    throw err;
+  };
+  let bytes: Buffer;
+  try {
+    bytes = unnameableIsForbidden(input.path, () => {
+      const file = openWorkspaceFile(scope, classified.logical);
+      try {
+        if (file.stat.size > limit) throw new NoteTooLargeError(limit);
+        return file.readBytes(limit).bytes;
+      } finally {
+        file.close();
+      }
+    });
+  } catch (err) {
+    return missing(err);
+  }
+  const text = assertText(bytes);
+  if (text === null) throw new NoteNotEditableError("The file is not UTF-8 text.");
+  if (versionOf(bytes) !== input.baseVersion) throw new EditConflictError();
+  const task = parseTasks(text).find((t) => t.line === input.line);
+  // A line that holds no task (or is past the end) is a note that changed since the dashboard read it.
+  if (!task) throw new EditConflictError();
+  const lines = text.split("\n");
+  const box = /^(\s*[-*] \[)( |x|X)\]/.exec(lines[input.line - 1]!);
+  if (!box) throw new EditConflictError();
+  const result = { line: input.line, done: input.done, text: task.text };
+  if ((box[2] !== " ") === input.done) return { path: classified.logical, version: input.baseVersion, task: result };
+  const offset = lines.slice(0, input.line - 1).reduce((n, l) => n + l.length + 1, 0) + box[1]!.length;
+  const nextBytes = Buffer.from(`${text.slice(0, offset)}${input.done ? "x" : " "}${text.slice(offset + 1)}`, "utf8");
+  try {
+    unnameableIsForbidden(input.path, () =>
+      writeWorkspaceFile(scope, classified.logical, nextBytes, { mode: "replace", expectSha256: match[1]! }),
+    );
+  } catch (err) {
+    missing(err);
+  }
+  return { path: classified.logical, version: versionOf(nextBytes), task: result };
+}
+

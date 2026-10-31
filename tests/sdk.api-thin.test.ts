@@ -1045,6 +1045,44 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(147);"],
       head: ["    expect(operations).toBe(153);"],
     },
+    // cerebro-paineis, batch B, added PUT /api/memory/tasks (owner) on top of batch A's six routes.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: the tasks route under /api",
+      base: ["    expect(routes).toHaveLength(151);"],
+      head: ["    expect(routes).toHaveLength(152);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: owners and scoped routes",
+      base: ["    expect([owners, scoped]).toEqual([79, 72]);"],
+      head: ["    expect([owners, scoped]).toEqual([80, 72]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: the registered routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(151);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(152);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: the routes of each scope, in the router and in the document",
+      times: 2,
+      base: ["toEqual({ owner: 79, monitor: 33, content: 32, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 80, monitor: 33, content: 32, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: the routes after the pairing passes",
+      base: ["    expect(apiRoutes()).toHaveLength(151);"],
+      head: ["    expect(apiRoutes()).toHaveLength(152);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: the operations of the route document",
+      base: ["    expect(operations).toBe(153);"],
+      head: ["    expect(operations).toBe(154);"],
+    },
     // cerebro-paineis, batch B, added migration 27 (the reminder kind of the inbox, door 8) on top of batch A's.
     {
       suite: "tests/device-scopes.test.ts",

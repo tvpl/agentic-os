@@ -982,3 +982,5 @@ Status of batch B (updated in the commit that closes each piece):
   C12's GET answers the two highlights of its stored snapshot (a task due today, the calendar's flagged event) with no
   source evaluated, and C14 proves first that, while its folder is not excluded, the hidden note reaches the highlights
   and the reminders, then that after the exclusion they are written for the home's other tasks and none names it
+- `PUT /api/memory/tasks` (C47 to C51): closed, every proof green in `tests/paineis.tasks.test.ts`; the route is the
+  seventh of the eight (the export is the last)
