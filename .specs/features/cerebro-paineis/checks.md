@@ -827,8 +827,8 @@ eight `FRONT_MATTER_FIELDS` of before (C24); migrations 22-25 and the rows of `f
 
 ## Handoff
 
-The estimate exceeds the 150k budget. Mechanism: **not yet chosen** — the owner chooses between handoff (the cut below,
-batches sequential, each only on green) and one builder (compaction accepted) before the first line of code.
+The estimate exceeds the 150k budget. Mechanism chosen by the owner on 31/10/2026: **handoff, four batches A, B, C, D** (the cut below,
+batches sequential, each only on green).
 
 - Arithmetic (`wc -c` of the files each slice touches at `4537fb2`, / 4; new files estimated; a large file read in parts
   counts the part):
@@ -889,4 +889,4 @@ batches sequential, each only on green) and one builder (compaction accepted) be
     `tests/e2e/dashboards.spec.ts` ≈ 120 KB → ≈ 30k = ≈ 139k; C65-C97
   - B + C ≈ 166k and A + C ≈ 196k are over the budget, so C stays apart; A lands first because B's KPIs, highlights and
     question read A's evaluator and sources, C asserts the routes of A and B, and D calls the routes of A and B
-- Mechanism: not yet chosen (the owner's call: handoff with the cut above, or one builder with compaction accepted)
+- Mechanism: handoff, four batches A, B, C, D (owner, 31/10/2026)
