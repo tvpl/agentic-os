@@ -1469,3 +1469,75 @@ provenance_required`); (d) C84's "reads go through `readWorkspaceText`" is read 
   showing closed facts in the dashboards' facts source (it would break cerebro-paineis); fixing G6 in this batch (C63
   is A2's check, and the brief asked for a report with a failing test); committing that test into this branch's suite
   (the root gate would be red)
+
+Status of batch A4 (C87-C108):
+
+- C87: closed, its proof green in `apps/command-centre/src/desktop/widgets/FactsWidget.test.tsx`
+- C88 to C95: closed, every proof green in `apps/command-centre/src/brain/reviews/AgentTab.test.tsx`
+- C96: closed, both proofs green (`AgentTab.test.tsx`, the tab's keys and the Núcleo's panel;
+  `commands/commands.source.test.ts`, the new files and their entries own no listener and the allowlist stays at 10
+  files and 11 listeners)
+- C97 to C100: closed, every proof green in `apps/command-centre/src/brain/notes/HistoryFold.test.tsx`
+- C101: closed in `apps/command-centre/src/brain/notes/historyTime.test.tsx` (`TZ=America/Sao_Paulo` pinned at the top
+  and asserted)
+- C102: closed in `apps/command-centre/src/brain/notes/MemoryHistoryDialog.test.tsx`
+- C103: closed in `apps/command-centre/src/brain/reviews/proposalsNotice.test.tsx`
+- C104 and C105: closed in `apps/command-centre/src/brain/memoriaCopy.test.ts`
+- C106 to C108: closed in `tests/e2e/memoria.spec.ts` (each proof line builds first, then runs its `-g`)
+
+- **Boundary (batch A4):** C87 to C95 and C103 closed at `6d790b3`, C96 to C102 at `deda27c`, C104 and C105 at
+  `8078135`, C106 to C108 at `3a376f4`. On each tree: `npm run build`, `npm run typecheck`, `npm run lint` and `npm run
+bundle:check` exit 0, `npx vitest run` at the root is green (182 files, 2640 tests passed, 1 skipped), and `npm run
+test -w apps/command-centre` is green (`6d790b3`: 179 files, 1567 tests; `deda27c`: 182 files, 1589; `8078135` and
+  `3a376f4`: 183 files, 1597). Each of the 23 `Proof:` lines of C87 to C108 passes run alone and runs only its check's
+  tests. `memoria.spec.ts`, `reviews.spec.ts`, `notes-view.spec.ts`, `a11y.spec.ts`, `gallery.spec.ts` and
+  `gallery-contrast.spec.ts` run together pass at `3a376f4` (114 tests); an earlier run of the same six showed
+  `notes-view` C85 failing with the known "Response has been disposed" race and C89 failing after it (C85's own
+  cleanup could not reset the notes tabs of the shared home), and the rerun passed both. **Weight**, measured on the
+  build of `3a376f4` against the `cerebro-paineis` entry (574 327 B JS gzip, 80 203 B CSS gzip): 585 774 B JS gzip
+  (+11 447 B, 1.993%) and 81 504 B CSS gzip (+1 301 B); JS raw 1 791 706 B, CSS raw 371 473 B. C147's cap covers both
+  screen batches: B2 has 4 937 B of JS gzip and 1 771 B of CSS gzip left under it (16 KB and 3 KB as 16 384 B and
+  3 072 B). `tests/pixel.plugin.test.ts` C28 (the newest entry within 2% of the build) passes with 39 B to spare, so
+  the first B2 commit that adds weight must also append the `cerebro-memoria-confiavel` entry (C147). The version
+  dialog and "Histórico da memória" are already reached from both entries only by an `import()` (C147's first clause):
+  `HistoryFold` and `MemoryHistoryHost` take them `lazy`, and the gallery's only static importer is
+  `gallery/notesStory.tsx`, itself an `import()`. What A4 leaves for B2: the NOTAS heading's `Menu` (G18) exists with
+  one item, for "Importar pasta…" (C144) to join; the folder rows have no `Menu` yet (both its items, "Permissões…" and
+  "Exportar pasta…", are C139's, so A4 built none); Settings › Memória is untouched (C142). Pinned tests of other
+  features edited because AC 39 and AC 80 add to the arrangement they pinned: `brain/reviews/ReviewsScreen.test.tsx`
+  cerebro-natureza C72 (the tabs read `Para revisar (2)`, `Sem classificação (5)` and now `Do agente (0)`, still a
+  `toEqual`), `brain/notes/NotePanel.test.tsx` cerebro-vista-notas C52 (the folds `Links`, `Relacionadas`, `Nesta
+nota` and now `Histórico`; four folds wait on their own request). No allowlist changed: `listenersAllowlist`,
+  `DYNAMIC_PREFIXES` of `i18n.orphans`, `WHOLE_MODULE_IMPORTS` of `legacy.graph` and the importer lists of
+  cerebro-natureza C92 and cerebro-vista-notas C79 are as A3 left them
+- **Settled mid-build:** nothing by the owner. Builder decisions inside design.md: (a) what the detail shows for a
+  decision's other codes (A3 left it to A4): the code's own message from `errorMessage`, in the same banner with
+  `AlertTriangle`, and the item stays (no new text); (b) keys beyond design.md's table: `proposals.ops.one` ("1
+  operação" / "1 operation", G22, so `proposals.ops` keeps the table's text), `proposals.section.fact` ("Fato") and
+  `proposals.section.topic` ("Tópico {slug}") for the sections design.md names, `notes.tree.more` ("Opções das notas" /
+  "Notes options") for the NOTAS menu's trigger (a name with "More" collided with the reader's "More" button in
+  `notes-view.spec.ts`), and the G19 pair in `locales/apps.ts`; "Restaurar" of "Histórico da memória" reuses
+  `settings.restore`; (c) a `fact` proposal shows its one op row with a checkbox (design.md lists only `memory_edit`,
+  `note_create` and `note_save` without ops), so it is accepted with "Aceitar selecionadas (k)"; the route ignores `ops`
+  for it; `baseVersion` is sent only when the detail answered one; (d) "Ver histórico" opens `MEMORY.md` (a
+  consolidation, a `memory_edit`) or the written note in the notes view, and is absent for a fact (nothing written);
+  (e) the sources link to `#/brain/notes?open=<absolute path>&line=<n>`: the notes view opens the note in a tab and
+  scrolls to the first paragraph, item or `##` heading holding the line's words (the renderer keeps no source lines);
+  the link is made by the screens and never stored, so no door; `Flow` hop 12 says so; (f) a note outside `memory/` has
+  "Sem versões ainda." and asks nothing; the row's date and time are the `Tooltip` of the row's button, which is named
+  by its parts (ui.source C25 wants a named control under a `Tooltip`); (g) the diff and a deleted note's text are
+  focusable regions (`tabIndex=0`), so a scrolling one is reached by the keyboard (axe `scrollable-region-focusable`);
+  (h) "Propostas do agente" is the last row of the sentinels card, after the triage row (cerebro-natureza C88 pins
+  "Revisões vencidas" between "Vigiar pastas" and the triage row), and the card draws only the sentinels the settings
+  hold; (i) the `proposalsPending` row's body is translated for pt-BR in `notificationText`; the invalid notice's title
+  is localized and its body (the reason) kept as written; (j) C106's consolidation is answered by the page's routes
+  (a real one needs a model run); C107's proposal and note are real; (k) the gallery's entry is two halves rendered by
+  `reviewsStory` and `notesStory` with `part="memoria"`, so the screens' chunks are shared and the importer pins hold;
+  (l) the brief named Settings › Memória and the folder rows' menu under A4; the cut gives both to B2 (C139, C142)
+- **Abandoned:** an interim `cerebro-memoria-confiavel` baseline entry (written while A4 measured 2.06% over
+  `cerebro-paineis`, dropped once it measured under `pixel.plugin` C28's 2%); a gallery module of its own
+  (`memoriaStory.tsx`: it split `AgentTab` and `HistoryFold` out of the screens' chunks, about 1 KB more, and named
+  itself among the importers that cerebro-natureza C92 and cerebro-vista-notas C79 pin); `import().then((m) =>
+m.X)` for the two halves (`legacy.graph` C2 counts it as taking the module whole); moving the history event to a
+  module of its own (it reshuffled the icon chunks for 0.8 KB more); `brain/notes/notesData` in the facts widget
+  (cerebro-vista-notas C79: nothing the entries load statically may come from `brain/notes/`)
