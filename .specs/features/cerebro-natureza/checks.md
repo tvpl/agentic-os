@@ -1163,3 +1163,10 @@ changed: the code was right in every gap, and no new test exposed a bug.
   re-injected (`.nb.tone-muted { --text-dim: var(--ok); }` in `natureza.css`), and it fails: `expected [ Array(1) ] to
 deeply equal []`. So does `@media (prefers-contrast: more) { .badge.meta { --text-dim: var(--ok); } }`. Both were
   reverted.
+
+## Correção depois do fechamento
+
+- **C73 (31/10/2026, coordinator):** the test helpers `dayBefore` and `monthsBack` subtracted months with `setMonth`, so on the
+  31st "4 months back" rolled over to the 1st of the next month and read "3 meses". They now clamp to the month's last day
+  (`monthsBefore` in `apps/command-centre/src/brain/reviews/testkit.tsx`); checked against `ageText` for every day of
+  2026-2028. No product change; the claim is unchanged.

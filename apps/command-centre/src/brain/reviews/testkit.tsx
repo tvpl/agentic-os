@@ -18,9 +18,17 @@ export const DAY = 86_400_000;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 /** The local day `AAAA-MM-DD` that is `days` before today (`months` months before, when given). */
+/** `n` calendar months before `from`, clamped to the month's last day (31 Oct minus 4 months is 30 Jun, not 1 Jul). */
+export function monthsBefore(from: Date, n: number): Date {
+  const d = new Date(from.getTime());
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - n);
+  d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  return d;
+}
 export function dayBefore(days: number, months = 0): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() - months);
+  const d = monthsBefore(new Date(), months);
   d.setDate(d.getDate() - days);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

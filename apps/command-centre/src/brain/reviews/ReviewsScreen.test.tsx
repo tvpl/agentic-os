@@ -29,6 +29,7 @@ import {
   itemNamed,
   list,
   listStatus,
+  monthsBefore,
   mountReviews,
   names,
   net,
@@ -67,11 +68,7 @@ const flush = () =>
   });
 const button = (name: string | RegExp) => screen.getByRole("button", { name });
 const current = () => document.querySelector('.rv-pick[aria-current="true"] .rv-name')?.textContent;
-const monthsBack = (n: number) => {
-  const d = new Date();
-  d.setMonth(d.getMonth() - n);
-  return d.getTime();
-};
+const monthsBack = (n: number) => monthsBefore(new Date(), n).getTime();
 const stateAlert = () =>
   waitFor(() => {
     const el = document.querySelector<HTMLElement>('.rv-state[role="alert"]');
