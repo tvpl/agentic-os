@@ -1398,3 +1398,48 @@ note_not_editable`, `404 note_missing`, `409 note_exists`, `409 structure_fixed`
 - **Abandoned:** checking a `note_create` proposal with codes of its own (C80 pins that route's codes to `429` alone); a
   raw delete to undo a file a failed decision created (the raw-fs list does not grow, C84); freezing `Date` around a
   decision (an index pass waits for the clock to move); `count` only in `messageParams` (C75 names it in the payload)
+
+Status of batch A3 (C80-C86):
+
+- C80: closed after plan amendment 2 ("Correções de construção", G26), its two proofs green in
+  `tests/memoria.contract.test.ts` and `tests/api.openapi.test.ts` (C16)
+- C81 to C85: closed, every proof green in `tests/memoria.contract.test.ts`, `tests/api.refusals.test.ts`,
+  `tests/security-reads.test.ts`, `tests/sdk.instances.test.ts` (C30) and `tests/data.settings.test.ts` (C46)
+- C86: closed after a build correction ("Correções de construção", G27), its proof green in
+  `tests/memoria.contract.test.ts`
+- **A defect found, not fixed (C63, G6):** when an accepted consolidation creates two topic files and the second
+  create fails, the first stays on disk with no version (`writeAll` in `core/src/memory/proposals.ts` puts back only
+  the files it replaced), so G6's "the earlier files are put back" and C63's "(a file written earlier in the same
+  decision is put back)" do not hold for a created file; the second decision then answers `200` and appends the same
+  lines to that file again (`topics/a.md` ends with `- Um` twice), so "a second decide works" holds only in its
+  status. C63's test covers the replaced `MEMORY.md` alone. A failing test (an EIO injected into the guarded writer's
+  create of `topics/b.md`) is kept out of this branch's suite, on the local branch `bug/cerebro-memoria-g6`
+
+- **Boundary (batch A3):** C80 closed at `89f9b0f` (with plan amendment 2), C81 to C85 at `7251a94`, C86 at `ed7d3dc`.
+  On each tree: `npm run build`, `npm run typecheck` and `npm run lint` exit 0, `npx vitest run` at the root is green
+  (`89f9b0f`: 182 files, 2627 tests passed, 1 skipped; `7251a94`: 2633 passed, 1 skipped; `ed7d3dc`: 2638 passed, 1
+  skipped), and `npm run test -w apps/command-centre` is green (176 files, 1538 tests; no file of this batch is under
+  `apps/command-centre`). Each of the 12 `Proof:` lines of C80 to C86 passes run alone. No product code changed in
+  this batch; `docs/security.md` gained one paragraph (door 9 and the MCP's mark, C82). No pin moved: the probe's 162
+  scenarios, the scope table's counts, the raw-fs list (70 rows) and the module-state list are as A2 left them. What A3
+  leaves for A4: the screens (C87-C108) read the routes whose codes C80 now names; C93 gives a text to `409
+edit_conflict` and `409 memory_over_budget` alone, so what the detail shows for the other codes of amendment 2 is A4's
+  to settle inside design.md
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) **C80's code list**
+  (plan amendment 2, an owner question, G26): the claim names the codes as built; default as built, the alternative
+  is mapping the acceptance's refusals onto door 10's codes; (b) **C86's dashboards clause** (an owner question, G27):
+  the claim asserts the open-facts-only behaviour of before; the alternative is showing closed facts in the dashboards;
+  (c) C80's `toEqual` is read over each new route's own `errors` (the common errors aside, as cerebro-paineis C58
+  reads it); for the changed entries "declares" is a containment (`memory.facts.assert` also declares door 3's `400
+provenance_required`); (d) C84's "reads go through `readWorkspaceText`" is read as the safe reader: the modules call
+  `readWorkspaceFile`, which `readWorkspaceText` wraps; the walker's files are the five part-A modules of
+  `core/src/memory/`, `core/src/sentinels/proposalsPending.ts` and `apps/api/src/routes/memory.ts`; (e) C81's two
+  halves: the device and run refusals and the run's lists in `memoria.contract`, the probe's per-route comparison and
+  its names in `api.refusals`; a run's credential is shown live by `GET /api/memory/facts`, of a write and of a
+  read-only run; (f) C86 by value: `MEMORY_WRITES_PER_RUN` as the source's constant and as 100 journal lines written
+  and the 101st `429 too_many_requests`; `limits.approvalTtlDays` as 7, `expiresAt - createdAt` of 7 days and the
+  expiry's two edges; the `## Runs` line as `- HH:MM run <id> → done in 3s · /organize-brain`, under `## Runs`
+- **Abandoned:** mapping the decision's acceptance refusals onto door 10's codes (a product change C80 does not need);
+  showing closed facts in the dashboards' facts source (it would break cerebro-paineis); fixing G6 in this batch (C63
+  is A2's check, and the brief asked for a report with a failing test); committing that test into this branch's suite
+  (the root gate would be red)
