@@ -90,6 +90,16 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   user, and the same holds for the permission broker's `brk_` credential); and the owner token itself is
   still obtainable by a program of this user from the page (next bullet), so this narrows what a run is
   *given*, it does not stop a run that goes looking.
+- **What an agent writes to the memory waits for the owner** (`.specs/features/cerebro-memoria-confiavel`, door 9).
+  A run's credential that calls `POST /api/memory/facts` writes no fact: it gets `202` and a proposal of `run:<id>`
+  that waits in the review inbox ("Revisões", tab "Do agente") until the owner accepts or rejects it with `POST
+  /api/memory/proposals/:id/decide`, which only the owner token reaches; a line it appends with `POST
+  /api/memory/journal/append` ends with ` (autor:: agente)`, and the consolidation never promotes such a line. The
+  run's two route lists did not grow. In the same way the MCP tools `facts_assert`, `note_create` and `note_save` call
+  `POST /api/memory/proposals` (`author: "mcp"`), and `journal_append` sends `author: "agent"`. **The authorship mark is
+  provenance, not containment:** `mordomo mcp` runs with the owner token, so the process that serves it, or any program
+  that reads the token, can still call the owner's routes and write as the owner. What is guaranteed is that the tools
+  MordomoOS hands an agent propose instead of writing, and that every proposal and every version says who wrote it.
 - **A SKILL.md is data, never code.** Every SKILL.md is parsed by one function (`parseSkillFile`,
   `core/src/skills/parse.ts`): `gray-matter` would run a `---js`, `---javascript`, `---coffee` or `---cson`
   frontmatter with `eval`, so those engines are replaced by ones that refuse (`400 invalid_frontmatter`),

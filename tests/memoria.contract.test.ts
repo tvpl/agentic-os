@@ -1,10 +1,13 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 import { API, routeKey, type RouteDefinition } from "@mordomo/contracts";
 import type * as CoreInternal from "@mordomo/core/internal";
+import { responsesValidated } from "../apps/api/src/contract.js";
 import { storeProposal } from "../core/src/memory/proposals.js";
+import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
 import { code, memoriaWorld, sha, type Json, type MemoriaWorld } from "./helpers/memoriaWorld.js";
 
 /**
@@ -41,6 +44,16 @@ vi.mock("@mordomo/core/internal", async (importOriginal) => {
   };
   return { ...actual, queryFacts, listVersions, readProposal };
 });
+
+const repoRoot = path.resolve(import.meta.dirname, "..");
+/** The feature's base: the commit before batch A1. */
+const FEATURE_BASE = "a5b332e";
+const atBase = (file: string) =>
+  execFileSync("git", ["show", `${FEATURE_BASE}:${file}`], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
 
 /**
  * The seven routes of door 10 with the codes each declares of its own (the common errors aside). Door 10's codes, and
@@ -133,6 +146,9 @@ const ROUTES = [
     ],
   },
 ] as const;
+const KEYS: string[] = ROUTES.map((r) => `${r.method} ${r.path}`);
+const READS = ROUTES.filter((r) => r.method === "GET");
+const WRITES = ROUTES.filter((r) => r.method !== "GET");
 const entryOf = (id: string) => API[id as keyof typeof API] as RouteDefinition;
 const ownCodes = (entry: RouteDefinition) => (entry.errors ?? []).map((e) => `${e.status} ${e.code}`).sort();
 
@@ -474,4 +490,191 @@ describe("C80 the seven routes and the changed entries in the API table, the doc
     for (const id of [inArea, notEditable, missing, twin, folder, inside])
       expect(await statusOf(id), id).toBe("pending");
   }, 60_000);
+});
+
+// ---- C81: who may call the seven routes ---------------------------------------------------------------------------
+
+describe("C81 who may call the seven routes", () => {
+  it("C81 EXPECTED_ROUTE_SCOPES lists the seven with door 10's scopes; a content device gets 200 from the four reads and a monitor-only one 403 scope_required; every device gets 403 owner_only from the three writes; a run's own credential, write or read-only, gets 403 forbidden from all seven; nothing changes; the run's route lists are those of the feature's base", async () => {
+    for (const want of ROUTES)
+      expect(EXPECTED_ROUTE_SCOPES[`${want.method} ${want.path}`], want.id).toBe(want.scope);
+
+    w.put(memoryFile(), BASE);
+    const n = await note("Quem pode C81", "um\n");
+    const [version] = await versionsOf(n.rel);
+    const proposal = consolidation("C81 decisão");
+    const reads: Record<string, string> = {
+      "GET /api/memory/history": `/api/memory/history?path=${encodeURIComponent(n.rel)}`,
+      "GET /api/memory/history/:id": `/api/memory/history/${version!.id}`,
+      "GET /api/memory/proposals": "/api/memory/proposals?status=pending",
+      "GET /api/memory/proposals/:id": `/api/memory/proposals/${proposal}`,
+    };
+    expect(Object.keys(reads).sort()).toEqual(READS.map((r) => `${r.method} ${r.path}`).sort());
+    /** The three writes, each as the owner would make it succeed. */
+    const writes: Record<string, [string, Json]> = {
+      "POST /api/memory/history/restore": [
+        "/api/memory/history/restore",
+        { id: version!.id, baseVersion: n.version },
+      ],
+      "POST /api/memory/proposals": [
+        "/api/memory/proposals",
+        { kind: "fact", subject: "C81", predicate: "p", object: "o" },
+      ],
+      "POST /api/memory/proposals/:id/decide": [
+        `/api/memory/proposals/${proposal}/decide`,
+        { action: "accept", baseVersion: sha(BASE) },
+      ],
+    };
+    expect(Object.keys(writes).sort()).toEqual(WRITES.map((r) => `${r.method} ${r.path}`).sort());
+
+    const content = w.device(["content"]);
+    const monitor = w.device(["monitor"]);
+    for (const [key, url] of Object.entries(reads)) {
+      const ok = await w.call("GET", url, undefined, content);
+      expect(ok.status, `${key} ${JSON.stringify(ok.body).slice(0, 200)}`).toBe(200);
+      expect(code(await w.call("GET", url, undefined, monitor)), key).toEqual([403, "scope_required"]);
+    }
+    expect(
+      (await w.call("GET", reads["GET /api/memory/history/:id"]!, undefined, content)).body.content,
+    ).toBe(fs.readFileSync(n.file, "utf8"));
+    expect((await w.call("GET", reads["GET /api/memory/proposals/:id"]!, undefined, content)).body.id).toBe(
+      proposal,
+    );
+
+    const before = state();
+    expect(before.proposals.length).toBeGreaterThan(0);
+    expect(before.versions.length).toBeGreaterThan(0);
+    const devices = {
+      content,
+      monitor,
+      run: w.device(["run"]),
+      approve: w.device(["approve"]),
+      all: w.device(["content", "monitor", "run", "approve"]),
+    };
+    for (const [name, headers] of Object.entries(devices))
+      for (const [key, [url, body]] of Object.entries(writes))
+        expect(code(await w.call("POST", url, body, headers)), `${name} ${key}`).toEqual([403, "owner_only"]);
+    expect(state()).toEqual(before);
+
+    // A run's own credential, live (it reaches a route of its read list), of a write run and of a read-only one.
+    for (const mode of ["write", "read_only"] as const) {
+      const run = w.run(mode).headers;
+      expect((await w.call("GET", "/api/memory/facts", undefined, run)).status, mode).toBe(200);
+      for (const [key, url] of Object.entries(reads))
+        expect(code(await w.call("GET", url, undefined, run)), `${mode} ${key}`).toEqual([403, "forbidden"]);
+      for (const [key, [url, body]] of Object.entries(writes))
+        expect(code(await w.call("POST", url, body, run)), `${mode} ${key}`).toEqual([403, "forbidden"]);
+    }
+    expect(state()).toEqual(before);
+
+    // The owner succeeds with the same calls: the refusals above were the caller's, not the request's.
+    const owned = await Promise.all(
+      Object.values(writes).map(async ([url, body]) => (await w.call("POST", url, body)).status),
+    );
+    expect(owned).toEqual([200, 201, 200]);
+
+    const lists = (source: string) =>
+      ["RUN_API_READ_ROUTES", "RUN_API_WRITE_ROUTES"].map((name) => {
+        const set = new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\);`).exec(source)?.[1] ?? "";
+        return [...set.matchAll(/"([A-Z]+ [^"]+)"/g)].map((m) => m[1]!).sort();
+      });
+    const now = lists(fs.readFileSync(path.join(repoRoot, "apps", "api", "src", "server.ts"), "utf8"));
+    expect(now[0]!.length).toBeGreaterThan(3);
+    expect(now[1]!.length).toBeGreaterThan(0);
+    expect(now).toEqual(lists(atBase("apps/api/src/server.ts")));
+    for (const list of now)
+      expect(list.filter((r) => KEYS.includes(r) || /\/api\/memory\/(history|proposals)/.test(r))).toEqual(
+        [],
+      );
+  }, 120_000);
+});
+
+// ---- C82: docs/security.md ----------------------------------------------------------------------------------------
+
+describe("C82 the seven routes and the agent's writes in docs/security.md", () => {
+  it("C82 docs/security.md lists each of the seven in its scope's row and in no other, each row's count is the number of its routes, and it says that a run's POST /api/memory/facts becomes a proposal and that the MCP authorship mark is provenance, not containment", () => {
+    const security = fs.readFileSync(path.join(repoRoot, "docs", "security.md"), "utf8");
+    const scopes = ["monitor", "content", "run", "approve", "owner"];
+    const rowOf = (scope: string, page = security) =>
+      page.split("\n").find((l) => l.startsWith(`| \`${scope}\` (`)) ?? "";
+    for (const want of ROUTES) {
+      const route = `\`${want.method} ${want.path}\``;
+      expect(rowOf(want.scope), route).toContain(route);
+      for (const other of scopes.filter((s) => s !== want.scope))
+        expect(rowOf(other).includes(route), `${route} in ${other}`).toBe(false);
+    }
+    for (const scope of ["content", "owner"]) {
+      const row = rowOf(scope);
+      const declared = Number(/^\| `\w+` \((\d+)\)/.exec(row)?.[1]);
+      const listed = [...row.matchAll(/`(GET|POST|PUT|PATCH|DELETE) (\/api\/[^`]+)`/g)].length;
+      const expected = Object.values(EXPECTED_ROUTE_SCOPES).filter((s) => s === scope).length;
+      expect([declared, listed], scope).toEqual([expected, expected]);
+    }
+    // four reads and three writes on top of the feature's base
+    const base = atBase("docs/security.md");
+    const count = (scope: string, page: string) => Number(/\((\d+)\)/.exec(rowOf(scope, page))?.[1]);
+    expect([count("content", security), count("owner", security)]).toEqual([
+      count("content", base) + 4,
+      count("owner", base) + 3,
+    ]);
+
+    // Door 9 and the assumption on the MCP's mark, each said once in the prose.
+    const prose = security.replace(/\s+/g, " ");
+    for (const phrase of [
+      "A run's credential that calls `POST /api/memory/facts` writes no fact: it gets `202` and a proposal",
+      "the MCP tools `facts_assert`, `note_create` and `note_save` call `POST /api/memory/proposals`",
+      "The authorship mark is provenance, not containment",
+    ])
+      expect(prose, phrase).toContain(phrase);
+  });
+});
+
+// ---- C83: the response check ---------------------------------------------------------------------------------------
+
+describe("C83 the response check over the new keys", () => {
+  it("C83 with validateResponses on, a GET /api/memory/facts fact without author, a GET /api/memory/history version without origin and a GET /api/memory/proposals/:id op without trust each answer 500 response_contract_violation; with every key the same calls answer 200", async () => {
+    expect(responsesValidated()).toBe(true);
+    const fact = await w.call("POST", "/api/memory/facts", { subject: "C83", predicate: "p", object: "o" });
+    expect(fact.status).toBe(201);
+    const n = await note("Resposta C83");
+    w.put(memoryFile(), BASE);
+    const proposal = consolidation("C83 decisão");
+    const cases: Array<[keyof typeof drop, string, string]> = [
+      ["factKey", "author", "/api/memory/facts?subject=C83"],
+      ["versionKey", "origin", `/api/memory/history?path=${encodeURIComponent(n.rel)}`],
+      ["opKey", "trust", `/api/memory/proposals/${proposal}`],
+    ];
+    for (const [which, key, url] of cases) {
+      const ok = await w.call("GET", url);
+      expect(ok.status, url).toBe(200);
+      drop[which] = key;
+      try {
+        const res = await w.call("GET", url);
+        expect(code(res), `${url} without ${key}`).toEqual([500, "response_contract_violation"]);
+        expect(res.body.error.message, key).toContain(key);
+      } finally {
+        drop[which] = null;
+      }
+      expect((await w.call("GET", url)).status, url).toBe(200);
+    }
+  });
+});
+
+// ---- C85: the history's setting -------------------------------------------------------------------------------------
+
+describe("C85 memory.history.maxBytes through PUT /api/settings", () => {
+  it("C85 the default is 268435456; PUT /api/settings with memory.history.maxBytes answers it, GET and the file read it back, and memory.agentStance is kept", async () => {
+    const read = async () => (await w.call("GET", "/api/settings")).body;
+    const file = () =>
+      JSON.parse(fs.readFileSync(path.join(w.ctx.paths.config, "settings.json"), "utf8")) as Json;
+    expect((await read()).memory.history).toEqual({ maxBytes: 268435456 });
+    const stance = await w.call("PUT", "/api/settings", { memory: { agentStance: "contest-conflicts" } });
+    expect(stance.status, JSON.stringify(stance.body)).toBe(200);
+    const res = await w.call("PUT", "/api/settings", { memory: { history: { maxBytes: 1_048_576 } } });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    for (const settings of [res.body.settings, await read(), file()]) {
+      expect(settings.memory.history).toEqual({ maxBytes: 1_048_576 });
+      expect(settings.memory.agentStance).toBe("contest-conflicts");
+    }
+  });
 });

@@ -333,6 +333,48 @@ describe("S1 the refusals of the file readers", () => {
     expect(answering("file_too_large").filter((k) => PAINEIS.includes(k))).toEqual([]);
   });
 
+  it("C81 the probe has one scenario for each of the seven routes of the history and the review inbox, and finds the refusals exactly where the contract lists them", () => {
+    // .specs/features/cerebro-memoria-confiavel C81 (door 10): the history of memory/ and the review inbox.
+    const MEMORIA = [
+      "GET /api/memory/history",
+      "GET /api/memory/history/:id",
+      "POST /api/memory/history/restore",
+      "GET /api/memory/proposals",
+      "GET /api/memory/proposals/:id",
+      "POST /api/memory/proposals",
+      "POST /api/memory/proposals/:id/decide",
+    ];
+    const tabled = entries.map(([, e]) => routeKey(e));
+    for (const key of MEMORIA) {
+      expect(tabled, key).toContain(key);
+      expect(Object.keys(SCENARIOS), key).toContain(key);
+    }
+    expect(
+      Object.keys(SCENARIOS)
+        .filter((k) => /\/api\/memory\/(history|proposals)(\/|$)/.test(k))
+        .sort(),
+    ).toEqual([...MEMORIA].sort());
+    const byKey = new Map(entries.map(([, e]) => [routeKey(e), e]));
+    for (const fault of FAULTS) {
+      const here = answering(fault).filter((k) => MEMORIA.includes(k));
+      const declaredHere = MEMORIA.filter((k) => declares(byKey.get(k)!, fault)).sort();
+      expect(here, fault).toEqual(declaredHere);
+    }
+    // By name (plan amendment 2): the routes that read or write a file of memory/ through the primitives.
+    const reading = [
+      "GET /api/memory/history/:id",
+      "GET /api/memory/proposals/:id",
+      "POST /api/memory/history/restore",
+      "POST /api/memory/proposals/:id/decide",
+    ];
+    expect(answering("forbidden_path").filter((k) => MEMORIA.includes(k))).toEqual(reading);
+    expect(answering("not_a_file").filter((k) => MEMORIA.includes(k))).toEqual(reading);
+    expect(answering("file_too_large").filter((k) => MEMORIA.includes(k))).toEqual([
+      "GET /api/memory/proposals/:id",
+      "POST /api/memory/proposals/:id/decide",
+    ]);
+  });
+
   for (const fault of FAULTS) {
     it(`C46 the routes that answer ${STATUS[fault]} ${fault} are the routes that declare it`, () => {
       const answers = answering(fault);
