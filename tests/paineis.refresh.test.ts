@@ -7,6 +7,7 @@ import { buildServer, startServer } from "../apps/api/src/server.js";
 import type * as client from "../core/src/connectors/client.js";
 import type { OsEvent } from "../core/src/events.js";
 import { assertFact } from "../core/src/memory/facts.js";
+import * as reviews from "../core/src/memory/reviews.js";
 import * as safeFs from "../core/src/security/safeFs.js";
 import { auditFiles } from "./fsReadAudit.js";
 import { makeTempHome } from "./helpers.js";
@@ -30,6 +31,10 @@ import {
 vi.mock("../core/src/connectors/client.js", async (importOriginal) => {
   const actual = await importOriginal<typeof client>();
   return { ...actual, fetchConnectorData: vi.fn(actual.fetchConnectorData) };
+});
+vi.mock("../core/src/memory/reviews.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof reviews>();
+  return { ...actual, reviewsDue: vi.fn(actual.reviewsDue) };
 });
 vi.mock("../core/src/security/safeFs.js", async (importOriginal) => {
   const actual = await importOriginal<typeof safeFs>();
@@ -137,13 +142,20 @@ describe("C8 a failing source", () => {
   it("C8 (a) the calendar read rejects after dataTimeoutMs: only the agenda is in error with the message, its source too, every other widget keeps its data, the event says partial, and the snapshot is stored", async () => {
     await fresh(async (world) => {
       await overviewHome(world);
+      world.update((s) => {
+        s.connectors.dataTimeoutMs = 1_000;
+      });
       vi.useFakeTimers({ toFake: ["Date"], now: NOW });
       const before = (await world.refresh("visao-geral")).body.snapshot;
       const timeoutMs = world.ctx.settings().connectors.dataTimeoutMs;
       const message = `The connector did not answer in ${timeoutMs} ms.`;
-      fakeConnectorFetch(async () => {
-        throw new Error(message);
-      });
+      // the read rejects once dataTimeoutMs has passed, as fetchConnectorData's own ceiling does
+      fakeConnectorFetch(
+        () =>
+          new Promise<client.ConnectorData>((_, reject) =>
+            setTimeout(() => reject(new Error(message)), timeoutMs),
+          ),
+      );
       const next = world.nextRefresh("visao-geral");
       const res = await world.refresh("visao-geral");
       expect(res.status).toBe(200);
@@ -165,6 +177,65 @@ describe("C8 a failing source", () => {
         expect(widget).toEqual(before.widgets.find((x: Json) => x.id === widget.id));
       }
       expect((await next).status).toBe("partial");
+      expect((await world.get("visao-geral")).body.snapshot).toEqual(snap);
+    });
+  });
+});
+
+describe("C8 a failing source, at the route", () => {
+  it("C8 (b) the reviews source throws: only the Revisões vencidas widget is in error, its source too, and the snapshot is stored and read back", async () => {
+    await fresh(async (world) => {
+      await overviewHome(world);
+      vi.mocked(reviews.reviewsDue).mockImplementationOnce(() => {
+        throw new Error("a fila de revisões caiu");
+      });
+      const next = world.nextRefresh("visao-geral");
+      const res = await world.refresh("visao-geral");
+      expect(res.status).toBe(200);
+      const snap = res.body.snapshot;
+      expect(snap.widgets.filter((x: Json) => x.status === "error")).toEqual([
+        { id: "revisoes-kpi", kind: "kpi", status: "error", error: "a fila de revisões caiu" },
+      ]);
+      expect(snap.sources.find((s: Json) => s.id === "reviews")).toMatchObject({
+        status: "error",
+        message: "a fila de revisões caiu",
+      });
+      expect((await next).status).toBe("partial");
+      expect((await world.get("visao-geral")).body.snapshot).toEqual(snap);
+    });
+  });
+
+  it("C8 (c) every source of the dashboard throws: every widget is in error, the event says error, and the snapshot is stored and read back", async () => {
+    await fresh(async (world) => {
+      await overviewHome(world);
+      const created = await world.get("visao-geral");
+      const definition = {
+        ...created.body.definition,
+        widgets: created.body.definition.widgets.filter((x: Json) =>
+          ["revisoes-kpi", "agenda"].includes(x.id),
+        ),
+      };
+      const put = await world.call("PUT", "/api/dashboards/visao-geral", {
+        definition,
+        baseVersion: created.body.version,
+      });
+      expect(put.status, JSON.stringify(put.body)).toBe(200);
+      vi.mocked(reviews.reviewsDue).mockImplementationOnce(() => {
+        throw new Error("a fila caiu");
+      });
+      fakeConnectorFetch(async () => {
+        throw new Error("o calendário caiu");
+      });
+      const next = world.nextRefresh("visao-geral");
+      const res = await world.refresh("visao-geral");
+      expect(res.status).toBe(200);
+      const snap = res.body.snapshot;
+      expect(snap.widgets.map((x: Json) => [x.id, x.status, x.error])).toEqual([
+        ["revisoes-kpi", "error", "a fila caiu"],
+        ["agenda", "error", "o calendário caiu"],
+      ]);
+      expect(snap.sources.map((s: Json) => s.status)).toEqual(["error", "error"]);
+      expect((await next).status).toBe("error");
       expect((await world.get("visao-geral")).body.snapshot).toEqual(snap);
     });
   });
