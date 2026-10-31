@@ -1203,7 +1203,8 @@ sequential, each only on green.
   - all slices ≈ 43k + 66k + 96k + 55k + 138k + 84k + 51k + 26k + 60k = ≈ 619k, over 150k
 - Intended cut, at the surface boundaries (the plan's cut S3/S4 included), batches sequential and each only on green:
   - **A1** (facts and history, core and API): S1 + S2 ≈ 43k + 66k = ≈ 109k; C1-C39
-  - **A2** (proposals, consolidation, guard, sentinel, core and API): S3 ≈ 96k; C40-C79 (A2 reads A1's history and
+  - **A2** (proposals, consolidation, guard, sentinel, core and API): S3 ≈ 96k; C40-C79, and C39 (moved from A1 by the
+    coordinator on 31/10/2026: a restored backup opens at migration 30, which A2 adds; the claim is unchanged) (A2 reads A1's history and
     `assertFact`)
   - **A3** (part A's cross-cutting API checks): ≈ 55k; C80-C86 (S3 + A3 ≈ 151k is just over the budget, so A3 stays apart)
   - **A4** (part A's screens): ≈ 138k; C87-C108 (calls the routes of A1 and A2)
