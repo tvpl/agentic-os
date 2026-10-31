@@ -1289,3 +1289,82 @@ edit_conflict`; (j) `memory.history.maxBytes` is an integer from 1, default 2684
   owner's); a `CHECK` on the closed vocabularies of `memory_versions` (door 4's literal shape has none, and widening a
   `CHECK` takes a table rebuild, as migration 27 did); a raw `fs.lstatSync` for "is the file still there"
   (`security-reads` C32: the safe stat is used)
+
+Status of batch A2 (C39-C79, and C148, added with door 16):
+
+- C39: closed in `tests/memoria.migration.test.ts`, both clauses (the history read back after a backup restored over a
+  fresh home; a backup made at schema 27 with facts, restored, opens at 30 with the keys filled and `author` `unknown`)
+- S3, the inbox, the consolidation and the guard (C40 to C74, C79): closed, every proof green in
+  `tests/memoria.proposals.test.ts`, `memoria.mcp.test.ts`, `memoria.consolidation.test.ts`, `memoria.localday.test.ts`,
+  `memoria.guard.test.ts`, `memoria.skill.test.ts`, `memoria.layer.test.ts` and `memoria.migration.test.ts`
+- S3, the sentinel (C75 to C78): closed, every proof green in `tests/memoria.sentinel.test.ts`,
+  `memoria.localday.test.ts`, `data.settings.test.ts` (C63) and `events.contract.test.ts` (C27, C29)
+- C148: closed in `tests/memoria.proposals.test.ts` (door 16, found while building: the JSON a proposal stores)
+
+- **Boundary (batch A2):** C39 to C74, C79 and C148 closed at `134afb4` (code, tests, pins, Landing row 16 and C148 in
+  one commit), C75 to C78 at `dfbd035`. On each tree: `npm run build`, `npm run typecheck` and `npm run lint` exit 0, `npx
+vitest run` at the root is green (`134afb4`: 180 files, 2616 tests passed, 1 skipped; `dfbd035`: 181 files, 2625
+  passed, 1 skipped), and `npm run test -w apps/command-centre` is green (176 files, 1538 tests; no file of this batch is
+  under `apps/command-centre`). Each of the 49 `Proof:` lines of C39 to C79 and C148 passes run alone and runs only its
+  check's tests (and the local-day file's pin test, titled `C54 C55 C56 C58 C75`). What A2 leaves for A3 and later: no
+  screen reads the inbox yet (A4); the inbox rows `sentinel.proposalsPending` and `proposals.invalidNotice` have no
+  localized text and Settings › Notifications has no `proposalsPending` switch (G19, C103); C80's `toEqual` over the
+  codes of the new routes will find, beside door 10's, what the refusal probe made the two routes declare (`GET
+/api/memory/proposals/:id` and `.../decide`: `403 forbidden_path`, `404 not_a_file`, `413 file_too_large`, A1's
+  pattern for the history) and what accepting a note or a fact answers on `decide` (`400 unknown_area`, `403
+note_not_editable`, `404 note_missing`, `409 note_exists`, `409 structure_fixed`, `409 fact_overlap`): A3 decides
+  whether the check counts them. The pins A2 moved, so A3 adds on top: 162 routes and scenarios, 84 owner and 36 content
+  routes (chained amendments in `sdk.api-thin`; `paineis.contract` C60 as `32 + 2 + 2` and `81 + 1 + 2`), 160 checked
+  responses, 82 raised pairs (`too_many_proposals`, `proposal_decided`, `memory_over_budget`), `POST
+/api/memory/proposals/:id/decide` among the routes that name `edit_conflict` and `note_*`, migration 30 in the lists of
+  `data.migration`, `contexts.runs`, `device-scopes`, `natureza.layer` C7 and `paineis.layer` C19 and C98, the scope
+  table and the rows of `docs/security.md`, two open fields (`memory.ts payload`, `memory.ts result`, `contracts.api`
+  C38), four contract exports (`contracts` C41: `PROPOSAL_FILE_MAX_BYTES`, `PROPOSAL_KIND_VALUES`,
+  `PROPOSAL_STATUS_VALUES`, `ProposalFileSchema`), six names of the internal barrel (`sdk.surface` C38:
+  `ProposalValidationError`, `decideProposal`, `listProposals`, `planNewNote`, `readProposal`, `storeProposal`),
+  `sentinels.proposalsPending.enabled` in `data.settings` C19 and C63 and in the v1 `settings.changed` fixture;
+  `docs/events.md` regenerated (`proposalsPending` and `count`). `RUN_API_READ_ROUTES` and `RUN_API_WRITE_ROUTES` did not
+  change. Older tests whose behaviour AD-045 changes, edited in `134afb4` and named here for the owner:
+  `tests/builtin-context.test.ts` (seguranca-p1 C49: a write run's fact is now `202` and a proposal of the run, the body's
+  `sourceRunId` still overridden), `tests/memory.notes.cli.test.ts` (cerebro-v2 C17: `note_create` and `note_save` propose,
+  accepting writes, a stale save is `409 edit_conflict` at the decision; cerebro-v2 C17's text "return the route's
+  result" is superseded by AC 48), `tests/api.contract.test.ts` C12 (the parked write skill is `gauntlet-loop`, since
+  `consolidate-memory` only reads)
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) **a new door, 16** (an
+  owner question, G25): the JSON a proposal stores in `payload` and `result`, per kind (Landing row 16, C148); default as
+  built; the alternative is a column per field of each kind; (b) the ceiling's "smaller than the file now" is no more
+  lines and no more bytes, and fewer of one (C59's 220-over-230 case moves long lines, so both shrink); the alternative
+  is fewer lines alone; the ceiling is checked only when the accepted ops change `MEMORY.md` (a fact-only acceptance
+  skips it) and only for consolidations, not for a `memory_edit`; (c) C75's `count` is both an optional top-level
+  `count` of the v1 `sentinel.fired` payload (additive; `EVENT_VERSIONS` stays `[1]`) and `messageParams.count`, which
+  the inbox row carries (C78); (d) the guard: at `run.started` a `guard` version only when `MEMORY.md` exists and
+  differs from its newest version ("não existe" is kept on the instance: door 4 allows a null `sha256` only for
+  `removed`); a run's mode is its request's (no request: a write unless its profile is `read_only`); a `MEMORY.md` the
+  run created is moved aside and recorded as a `guard` version of its bytes and a `removed` version by `system`; a run
+  that deleted it gets it back (create) and its `memory_edit` holds an empty text; the put-back is the instance's own
+  method `putBack` (C71 watches it); (e) the consolidation hook reads only runs that finished `done` of
+  `consolidate-memory`; its inbox row is `kind: system`, `tone: warn`, `messageKey: proposals.invalidNotice`, the AC 53
+  title, the reason as body (the first schema issue's path and message), `href: /runs/<id>`; (f) a `note_create`
+  proposal is checked when made as `createNote` checks (`planNewNote`: title, tags, area, size, fixed structure) and
+  refused with `400 validation` whose message starts with the note's code (`structure_fixed: …`), so cerebro-vista-notas
+  C27 (the MCP tool names `structure_fixed`) still holds and `POST /api/memory/proposals` declares no new code; (g)
+  `decide`: no `ops` is every valid op; an empty list, an index out of range, an op not `valid`, no valid op, or two
+  chosen ops naming the same line are `400 validation`; no `baseVersion` means `MEMORY.md` did not exist; the files the
+  decision replaces are written first and the ones it creates after; a failure puts back the replaced ones (a file the
+  decision created before a later create failed stays: no primitive removes a file of `memory/` and the raw-fs list does
+  not grow); a `fact` op is asserted with `sourcePath` = `<memory>/<path>` (the `#section` dropped) and `sourceRunId` =
+  the proposal's run; a topic file is created as `---\ntype: memoria-topico\n---\n\n` and the lines; the pointer's title
+  is the slug with hyphens as spaces and its first letter upper-cased; a `supersede` of a line under no heading puts the
+  new line in its place; `opCount` is 1 for every kind but `consolidation`; the summary of a `fact` is `s · p · o`, of a
+  `note_create` the title, of a `note_save` the file's name; the list's `limit` is 1 to 200 (default 50); `:id` is
+  `mp_` and 16 hex digits, anything else `400 validation`; (h) accepting a `fact` proposal gives it the trust of its
+  `sourcePath` and `sourceLine` by the trust rule when they are a line of `memory/`, `inferido` otherwise; (i) `decide`
+  and `readProposal` take the day from `new Date(Date.now())`; proof readings: the local-day file moves `Date.now` with
+  `movingClock` (a frozen `Date` made an index pass spin and hang its worker), and C64's "now" is the real clock between
+  the call and its answer; C47 and C148 drive the hook and the guard by emitting `run.started` and `run.finished` for a
+  run record on the bus, C48 to C50 and C69 to C71 run the fake Claude CLI (`runWorld` in `tests/helpers/memoriaWorld.ts`,
+  the `questionWorld` pattern, with a hook after the `started` event); (j) `facts_assert` still sends `sourceRunId` from
+  `MORDOMO_RUN_ID` when it is set
+- **Abandoned:** checking a `note_create` proposal with codes of its own (C80 pins that route's codes to `429` alone); a
+  raw delete to undo a file a failed decision created (the raw-fs list does not grow, C84); freezing `Date` around a
+  decision (an index pass waits for the clock to move); `count` only in `messageParams` (C75 names it in the payload)
