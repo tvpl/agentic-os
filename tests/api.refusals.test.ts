@@ -292,6 +292,47 @@ describe("S1 the refusals of the file readers", () => {
     expect(answering("not_a_file")).toContain("GET /api/memory/note");
   });
 
+  it("C59 the probe has one scenario for each of the eight routes of the dashboards, and finds the refusals exactly where the contract lists them", () => {
+    // .specs/features/cerebro-paineis C59: the seven of /api/dashboards and the task's box.
+    const PAINEIS = [
+      "GET /api/dashboards",
+      "POST /api/dashboards",
+      "GET /api/dashboards/:id",
+      "PUT /api/dashboards/:id",
+      "DELETE /api/dashboards/:id",
+      "POST /api/dashboards/:id/refresh",
+      "POST /api/dashboards/:id/export",
+      "PUT /api/memory/tasks",
+    ];
+    const tabled = entries.map(([, e]) => routeKey(e));
+    for (const key of PAINEIS) {
+      expect(tabled, key).toContain(key);
+      expect(Object.keys(SCENARIOS), key).toContain(key);
+    }
+    expect(
+      Object.keys(SCENARIOS)
+        .filter((k) => k.includes("/api/dashboards"))
+        .sort(),
+    ).toEqual(PAINEIS.filter((k) => k.includes("/api/dashboards")).sort());
+    const byKey = new Map(entries.map(([, e]) => [routeKey(e), e]));
+    for (const fault of FAULTS) {
+      const here = answering(fault).filter((k) => PAINEIS.includes(k));
+      const declaredHere = PAINEIS.filter((k) => declares(byKey.get(k)!, fault)).sort();
+      expect(here, fault).toEqual(declaredHere);
+    }
+    // By name: the routes that list or write a folder through the safe primitives, and the task's box.
+    expect(answering("forbidden_path").filter((k) => PAINEIS.includes(k))).toEqual(
+      [
+        "GET /api/dashboards",
+        "POST /api/dashboards",
+        "POST /api/dashboards/:id/export",
+        "PUT /api/memory/tasks",
+      ].sort(),
+    );
+    expect(answering("not_a_file").filter((k) => PAINEIS.includes(k))).toEqual(["PUT /api/memory/tasks"]);
+    expect(answering("file_too_large").filter((k) => PAINEIS.includes(k))).toEqual([]);
+  });
+
   for (const fault of FAULTS) {
     it(`C46 the routes that answer ${STATUS[fault]} ${fault} are the routes that declare it`, () => {
       const answers = answering(fault);
