@@ -1122,8 +1122,8 @@ unreadable field (C112); `protectedDirs` for a handed folder (C129).
 
 ## Handoff
 
-The estimate exceeds the 150k budget. Mechanism: **not yet chosen** — stop before the first line of code and ask the owner
-(handoff, at the cut below, batches sequential and each only on green; or one builder, accepting compaction).
+The estimate exceeds the 150k budget. Mechanism chosen by the owner on 31/10/2026: **handoff, six batches A1, A2, A3, A4, B1, B2** (the cut below),
+sequential, each only on green.
 
 - Arithmetic (`wc -c` of the files each slice touches at `a6dde4e`, / 4; new files estimated; a large file read in parts
   counts the part; a slice heading's size is its source files only, the lines below add its tests and models):
@@ -1210,4 +1210,4 @@ The estimate exceeds the 150k budget. Mechanism: **not yet chosen** — stop bef
   - **B1** (folder access, reads and runs): S4 + S4r ≈ 84k + 51k = ≈ 135k; C109-C131 — the plan's cut: part B starts here
   - **B2** (export, import and part B's screens): S5 + screens B ≈ 26k + 60k = ≈ 86k; C132-C147 (C147's bundle bound
     weighs both parts' screens, so it lands last)
-- Mechanism: not yet chosen
+- Mechanism: handoff, six batches A1-B2 (owner, 31/10/2026)

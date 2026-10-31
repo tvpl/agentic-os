@@ -466,6 +466,14 @@ Lições confirmadas e candidatas que estes critérios já preparam (`.specs/LES
 | collection propostas                                               | grouping, naming, ordering, duplicates | AC 54 (uma consolidação pendente por vez); as outras por tipo, a mais nova primeiro                                                     |
 | collection versões                                                 | duplicates, the exception              | AC 26 (bytes iguais, um blob); AC 24 (`removed` sem bytes)                                                                              |
 
+## Emendas depois da aprovação
+
+1. **As lacunas G1-G23 achadas ao escrever os checks (aceitas pelo dono em 31/10/2026).** O `checks.md` lista cada uma com o
+   padrão que o check afirma; o dono aceitou todos os padrões (pergunta cerebro-memoria-confiavel 7 em `.specs/STATE.md`).
+   Entre elas: o AC 21 vale para `PUT /api/memory/tasks` (G1); cada rota legível por dispositivo deixa de fora o que está
+   oculto e `artifacts/exports/` nunca é servido a dispositivos (G11); toda rota que cria uma execução recusa uma pasta oculta
+   no pedido, e `RunFailure.code` ganha os três códigos de pasta (G16); exportar além de `-99` é `409 exists` (G20).
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).
