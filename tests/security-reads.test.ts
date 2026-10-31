@@ -2350,6 +2350,117 @@ describe("C55 the raw-fs list did not grow for the second brain", () => {
   });
 });
 
+describe("C61 the dashboards read and write through the primitives (cerebro-paineis)", () => {
+  /** The modules of the feature: the dashboards, their route, the task parser and the notes' module that writes a box. */
+  const DASHBOARDS = [
+    "evaluator.ts",
+    "export.ts",
+    "highlights.ts",
+    "kpi.ts",
+    "question.ts",
+    "reminders.ts",
+    "schedule.ts",
+    "service.ts",
+    "sources.ts",
+    "store.ts",
+    "templates.ts",
+  ];
+  const FILES = [
+    ...DASHBOARDS.map((f) => `core/src/dashboards/${f}`),
+    "apps/api/src/routes/dashboards.ts",
+    "core/src/memory/tasks.ts",
+    "core/src/memory/notes.ts",
+  ];
+  /** The spellings the walker does not resolve to an fs function (L-048): said here, and looked for by text below. */
+  const UNCOVERED: Array<[string, string]> = [
+    [
+      "a require built at run time, with a computed name",
+      'export const f = (p: string) => { const req = new Function("m", "return require(m)") as (m: string) => Record<string, (x: string) => unknown>; return req("node:fs")["read" + "FileSync"]!(p); };',
+    ],
+    [
+      "a call through Reflect",
+      'import fs from "node:fs"; export const f = (p: string) => (Reflect.get(fs, "readFileSync") as (x: string) => string)(p);',
+    ],
+  ];
+
+  it("C61 the walker finds no raw fs read or write in core/src/dashboards/, the route or the task writer, sees one planted there, the list gained no entry, and none of the spellings it does not cover is in those files", () => {
+    // The folder holds these modules and no other (a new one would be outside this proof).
+    expect(
+      fs
+        .readdirSync(path.join(repoRoot, "core", "src", "dashboards"))
+        .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+        .sort(),
+    ).toEqual(DASHBOARDS);
+    expect(fs.readFileSync(path.join(repoRoot, "core/src/memory/notes.ts"), "utf8")).toContain(
+      "export function saveTask",
+    );
+
+    // The walker over the whole program, as C32 runs it: nothing in these files.
+    const reads = auditProgram(theRepoProgram(), repoRoot, repoSources());
+    expect(reads.length).toBeGreaterThan(50);
+    expect(
+      reads.filter((r) => FILES.includes(r.file)).map((r) => `${r.file}:${r.line} ${r.api} ${r.text}`),
+    ).toEqual([]);
+    // It is awake there: a read and a write planted in the folder, each through an aliased binding, are found.
+    const planted = auditVirtual(repoRoot, {
+      "core/src/dashboards/__planted__.ts":
+        'import { readFileSync as r, writeFileSync as w } from "node:fs"; export const f = (p: string) => { w(p, r(p)); };',
+    });
+    expect(planted.map((r) => `${r.file} ${r.api}:${r.how}`).sort()).toEqual([
+      "core/src/dashboards/__planted__.ts readFileSync:call",
+      "core/src/dashboards/__planted__.ts writeFileSync:call",
+    ]);
+
+    // The list: no row for these files, and the same rows as at the feature's base.
+    expect(
+      ALLOWED.filter((a) => FILES.includes(a.file) || a.file.startsWith("core/src/dashboards/")),
+    ).toEqual([]);
+    const rowsOf = (source: string) => {
+      const block = /const ALLOWED: Array<[^=]*= \[([\s\S]*?)\n\];/.exec(source)?.[1] ?? "";
+      return [...block.matchAll(/file: "([^"]+)",\s*api: "([^"]+)",\s*count: (\d+)/g)]
+        .map((m) => `${m[1]} ${m[2]} ${m[3]}`)
+        .sort();
+    };
+    const base = execFileSync("git", ["show", "16e6976:tests/security-reads.test.ts"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    const now = rowsOf(fs.readFileSync(path.join(repoRoot, "tests", "security-reads.test.ts"), "utf8"));
+    expect(now).toHaveLength(ALLOWED.length);
+    expect(now).toEqual(rowsOf(base));
+
+    // What the walker does not cover, it does not see (so the claim names it) ...
+    for (const [name, source] of UNCOVERED)
+      expect(auditVirtual(repoRoot, { "core/src/dashboards/__uncovered__.ts": source }), name).toEqual([]);
+    // ... and none of those spellings is written in the feature's files: read from the syntax tree, so a method of
+    // the store called `require` is not a call of the global one.
+    const spellings = (text: string): string[] => {
+      const found: string[] = [];
+      const visit = (node: ts.Node): void => {
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+          if (["require", "eval"].includes(node.expression.text)) found.push(node.expression.text);
+        }
+        if (
+          ts.isNewExpression(node) &&
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === "Function"
+        )
+          found.push("new Function");
+        if (ts.isIdentifier(node) && ["Reflect", "createRequire", "getBuiltinModule"].includes(node.text))
+          found.push(node.text);
+        ts.forEachChild(node, visit);
+      };
+      visit(ts.createSourceFile("scan.ts", text, ts.ScriptTarget.ES2022, true));
+      return found;
+    };
+    // the scan sees each spelling the walker does not
+    for (const [name, source] of UNCOVERED) expect(spellings(source).length, name).toBeGreaterThan(0);
+    for (const file of FILES)
+      expect(spellings(fs.readFileSync(path.join(repoRoot, file), "utf8")), file).toEqual([]);
+  }, 180_000);
+});
+
 describe("C32 every raw fs read in core/src and apps/api/src is on the reviewed list", () => {
   let reads: RawRead[] = [];
   beforeAll(() => {
