@@ -1055,3 +1055,51 @@ citations }] }` (1 to 6, ids unique and not `como-foi-feita`); a refusal keeps t
   the old `CHECK`); a `runId` in `sources[]` (a new key of door 4)
 - **C56 (batch B, after the handoff):** closed with amendment 29 (`context_id`), the coordinator's narrow option; the
   launch passes `inputs.context_id` when the dashboard has a context
+
+Status of batch C (updated in the commit that closes each piece):
+
+- the API's cross-cutting checks (C58 to C64, the cut's list; amendment 22's nature label is C73, batch D's): closed, every proof green. C58, C59 (the callers and the scenarios), C60,
+  C62, C63 and C64 in `tests/paineis.contract.test.ts`; C59's probe half in `tests/api.refusals.test.ts`; C61 in
+  `tests/security-reads.test.ts` and `tests/sdk.instances.test.ts`. `legal/PRIVACY.md` section 3 gained one paragraph
+  (C62, question 1's default); `legal/network-policy.json` and the table of section 4.1 are unchanged. No product code
+  changed: the eight routes, their scopes, `docs/security.md` and the walkers' lists were already as the claims say
+
+- **Boundary (batch C):** C58 to C64 closed. Commits: `fa6ce1c` (the privacy paragraph, C62), `99155f3` (C58, C59,
+  C60, C62, C63, C64 in `tests/paineis.contract.test.ts` and C59's probe half), `2e708b8` (C61, both halves). On the
+  tree of `2e708b8`: `npm run build`, `npm run typecheck` and `npm run lint` exit 0, `npx vitest run` at the root is
+  green (170 files, 2420 tests, 1 skipped), and `npm run test -w apps/command-centre` is green (168 files, 1414 tests).
+  Each of the 9 `Proof:` lines of C58-C64 passes run alone and runs only its check's tests. What batch C leaves for D: nothing in the API; `tests/paineis.contract.test.ts` now pins `TZ=America/Sao_Paulo` at
+  its top (C64 names a local day), and its C96 test is D's to add. No pin of an earlier file moved: the four test files
+  gained tests and no existing assertion changed.
+- **Settled mid-build (batch C):** nothing by the owner. Builder decisions inside the approved shape: (a) the privacy
+  paragraph is one sentence after the notes' paragraph of section 3, in the draft's pt-BR, naming `memory/dashboards/`,
+  the local database and its backups, the titles and subtitles of the connector items a widget shows, replaced at each
+  refresh and deleted with the dashboard; the draft's version line is unchanged (the owner's review dates it); (b)
+  proof readings: C58's "named errors (`toEqual` over the codes)" is each entry's own `errors` (the common ones of
+  `commonErrorsFor`, `forbidden_path` of `FORBIDDEN_PATH_ROUTES` among them, are the table's, not the route's), and the
+  Surface statuses are asserted beside them; C58's "answers the same under `/api/v1/`" is the same status and body for
+  every read, every refusal, a `PUT` of the same bytes and a task box already as asked, and the same status and keys
+  for the writes that make something new (create, refresh, export, delete), with `deprecation` and `link` only on the
+  alias; C59's run credentials are those of two memory skills, `organize-brain` and `dashboard-answer` (the question's
+  own skill), each shown live on a route of its read list first, and every scoped device (`content`, `monitor`, `run`,
+  `approve`, all four) gets `403 owner_only` with memory, the exports and the snapshot and series rows unchanged; C61's
+  files are the eleven of `core/src/dashboards/` (the folder is pinned to them), the route, `core/src/memory/tasks.ts`
+  and `core/src/memory/notes.ts` (`saveTask`), the walker runs over the whole program as C32 does and is shown awake by
+  a read and a write planted in the folder, the list is compared row by row with `16e6976`, and the two spellings it
+  does not cover (a `require` built at run time with a computed name, a call through `Reflect`) are shown unseen by it
+  and then looked for in the syntax tree of those files (with `eval`, `new Function`, `createRequire` and
+  `getBuiltinModule`); the module-state half adds `apps/api/src/server.ts` and `apps/api/src/context.ts` (the clock and
+  the one cache per service) and shows the refresh lock on the instance with two services of one process; C63's "no
+  other field of the connector's raw answer" is no key outside the six an item keeps (`id`, `title`, `subtitle`, `ts`,
+  `flagged`, `href`), the raw answer's `body` absent from the whole row, and a second refresh replaces the title;
+  C64's "recorded body" is a literal of the route's answer for `calendarItems(NOW)`, with the cache as before (one
+  fetch, the same body from the cache, `?refresh=1` reads again), the sentinel's own fetch carries its `maxItems` (50),
+  `MetricsHistory.sample`'s row is a literal and a dashboard refresh writes no sample, the review queue's item is
+  asserted by value and equal before and after the overview reads it, and the `reviewDue` alert is the same payload in a
+  home with no reminder and in one where two reminders came first, once a day on two days
+- **Abandoned (batch C):** recording C64's body by running the base's code (a worktree of `16e6976` would resolve the
+  workspace packages to this tree's sources); a text scan for `require(` (the store's own `require` method matches it)
+- **For the owner (batch C, question 1):** besides the titles and subtitles the paragraph names (C62's claim), a stored
+  connector item keeps its `id`, its time (`ts`), its flag and its link (`href`), which the agenda, the highlights and
+  AC 37 read. Whether `legal/PRIVACY.md` should name those too is a wording choice of question 1's review; the
+  paragraph says what C62 names and no more
