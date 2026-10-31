@@ -194,6 +194,54 @@ describe("C37 a kpi's data, by its measure", () => {
   });
 });
 
+// After round 3: a KPI's `upIsGood` reaches its stored data through the route (C40 at the boundary).
+describe("C40 upIsGood at the boundary", () => {
+  it("C40 a KPI with upIsGood false whose value rises from 1 to 3 is stored and read back good false, direction up", async () => {
+    await fresh(async (world) => {
+      const created = await world.create({ template: "overview" });
+      const widgets = [kpi({ kind: "metrics", series: "runs24h" }, { measure: "latest", upIsGood: false })];
+      expect(
+        (
+          await world.call("PUT", `/api/dashboards/${created.body.id}`, {
+            definition: { ...created.body.definition, refresh: "manual", widgets },
+            baseVersion: created.body.version,
+          })
+        ).status,
+      ).toBe(200);
+      const at = async (when: number, value: number) => {
+        world.ctx.metricsHistory.sample(
+          {
+            runs: {
+              total: value,
+              last24h: value,
+              failed24h: 0,
+              costTodayUsd: 0,
+              tokensToday: 0,
+              spendWeekUsd: 0,
+            },
+            inboxUnread: 0,
+            approvalsPending: 0,
+            approvalWaitAvgMs: null,
+          },
+          when,
+        );
+        vi.useFakeTimers({ toFake: ["Date"], now: when });
+        try {
+          expect((await world.refresh(created.body.id)).status).toBe(200);
+        } finally {
+          vi.useRealTimers();
+        }
+      };
+      await at(NOW - HOUR, 1);
+      await at(NOW, 3);
+      const got = (await world.get(created.body.id)).body.snapshot.widgets.find(
+        (x: Json) => x.id === "k",
+      ).data;
+      expect(got).toMatchObject({ value: 3, delta: 2, direction: "up", good: false });
+    });
+  });
+});
+
 describe("C39 a kpi with fewer than two points", () => {
   it("C39 one stored point: a series of one point and no delta, deltaPct, direction or good key", async () => {
     await fresh(async (world) => {

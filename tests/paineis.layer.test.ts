@@ -10,7 +10,7 @@ import { MIGRATIONS } from "../core/src/db/migrations.js";
 import { ensureDirs, resolvePaths } from "../core/src/paths.js";
 import { DashboardEvaluator, snapshotStatus } from "../core/src/dashboards/evaluator.js";
 import { dashboardHighlights } from "../core/src/dashboards/highlights.js";
-import { kpiDelta } from "../core/src/dashboards/kpi.js";
+import { kpiData, kpiDelta } from "../core/src/dashboards/kpi.js";
 import { checkQuestionResult } from "../core/src/dashboards/question.js";
 import { exportStamp, renderDashboardHtml } from "../core/src/dashboards/export.js";
 import { resolveCleanupScope } from "../core/src/memory/cleanup.js";
@@ -443,6 +443,17 @@ describe("C21 what is no task", () => {
       expect(parseTasks(`# Nota\n\n${body}\n`)).toEqual([]);
     });
   }
+  // After round 3: a fence is closed only by a fence of its own character and at least its length (amendment 3), so a
+  // task after the other kind of fence, or after a shorter one, is still inside it.
+  it("C21 a ~~~ line does not close a ``` fence, nor ``` a ~~~ fence, nor a shorter fence a longer one: the task after it is not stored", () => {
+    expect(parseTasks("# Nota\n\n```\n~~~\n- [ ] dentro\n```\n")).toEqual([]);
+    expect(parseTasks("# Nota\n\n~~~\n```\n- [ ] dentro\n~~~\n")).toEqual([]);
+    expect(parseTasks("# Nota\n\n````\n```\n- [ ] dentro\n````\n")).toEqual([]);
+    // and after its own closing fence, the task is outside again
+    expect(parseTasks("# Nota\n\n```\n~~~\n```\n- [ ] fora\n").map((t) => [t.line, t.text])).toEqual([
+      [6, "fora"],
+    ]);
+  });
   it("C21 inside the front matter", () => {
     expect(parseTasks("---\n- [ ] x\ntype: note\n---\n# Nota\n")).toEqual([]);
   });
@@ -487,6 +498,47 @@ describe("C28 a project's health at its own layer", () => {
 // ---- batch B: the KPI's delta (C40) ------------------------------------------------------------------------------
 
 describe("C40 the delta rules at their own layer", () => {
+  // After round 3: the widget's `upIsGood` reaches the KPI's data (kpiData and the evaluator), not only kpiDelta's
+  // parameter: a rise of "Revisões vencidas" (upIsGood false) is marked bad.
+  it("C40 upIsGood false on the widget: kpiData and the evaluator give a rise good false; absent, good true", async () => {
+    const H = 3_600_000;
+    const widget = (options: Json): Json => ({
+      id: "k",
+      kind: "kpi",
+      title: "Revisões vencidas",
+      source: { kind: "reviews" },
+      options,
+    });
+    const points = [
+      { at: NOW - H, value: 1 },
+      { at: NOW, value: 3 },
+    ];
+    expect(
+      kpiData(widget({ measure: "count", upIsGood: false }) as never, { value: 3 }, {}, points),
+    ).toMatchObject({
+      delta: 2,
+      direction: "up",
+      good: false,
+    });
+    expect(kpiData(widget({ measure: "count" }) as never, { value: 3 }, {}, points)).toMatchObject({
+      direction: "up",
+      good: true,
+    });
+    const map: DashboardSourceMap = { reviews: () => ({ status: "ok", data: { items: [], total: 3 } }) };
+    const evaluator = new DashboardEvaluator(map, { paths: ctx.paths, settings: () => ctx.settings() });
+    const snap = await evaluator.evaluate(
+      {
+        v: 1,
+        id: "t",
+        title: "T",
+        kind: "overview",
+        refresh: "manual",
+        widgets: [widget({ measure: "count", upIsGood: false })],
+      } as never,
+      { now: NOW, context: null, history: () => [{ at: NOW - 2 * H, value: 1 }] },
+    );
+    expect(snap.widgets[0]!.data).toMatchObject({ value: 3, delta: 2, direction: "up", good: false });
+  });
   const H = 3_600_000;
   const D = 24 * H;
   const pts = (...list: Array<[number, number]>) => list.map(([at, value]) => ({ at: NOW + at, value }));
@@ -628,6 +680,32 @@ describe("C43 the highlight rules at their own layer", () => {
     expect(run([[source, items]])).toEqual([]);
     const note = { fileId: 9, path: "/m/n.md", title: "Nota", mtime: 101 };
     expect(rules(run([[{ kind: "notes" }, [note]]], 100))).toEqual([["new_since_visit", "Nota"]]);
+  });
+  // After round 3: the tone of every rule of door 5 by value (amendment 15), one item each.
+  it("C43 each rule's tone by value: overdue and project_behind danger, due_today and open_decision_7d warn, decided_this_week ok, review_due, connector_flagged and new_since_visit info", () => {
+    const parts: Array<[Json, Json[]]> = [
+      [TASKS, [task(1, day(-1)), task(2, day(0))]],
+      [DECISIONS, [decision(3, "decided", day(0)), decision(4, "open", day(-8))]],
+      [{ kind: "projects" }, [{ fileId: 5, path: "/m/p5.md", title: "Projeto", health: "behind", mtime: 1 }]],
+      [{ kind: "reviews" }, [{ path: "/m/r6.md", name: "r6.md", mtime: 1 }]],
+      [
+        { kind: "connector", id: "mail", read: "list" },
+        [
+          { id: "f", title: "Marcado", flagged: true, ts: 1 },
+          { id: "n", title: "Novo", ts: 101 },
+        ],
+      ],
+    ];
+    expect(run(parts, 100).map((h) => [h.rule, h.tone])).toEqual([
+      ["overdue", "danger"],
+      ["due_today", "warn"],
+      ["decided_this_week", "ok"],
+      ["open_decision_7d", "warn"],
+      ["project_behind", "danger"],
+      ["review_due", "info"],
+      ["connector_flagged", "info"],
+      ["new_since_visit", "info"],
+    ]);
   });
   it("C43 the output follows the order of door 5 whatever the order of the input, an item once under its first rule, at most 8", () => {
     const parts: Array<[Json, Json[]]> = [
@@ -877,6 +955,20 @@ describe("the host's check of a question dashboard's answer, at its own layer", 
       expect(reasonOf(change(valid()), scoped)).toMatch(reason);
     });
   }
+  // After round 3: the accepted edges of door 7 (amendment 19), one past each refusal above.
+  it("C54 accepts the edges: exactly 6 widgets, and exactly 262 144 bytes", () => {
+    const six = {
+      ...valid(),
+      widgets: Array.from({ length: 6 }, (_, i) => ({ ...valid().widgets[0], id: `w${i}` })),
+    };
+    const verdict = check(six);
+    expect(verdict.ok).toBe(true);
+    if (verdict.ok) expect(verdict.widgets).toHaveLength(6);
+    const json = JSON.stringify(valid());
+    const exact = Buffer.from(json + " ".repeat(262_144 - Buffer.byteLength(json)));
+    expect(exact.length).toBe(262_144);
+    expect(check(exact).ok).toBe(true);
+  });
   it("C54 the same refusals pass once their one fault is gone: the plano item with its label, the look-alike file without a context", () => {
     expect(
       check({

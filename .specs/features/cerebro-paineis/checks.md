@@ -207,7 +207,9 @@ Proof: `npx vitest run tests/paineis.layer.test.ts -t "C20 "`
 
 **C21** - No task is stored, one asserted case per form: `- [ ] x` inside a ` ``` ` fence, inside a `~~~` fence, inside the
 front matter, `- [] x`, `-[ ] x`, `- [ ]` with nothing after it, `+ [ ] x`, `1. [ ] x`, and `- [ ] x` in a `.txt` file of an
-indexed folder (door 3, amendment 3)
+indexed folder; (after round 3) a fence is closed only by a fence of its own character and at least its length, so a task
+after a `~~~` line inside a ` ``` ` fence, after a ` ``` ` line inside a `~~~` fence, or after a ` ``` ` line inside a
+` ```` ` fence is not stored, and one after the fence's own closing line is (door 3, amendment 3)
 Proof: `npx vitest run tests/paineis.layer.test.ts -t "C21 "`
 
 **C22** - The task writer, with one item and with several: a note with one task has 1 row; with three tasks on lines 2, 5
@@ -229,6 +231,13 @@ Proof: `npx vitest run tests/paineis.index.test.ts -t "C23 "`
 `fields.due: "2026-11-02"`; with also a body line `due:: 2026-11-03` it has `"2026-11-03"`; a `due` of 65 characters is
 left out of `fields` (amendment 2)
 Proof: `npx vitest run tests/paineis.index.test.ts -t "C24 "`
+
+**C104** - (Added after round 3, amendment 1.) Tasks are read from the first 200 000 characters, in the normal pass and in
+the backfill: on a home indexed once (the marker `index.note_tasks` written), a note whose second task starts past
+character 200 000 stores only its first task (`{ line: 3, done: 0, due: null, priority: 0, text: "Cedo" }`) after a
+second, normal pass; with its rows and the marker deleted, the backfill of the next pass stores the same rows and writes
+the marker (amendment 1)
+Proof: `npx vitest run tests/paineis.index.test.ts -t "C104 "`
 
 **C25** - In the pinned zone with today 2026-10-30, a `tasks` source with `window: "today"` returns exactly the open tasks
 due 2026-10-30 and the open tasks due before it, overdue first, then priority descending, then `due` ascending, then path
@@ -345,8 +354,11 @@ Proof: `npx vitest run tests/paineis.kpi.test.ts -t "C39 "`
 **C40** - The delta rules at their own layer, one case each: `period: "week"` compares with the oldest point of the last 7
 days (points 10 at −8 d, 4 at −6 d, 6 now → `delta: 2`); `upIsGood: false` with `direction: "up"` → `good: false`;
 `upIsGood` absent, up → `good: true`; base 0 → `deltaPct: null`; equal values → `direction: "flat"`, `delta: 0`; base 20, now 23
-→ `deltaPct: 15` (amendment 14)
+→ `deltaPct: 15`; (after round 3) the widget's `upIsGood` reaches its data: with `upIsGood: false` a rise from 1 to 3 is
+`good: false` in `kpiData`, through the evaluator, and in the snapshot a refresh stores and `GET` reads back; with it
+absent, `good: true` (amendment 14)
 Proof: `npx vitest run tests/paineis.layer.test.ts -t "C40 "`
+Proof: `npx vitest run tests/paineis.kpi.test.ts -t "C40 "`
 
 **C41** - A KPI's `chip`, one asserted case per rule and its edge: `remaining` with `of: 5`, `value: 3` → `{ rule:
 "remaining", n: 2, tone: "warn" }`, with `value: 5` → no `chip`; `open` with 2 open decisions → `{ rule: "open", n: 2, tone:
@@ -366,7 +378,9 @@ Proof: `npx vitest run tests/paineis.highlights.test.ts -t "C42 "`
 today → out); `due_today` (today → in, tomorrow → out); `decided_this_week` (a `decided` decision of the week → in, an
 `open` one → out); `open_decision_7d` (an open decision 8 local days old → in, 7 → out); `project_behind`; `review_due`;
 `connector_flagged` (`flagged: true` → in, `false` → out); `new_since_visit` (amendment 15); and the order of the output is
-the order of door 5 whatever the order of the input (door 5)
+the order of door 5 whatever the order of the input; (after round 3) each rule's tone by value: `overdue` and
+`project_behind` `danger`, `due_today` and `open_decision_7d` `warn`, `decided_this_week` `ok`, `review_due`,
+`connector_flagged` and `new_since_visit` `info` (door 5, amendment 15)
 Proof: `npx vitest run tests/paineis.layer.test.ts -t "C43 "`
 
 **C44** - In the pinned zone with `settings.dashboards.reminders` `{ maxPerDay: 2, at: "08:30" }`, a refresh at 08:31 on
@@ -408,7 +422,8 @@ longer has; a `line` that holds text but no task; a `line` past the end of the f
 Proof: `npx vitest run tests/paineis.tasks.test.ts -t "C49 "`
 
 **C50** - `PUT /api/memory/tasks` answers, writing nothing: `400 validation` for `line: 0`, for no `baseVersion` and for
-`done: "yes"`; `403 forbidden_path` for a path through a link out of the granted folders; `404 note_missing` for a note that
+`done: "yes"`; `403 forbidden_path` for a path through a link out of the granted folders, (after round 3) for a name of
+300 characters and for a loop of links; `404 note_missing` for a note that
 does not exist; `404 not_a_file` for a folder; `413 note_too_large` for a note above the editing limit (Surface, amendment 17)
 Proof: `npx vitest run tests/paineis.tasks.test.ts -t "C50 "`
 
@@ -459,7 +474,9 @@ names a path the index does not have; a path today's policy excludes; a path out
 `/w/proj-old` (L-054); an item of natureza `plano` without its label; 7 widgets; 256 KB + 1 byte; and the run finishing
 `failed`; on each, the stored snapshot is unchanged (same `generatedAt`), its `sources[]` has `{ id: "question", kind:
 "question", status: "error", message }` with the reason, and `dashboard.refreshed` carries `status: "error"`; a valid result
-with two widgets, each with one citation, becomes the snapshot (read back) with `status: "ok"` (AC 52, AC 53, door 7)
+with two widgets, each with one citation, becomes the snapshot (read back) with `status: "ok"`; (after round 3) the edges
+are accepted, through the route and at the validator's layer: exactly 6 widgets, and exactly 262 144 bytes (AC 52, AC 53,
+door 7, amendment 19)
 Proof: `npx vitest run tests/paineis.question.test.ts -t "C54 "`
 Proof: `npx vitest run tests/paineis.layer.test.ts -t "C54 "`
 
@@ -631,7 +648,8 @@ Proof: `npm run test -w apps/command-centre -- src/dashboards/widgets.test.tsx -
 **C81** - The moldura's main group is, in order, "Hoje", "Painéis", then the items of before in their order; `MAIN_SCENES`
 ids are `nucleo`, `brain`, `runs`, `skills`, `routines`, `dashboards` and the key `6` goes to `/dashboards`; the palette has
 `action:dashboards` "Abrir painéis" everywhere and `action:dashboard-refresh` "Atualizar painel" only while a dashboard is on
-screen, both distinct from `action:open-panel`; in both shells the page shows the same snapshot and the same selector
+screen (after round 3: not on the page with no dashboard, a device answered `403`, in either shell), both distinct from
+`action:open-panel`; in both shells the page shows the same snapshot and the same selector
 entries; in a real browser, pressing `6` in the Núcleo opens the scene (AC 40, amendment 25)
 Proof: `npm run test -w apps/command-centre -- src/dashboards/dashboardsEntries.test.tsx -t "C81 "`
 Proof: `npm run test -w apps/command-centre -- src/nucleo/shell.test.ts -t "C81 "`
@@ -861,6 +879,30 @@ code at `c8d1706` behaved correctly in each, and no product code changed):
   `tests/paineis.layer.test.ts`.
 - Finding 6 (C63 and `legal/PRIVACY.md`) is the owner's open question 18 and is left as it is.
 
+## Correções depois da rodada 3
+
+Written after round 3, the last round of the verification (`verification.md`, FAIL, escalated). The owner chose "write
+the tests and close": these changes were written after the last round and are accepted by the owner without
+re-verification. Every gap was a missing proof; the product behaved correctly in each, and no product code changed.
+Each named mutant was re-injected, failed its proof, and was reverted:
+
+- **Finding 1, C54's accepted edges (q1, q2a, q2b).** Exactly 6 widgets and exactly 262 144 bytes are accepted, through
+  the route (`tests/paineis.question.test.ts`) and at the validator's layer (`tests/paineis.layer.test.ts`). q1 (6
+  refused) and q2a (262 144 refused by the validator) fail both; q2b (the route reads 262 143) fails the route case.
+- **Finding 2, `upIsGood` (kp1).** C40 gains `kpiData` and the evaluator with `upIsGood: false` and a rising series at its
+  layer, and a route case (`tests/paineis.kpi.test.ts`, a new C40 Proof line) whose stored data reads `good: false`.
+  kp1 fails both.
+- **Finding 3, the eight highlight tones (hl3, hl4, hl5).** C43 asserts every rule's tone by value. Each mutant fails it.
+- **Finding 4, the 200 000-character bound (bf2).** C104 is new (`tests/paineis.index.test.ts`): a home indexed once,
+  then a second, normal pass, then the backfill. bf2 fails it.
+- **Finding 5, the fence closing rule (ti1).** C21 gains the other-kind and the shorter-fence cases and the closed fence.
+  ti1 fails it.
+- **Finding 6, `PUT /api/memory/tasks` 403s (tr4).** C50 gains a name of 300 characters and a loop of links, each
+  `403 forbidden_path`. tr4 fails the name case (a loop is 403 either way, as the verifier found).
+- **Finding 7, "Atualizar painel" (en3).** C81 gains the page with no dashboard (a `403`) in both shells
+  (`apps/command-centre/src/dashboards/dashboardsEntries.test.tsx`). en3 fails both.
+- Finding 8 (C63 and `legal/PRIVACY.md`) stays the owner's open question 18.
+
 ## Coverage
 
 | Set (size)                                                         | Member -> proof                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Unproven |
@@ -891,6 +933,7 @@ code at `c8d1706` behaved correctly in each, and no product code changed):
 | failure outcomes of a refresh (3)                                  | one source C8 · every source C8 · deleted context C13                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | -        |
 | task forms stored (9)                                              | C20, table-driven over all 9                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | -        |
 | task forms refused (9)                                             | ` ``` ` C21 · `~~~` C21 · front matter C21 · `- []` C21 · `-[ ]` C21 · empty C21 · `+` C21 · `1.` C21 · `.txt` C21                                                                                                                                                                                                                                                                                                                                                                                                          | -        |
+| after round 3 (accepted by the owner without re-verification) (8)  | fence closed only by its own kind and length C21 · tasks from the first 200 000 characters, normal pass and backfill C104 · 6 widgets accepted C54 · 262 144 bytes accepted C54 · `upIsGood` reaching the data C40 · eight highlight tones by value C43 · `403 forbidden_path` for a name too long and a link loop C50 · "Atualizar painel" absent on the page with no dashboard C81                                                                                                                                        | -        |
 | task windows (2)                                                   | `today` C25 · `week` C25                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | -        |
 | decision natures and the passage (7)                               | `fato` C26 · `relato` C26 · none C26 · `plano` C26 · `hipotese` C26 · `opiniao` C26 · passage C26                                                                                                                                                                                                                                                                                                                                                                                                                           | -        |
 | places decisions are read from (4)                                 | journal day of the week C26 · `MEMORY.md` with an origin in the week C26 · `type: decision` note C26 · look-alike heading or note, refused C26, C27                                                                                                                                                                                                                                                                                                                                                                         | -        |

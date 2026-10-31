@@ -290,6 +290,32 @@ describe("C54 the host checks the answer", () => {
       // the plano item with its label passes
       const labelled = await ask(withItem({ title: "Meta", path: plano, natureza: "plano" }));
       expect(labelled.event.status).toBe("ok");
+
+      // After round 3: the accepted edges of door 7 - exactly 6 widgets, and exactly 262 144 bytes read whole.
+      const six = {
+        v: 1,
+        widgets: Array.from({ length: 6 }, (_, i) => ({ ...answer(file).widgets[0], id: `w${i}` })),
+      };
+      const atSix = await ask(six);
+      expect(atSix.event.status).toBe("ok");
+      expect(atSix.snapshot.widgets.map((x: Json) => x.id)).toEqual([
+        "w0",
+        "w1",
+        "w2",
+        "w3",
+        "w4",
+        "w5",
+        "como-foi-feita",
+      ]);
+      const json = JSON.stringify(answer(file));
+      const exact = Buffer.from(json + " ".repeat(262_144 - Buffer.byteLength(json)));
+      expect(exact.length).toBe(262_144);
+      const atMax = await ask(exact);
+      expect(atMax.event.status).toBe("ok");
+      expect(atMax.snapshot.sources).toEqual([
+        { id: "question", kind: "question", status: "ok", syncedAt: atMax.snapshot.generatedAt },
+      ]);
+      expect(atMax.snapshot.widgets.map((x: Json) => x.id)).toEqual(["dias", "causas", "como-foi-feita"]);
     });
   });
 });

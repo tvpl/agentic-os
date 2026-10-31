@@ -216,3 +216,29 @@ describe("C24 due in fields", () => {
     expect("due" in fieldsOf(w, long)).toBe(false);
   });
 });
+
+// ---- after round 3: amendment 1's 200 000-character bound (C104) -------------------------------------------------
+
+describe("C104 tasks are read from the first 200 000 characters", () => {
+  it("C104 after a first pass, a note whose second task starts past character 200 000 stores only its first, and the backfill of it stores the same rows", async () => {
+    // The first pass of a home also runs the backfill, which reads the stored (cut) text: it would hide a normal pass
+    // that reads the whole file. So the home is indexed once first, and the note is indexed by a second, normal pass.
+    await w.index();
+    const marker = () => w.ctx.db.prepare("SELECT value FROM meta WHERE key = 'index.note_tasks'").get();
+    expect(marker()).toEqual({ value: "1" });
+    const long = file("longa");
+    const head = "# Longa\n\n- [ ] Cedo\n";
+    const text = `${head}${"a".repeat(200_100 - head.length)}\n- [ ] Tarde\n`;
+    expect(text.indexOf("- [ ] Tarde")).toBeGreaterThan(200_000);
+    w.put(long, text);
+    await w.index();
+    const early = [{ line: 3, done: 0, due: null, priority: 0, text: "Cedo" }];
+    expect(tasksOf(w, long)).toEqual(early);
+    // The backfill of the same file (its rows and the marker gone) reads the stored text and gives the same rows.
+    w.ctx.db.prepare("DELETE FROM note_tasks WHERE src_id = ?").run(idOf(w, long));
+    w.ctx.db.prepare("DELETE FROM meta WHERE key = 'index.note_tasks'").run();
+    await w.index();
+    expect(marker()).toEqual({ value: "1" });
+    expect(tasksOf(w, long)).toEqual(early);
+  });
+});

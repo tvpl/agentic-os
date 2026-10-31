@@ -181,6 +181,24 @@ describe("C50 the other refusals", () => {
     expect(fs.readFileSync(away, "utf8")).toBe(BODY);
   });
 
+  // After round 3: the other two ways the note routes answer 403 forbidden_path (amendment 17): a name no file could
+  // have, and a loop of links.
+  it("C50 403 forbidden_path for a name of 300 characters, and for a loop of links, writing nothing", async () => {
+    const long = path.join(w.memory, "notes", `${"n".repeat(300)}.md`);
+    const tooLong = await put({ path: long, line: 3, done: true, baseVersion: sha(BODY) });
+    expect([tooLong.status, tooLong.body?.error?.code], JSON.stringify(tooLong.body)).toEqual([
+      403,
+      "forbidden_path",
+    ]);
+    const a = path.join(w.memory, "notes", `laco-a-${++seq}.md`);
+    const b = path.join(w.memory, "notes", `laco-b-${seq}.md`);
+    fs.symlinkSync(b, a);
+    fs.symlinkSync(a, b);
+    const loop = await put({ path: a, line: 3, done: true, baseVersion: sha(BODY) });
+    expect([loop.status, loop.body?.error?.code], JSON.stringify(loop.body)).toEqual([403, "forbidden_path"]);
+    expect(fs.lstatSync(a).isSymbolicLink() && fs.lstatSync(b).isSymbolicLink()).toBe(true);
+  });
+
   it("C50 404 note_missing for a note that does not exist, 404 not_a_file for a folder", async () => {
     const version = sha(BODY);
     const missing = await put({

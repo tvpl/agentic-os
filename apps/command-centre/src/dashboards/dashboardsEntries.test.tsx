@@ -17,7 +17,7 @@ import { CommandRegistry } from "../commands/registry";
 import { tf } from "../i18n";
 import { NAV_GROUPS } from "../moldura/nav";
 import { MAIN_SCENES } from "../nucleo/scenes";
-import { net } from "../brain/notes/testnet";
+import { NetError, net } from "../brain/notes/testnet";
 import { dash, resetDash } from "./testnet";
 import { cardIds, definition, mountBoard, ok, read, serve, snapshot, w } from "./testkit";
 
@@ -151,6 +151,22 @@ describe("C81 the entries", () => {
         "Atualizar painel",
       ]);
       expect(refresh()!.id).not.toBe(panel.id);
+    });
+
+  // After round 3: "only while a dashboard is on screen" also holds on the page with no dashboard (a device that may not
+  // see dashboards answers 403, and the page shows no board).
+  for (const shell of ["moldura", "nucleo"] as const)
+    it(`C81 the palette in the ${shell} on the page with no dashboard (403): Abrir painéis is there, Atualizar painel is not`, async () => {
+      if (shell === "nucleo") net.prefs.shell = "nucleo";
+      dash.list = new NetError(403, "scope_required", "This device needs the content scope");
+      const registry = new CommandRegistry();
+      await mountShell("/dashboards", shell, "pt-BR", registry);
+      await screen.findByText("Este dispositivo não tem permissão para ver painéis.", undefined, {
+        timeout: 20_000,
+      });
+      const ids = () => registry.list().map((c) => c.id);
+      await waitFor(() => expect(ids()).toContain("action:dashboards"));
+      expect(ids()).not.toContain("action:dashboard-refresh");
     });
 
   it("C81 both shells show the same snapshot and the same selector entries", async () => {
