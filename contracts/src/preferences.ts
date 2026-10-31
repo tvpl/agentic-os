@@ -89,6 +89,9 @@ export const UI_SHELLS = ["moldura", "nucleo"] as const;
 export const UiShellSchema = z.enum(UI_SHELLS);
 export type UiShell = z.infer<typeof UiShellSchema>;
 
+/** How many dashboards `UiPreferences.dashboards.lastViewed` remembers (amendment 28). */
+const DASHBOARDS_LAST_VIEWED_MAX = 200;
+
 export const UiPreferencesSchema = z.object({
   version: z.literal(1).default(1),
   /**
@@ -127,7 +130,21 @@ export const UiPreferencesSchema = z.object({
    * and the CLI; `null` is "the whole brain". Deleting the context it names sets it back to `null`.
    */
   activeContext: z.string().nullable().catch(null),
+  /**
+   * The dashboards (.specs/features/cerebro-paineis, AC 45, amendment 28): when each was last left, so the next open
+   * asks for what is new since then. At most 200 entries; a value this version cannot read is `{ lastViewed: {} }`.
+   */
+  dashboards: z
+    .object({
+      lastViewed: z
+        .record(z.number().int().min(0))
+        .refine((r) => Object.keys(r).length <= DASHBOARDS_LAST_VIEWED_MAX, "at most 200 entries")
+        .default({}),
+    })
+    .default({ lastViewed: {} })
+    .catch({ lastViewed: {} }),
 });
+
 export type UiPreferences = z.infer<typeof UiPreferencesSchema>;
 
 export function defaultUiPreferences(): UiPreferences {

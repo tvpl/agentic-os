@@ -15,6 +15,7 @@ import {
   CalendarClock,
   FolderOpen,
   Images,
+  LayoutDashboard,
   ListTree,
   Plug,
   Settings,
@@ -36,6 +37,7 @@ export const APP_KINDS = [
   "routines",
   "runs",
   "pixel",
+  "dashboards",
 ] as const;
 export type AppKind = (typeof APP_KINDS)[number];
 
@@ -132,6 +134,17 @@ export const APPS: Record<AppKind, AppDef> = {
     Component: lazyRoute(() => import("../runs")),
   },
   pixel: fromPlugin(pixelPlugin),
+  // The dashboards (.specs/features/cerebro-paineis, amendment 25): `/dashboards` and `/dashboards/<id>`, a chunk of
+  // its own; the Núcleo draws its own scene of it (`nucleo/sceneViews.ts`).
+  dashboards: {
+    kind: "dashboards",
+    route: "/dashboards",
+    titleKey: "dash.nav",
+    refKey: "dash.ref",
+    descKey: "dash.desc",
+    Icon: LayoutDashboard,
+    Component: lazyRoute(() => import("../dashboards/DashboardsPage")),
+  },
 };
 
 const PREFIX = "app:";

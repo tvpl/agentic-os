@@ -108,6 +108,12 @@
   /* opaque surfaces for panels that sit over live canvases (no backdrop-filter) */
   --surface: color-mix(in srgb, var(--bg-raise) 90%, var(--bg));
   --surface-2: color-mix(in srgb, var(--bg-raise-2) 92%, var(--bg));
+  /* chart marks (cerebro-paineis design.md "Cores dos gráficos"): one series per chart, never the accent; the same
+     for every preset (amendment 23) */
+  --chart-mark: #ea580c;
+  --chart-mark-soft: color-mix(in srgb, var(--chart-mark) 10%, transparent);
+  --chart-muted: var(--text-faint);
+  --chart-grid: var(--border);
   color-scheme: dark;
 
   /* spacing (4px base) --------------------------------------------------- */
@@ -217,6 +223,7 @@
   --canvas-star: #3b3630;
   --canvas-particle: #6b7280;
   --hud-intensity: 0.25;
+  --chart-mark: #c2410c;
   color-scheme: light;
 }
 

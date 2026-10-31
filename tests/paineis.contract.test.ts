@@ -30,6 +30,7 @@ import {
   type PaineisWorld,
 } from "./helpers/paineisWorld.js";
 import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
+import { ENTRIES, edgesOf, loadTree, reachable } from "../apps/command-centre/src/testing/sourceGraph.js";
 
 /**
  * .specs/features/cerebro-paineis, the contract: what the event registry and its document say (C18, batch A), and the
@@ -884,4 +885,69 @@ describe("C59 the scenarios of the eight routes", () => {
       await world.close();
     }
   }, 120_000);
+});
+
+describe("C96 the screens' chunks and their weight (amendment 24, question 10)", () => {
+  it("C96 the page and the scene are reached from both entries only by a dynamic import(); the baseline's cerebro-paineis entry follows cerebro-natureza with a reason of more than 40 characters and the four numbers, at most 24 KB of JS gzip and 4 KB of CSS gzip above it (556 121 B and 77 763 B)", () => {
+    const tree = loadTree(path.join(repoRoot, "apps", "command-centre", "src"));
+    // What each page loads without anyone asking: its entry and what that imports statically.
+    for (const entry of ENTRIES) {
+      const seen = new Set<string>([entry]);
+      const queue = [entry];
+      while (queue.length > 0)
+        for (const edge of edgesOf(tree, queue.pop()!)) {
+          if (edge.how === "dynamic" || edge.how === "url" || seen.has(edge.to)) continue;
+          seen.add(edge.to);
+          queue.push(edge.to);
+        }
+      expect(
+        [...seen].filter((f) => f.startsWith("dashboards/") || f === "gallery/dashboardsStory.tsx"),
+        entry,
+      ).toEqual([]);
+    }
+    const screens = ["dashboards/DashboardsPage.tsx", "dashboards/DashboardsScene.tsx"];
+    for (const file of screens) expect(reachable(tree).has(file), file).toBe(true);
+    const importers = (to: string) =>
+      [...tree.keys()]
+        .filter(
+          (f) =>
+            !/\.test\./.test(f) &&
+            f !== "dashboards/testkit.tsx" &&
+            edgesOf(tree, f).some((e) => e.to === to),
+        )
+        .sort();
+    const how = (from: string, to: string) => edgesOf(tree, from).find((e) => e.to === to)?.how;
+    // The ways in: the moldura's page through the apps' table, the Núcleo's scene through the scenes' table.
+    expect(importers("dashboards/DashboardsPage.tsx")).toEqual(["desktop/apps.tsx"]);
+    expect(how("desktop/apps.tsx", "dashboards/DashboardsPage.tsx")).toBe("dynamic");
+    expect(importers("dashboards/DashboardsScene.tsx")).toEqual(["nucleo/sceneViews.ts"]);
+    expect(how("nucleo/sceneViews.ts", "dashboards/DashboardsScene.tsx")).toBe("dynamic");
+    expect(importers("gallery/dashboardsStory.tsx")).toEqual(["gallery/main.tsx"]);
+    expect(how("gallery/main.tsx", "gallery/dashboardsStory.tsx")).toBe("dynamic");
+
+    type Entry = {
+      feature: string;
+      reason: string;
+      jsRaw: number;
+      jsGzip: number;
+      cssRaw: number;
+      cssGzip: number;
+    };
+    const baseline = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, "scripts", "bundle-baseline.json"), "utf8"),
+    ) as {
+      after: Entry[];
+    };
+    const i = baseline.after.findIndex((e) => e.feature === "cerebro-paineis");
+    expect(i, "the entry exists").toBeGreaterThan(0);
+    const entry = baseline.after[i]!;
+    const before = baseline.after[i - 1]!;
+    expect(before.feature).toBe("cerebro-natureza");
+    expect([before.jsGzip, before.cssGzip]).toEqual([556_121, 77_763]);
+    expect(entry.reason.length).toBeGreaterThan(40);
+    for (const k of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
+      expect(Number.isInteger(entry[k]) && entry[k] > 0, k).toBe(true);
+    expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(24 * 1024);
+    expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(4 * 1024);
+  });
 });

@@ -1103,3 +1103,12 @@ Status of batch C (updated in the commit that closes each piece):
   connector item keeps its `id`, its time (`ts`), its flag and its link (`href`), which the agenda, the highlights and
   AC 37 read. Whether `legal/PRIVACY.md` should name those too is a wording choice of question 1's review; the
   paragraph says what C62 names and no more
+
+Status of batch D (updated in the commit that closes each piece):
+
+- the screens' unit half (C65 to C80, the unit halves of C81 and C90, C82 to C89, C91 to C93, C96's contract half and
+  C97): closed, every proof green in `src/dashboards/DashboardsPage.test.tsx`, `dashboardsTime.test.tsx` (pinned to
+  `America/Sao_Paulo`), `widgets.test.tsx`, `charts.test.tsx`, `dashboardsEntries.test.tsx`,
+  `DashboardDialogs.test.tsx`, `dashboardsMotion.test.ts`, `dashboardsCopy.test.ts`, `src/nucleo/shell.test.ts` (C81),
+  `src/hooks/notificationText.test.ts` (C91) and `tests/paineis.contract.test.ts` (C96); `scripts/bundle-baseline.json`
+  has its `cerebro-paineis` entry (re-measured on the batch's last build)

@@ -12,6 +12,7 @@ import * as sceneSkillsL from "./locales/scene-skills";
 import * as sceneRoutinesL from "./locales/scene-routines";
 import * as molduraL from "./locales/moldura";
 import * as commandsL from "./locales/commands";
+import * as dashboardsL from "./locales/dashboards";
 
 export type Lang = "en" | "pt-BR";
 
@@ -560,6 +561,7 @@ const en = {
   ...sceneSkillsL.en,
   ...sceneRoutinesL.en,
   ...molduraL.en,
+  ...dashboardsL.en,
   ...commandsL.en,
 };
 /** Every string is widened to `string`: locale modules may use `as const`. */
@@ -1124,6 +1126,7 @@ const localePtBR = {
   ...sceneSkillsL.ptBR,
   ...sceneRoutinesL.ptBR,
   ...molduraL.ptBR,
+  ...dashboardsL.ptBR,
   ...commandsL.ptBR,
 };
 

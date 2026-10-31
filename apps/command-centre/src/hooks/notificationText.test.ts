@@ -63,3 +63,29 @@ describe("C88 the reviewDue row (cerebro-natureza, amendment 16)", () => {
     );
   });
 });
+
+describe("C91 the reminder row (cerebro-paineis, amendment 16)", () => {
+  const row = (rule: string, text: string) =>
+    ({ messageKey: `reminder.${rule}`, messageParams: { text } }) as const;
+  it("C91 Atrasada:, Vence hoje: and Projeto atrasado: in pt-BR, Overdue: in en, through the messageKey", () => {
+    // The stored title is the server's English; the row is written from the key, whatever the title says.
+    expect(notificationText("x", undefined, "pt-BR", row("overdue", "Mandar a proposta")).title).toBe(
+      "Atrasada: Mandar a proposta",
+    );
+    expect(notificationText("x", undefined, "pt-BR", row("due_today", "Ligar")).title).toBe(
+      "Vence hoje: Ligar",
+    );
+    expect(notificationText("x", undefined, "pt-BR", row("project_behind", "Site novo")).title).toBe(
+      "Projeto atrasado: Site novo",
+    );
+    expect(notificationText("x", undefined, "en-GB", row("overdue", "Mandar a proposta")).title).toBe(
+      "Overdue: Mandar a proposta",
+    );
+  });
+  it("C91 a reminder row with an unknown messageKey shows its title", () => {
+    for (const locale of ["pt-BR", "en-GB"])
+      expect(notificationText("Overdue: Algo", undefined, locale, row("unheard_of", "Algo")).title).toBe(
+        "Overdue: Algo",
+      );
+  });
+});

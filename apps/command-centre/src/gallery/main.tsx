@@ -59,6 +59,7 @@ const NotesStory = lazy(() => import("./notesStory"));
 const CleanupStory = lazy(() => import("./cleanupStory"));
 /** "Revisões" (cerebro-natureza, C91): through the screen's chunk, as it is in the app. */
 const ReviewsStory = lazy(() => import("./reviewsStory"));
+const DashboardsStory = lazy(() => import("./dashboardsStory"));
 
 /* ---------- fixtures (plainly synthetic; the gallery never talks to the API) ---------- */
 const NOW = Date.UTC(2026, 8, 2, 14, 30);
@@ -879,6 +880,12 @@ function Gallery() {
       <Story id="reviews" title="Reviews">
         <Suspense fallback={null}>
           <ReviewsStory />
+        </Suspense>
+      </Story>
+
+      <Story id="dashboards" title="Dashboards">
+        <Suspense fallback={null}>
+          <DashboardsStory />
         </Suspense>
       </Story>
     </main>

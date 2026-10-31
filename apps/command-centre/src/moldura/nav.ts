@@ -19,6 +19,8 @@ const item = (kind: AppKind, labelKey: TKey): NavItem => ({
 /** The sidebar, top to bottom (design Tela 1): the main group, "More", then Settings alone. */
 const NAV_MAIN: readonly NavItem[] = [
   { id: "today", to: "/", labelKey: "moldura.nav.today", Icon: Sun },
+  // "Painéis", right after "Hoje" (.specs/features/cerebro-paineis, amendment 25).
+  item("dashboards", "dash.nav"),
   item("runs", "moldura.nav.runs"),
   item("skills", "moldura.nav.skills"),
   item("routines", "moldura.nav.routines"),

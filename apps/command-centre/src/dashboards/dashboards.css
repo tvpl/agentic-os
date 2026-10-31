@@ -1,0 +1,666 @@
+/* The dashboards (.specs/features/cerebro-paineis, design.md): the page of the moldura (`.dsh`), the scene of the
+   Núcleo (`.dsn`), the eight widgets and the two charts. Colours only from tokens; the chart marks only from
+   `--chart-*`, never the accent. Text never under 12px, sentences at 13px. Motion only inside the no-preference
+   block at the end. */
+
+/* ---- the header ------------------------------------------------------------------------------------------------ */
+.dsh-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3) var(--s-4);
+  margin-bottom: var(--s-4);
+}
+.dsh-head-l {
+  min-width: 0;
+}
+.dsh-title {
+  margin: 0;
+  font-size: var(--fs-6);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.dsh-title[data-kind="overview"] {
+  font-size: calc(var(--fs-2) * 2);
+}
+.dsh-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-3);
+  margin-top: var(--s-1);
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.dsh-when,
+.dsh-source,
+.dsh-state-msg,
+.dsh-pill,
+.dsh-event-prep {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+.dsh-meta svg,
+.dsh-state-msg svg,
+.dsh-pill svg,
+.dsh-event-prep svg,
+.dsh-lock,
+.dsh-prio {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.dsh-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dsh-source {
+  padding: 0 var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  line-height: 20px;
+}
+.dsh-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+@media (max-width: 719px) {
+  .dsh-head {
+    flex-direction: column;
+  }
+}
+
+/* ---- the body: highlights, KPIs, the 12-column grid ---------------------------------------------------------- */
+.dsh-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.dsh-highlights {
+  display: flex;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0 0 var(--s-1);
+  overflow-x: auto;
+  list-style: none;
+}
+.dsh-pill {
+  flex: none;
+  min-height: 28px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-raise);
+  color: var(--text);
+  font-size: var(--fs-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dsh-pill.ok svg {
+  color: var(--ok);
+}
+.dsh-pill.warn svg {
+  color: var(--warn);
+}
+.dsh-pill.danger svg {
+  color: var(--danger);
+}
+.dsh-pill.info svg {
+  color: var(--info);
+}
+.dsh-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+@media (max-width: 959px) {
+  .dsh-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 559px) {
+  .dsh-kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.dsh-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+.dsh-card[data-size="s"] {
+  grid-column: span 4;
+}
+.dsh-card[data-size="m"] {
+  grid-column: span 6;
+}
+.dsh-card[data-size="l"] {
+  grid-column: span 8;
+}
+.dsh-card[data-size="xl"] {
+  grid-column: span 12;
+}
+@media (max-width: 719px) {
+  .dsh-grid > .dsh-card {
+    grid-column: span 12;
+  }
+}
+.dsh-next {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* ---- a card and the states of a widget ----------------------------------------------------------------------- */
+.dsh-card,
+.dsh-kpi {
+  min-width: 0;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: var(--r-4);
+}
+.dsh-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4) 0;
+}
+.dsh-card-t {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+.dsh-count {
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.dsh-card-b {
+  padding: var(--s-2) var(--s-4) var(--s-3);
+}
+.dsh-skel {
+  height: 96px;
+  border-radius: var(--r-2);
+  background: var(--bg-raise-2);
+}
+.dsh-empty,
+.dsh-state-text,
+.dsh-state-msg,
+.dsh-note,
+.dsh-note-text,
+.dsh-task-msg,
+.dsh-dialog-msg {
+  margin: 0;
+  font-size: var(--fs-3);
+  color: var(--text-dim);
+}
+p.dsh-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+p.dsh-empty svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.dsh-state-msg {
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.dsh-state-msg[role="alert"] svg {
+  color: var(--danger);
+}
+.dsh-empty-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.dsh-link {
+  color: var(--accent-text);
+  font-size: var(--fs-3);
+}
+.dsh-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dsh-open:hover {
+  text-decoration: underline;
+}
+
+/* ---- list, checklist, table ---------------------------------------------------------------------------------- */
+.dsh-list,
+.dsh-tasks,
+.dsh-agenda,
+.dsh-custom,
+.dsh-cites ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dsh-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  border-top: 1px solid var(--border);
+}
+.dsh-row:first-child,
+.dsh-task:first-child {
+  border-top: 0;
+}
+.dsh-row-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.dsh-row-t,
+.dsh-task-t,
+.dsh-event-t {
+  font-size: var(--fs-3);
+}
+.dsh-row-meta,
+.dsh-task-from,
+.dsh-event-prep {
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.dsh-row-badges,
+.dsh-table-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s-1);
+}
+.dsh-state svg,
+.dsh-due svg,
+.dsh-chip svg {
+  width: 12px;
+  height: 12px;
+}
+.dsh-task {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 36px;
+  border-top: 1px solid var(--border);
+}
+.dsh-task[data-done] .dsh-task-t {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+.dsh-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.dsh-lock {
+  color: var(--text-faint);
+}
+.dsh-prio {
+  color: var(--warn);
+}
+.dsh-task .dsh-due {
+  margin-left: auto;
+}
+.dsh-task-msg {
+  flex-basis: 100%;
+  color: var(--warn);
+}
+.dsh-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-3);
+}
+.dsh-table th {
+  font-size: var(--fs-2);
+  font-weight: 500;
+  color: var(--text-faint);
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dsh-table td,
+.dsh-table th {
+  height: 40px;
+  padding: 0 var(--s-2);
+  border-top: 1px solid var(--border);
+}
+.dsh-num {
+  font-variant-numeric: tabular-nums;
+}
+.dsh-table .dsh-num {
+  text-align: right;
+}
+.dsh-seeall {
+  margin-top: var(--s-2);
+  font-size: var(--fs-2);
+}
+
+/* ---- the KPI tile -------------------------------------------------------------------------------------------- */
+.dsh-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-3) var(--s-4);
+}
+.dsh-kpi-label {
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.dsh-kpi-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-1);
+  min-height: 40px;
+}
+.dsh-kpi-value {
+  font-size: calc(var(--fs-5) * 2);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: proportional-nums;
+}
+.dsh-kpi-of {
+  font-size: var(--fs-6);
+  color: var(--text-dim);
+}
+.dsh-kpi-row .dsh-spark,
+.dsh-nohist {
+  margin-left: auto;
+}
+.dsh-nohist {
+  font-size: var(--fs-2);
+  color: var(--text-faint);
+}
+.dsh-kpi-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-2);
+}
+.dsh-delta.good {
+  color: var(--ok);
+}
+.dsh-delta.bad {
+  color: var(--danger);
+}
+.dsh-delta.flat {
+  color: var(--text-dim);
+}
+.dsh-astable {
+  font-size: var(--fs-2);
+}
+
+/* ---- the charts ---------------------------------------------------------------------------------------------- */
+.dsh-spark,
+.dsh-bars {
+  position: relative;
+  border-radius: var(--r-2);
+}
+.dsh-spark:focus-visible,
+.dsh-bars:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.dsh-spark svg {
+  display: block;
+  overflow: visible;
+}
+.dsh-spark-area {
+  fill: var(--chart-mark-soft);
+}
+.dsh-spark-hist,
+.dsh-spark-now {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dsh-spark-hist {
+  stroke: var(--chart-muted);
+}
+.dsh-spark-now {
+  stroke: var(--chart-mark);
+}
+.dsh-spark-dot {
+  fill: var(--chart-mark);
+  stroke: var(--bg-raise);
+  stroke-width: 2;
+}
+.dsh-hit {
+  fill: transparent;
+}
+.dsh-cross {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+.dsh-tip {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: calc(100% + 4px);
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-2);
+  background: var(--bg-raise-2);
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.dsh-tip strong {
+  color: var(--text);
+}
+.dsh-bars {
+  display: grid;
+  gap: 2px;
+}
+.dsh-bar-row {
+  display: grid;
+  grid-template-columns: minmax(64px, 30%) 1fr auto;
+  align-items: center;
+  gap: var(--s-2);
+}
+.dsh-bars[data-funnel] .dsh-bar-row {
+  grid-template-columns: minmax(64px, 30%) 1fr auto 48px;
+}
+.dsh-bar-label,
+.dsh-bar-value {
+  font-size: var(--fs-3);
+}
+.dsh-bar-conv {
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+  text-align: right;
+}
+.dsh-bar-svg {
+  display: block;
+}
+.dsh-bar-track {
+  fill: color-mix(in srgb, var(--chart-muted) 25%, transparent);
+}
+.dsh-bar {
+  fill: var(--chart-mark);
+  transform-origin: left center;
+}
+.dsh-bar-row[data-active] {
+  outline: 1px solid var(--chart-grid);
+  outline-offset: 1px;
+}
+
+/* ---- agenda, note, citations --------------------------------------------------------------------------------- */
+.dsh-event {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 0 var(--s-2);
+  padding: var(--s-1) 0 var(--s-1) var(--s-2);
+  border-left: 2px solid transparent;
+}
+.dsh-event.now {
+  border-left-color: var(--chart-mark);
+}
+.dsh-event.past,
+.dsh-event.past .dsh-event-prep {
+  color: var(--text-faint);
+}
+.dsh-event-time {
+  font-size: var(--fs-3);
+}
+.dsh-event-prep {
+  grid-column: 2;
+}
+.dsh-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.dsh-cites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  padding: 0 var(--s-4) var(--s-3);
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.dsh-cites ul {
+  display: contents;
+}
+.dsh-cites-t {
+  font-weight: 600;
+}
+.dsh-question-error {
+  margin-bottom: var(--s-4);
+}
+
+/* ---- the dialogs --------------------------------------------------------------------------------------------- */
+.dsh-new {
+  display: grid;
+  gap: var(--s-3);
+}
+.dsh-new-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+}
+.dsh-new-card[data-chosen] {
+  border-color: var(--accent-line);
+}
+.dsh-new-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+.dsh-custom-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 40px;
+  padding: 0 var(--s-2);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-3);
+}
+.dsh-custom-row:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.dsh-custom-t {
+  flex: 1;
+}
+.dsh-custom-show {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-2);
+}
+.dsh-dialog-msg {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+
+/* ---- the Núcleo's scene: a voice line, a strip of KPIs, lâminas in two columns; no camera ------------------- */
+.dsn {
+  position: absolute;
+  top: calc(var(--nu-hud) + 8px);
+  bottom: calc(var(--nu-voice-h) + 16px);
+  left: var(--nu-gutter);
+  right: var(--nu-gutter);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  overflow: hidden auto;
+  color: var(--text);
+}
+.dsn-voice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2) var(--s-4);
+}
+.dsn-voice .dsh-meta {
+  flex: 1;
+}
+.dsn-laminas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+.dsn-laminas > .dsh-card {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  border-radius: var(--r-3);
+}
+
+/* ---- motion, only for whoever did not ask for less --------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  .dsh-spin {
+    animation: spin 1s linear infinite;
+  }
+  .dsh-bar {
+    animation: dsh-grow 300ms ease-out;
+  }
+  .dsh-pill {
+    animation: dsh-fade 150ms ease-out;
+  }
+  .dsh-skel {
+    animation: dsh-pulse 1.4s ease-in-out infinite;
+  }
+}
+@keyframes dsh-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes dsh-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes dsh-pulse {
+  50% {
+    opacity: 0.6;
+  }
+}

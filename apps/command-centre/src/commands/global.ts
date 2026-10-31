@@ -15,6 +15,7 @@ import {
   FilePlus,
   Grid3x3,
   Keyboard,
+  LayoutDashboard,
   LayoutGrid,
   ListTree,
   Palette,
@@ -239,6 +240,27 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["reviews", "revisoes", "revisões", "revisar", "review", "natureza"],
         palette: true,
         run: go(REVIEWS_PATH),
+      },
+      {
+        // "Abrir painéis" (cerebro-paineis, amendment 25): the dashboards, in both shells; distinct from
+        // `action:open-panel`, which projects a lâmina.
+        id: "action:dashboards",
+        title: "dash.cmd.open",
+        group: "actions",
+        scope: "global",
+        icon: LayoutDashboard,
+        keywords: [
+          "dashboards",
+          "dashboard",
+          "paineis",
+          "painéis",
+          "painel",
+          "kpi",
+          "overview",
+          "visao geral",
+        ],
+        palette: true,
+        run: go("/dashboards"),
       },
       {
         id: "action:now",

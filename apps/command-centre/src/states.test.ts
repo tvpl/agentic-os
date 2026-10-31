@@ -58,6 +58,12 @@ const MARKED_ELSEWHERE: Record<string, string> = {
   ".health-check.ok": "the row prints the check's status word (`.tg`) and its label",
   ".nu-viz.segs i.on": "decorative (`aria-hidden`); the card beside it prints the pending count in words",
   ".rts-mark.done": "a dial mark that has already passed today: its place against the now hand says it",
+  // cerebro-paineis (design.md "Corpo" and `kpi`): the tone of a highlight and the direction of a KPI's delta.
+  ".dsh-pill.ok": "a highlight pill carries its rule's icon and its text; the tone only reinforces them",
+  ".dsh-pill.warn": "a highlight pill carries its rule's icon and its text; the tone only reinforces them",
+  ".dsh-pill.danger": "a highlight pill carries its rule's icon and its text; the tone only reinforces them",
+  ".dsh-delta.bad":
+    "the delta is written as a signed number or an arrow and a percentage; the hue only reinforces it",
   ".rts-lane-dot.done": "a dial dot that has already passed today: its place against the now hand says it",
   ".rts-lane.bad":
     "the lane repeats a routine whose row and centre say it is failing in words (`.rts-st`, `.rts-bad`)",

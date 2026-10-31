@@ -1,4 +1,11 @@
-import { tf } from "../i18n";
+import { tf, type TKey } from "../i18n";
+
+/** The reminders of the dashboards (cerebro-paineis, amendment 16): the text the interface writes for each rule. */
+const REMINDER_KEYS: Record<string, TKey> = {
+  "reminder.overdue": "reminder.overdue",
+  "reminder.due_today": "reminder.due_today",
+  "reminder.project_behind": "reminder.project_behind",
+};
 
 /** Translate persisted legacy system templates, preserving user-authored names and prompts. */
 export function notificationText(
@@ -7,6 +14,14 @@ export function notificationText(
   locale: string,
   message?: { messageKey?: string | null; messageParams?: Record<string, string | number | boolean> | null },
 ) {
+  const reminder = message?.messageKey ? REMINDER_KEYS[message.messageKey] : undefined;
+  if (reminder)
+    return {
+      title: tf(locale.startsWith("pt") ? "pt-BR" : "en", reminder, {
+        text: String(message?.messageParams?.text ?? ""),
+      }),
+      body,
+    };
   if (!locale.startsWith("pt")) return { title, body };
   if (message?.messageKey) {
     const p = message.messageParams ?? {};
