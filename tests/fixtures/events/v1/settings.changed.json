@@ -178,6 +178,9 @@
         "reviewDue": {
           "enabled": true
         },
+        "proposalsPending": {
+          "enabled": true
+        },
         "triage": {
           "enabled": true,
           "model": "haiku",

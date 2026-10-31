@@ -102,6 +102,8 @@ const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
     connectorDelta: { ...d.sentinels.connectorDelta, enabled: false },
     repeatDetector: { ...d.sentinels.repeatDetector, enabled: false },
     reviewDue: { ...d.sentinels.reviewDue, enabled: false },
+    // cerebro-memoria-confiavel, door 11: the sentinel of the agent's proposals, closed with the others
+    proposalsPending: { ...d.sentinels.proposalsPending, enabled: false },
     triage: { ...d.sentinels.triage, enabled: false, dailyBudgetUsd: 0 },
   },
   channels: {
@@ -483,6 +485,7 @@ describe("S3 settings tolerate an invalid field", () => {
     expect(onByDefault.sort()).toEqual([
       "indexedFolders.0.enabled",
       "sentinels.connectorDelta.enabled",
+      "sentinels.proposalsPending.enabled",
       "sentinels.repeatDetector.enabled",
       "sentinels.repeatedFailure.enabled",
       "sentinels.reviewDue.enabled",

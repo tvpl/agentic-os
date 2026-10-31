@@ -212,6 +212,15 @@ export const SentinelSettingsSchema = z.object({
       enabled: z.boolean().default(true),
     })
     .default({}),
+  /**
+   * The agent's proposals waiting for review (.specs/features/cerebro-memoria-confiavel, door 11): once a local day, from
+   * the hourly pass, one notification when at least one is pending. On by default; no model and no network.
+   */
+  proposalsPending: z
+    .object({
+      enabled: z.boolean().default(true),
+    })
+    .default({}),
   /** Short, cheap run that answers a `triage: true` sentinel with ignore/notify/propose. */
   triage: z
     .object({

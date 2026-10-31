@@ -475,12 +475,13 @@ Payload, version 1:
 
 | Field | Type | Required |
 | --- | --- | --- |
-| `sentinel` | "fsWatch" \| "repeatedFailure" \| "silentRoutine" \| "connectorDelta" \| "reviewDue" | yes |
+| `sentinel` | "fsWatch" \| "repeatedFailure" \| "silentRoutine" \| "connectorDelta" \| "reviewDue" \| "proposalsPending" | yes |
 | `messageParams` | map of string \| number \| boolean | no |
 | `title` | string | yes |
 | `body` | string | yes |
 | `severity` | "info" \| "warn" \| "danger" | yes |
 | `href` | string | no |
+| `count` | number | no |
 | `dedupeKey` | string | no |
 | `triage` | boolean | no |
 

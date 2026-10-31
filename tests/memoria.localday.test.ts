@@ -1,18 +1,20 @@
-// The local day of a new line of MEMORY.md (AD-043 b, L-053): a zone away from UTC, at
+// The local day of a new line of MEMORY.md and of the sentinel of proposals (AD-043 b, L-053): a zone away from UTC, at
 // an hour where the local day and the UTC day differ, tells one from the other. Set before any date is built.
 process.env.TZ = "America/Sao_Paulo";
 
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { OsEvent } from "../core/src/events.js";
 import { storeProposal } from "../core/src/memory/proposals.js";
+import { readMetaJson } from "../core/src/sentinels/meta.js";
 import { memoriaWorld, type Json, type MemoriaWorld } from "./helpers/memoriaWorld.js";
 import { movingClock } from "./helpers/movingClock.js";
 
 /**
  * cerebro-memoria-confiavel S3, the claims that name a local day, in São Paulo: 23:30 of 2026-10-31 there is 02:30 of
  * 2026-11-01 in UTC. The lines an accepted consolidation writes (C54-C56, C58), through `POST
- * /api/memory/proposals/:id/decide`, with `Date.now` set to that
+ * /api/memory/proposals/:id/decide`, and the day of the `proposalsPending` sentinel (C75), with `Date.now` set to that
  * instant and still moving (`movingClock`: an index pass waits for the clock to move, so it is never frozen).
  */
 
@@ -124,7 +126,7 @@ const headings = () =>
     .filter((l) => l.startsWith("## "));
 
 describe("the local day and the UTC day differ here", () => {
-  it("C54 C55 C56 C58 the zone is pinned: 23:30 of 2026-10-31 local is 2026-11-01 in UTC", () => {
+  it("C54 C55 C56 C58 C75 the zone is pinned: 23:30 of 2026-10-31 local is 2026-11-01 in UTC", () => {
     expect(process.env.TZ).toBe("America/Sao_Paulo");
     expect(new Date(NOW).getDate()).toBe(31);
     expect(new Date(NOW).getHours()).toBe(23);
@@ -231,5 +233,67 @@ describe("C58 a move_to_topic op", () => {
     expect(fs.readFileSync(path.join(w.memory, "topics", "clientes.md"), "utf8")).toBe(
       `${header}${MOVED.join("\n")}\n`,
     );
+  });
+});
+
+describe("C75 the sentinel's local day", () => {
+  const fired = async (when: number): Promise<Json[]> => {
+    const seen: Json[] = [];
+    const off = w.ctx.events.subscribe((e: OsEvent) => {
+      const payload = e.payload as Json;
+      if (e.type === "sentinel.fired" && payload.sentinel === "proposalsPending") seen.push(payload);
+    });
+    try {
+      await at(when, () => w.ctx.sentinels.hourly());
+    } finally {
+      off();
+    }
+    return seen;
+  };
+  const propose = (n: number) => {
+    for (let i = 0; i < n; i++) {
+      storeProposal(
+        w.ctx.db,
+        {
+          kind: "fact",
+          author: "mcp",
+          summary: `C75 ${i}`,
+          payload: { subject: `C75 ${i}`, predicate: "p", object: "o" },
+        },
+        { capped: true },
+      );
+    }
+  };
+  const forget = () => w.ctx.db.prepare("DELETE FROM meta WHERE key = 'sentinel.proposalsPending.day'").run();
+
+  it("C75 3 pending at 23:30 local: one event with count 3 and the href, the day 2026-10-31 in meta; again that day none; at 00:30 of 11-01 one", async () => {
+    forget();
+    propose(3);
+    const first = await fired(NOW);
+    expect(first).toEqual([
+      {
+        sentinel: "proposalsPending",
+        title: "3 agent proposals to review",
+        body: "What agents proposed to write to the memory waits in Reviews › From the agent: accept all, part or none.",
+        severity: "info",
+        href: "/brain/reviews?tab=agent",
+        count: 3,
+        messageParams: { count: 3 },
+      },
+    ]);
+    expect(readMetaJson(w.ctx.db, "sentinel.proposalsPending.day")).toBe(LOCAL);
+    expect(await fired(NOW + 20 * 60_000)).toEqual([]);
+    const next = await fired(NOW + 60 * 60_000);
+    expect(next.map((p) => p.count)).toEqual([3]);
+    expect(readMetaJson(w.ctx.db, "sentinel.proposalsPending.day")).toBe("2026-11-01");
+  });
+
+  it("C75 exactly 1 pending: count 1; 0 pending: none", async () => {
+    forget();
+    propose(1);
+    expect((await fired(NOW)).map((p) => p.count)).toEqual([1]);
+    forget();
+    w.ctx.db.prepare("DELETE FROM memory_proposals").run();
+    expect(await fired(NOW)).toEqual([]);
   });
 });

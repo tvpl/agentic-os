@@ -40,13 +40,22 @@ const IndexStatsSchema = z.object({
 });
 
 const SentinelFiredSchema = z.object({
-  sentinel: z.enum(["fsWatch", "repeatedFailure", "silentRoutine", "connectorDelta", "reviewDue"]),
+  sentinel: z.enum([
+    "fsWatch",
+    "repeatedFailure",
+    "silentRoutine",
+    "connectorDelta",
+    "reviewDue",
+    "proposalsPending",
+  ]),
   messageParams: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
   title: z.string(),
   body: z.string(),
   severity: z.enum(["info", "warn", "danger"]),
   /** Where the Command Centre should send the reader. */
   href: z.string().optional(),
+  /** How many things the finding counts, when it counts. */
+  count: z.number().optional(),
   /** Rows sharing this key collapse. */
   dedupeKey: z.string().optional(),
   /** Ask the triage run to decide what this means (costs money). */

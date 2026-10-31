@@ -116,7 +116,8 @@ export interface BudgetCrossedPayload {
   budgetUsd: number;
 }
 
-export type SentinelId = "fsWatch" | "repeatedFailure" | "silentRoutine" | "connectorDelta" | "reviewDue";
+export type SentinelId =
+  "fsWatch" | "repeatedFailure" | "silentRoutine" | "connectorDelta" | "reviewDue" | "proposalsPending";
 
 export const SENTINEL_IDS: readonly SentinelId[] = [
   "fsWatch",
@@ -125,6 +126,8 @@ export const SENTINEL_IDS: readonly SentinelId[] = [
   "connectorDelta",
   /** The notes whose review fell due, once a day (.specs/features/cerebro-natureza, door 5). */
   "reviewDue",
+  /** The agent's proposals waiting for review, once a day (.specs/features/cerebro-memoria-confiavel, door 11). */
+  "proposalsPending",
 ];
 
 export type SentinelSeverity = "info" | "warn" | "danger";
@@ -138,6 +141,8 @@ export interface SentinelFiredPayload {
   severity: SentinelSeverity;
   /** Where the Command Centre should send the reader. */
   href?: string;
+  /** How many things the finding counts, when it counts (`proposalsPending`: the proposals pending). */
+  count?: number;
   /** Rows sharing this key collapse (see `NotificationStore.hasDedupeKey`). */
   dedupeKey?: string;
   /** Ask the triage run to decide what this means (costs money — see `triage.ts`). */
