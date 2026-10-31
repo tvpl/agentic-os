@@ -11,6 +11,7 @@ import {
   applyCleanup,
   b64url,
   createNote,
+  recordFileVersion,
   saveCleanupDecisions,
   type Fetcher,
 } from "@mordomo/core/internal";
@@ -350,6 +351,14 @@ const uuid = () => crypto.randomUUID();
 /** A note made by the engine itself (clean of any fault a probe injects into the request that follows). */
 const noteOf = (w: World, title: string) =>
   createNote({ paths: w.ctx.paths, settings: w.ctx.settings() }, { title });
+
+/** A note made for a scenario and its first version in the history of memory/ (cerebro-memoria-confiavel). */
+function versionOf(w: World, title: string): { id: number; version: string } {
+  const note = noteOf(w, title);
+  const env = { db: w.ctx.db, paths: w.ctx.paths, settings: w.ctx.settings() };
+  const id = recordFileVersion(env, note.path, fs.readFileSync(note.path), "owner", "create")!;
+  return { id, version: note.version };
+}
 
 /** The dashboard of the contract's context (cerebro-paineis), made by the engine when it is not there yet. */
 function dashboardOf(w: World): { id: string; definition: unknown; version: string } {
@@ -847,6 +856,22 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   [key("POST", "/api/memory/facts/:id/retract")]: {
     run: (w) => w.call("POST", `/api/memory/facts/${w.ids.factId}/retract`),
+  },
+  // cerebro-memoria-confiavel, door 10: the history of memory/, over a version of a note made for the scenario.
+  [key("GET", "/api/memory/history")]: {
+    run: (w) => {
+      versionOf(w, "Cenário de histórico");
+      return w.call("GET", "/api/memory/history");
+    },
+  },
+  [key("GET", "/api/memory/history/:id")]: {
+    run: (w) => w.call("GET", `/api/memory/history/${versionOf(w, "Cenário de uma versão").id}`),
+  },
+  [key("POST", "/api/memory/history/restore")]: {
+    run: (w) => {
+      const v = versionOf(w, "Cenário de restauração");
+      return w.call("POST", "/api/memory/history/restore", { id: v.id, baseVersion: v.version });
+    },
   },
   [key("POST", "/api/pair/start")]: { run: (w) => w.call("POST", "/api/pair/start", { name: "phone 2" }) },
   [key("POST", "/api/pair/claim")]: {

@@ -163,6 +163,8 @@ export interface CleanupMoveDeps {
   settings: Settings;
   /** The index learns of the moved paths on its own time (AC 31). */
   indexer: { requestIndexPaths(paths: readonly string[]): Promise<void> };
+  /** Told each move that happened, so the history records it (.specs/features/cerebro-memoria-confiavel, AC 22). */
+  history?: { moved(from: string, to: string): void } | undefined;
 }
 
 export interface CleanupApplyResult {
@@ -287,6 +289,7 @@ export function applyCleanup(
           const moved = moveWorkspaceFile(scope, file.path, to, { expectSha256: file.sha256 });
           entries.push({ from: file.path, to, sha256: moved.sha256, size: moved.size });
           result.moved.push({ from: file.path, to });
+          deps.history?.moved(file.path, to);
         } catch (err) {
           const reason = skipReason(err);
           if (reason === null) throw err;
@@ -421,6 +424,7 @@ export function undoCleanup(deps: CleanupMoveDeps, manifest: string): CleanupUnd
       try {
         moveWorkspaceFile(scope, entry.to, entry.from, { expectSha256: entry.sha256 });
         result.restored.push({ from: entry.from, to: entry.to });
+        deps.history?.moved(entry.to, entry.from);
       } catch (err) {
         const reason = skipReason(err);
         if (reason === null) throw err;

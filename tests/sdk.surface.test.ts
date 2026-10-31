@@ -157,6 +157,15 @@ describe("S5 the surface is a closed list", () => {
         "DashboardService",
         "DashboardStore",
         "dashboardSources",
+        // cerebro-memoria-confiavel, batch A1: who wrote a fact and today's policy on its source (doors 2, 3, AC 20),
+        // and the history of memory/ the routes read, restore and record (doors 4 and 10)
+        "FactAuthor",
+        "factSourcePolicy",
+        "getVersion",
+        "listVersions",
+        "recordFileVersion",
+        "recordMove",
+        "restoreVersion",
       ].sort(),
     );
   });

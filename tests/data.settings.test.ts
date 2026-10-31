@@ -624,6 +624,8 @@ describe("S3 settings tolerate an invalid field", () => {
         "how many reminders of the dashboards the inbox gets a day; it writes no file and opens nothing (cerebro-paineis door 5)",
       "dashboards.reminders.at":
         "from what local time the dashboards' reminders are written; it opens nothing (cerebro-paineis door 5)",
+      "memory.history.maxBytes":
+        "how many bytes the history of memory/ keeps before it drops old versions; it writes no file and opens nothing (cerebro-memoria-confiavel door 4)",
     };
     const unclassified = [...normalized].filter(
       (leaf) => !closed.some((re) => re.test(leaf)) && !(leaf in OPENS_NOTHING),

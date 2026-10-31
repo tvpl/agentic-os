@@ -142,6 +142,9 @@
           },
           "maxPerDay": 20
         },
+        "history": {
+          "maxBytes": 268435456
+        },
         "embeddings": {
           "enabled": false,
           "provider": "hash",

@@ -140,6 +140,7 @@ export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./m
 export { ESCOPOS, NATUREZAS, parseEscopoList, parseNaturezaList } from "./memory/natureza.js";
 export { reviewsDue } from "./memory/reviews.js";
 export { decideReview } from "./memory/reviewDecisions.js";
+export { getVersion, listVersions, recordFileVersion, recordMove, restoreVersion } from "./memory/history.js";
 export { DashboardService } from "./dashboards/service.js";
 export { DashboardStore } from "./dashboards/store.js";
 export { dashboardSources } from "./dashboards/sources.js";

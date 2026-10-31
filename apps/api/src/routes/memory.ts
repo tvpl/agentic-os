@@ -10,6 +10,11 @@ import {
   createNote,
   ensureJournal,
   factStats,
+  factSourcePolicy,
+  getVersion,
+  listVersions,
+  recordFileVersion,
+  restoreVersion,
   folderDigests,
   generateRouters,
   homeReadScope,
@@ -41,6 +46,7 @@ import {
   workspaceScope,
   parseEscopoList,
   parseNaturezaList,
+  type FactAuthor,
   type ReadScope,
 } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
@@ -235,7 +241,22 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   const reindex = (notePath: string): void => {
     ctx.indexer.requestIndexPaths([notePath]).catch(() => undefined);
   };
-  const noteContext = () => ({ paths: ctx.paths, settings: ctx.settings() });
+  /** The owner's note writes record a version each (.specs/features/cerebro-memoria-confiavel, AC 21). */
+  const historyEnv = () => ({ db: ctx.db, paths: ctx.paths, settings: ctx.settings() });
+  const noteContext = () => {
+    const env = historyEnv();
+    return {
+      paths: ctx.paths,
+      settings: env.settings,
+      history: (
+        file: string,
+        bytes: Uint8Array | string,
+        origin: "create" | "save" | "properties" | "task",
+      ) => {
+        recordFileVersion(env, file, bytes, "owner", origin);
+      },
+    };
+  };
 
   bind(app, "memory.note", async ({ query: { p } }) => {
     try {
@@ -375,24 +396,42 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   /** Bi-temporal facts: currently valid by default; `asOf=` for a point in time; `includeExpired=true` for history. */
   bind(app, "memory.facts.list", async ({ query: q }) => {
-    return { facts: queryFacts(ctx.db, q), stats: factStats(ctx.db) };
+    // A fact whose source today's policy refuses, or cannot judge, is not shown (cerebro-memoria-confiavel, AC 20).
+    const allow = factSourcePolicy({ settings: ctx.settings(), paths: ctx.paths });
+    return { facts: queryFacts(ctx.db, { ...q, allow }), stats: factStats(ctx.db) };
   });
 
   bind(app, "memory.facts.assert", async ({ body }, req, reply) => {
-    // A run's credential says which run asserted the fact; the body cannot name another.
+    // A run's credential says which run asserted the fact; the body cannot name another, nor any caller an author.
+    let author: FactAuthor = "owner";
     if (req.principal?.kind === "run") {
       ctx.noteMemoryWrite(req.principal.runId);
       body.sourceRunId = req.principal.runId;
+      author = `run:${req.principal.runId}`;
     }
-    const result = assertFact(ctx.db, body);
+    const result = assertFact(ctx.db, { ...body, author });
     reply.code(result.unchanged ? 200 : 201);
     return result;
   });
 
-  bind(app, "memory.facts.retract", async ({ params: { id } }) => {
-    const fact = retractFact(ctx.db, id);
+  bind(app, "memory.facts.retract", async ({ params: { id }, body }) => {
+    const fact = retractFact(ctx.db, id, Date.now(), body?.reason ?? "ended");
     if (!fact) throw httpError(404, "Fact not found", "not_found");
     return fact;
+  });
+
+  // ---- the history of memory/ (.specs/features/cerebro-memoria-confiavel, doors 4 and 10) ----
+
+  bind(app, "memory.history.list", async ({ query: q }) => ({
+    versions: listVersions(historyEnv(), { path: q.path, limit: q.limit }),
+  }));
+
+  bind(app, "memory.history.get", async ({ params: { id } }) => getVersion(historyEnv(), id));
+
+  bind(app, "memory.history.restore", async ({ body }) => {
+    const restored = restoreVersion(historyEnv(), body);
+    reindex(path.join(ctx.paths.memory, ...restored.path.split("/")));
+    return restored;
   });
 
   /** Dataview-style query over inline `key:: value` fields: `where=key`, `key:value` or `key:~substring`. */

@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { factKey } from "../memory/facts.js";
 
 /**
  * Versioned migrations. Never edit an existing entry after release — append a new one.
@@ -652,6 +653,72 @@ DROP TABLE notifications;
 ALTER TABLE notifications_v27 RENAME TO notifications;
 CREATE INDEX IF NOT EXISTS idx_notifications_ts ON notifications(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+`,
+  },
+  {
+    version: 28,
+    name: "fact-keys-and-provenance",
+    // cerebro-memoria-confiavel, doors 1 to 3: the keys two facts are compared by, the time a fact was found never to
+    // have been true, the line of its source, who wrote it, how far it is trusted, and the proposal it was accepted
+    // from. SQLite adds a NOT NULL column only with a default; every row that exists is then given its keys by
+    // `factKey` (the function the route uses), `author` = `run:<source_run_id>` or `unknown`, and `trust` = `inferido`.
+    // `valid_from`, `valid_to` and `object` are not touched: two open facts that now share keys stay both open.
+    // Guarded by column, so running it again leaves the same schema and the same rows.
+    up(db) {
+      const add = (column: string, decl: string) => {
+        if (!hasColumn(db, "facts", column)) db.exec(`ALTER TABLE facts ADD COLUMN ${column} ${decl}`);
+      };
+      add("subject_key", "TEXT NOT NULL DEFAULT ''");
+      add("predicate_key", "TEXT NOT NULL DEFAULT ''");
+      add("retracted_at", "INTEGER");
+      add("source_line", "INTEGER");
+      add("author", "TEXT NOT NULL DEFAULT 'unknown'");
+      add("trust", "TEXT NOT NULL DEFAULT 'inferido'");
+      add("proposal_id", "TEXT");
+      const rows = db.prepare("SELECT id, subject, predicate, source_run_id FROM facts").all() as Array<{
+        id: number;
+        subject: string;
+        predicate: string;
+        source_run_id: string | null;
+      }>;
+      const update = db.prepare(
+        "UPDATE facts SET subject_key = ?, predicate_key = ?, author = ?, trust = 'inferido' WHERE id = ?",
+      );
+      for (const row of rows) {
+        update.run(
+          factKey(row.subject),
+          factKey(row.predicate),
+          row.source_run_id ? `run:${row.source_run_id}` : "unknown",
+          row.id,
+        );
+      }
+      db.exec("CREATE INDEX IF NOT EXISTS idx_facts_key ON facts(subject_key, predicate_key)");
+    },
+  },
+  {
+    version: 29,
+    name: "memory-history",
+    // cerebro-memoria-confiavel, door 4: the internal history of memory/. A blob is the bytes of a version, deflated
+    // (`zlib.deflateRawSync`) and keyed by the sha256 of the bytes as they were, stored once; a version is keyed by its
+    // path relative to memory/ (never by files.id: it outlives a reindex and the file). Created empty; the first index
+    // pass writes the `baseline` of every versioned file.
+    sql: `
+CREATE TABLE IF NOT EXISTS memory_blobs (
+  sha256 TEXT PRIMARY KEY,
+  codec TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  bytes BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS memory_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  path TEXT NOT NULL,
+  sha256 TEXT,
+  at INTEGER NOT NULL,
+  author TEXT NOT NULL,
+  origin TEXT NOT NULL,
+  proposal_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_memory_versions_path ON memory_versions(path, id);
 `,
   },
 ];

@@ -52,6 +52,8 @@ export interface ReviewDecisionDeps {
   db: Db;
   paths: MordomoPaths;
   settings: Settings;
+  /** Told the bytes a decision wrote to a note, so the history records a `review` version (cerebro-memoria-confiavel). */
+  history?: ((file: string, bytes: Uint8Array | string) => void) | undefined;
 }
 
 /** `400 validation`: a decision this route does not take. Nothing is written. */
@@ -137,7 +139,11 @@ export function decideReview(
   now: number = Date.now(),
 ): ReviewDecisionResult {
   validate(input);
-  const ctx: NoteContext = { paths: deps.paths, settings: deps.settings };
+  const ctx: NoteContext = {
+    paths: deps.paths,
+    settings: deps.settings,
+    history: deps.history ? (file, bytes) => deps.history!(file, bytes) : undefined,
+  };
   const logical = path.resolve(deps.paths.memory, input.path);
   const row = deps.db.prepare("SELECT root, rel FROM files WHERE path = ?").get(logical) as
     | { root: string; rel: string }

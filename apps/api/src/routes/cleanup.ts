@@ -5,6 +5,7 @@ import {
   cleanupScanFor,
   resolveCleanupScope,
   saveCleanupDecisions,
+  recordMove,
   undoCleanup,
 } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
@@ -18,6 +19,15 @@ import { httpError } from "./common.js";
  */
 export function registerCleanupRoutes(app: FastifyInstance, ctx: AppContext): void {
   const env = () => ({ paths: ctx.paths, settings: ctx.settings() });
+  /** Each move the apply or the undo makes is recorded in the history (.specs/features/cerebro-memoria-confiavel, AC 22). */
+  const moves = () => {
+    const e = { db: ctx.db, ...env() };
+    return {
+      ...e,
+      indexer: ctx.indexer,
+      history: { moved: (from: string, to: string) => recordMove(e, from, to, "owner") },
+    };
+  };
 
   /** What a scope holds, from the index rows alone (AC 1 to AC 5). */
   bind(app, "memory.cleanup.inventory", async ({ query }) => {
@@ -47,11 +57,9 @@ export function registerCleanupRoutes(app: FastifyInstance, ctx: AppContext): vo
   /** Move what was marked under memory/ to the archive, and list what lies outside it (AC 27 to AC 31). */
   bind(app, "memory.cleanup.apply", async ({ body }) => {
     const scan = cleanupScanFor(ctx.cleanup, body.scanId, "apply");
-    return applyCleanup({ ...env(), db: ctx.db, indexer: ctx.indexer }, scan);
+    return applyCleanup(moves(), scan);
   });
 
   /** Move back what an apply archived, by its manifest (AC 32, AC 34). */
-  bind(app, "memory.cleanup.undo", async ({ body }) =>
-    undoCleanup({ ...env(), db: ctx.db, indexer: ctx.indexer }, body.manifest),
-  );
+  bind(app, "memory.cleanup.undo", async ({ body }) => undoCleanup(moves(), body.manifest));
 }

@@ -4,6 +4,7 @@ import {
   decideReview,
   parseEscopoList,
   parseNaturezaList,
+  recordFileVersion,
   reviewsDue,
 } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
@@ -49,7 +50,11 @@ export function registerReviewRoutes(app: FastifyInstance, ctx: AppContext): voi
    * next list reads the note as it now is (AC 36).
    */
   bind(app, "memory.reviews.decide", async ({ body }) => {
-    const result = decideReview({ db: ctx.db, ...env() }, body);
+    const notes = env();
+    const history = (file: string, bytes: Uint8Array | string) => {
+      recordFileVersion({ db: ctx.db, ...notes }, file, bytes, "owner", "review");
+    };
+    const result = decideReview({ db: ctx.db, ...notes, history }, body);
     let timer: NodeJS.Timeout | undefined;
     await Promise.race([
       ctx.indexer.requestIndexPaths([result.path]).catch(() => undefined),

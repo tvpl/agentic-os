@@ -101,6 +101,11 @@ export class NoteTooLargeError extends Error {
 export interface NoteContext {
   paths: MordomoPaths;
   settings: Settings;
+  /**
+   * Told the bytes of every successful write, with what made it (.specs/features/cerebro-memoria-confiavel, door 4):
+   * the history records them as a version. Absent: nothing is recorded.
+   */
+  history?: ((file: string, bytes: Uint8Array | string, origin: "create" | "save" | "properties" | "task") => void) | undefined;
 }
 
 export interface NoteWritten {
@@ -399,6 +404,7 @@ export function createNote(ctx: NoteContext, input: CreateNoteInput, now: Date =
       if ((err as NodeJS.ErrnoException).code === "EEXIST") continue;
       throw err;
     }
+    ctx.history?.(target, text, "create");
     const stat = statWorkspacePath(scope, target).stat;
     return { path: target, name, version: versionOf(text), size: Buffer.byteLength(text, "utf8"), mtime: Math.floor(stat.mtimeMs) };
   }
@@ -436,6 +442,7 @@ export function saveNote(ctx: NoteContext, input: SaveNoteInput): NoteWritten {
     }
     throw err;
   }
+  ctx.history?.(classified.logical, bytes, "save");
   const stat = statWorkspacePath(memoryScope(ctx), classified.logical).stat;
   return {
     path: classified.logical,
@@ -493,6 +500,7 @@ export function saveProperties(ctx: NoteContext, input: SavePropertiesInput): No
     } catch (err) {
       missing(err);
     }
+    ctx.history?.(classified.logical, nextBytes, "properties");
   }
   const stat = statWorkspacePath(scope, classified.logical).stat;
   return {
@@ -571,6 +579,7 @@ export function saveTask(ctx: NoteContext, input: SaveTaskInput): TaskWritten {
   } catch (err) {
     missing(err);
   }
+  ctx.history?.(classified.logical, nextBytes, "task");
   return { path: classified.logical, version: versionOf(nextBytes), task: result };
 }
 

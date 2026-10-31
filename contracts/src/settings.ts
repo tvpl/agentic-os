@@ -510,6 +510,16 @@ export const SettingsSchema = z.object({
         })
         .default({}),
       /**
+       * The internal history of `memory/` (.specs/features/cerebro-memoria-confiavel, door 4): above `maxBytes` of stored
+       * (deflated) blobs, the oldest versions that are not among the newest 5 of their path are dropped. It writes no
+       * file and opens nothing; an unreadable value reads its default.
+       */
+      history: z
+        .object({
+          maxBytes: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(268_435_456),
+        })
+        .default({}),
+      /**
        * Semantic search over the notes (.specs/features/cerebro-v2, S4). OFF by default: nothing is embedded, no
        * extension is loaded and no connection is made until the owner turns it on. `hash` is computed in this
        * process from the text alone (no model, no network); `http` sends the text of each note to `endpoint`

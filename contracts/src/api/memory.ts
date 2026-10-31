@@ -333,6 +333,57 @@ export const FactSchema = z.object({
   sourceRunId: z.string().nullable(),
   sourcePath: z.string().nullable(),
   createdAt: z.number(),
+  /** When the fact was recorded (the same instant as `createdAt`; cerebro-memoria-confiavel, door 2). */
+  recordedAt: z.number(),
+  /** When it was found never to have been true; null while it stands. */
+  retractedAt: z.number().nullable(),
+  sourceLine: z.number().nullable(),
+  /** `owner`, `run:<id>`, `mcp` or `unknown` (door 2). */
+  author: z.string(),
+  trust: z.enum(["usuario", "ferramenta", "inferido"]),
+  proposalId: z.string().nullable(),
+  /** The `files` row whose path is `sourcePath`, or null. */
+  sourceFileId: z.number().nullable(),
+});
+
+/** The origins of a version of memory/ (.specs/features/cerebro-memoria-confiavel, door 4). */
+export const VERSION_ORIGIN_VALUES = [
+  "create",
+  "save",
+  "properties",
+  "task",
+  "review",
+  "cleanup",
+  "proposal",
+  "restore",
+  "guard",
+  "external",
+  "baseline",
+  "removed",
+  "import",
+] as const;
+
+/** A path relative to memory/, `/`-separated: not absolute, no `..`. */
+const MemoryRelPath = z
+  .string()
+  .min(1)
+  .max(4096)
+  .refine((v) => !/^(\/|[A-Za-z]:|\\)/.test(v) && !v.split(/[\\/]/).includes(".."), {
+    message: "a path relative to memory/, with /, and no ..",
+  });
+
+export const MemoryVersionSchema = z.object({
+  id: z.number(),
+  path: z.string(),
+  at: z.number(),
+  /** `owner`, `run:<id>`, `mcp`, `external` or `system`. */
+  author: z.string(),
+  origin: z.enum(VERSION_ORIGIN_VALUES),
+  /** The bytes of the version; null for a `removed` one. */
+  size: z.number().nullable(),
+  sha256: z.string().nullable(),
+  /** Whether the path holds a file now. */
+  exists: z.boolean(),
 });
 
 /** A real calendar day as `YYYY-MM-DD`: `2026-02-30` is not one. */
@@ -1190,14 +1241,16 @@ export const memoryRoutes = {
     method: "GET",
     path: "/api/memory/facts",
     summary:
-      "Bi-temporal facts: currently valid by default, asOf for a point in time, includeExpired for history",
+      "Bi-temporal facts: currently valid by default, asOf for a point in time of the world, knownAt for a point in time of the record, includeExpired and includeRetracted for history",
     tag: "memory",
     scope: "content",
     query: z.object({
       subject: z.string().max(2000).optional(),
       predicate: z.string().max(2000).optional(),
       asOf: z.coerce.number().int().optional(),
+      knownAt: z.coerce.number().int().optional(),
       includeExpired: QueryFlag,
+      includeRetracted: QueryFlag,
       limit: z.coerce.number().int().min(1).max(2000).optional(),
     }),
     responses: {
@@ -1213,28 +1266,121 @@ export const memoryRoutes = {
     summary: "Assert a fact (201 when new, 200 when an identical open fact already existed)",
     tag: "memory",
     scope: "owner",
-    body: z.object({
-      subject: z.string().min(1).max(2000),
-      predicate: z.string().min(1).max(2000),
-      object: z.string().min(1).max(2000),
-      validFrom: z.number().int().optional(),
-      sourceRunId: z.string().max(200).nullable().optional(),
-      sourcePath: z.string().max(4096).nullable().optional(),
-    }),
+    body: z
+      .object({
+        subject: z.string().min(1).max(2000),
+        predicate: z.string().min(1).max(2000),
+        object: z.string().min(1).max(2000),
+        validFrom: z.number().int().optional(),
+        /** The end of the interval in the world (cerebro-memoria-confiavel, door 2): after `validFrom`. */
+        validTo: z.number().int().optional(),
+        sourceRunId: z.string().max(200).nullable().optional(),
+        sourcePath: z.string().max(4096).nullable().optional(),
+        /** A line of `sourcePath`, from 1 (door 3). */
+        sourceLine: z.number().int().optional(),
+      })
+      .superRefine((b, ctx) => {
+        if (b.validTo !== undefined && b.validFrom !== undefined && b.validTo <= b.validFrom) {
+          ctx.addIssue({ code: "custom", path: ["validTo"], message: "validTo: must be after validFrom" });
+        }
+        if (b.sourceLine !== undefined && (b.sourceLine < 1 || !b.sourcePath)) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["sourceLine"],
+            message: "sourceLine: a line of sourcePath, from 1",
+          });
+        }
+      }),
     responses: {
       200: z.object({ fact: FactSchema, invalidated: z.array(FactSchema), unchanged: z.boolean() }),
       201: z.object({ fact: FactSchema, invalidated: z.array(FactSchema), unchanged: z.boolean() }),
     },
+    errors: [
+      err(
+        400,
+        "provenance_required",
+        "The fact names no source, no run and no proposal, and the owner did not write it",
+      ),
+      err(
+        409,
+        "fact_overlap",
+        "A fact of the same subject and predicate holds over the whole new interval; nothing was written",
+      ),
+    ],
   }),
   "memory.facts.retract": route({
     method: "POST",
     path: "/api/memory/facts/:id/retract",
-    summary: "Close a fact at this instant",
+    summary:
+      "Close a fact at this instant (reason ended, the default), or record that it was never true (reason wrong)",
     tag: "memory",
     scope: "owner",
     params: z.object({ id: z.coerce.number().int().positive() }),
+    body: z.object({ reason: z.enum(["ended", "wrong"]).optional() }),
+    bodyOptional: true,
     responses: { 200: FactSchema },
     errors: [notFound("The fact")],
+  }),
+  "memory.history.list": route({
+    method: "GET",
+    path: "/api/memory/history",
+    summary:
+      "The versions of a file of memory/ (path, relative to memory/), or the newest 100 changes across memory/, newest first (.specs/features/cerebro-memoria-confiavel, door 4)",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      path: MemoryRelPath.optional(),
+      limit: z.coerce.number().int().min(1).max(100).optional(),
+    }),
+    responses: { 200: z.object({ versions: z.array(MemoryVersionSchema) }) },
+  }),
+  "memory.history.get": route({
+    method: "GET",
+    path: "/api/memory/history/:id",
+    summary:
+      "One version: its text, the unified diff from the current file (or from nothing) to it, and the current file's version",
+    tag: "memory",
+    scope: "content",
+    params: z.object({ id: z.coerce.number().int().positive() }),
+    responses: {
+      200: z.object({
+        id: z.number(),
+        path: z.string(),
+        at: z.number(),
+        author: z.string(),
+        origin: z.enum(VERSION_ORIGIN_VALUES),
+        content: z.string(),
+        diff: z.string(),
+        /** The version of the file as it is now, or null when there is no file. */
+        current: NoteVersionSchema.nullable(),
+      }),
+    },
+    errors: [
+      err(403, "forbidden_path", "The current file is reached through a link or is a private file"),
+      err(404, "not_a_file", "The path of the version names something that is not a regular file now"),
+      notFound("The version (a removed version holds no bytes)"),
+    ],
+  }),
+  "memory.history.restore": route({
+    method: "POST",
+    path: "/api/memory/history/restore",
+    summary:
+      "Put a version's bytes back: over the file when it exists (baseVersion is its version), or as a new file when it does not (no baseVersion)",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({ id: z.number().int().positive(), baseVersion: NoteVersionSchema.optional() }),
+    responses: { 200: z.object({ path: z.string(), version: NoteVersionSchema }) },
+    errors: [
+      err(403, "forbidden_path", "A link on the way or a private file would be written through"),
+      err(
+        403,
+        "note_not_editable",
+        "Not a .md file under memory/, or a file the engine generates (ROUTER.md, areas/, journal/, contexts/)",
+      ),
+      err(404, "not_a_file", "The path of the version names something that is not a regular file now"),
+      notFound("The version (a removed version holds no bytes)"),
+      err(409, "edit_conflict", "The file is not the version named, or it exists again; nothing was written"),
+    ],
   }),
   "memory.query": route({
     method: "GET",

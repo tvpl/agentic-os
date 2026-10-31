@@ -14,6 +14,16 @@ import { parsePassages, type Passage } from "./natureza.js";
 import { parseTasks, type ParsedTask } from "./tasks.js";
 import { extractLinks, type ParsedLink } from "./linkParser.js";
 import { embedPending } from "./vectors.js";
+import {
+  DEFAULT_HISTORY_MAX_BYTES,
+  MAX_VERSIONED_BYTES,
+  isVersionedPath,
+  livePaths,
+  memoryRel,
+  recordIndexed,
+  recordVersion,
+  versionedPaths,
+} from "./historyStore.js";
 import type { IndexPhase, IndexProgress, IndexStats } from "@mordomo/contracts";
 
 export type { IndexProgress, IndexStats };
@@ -151,6 +161,8 @@ interface PreparedFile {
   /** The `- [ ]` tasks (Markdown only, door 3 of cerebro-paineis). */
   tasks: ParsedTask[];
   markdown: boolean;
+  /** The file's bytes when they were read whole (the history keeps them as the version, door 4 of cerebro-memoria-confiavel). */
+  whole: Buffer | null;
 }
 
 /**
@@ -171,6 +183,34 @@ export function storedRowFilter(
     }
     return !filter.isExcluded(row.rel, path.join(real, row.rel));
   };
+}
+
+/** The whole bytes of a file through the safe reader, when it holds at most 1 MiB; null otherwise or when unreadable. */
+function readWhole(scope: ReadScope, full: string): Buffer | null {
+  try {
+    const file = openWorkspaceFile(scope, full);
+    try {
+      if (file.stat.size > MAX_VERSIONED_BYTES) return null;
+      return file.readBytes(MAX_VERSIONED_BYTES).bytes;
+    } finally {
+      file.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a file is at `rel` (`/`-separated) under `memory`: only a path that is not there (`ENOENT`), or that is not a
+ * file, is gone. One the policy refuses today is not taken for gone.
+ */
+function isFileAt(scope: ReadScope, memory: string, rel: string): boolean {
+  try {
+    return statWorkspacePath(scope, path.join(memory, ...rel.split("/"))).stat.isFile();
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    return !(code === "ENOENT" || code === "ENOTDIR");
+  }
 }
 
 /** Top terms of a file (first 20k chars), kept for the related-edge refresh. */
@@ -339,6 +379,27 @@ export class MemoryIndexer {
     } catch {
       // the hook reports its own failure; the pass stands
     }
+  }
+
+  /**
+   * The history of `memory/` for this pass (door 4), when `memory/` is one of its roots and the database has the
+   * history's tables: the folder, the byte cap and the paths that have a version.
+   */
+  private historyOf(
+    settings: Settings,
+    roots: readonly string[],
+  ): { memory: string; maxBytes: number; known: Set<string> } | null {
+    const memory = path.join(path.resolve(this.filterOptions.homeDir), "memory");
+    if (!roots.includes(memory)) return null;
+    const table = this.db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memory_versions'")
+      .get();
+    if (!table) return null;
+    return {
+      memory,
+      maxBytes: settings.memory?.history?.maxBytes ?? DEFAULT_HISTORY_MAX_BYTES,
+      known: versionedPaths(this.db),
+    };
   }
 
   /** Hand the passes to a runner (the worker host) from now on. */
@@ -542,6 +603,7 @@ export class MemoryIndexer {
       const rootSet = new Set(roots);
       // Every byte below is read through the safe-read primitive on the real path, under these roots.
       const scope = readScope({ ...this.filterOptions, roots, excludes: settings.excludes });
+      const history = this.historyOf(settings, roots);
 
       let announcedAt = 0;
       const emit = (total?: number, phase?: IndexPhase, force = true) => {
@@ -619,6 +681,7 @@ export class MemoryIndexer {
       // Phase 2: upserts, in waves. A wave is READ without any lock (the files, their parsing, the terms and the links:
       // most of the time of a file) and then WRITTEN in one short transaction.
       const seen = new Set<string>();
+      const versioned: Array<{ rel: string; bytes: Buffer }> = [];
       const total = candidates.length;
       emit(total, "index");
       let holdPerFileMs = 0.5;
@@ -626,7 +689,7 @@ export class MemoryIndexer {
         const wave: PreparedFile[] = [];
         let bytes = 0;
         const limit = Math.max(1, Math.min(INDEX_CHUNK_SIZE, Math.floor(WAVE_TARGET_HOLD_MS / holdPerFileMs)));
-        while (next < candidates.length && wave.length < limit && bytes < INDEX_WAVE_BYTES) {
+        while (next < candidates.length && wave.length < limit && versioned.length < limit && bytes < INDEX_WAVE_BYTES) {
           const c = candidates[next++]!;
           const prepared = this.prepareFile(c, scope, stats, maxBytes);
           // A file the policy refuses at read time (a link swapped in after the scan) is not "seen":
@@ -636,14 +699,30 @@ export class MemoryIndexer {
             continue;
           }
           seen.add(c.full);
+          // The history (door 4): a file that changed, or one it has no version of yet (the first pass after migration
+          // 29), is read once more, whole, for its version.
+          const rel = history ? memoryRel(history.memory, c.full) : null;
+          if (history && rel !== null && isVersionedPath(rel, 0) && (prepared !== "kept" || !history.known.has(rel))) {
+            const whole = prepared !== "kept" && prepared.whole ? prepared.whole : readWhole(scope, c.full);
+            if (whole) versioned.push({ rel, bytes: whole });
+          }
           if (prepared === "kept") continue;
           wave.push(prepared);
           bytes += prepared.content.length;
         }
-        if (wave.length > 0) {
+        if (wave.length > 0 || versioned.length > 0) {
           const began = performance.now();
-          this.write(() => wave.forEach((file) => this.applyFile(file, stats)));
-          holdPerFileMs = 0.7 * holdPerFileMs + 0.3 * Math.max(0.01, (performance.now() - began) / wave.length);
+          const recorded = versioned.splice(0);
+          this.write(() => {
+            wave.forEach((file) => this.applyFile(file, stats));
+            for (const v of recorded) {
+              recordIndexed(this.db, v.rel, v.bytes, history!.maxBytes);
+              history!.known.add(v.rel);
+            }
+          });
+          if (wave.length > 0) {
+            holdPerFileMs = 0.7 * holdPerFileMs + 0.3 * Math.max(0.01, (performance.now() - began) / wave.length);
+          }
         }
         emit(total, "index", false);
         yield;
@@ -661,6 +740,23 @@ export class MemoryIndexer {
         yield;
       }
       emit(total, "prune");
+
+      // A versioned path of memory/ whose newest version is not `removed` and that is not there any more (door 4).
+      if (history) {
+        const gonePaths = only
+          ? [...gone].map((g) => memoryRel(history.memory, g)).filter((r): r is string => r !== null)
+          : null;
+        const live = new Set(livePaths(this.db));
+        const removed = (gonePaths ?? [...live]).filter((rel) => live.has(rel) && !isFileAt(scope, history.memory, rel));
+        if (removed.length > 0) {
+          this.write(() => {
+            for (const rel of removed) {
+              recordVersion(this.db, { rel, bytes: null, author: "external", origin: "removed" }, history.maxBytes);
+            }
+          });
+        }
+        yield;
+      }
 
       // Files that did not change since migration 20 get their links from the stored text.
       if (!only) yield* this.backfillNoteLinks();
@@ -785,11 +881,14 @@ export class MemoryIndexer {
     let title: string | null = null;
     let tags: string[] = [];
     let fields: Record<string, string> = {};
+    let whole: Buffer | null = null;
     if ((TEXT_EXTENSIONS.has(ext) || ext === "") && stat.size <= maxBytes) {
       try {
         const file = openWorkspaceFile(scope, full);
         try {
-          const buf = file.readBytes(maxBytes).bytes;
+          const read = file.readBytes(maxBytes);
+          const buf = read.bytes;
+          if (!read.truncated) whole = buf;
           if (isBinaryBuffer(buf)) stats.skippedBinary++;
           else content = buf.toString("utf8");
         } finally {
@@ -826,6 +925,7 @@ export class MemoryIndexer {
       passages: markdown ? parsePassages(content.slice(0, 200_000)) : [],
       tasks: markdown ? parseTasks(content.slice(0, 200_000)) : [],
       markdown,
+      whole,
     };
   }
 
