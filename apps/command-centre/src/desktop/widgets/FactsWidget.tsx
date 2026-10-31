@@ -1,6 +1,9 @@
 /**
  * What I know about you (refino item 33): the durable facts the agent
- * asserted, each with where it came from and a way to take it back.
+ * asserted, each with where it came from and a way to take it back. Below each
+ * fact, one 12px line: its trust badge, its author and, when it has one, its
+ * source as a link to the notes view at the line (cerebro-memoria-confiavel,
+ * design.md "Widget de fatos").
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Undo2 } from "lucide-react";
@@ -13,6 +16,7 @@ import { useDesktopActions } from "../actions";
 import { WidgetGate } from "./WidgetGate";
 import type { WidgetProps } from "../widgetTypes";
 import { Tooltip } from "../../ui";
+import { Author, TrustBadge, notesHref, type Trust } from "../../brain/memoria";
 
 interface Fact {
   id: number;
@@ -23,6 +27,9 @@ interface Fact {
   validTo: number | null;
   sourceRunId: string | null;
   sourcePath: string | null;
+  sourceLine: number | null;
+  author: string;
+  trust: Trust;
 }
 interface FactsPayload {
   facts: Fact[];
@@ -35,6 +42,11 @@ export default function FactsWidget(_props: WidgetProps) {
   const toast = useToast();
   const qc = useQueryClient();
   const { openRun } = useDesktopActions();
+  // `<home>/memory` (the same cache entry as the notes view's `useMemoryRoot`, whose module stays out of this chunk)
+  const info = useApiQuery<{ home: string }>(["system", "info"], "/api/system/info", { staleTime: 60_000 });
+  const memoryRoot = info.data ? `${info.data.home.replace(/\/+$/, "")}/memory` : null;
+  const rel = (p: string) =>
+    memoryRoot && p.startsWith(`${memoryRoot}/`) ? p.slice(memoryRoot.length + 1) : p;
   const facts = useApiQuery<FactsPayload>(["memory", "facts"], "/api/memory/facts", {
     refetchInterval: 120_000,
   });
@@ -62,6 +74,16 @@ export default function FactsWidget(_props: WidgetProps) {
             <div key={f.id} className="rw fact-row">
               <span className="fact-text">
                 <b>{f.subject}</b> {f.predicate} <span className="fact-object">{f.object}</span>
+                <span className="mc-meta">
+                  <TrustBadge trust={f.trust} />
+                  <Author author={f.author} />
+                  {f.sourcePath && (
+                    <a href={notesHref(f.sourcePath, f.sourceLine)}>
+                      {rel(f.sourcePath)}
+                      {f.sourceLine ? `:${f.sourceLine}` : ""}
+                    </a>
+                  )}
+                </span>
               </span>
               <span className="sp" />
               {f.sourceRunId ? (

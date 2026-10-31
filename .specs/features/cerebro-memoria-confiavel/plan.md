@@ -97,7 +97,8 @@ reutiliza o manifesto da faxina: ele move arquivos e não guarda conteúdo.
 11. `SentinelRunner.hourly` (exists) -> sentinela `proposalsPending` (door 11) - uma vez por dia, com registro do dia que
     sobrevive ao dono apagar a notificação; o gravador de notificações (exists) cria a linha do inbox.
 12. Interface -> `ReviewsScreen` (exists) ganha a aba "Do agente"; `NotePanel` (exists) ganha a seção "Histórico"; o diálogo
-    "Histórico da memória" e o diálogo de restauração são novos (new, no door - placement per conventions).
+    "Histórico da memória" e o diálogo de restauração são novos (new, no door - placement per conventions); a origem de
+    uma operação e de um fato e o "Ver histórico" abrem a vista de notas (`NotesView`, exists) em `?open=<caminho>&line=<n>`.
 
 **Parte B**
 

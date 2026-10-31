@@ -106,7 +106,12 @@ describe("C72 the screen top to bottom and left to right", () => {
       await findList();
       const title = screen.getByRole("heading", { level: 1, name: "Revisões" });
       const tabs = screen.getAllByRole("tab");
-      expect(tabs.map((t) => t.textContent)).toEqual(["Para revisar (2)", "Sem classificação (5)"]);
+      // cerebro-memoria-confiavel AC 80 adds "Do agente (N)" as the third tab (its own proof is AgentTab.test.tsx C88).
+      expect(tabs.map((t) => t.textContent)).toEqual([
+        "Para revisar (2)",
+        "Sem classificação (5)",
+        "Do agente (0)",
+      ]);
       const head = document.querySelector(".rv-head")!;
       expect(head.firstElementChild).toBe(title);
       const tools = head.querySelector(".rv-tools")!;

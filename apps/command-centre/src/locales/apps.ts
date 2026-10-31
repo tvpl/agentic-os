@@ -262,6 +262,8 @@ export const en = {
   "apps.pixel.shortcuts": "Shortcuts",
   "apps.pixel.shortcutsBody":
     "1-4 tools · [ ] frames · + - brush · x swap · o onion · ⌘Z undo · ⌘⇧Z / ⌘Y redo",
+  "apps.settings.sentinel.proposalsPending": "Agent proposals",
+  "apps.settings.sentinel.proposalsPendingHint": "Once a day, the agent proposals waiting for review.",
 } as const;
 
 export const ptBR = {
@@ -521,4 +523,6 @@ export const ptBR = {
   "apps.pixel.shortcuts": "Atalhos",
   "apps.pixel.shortcutsBody":
     "1-4 ferramentas · [ ] quadros · + - pincel · x trocar · o onion · ⌘Z desfazer · ⌘⇧Z / ⌘Y refazer",
+  "apps.settings.sentinel.proposalsPending": "Propostas do agente",
+  "apps.settings.sentinel.proposalsPendingHint": "Uma vez por dia, as propostas do agente esperando revisão.",
 } satisfies Record<keyof typeof en, string>;

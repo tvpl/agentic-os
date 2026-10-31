@@ -2,7 +2,8 @@
  * "Revisões" (.specs/features/cerebro-natureza, S5; design.md "Tela - Revisões"; plan.md amendments 6-10): what fell
  * due, oldest first, and the notes with no nature, in the active work context, each decided in one click over
  * `POST /api/memory/reviews`, with "Desfazer" for 8 s. The same screen is the frame's page at `/brain/reviews` and the
- * Núcleo's brain panel there; it is a chunk of its own, fetched the first time it is opened.
+ * Núcleo's brain panel there; it is a chunk of its own, fetched the first time it is opened. Its third tab, "Do
+ * agente", is what agents proposed to write to the memory (cerebro-memoria-confiavel, `AgentTab.tsx`).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Archive, BellOff, Check, CircleCheck, Lock, PencilLine } from "lucide-react";
@@ -30,10 +31,13 @@ import {
   type Escopo,
   type Natureza,
 } from "../natureza";
+import { AgentTab, usePendingProposals } from "./AgentTab";
 import { BecameFactDialog, type FactInput } from "./BecameFactDialog";
 import "./reviews.css";
 
 type Kind = "due" | "unclassified";
+/** The tabs: the two of the notes, and what agents proposed (cerebro-memoria-confiavel, AC 80). */
+type TabId = Kind | "agent";
 type List = ReturnType<typeof useList>;
 export type ReviewItem = NonNullable<List["data"]>["items"][number];
 type Decided = { previous: State | null; version?: string; fact?: { id: number } };
@@ -133,7 +137,15 @@ export default function ReviewsScreen() {
   const commands = useRegisteredCommands();
   const [params] = usePanelSearchParams();
   const wanted = params.get("path");
-  const [tab, setTab] = useState<Kind>("due");
+  const wantedTab = params.get("tab");
+  const [tab, setTab] = useState<TabId>(wantedTab === "agent" ? "agent" : "due");
+  // The notification's `?tab=agent` opens the tab, also when the screen is already up.
+  useEffect(() => {
+    if (wantedTab === "agent") setTab("agent");
+  }, [wantedTab]);
+  const pending = usePendingProposals();
+  const [agentGone, setAgentGone] = useState<ReadonlySet<string>>(new Set());
+  const agentMove = useRef<((by: number) => void) | null>(null);
   const [natureza, setNatureza] = useState<Natureza[]>([]);
   const [escopo, setEscopo] = useState<Escopo[]>([]);
   const base: Record<string, string> = {
@@ -152,7 +164,11 @@ export default function ReviewsScreen() {
   );
   // An unclassified note has no nature: the nature filters do not apply to the tab.
   const unclassified = useList("unclassified", base, work.ready);
-  const list = tab === "due" ? due : unclassified;
+  const list = tab === "unclassified" ? unclassified : due;
+  const agentLeft = Math.max(
+    0,
+    (pending.data?.total ?? 0) - (pending.data?.items ?? []).filter((i) => agentGone.has(i.id)).length,
+  );
   const info = useApiQuery<{ home: string }>(["system", "info"], "/api/system/info", { staleTime: 60_000 });
 
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
@@ -178,7 +194,7 @@ export default function ReviewsScreen() {
     ["memory", "note", current?.path ?? null],
     "GET /api/memory/note",
     { query: { p: current?.path ?? "" } },
-    { enabled: !!current, retry: false },
+    { enabled: !!current && tab !== "agent", retry: false },
   );
 
   useEffect(() => {
@@ -197,6 +213,7 @@ export default function ReviewsScreen() {
     if (focus) setFocusOn(path);
   };
   const move = (by: number) => {
+    if (tab === "agent") return agentMove.current?.(by);
     const at = items.findIndex((i) => i.path === current?.path);
     const next = items[Math.min(items.length - 1, Math.max(0, at + by))];
     if (next) select(next.path, true);
@@ -366,6 +383,15 @@ export default function ReviewsScreen() {
     : null;
 
   const body = (() => {
+    if (tab === "agent")
+      return (
+        <AgentTab
+          list={pending}
+          gone={agentGone}
+          onGone={(id) => setAgentGone((g) => new Set(g).add(id))}
+          moveRef={agentMove}
+        />
+      );
     if (list.isPending)
       return (
         <p className="rv-state">
@@ -458,14 +484,21 @@ export default function ReviewsScreen() {
         tabs={[
           { id: "due", label: t("reviews.tab.due", { n: left(due) }) },
           { id: "unclassified", label: t("reviews.tab.unclassified", { n: left(unclassified) }) },
+          { id: "agent", label: t("reviews.tab.agent", { n: agentLeft }) },
         ]}
         active={tab}
-        onChange={(id) => setTab(id as Kind)}
+        onChange={(id) => setTab(id as TabId)}
         ariaLabel={t("reviews.title")}
         panelClassName="rv-panel"
       >
         <p className="rv-status" role="status">
-          {list.data ? t("reviews.notification", { n: left(list) }) : ""}
+          {tab === "agent"
+            ? pending.data
+              ? t("proposals.notification", { n: agentLeft })
+              : ""
+            : list.data
+              ? t("reviews.notification", { n: left(list) })
+              : ""}
         </p>
         {body}
       </Tabs>

@@ -22,6 +22,18 @@ export function notificationText(
       }),
       body,
     };
+  // What agents proposed (cerebro-memoria-confiavel, door 11, AC 53): the server writes one language; both are here.
+  const lang = locale.startsWith("pt") ? "pt-BR" : "en";
+  if (message?.messageKey === "sentinel.proposalsPending")
+    return {
+      title: tf(lang, "proposals.notification", { n: String(message.messageParams?.count ?? "?") }),
+      body:
+        lang === "pt-BR"
+          ? "O que os agentes propuseram gravar na memória espera em Revisões › Do agente: aceite tudo, parte ou nada."
+          : body,
+    };
+  if (message?.messageKey === "proposals.invalidNotice")
+    return { title: tf(lang, "proposals.invalidNotice"), body };
   if (!locale.startsWith("pt")) return { title, body };
   if (message?.messageKey) {
     const p = message.messageParams ?? {};

@@ -3,7 +3,8 @@
  * same in both shells: three columns, the notes sidebar (260 px, 200 to 400 px by its edge), the reading area with the
  * tabs, and the note panel (280 px, closed under 1 100 px of useful width). It follows the active work context
  * (`useWorkContext`): its tree, search and related files are the context's, and a new context makes its first root
- * the current one while the tabs stay. Its own chunk, fetched the first time "Notas" is chosen.
+ * the current one while the tabs stay. Its own chunk, fetched the first time "Notas" is chosen. `?open=<path>` opens a
+ * note in a tab and `&line=<n>` scrolls to that line's text (the sources of cerebro-memoria-confiavel's screens).
  */
 import {
   useCallback,
@@ -20,6 +21,7 @@ import { useT } from "../../i18n";
 import { Tooltip } from "../../ui";
 import { Button } from "../../components/primitives";
 import { useWorkContext } from "../../contexts/useWorkContext";
+import { usePanelSearchParams } from "../../desktop/appRoute";
 import type { BrainHit } from "../memoryData";
 import { FolderView } from "./FolderView";
 import type { NoteDraft } from "./NoteEditInPlace";
@@ -30,7 +32,7 @@ import { NoteTabs, useCloseTab } from "./NoteTabs";
 import { NotesTree } from "./NotesTree";
 import { useNotesCommands } from "./notesCommands";
 import { NotesSidebar } from "./NotesSidebar";
-import { useMemoryRoot, useNoteIdentity, useTreeLevel } from "./notesData";
+import { useMemoryRoot, useNoteIdentity, useNoteRead, useTreeLevel } from "./notesData";
 import { useNotesState, type NoteMeta } from "./useNotesState";
 import "./notes.css";
 
@@ -94,6 +96,33 @@ export default function NotesView({ onShowInGraph }: NotesViewProps) {
   }, [shown, identity, remember]);
 
   const open = useCallback((path: string, meta: NoteMeta = {}) => state.open(path, meta), [state]);
+
+  /* ---------- `?open=<path>&line=<n>`: a source a screen links to ---------- */
+  const [params] = usePanelSearchParams();
+  const asked = params.get("open");
+  const askedLine = Number(params.get("line") ?? 0);
+  const { open: openPath, ready } = state;
+  useEffect(() => {
+    if (asked && ready) openPath(asked);
+  }, [asked, ready, openPath]);
+  const askedNote = useNoteRead(asked && askedLine > 0 ? asked : null);
+  const askedText = askedNote.data?.content.split("\n")[askedLine - 1] ?? "";
+  useEffect(() => {
+    // The line's words, without its list or heading marks and its trailing `(campo:: …)`.
+    const words = askedText
+      .replace(/^[\s>#*+\-\d.]+/, "")
+      .replace(/\s*\(\w+::.*$/, "")
+      .trim()
+      .slice(0, 40);
+    if (!words || shown !== asked) return;
+    const id = window.setTimeout(() => {
+      const blocks = rootRef.current?.querySelectorAll<HTMLElement>(
+        ".notes-main p, .notes-main li, .notes-main h2",
+      );
+      [...(blocks ?? [])].find((el) => el.textContent?.includes(words))?.scrollIntoView({ block: "center" });
+    }, 100);
+    return () => window.clearTimeout(id);
+  }, [askedText, shown, asked]);
 
   /* ---------- editing in place: which tabs are editors, and their texts not saved yet ---------- */
   const [editing, setEditing] = useState<ReadonlySet<string>>(() => new Set());
