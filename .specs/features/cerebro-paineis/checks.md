@@ -893,11 +893,72 @@ batches sequential, each only on green).
 
 Status of batch A (updated in the commit that closes each piece):
 
-- the definition, the evaluation and the snapshot (S1: C1-C18) and the tasks in the index and the eleven sources (S2:
-  C19-C36), with migration 26, `due` in `FRONT_MATTER_FIELDS`, the six routes of `/api/dashboards` (export and
+- the definition, the evaluation and the snapshot (S1, C1 to C18) and the tasks in the index and the eleven sources
+  (S2, from C19 to C36), with migration 26, `due` in `FRONT_MATTER_FIELDS`, the six routes of `/api/dashboards` (export and
   `PUT /api/memory/tasks` are batch B's), `dashboard.refreshed` v1, one connector cache per service and the service's
   one-minute clock: closed, every proof green in `tests/paineis.routes.test.ts`, `tests/paineis.refresh.test.ts`,
   `tests/paineis.index.test.ts`, `tests/paineis.sources.test.ts`, `tests/paineis.layer.test.ts`,
   `tests/paineis.localday.test.ts` and `tests/paineis.contract.test.ts` (C18). Two clauses can only be vacuous before
   batch B: C14's "no highlight and no reminder names it" (`highlights` is `[]` and no reminder exists until S3's rules)
   and C12's `highlights` key (always `[]`); batch B re-runs both proofs over its rules
+
+- **Boundary (batch A):** C1-C36 closed at `74e126e` (`67b8425` for S1 and S2's code and every proof; `74e126e` adds
+  C8's (b) and (c) at the route). On the tree of `74e126e`: `npm run build`, `npm run typecheck` and `npm run lint`
+  exit 0, `npx vitest run` at the root is green (165 files, 2326 tests, 1 skipped), and `npm run test -w
+apps/command-centre` is 167 of 168 files green: `src/brain/reviews/ReviewsScreen.test.tsx` C73 expects "revisado há 4
+  meses" and reads "3 meses", and fails the same on `16e6976` (a date the test does not pin; no file of this batch is
+  under `apps/command-centre`). Each of the 42 `Proof:` lines of C1-C36 passes run alone and runs only its check's
+  tests. What batch A leaves for B to add on top: six of the eight routes (no `export`, no `PUT /api/memory/tasks`);
+  `POST /api/dashboards/:id/refresh` of a `question` answers `409 skill_unavailable` (no skill yet; its entry already
+  declares `202` and `409 budget_exhausted`); `GET /api/dashboards/:id` answers `highlights: []`; a KPI's `data` is
+  `{ value, of? }` by its measure, and each refresh already stores one point per KPI at the local hour's start,
+  replacing that hour's and deleting points past 90 days (`DashboardStore.savePoints`), which C38 proves in B; no
+  `settings.dashboards`, no `reminder` kind. The pins batch A moved, so that B and C add on top: 153 routes and
+  scenarios, 79 owner and 32 content routes (with the chained amendments in `sdk.api-thin`), 151 checked responses,
+  76 raised pairs, `PUT /api/dashboards/:id` among the routes that name `edit_conflict`, `GET` and `POST
+/api/dashboards` in `FORBIDDEN_PATH_ROUTES`, 29 event types, migration 26 in the lists of `data.migration`,
+  `contexts.runs`, `device-scopes` and `natureza.layer` C7, the scope table, the rows of `docs/security.md`, five
+  names of the contracts root (`contracts.test` C41) and three of the internal barrel (`sdk.surface` C38), and the
+  open field `dashboards.ts data` (`contracts.api` C38).
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) door 1, door 4 and the
+  six routes are `contracts/src/api/dashboards.ts`; the core is `core/src/dashboards/` (`templates`, `schedule`,
+  `sources`, `evaluator`, `store`, `service`) and the task parser `core/src/memory/tasks.ts`; `AppContext` holds
+  `connectorCache` and `dashboards`, so `buildServer` and `startServer` are one assembly, and the clock is a 60 s
+  `setInterval` in `startServer` beside the hourly sweep (`DASHBOARD_TICK_MS`), cleared on close; (b) door 1's
+  "unknown field" is a step before the schema that refuses an unknown key at every level with zod's
+  `unrecognized_keys` at that object's path, the objects themselves staying tolerant (the route document closes no
+  object, `api.openapi` C21); the stored bytes are `JSON.stringify(definition, null, 2)` and a newline, the 65 536
+  bytes are measured on them, and a file is read strict at 65 536 bytes; (c) the template widget ids are
+  `prioridades-kpi`, `decisoes-kpi`, `projetos-kpi`, `revisoes-kpi`, `execucoes-kpi`, `prioridades`, `decisoes`,
+  `em-andamento`, `agentes`, `agenda` (overview) and `tarefas-kpi`, `decisoes-kpi`, `notas-kpi`, `revisoes-kpi`,
+  `proximas`, `por-status`, `mudou`, `decisoes-abertas` (area), and the question template has no widget; (d) a list
+  source answers `{ items, total }` (tasks add `dueToday` and `doneDueToday`, projects `onTrack`, `active` and
+  `behind`, decisions `open`, runs `active`), `groupBy` adds `categories: [{ label, count }]`, metrics `{ value,
+points: [{ day, value }] }`, a connector `{ connector: { id, name }, items, total }` or `{ connector, value }`; a
+  widget is `empty` for a list with no item, bars with no category or a missing value (a KPI of 0 is `ok`); a
+  `not_configured` or `unavailable` source puts its widgets in `error` with the message (`data: { connector, setup }`
+  for `not_configured`) and the source carries the status; `sources[]` has one entry per source id (the kind, or
+  `connector:<id>`) in the order of its first widget, an error winning; (e) the week is the local Monday to Sunday for
+  decisions, open loops and `changed: "week"` (an `mtime` from Monday 00:00 or an `updated` day from Monday); every
+  memory source leaves out `memory/archive/`; the decision notes are not cut to the week (AC 18 names "the notes with
+  `type: decision`"); any heading ends a `## Decisions` or `## Open loops` section; an open-loop item is always
+  `plano`; of a duplicate the journal's bullet is kept; (f) the refusals are error classes with literal `statusCode`
+  and `code` (the scanner of `api.contract` C13 reads only those), and `context_not_found` is C5's
+  `CleanupContextNotFoundError`; (g) a stale `GET` starts its refresh by `setImmediate`, after the answer is built;
+  the clock reads through the connector cache and `POST .../refresh` passes over it; (h) the definitions are listed,
+  read, written and archived through `listWorkspaceDir`, `readWorkspaceFile`, `writeWorkspaceFile` and
+  `moveWorkspaceFile` under `homeReadScope(home, [memory])`; (i) proof readings: C14's audit records every
+  `fs.openSync` and every safe read under the home and the indexed folders during the refresh, and allows exactly
+  the two files that are the routes' data (the dashboard's own definition, which `POST .../refresh` reads, and
+  `connectors/calendar-google.json`, which the registry reads as `GET /api/connectors/:id/data` does) and asserts the
+  definition is among the reads, so the recorder is awake; C10's tick of the started service runs `startServer` with
+  `setInterval` faked and a moving clock; C16's "the service's tick" is `ctx.dashboards.tick()`; C33's one assembly is
+  a spy on `ConnectorDataCache.prototype.read` that sees one instance, `ctx.connectorCache`, in `buildServer` and in
+  `startServer`; C15's three series rows are three refreshes at 21:30, 22:30 and 23:30 of a one-KPI definition; C13
+  uses twelve widgets (a list per memory source, a count KPI for five, the notes' count read as its list's `total`),
+  since a KPI for each of the six and the `metrics` widget make thirteen; C32 and C34 replace `fetchConnectorData`
+  and `reviewsDue` by `vi.mock` of their modules
+- **Abandoned:** zod `.strict()` objects for door 1 (they close the route document's objects); one
+  `DashboardError(status, code)` class (the error scanner of `api.contract` C13 cannot read it); a strict empty body on
+  `refresh` (`api.contract` C5 cannot make it refuse); exporting the kind lists from the contracts root (only the five
+  names the engine reads are exported)
