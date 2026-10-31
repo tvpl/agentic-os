@@ -404,6 +404,41 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C21 tests/natureza.cli.test.ts:32 (checks)
 - last seen: 2026-10-30T22:47:32Z
 
+### L-057 - A bound needs its accepted edge asserted (exactly N), not only the refused N+1.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-paineis
+- evidence: C54 question.ts:70 (tests)
+- last seen: 2026-10-31T12:05:33Z
+
+### L-058 - An option must be proven to reach the stored result, not only the helper that takes it.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-paineis
+- evidence: C40 kpi.ts:111 (tests)
+- last seen: 2026-10-31T12:05:33Z
+
+### L-059 - A rule a first-pass backfill also applies needs a second pass in its proof, or the backfill hides the mutant.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-paineis
+- evidence: C104 indexer.ts:827 (tests)
+- last seen: 2026-10-31T12:05:33Z
+
+### L-060 - A once-per-day rule must survive the user deleting what it produced; count a durable record, not live rows.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `plan` · harmful: 0
+- features: cerebro-paineis
+- evidence: C99 reminders.ts:104 (plan)
+- last seen: 2026-10-31T12:05:33Z
+
+### L-061 - A policy filter must fail closed when its lookup row is missing, and that case needs its own test.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `security` · harmful: 0
+- features: cerebro-paineis
+- evidence: C35 sources.ts:490 (security)
+- last seen: 2026-10-31T12:05:33Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
