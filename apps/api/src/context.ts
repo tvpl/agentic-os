@@ -137,8 +137,9 @@ export class AppContext extends MordomoEngine {
         start: ({ question, contextId }) =>
           this.execution.startSkill({
             slug: DASHBOARD_ANSWER_SKILL,
-            // The run's context is the dashboard's (none for a question dashboard today, amendment 6 e).
-            inputs: { question },
+            // The run's context is the dashboard's (none for a question dashboard today, amendment 6 e); the skill's
+            // input is `context_id` (amendment 29).
+            inputs: { question, ...(contextId !== undefined ? { context_id: contextId } : {}) },
             ...(contextId !== undefined ? { contextId } : {}),
             startedBy: "owner",
           }).runId,

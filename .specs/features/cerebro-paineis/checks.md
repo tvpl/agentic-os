@@ -447,9 +447,9 @@ nowhere lets a valid result through (amendment 19)
 Proof: `npx vitest run tests/paineis.layer.test.ts -t "C55 "`
 
 **C56** - `skills/dashboard-answer/SKILL.md` parses with `mode: "read_only"` and the inputs `question` (required) and
-`contextId` (optional); `SettingsSchema.parse({}).memorySkills` equals `recall`, `consolidate-memory`, `organize-brain`,
+`context_id` (optional); `SettingsSchema.parse({}).memorySkills` equals `recall`, `consolidate-memory`, `organize-brain`,
 `dashboard-answer`; a home whose stored `memorySkills` is `["recall"]` keeps `["recall"]`; `GET /api/skills` shows
-`dashboard-answer` with `memoryAccess: true` on a fresh home (door 7, amendment 19, question 9)
+`dashboard-answer` with `memoryAccess: true` on a fresh home (door 7, amendments 19 and 29, question 9)
 Proof: `npx vitest run tests/paineis.question.test.ts -t "C56 "`
 
 **C57** - In the pinned zone at 2026-10-30 14:07 local, `POST /api/dashboards/visao-geral/export` answers `200` with `path`
@@ -709,6 +709,14 @@ Proof: `npm run build -w apps/command-centre && npm run bundle:check`
 and `ptBR` in `locales/dashboards.ts` with that text, both locales hold the same keys, and no key of the file is unused
 (`i18n.orphans.test.ts`) (design.md "Texto", amendment 26)
 Proof: `npm run test -w apps/command-centre -- src/dashboards/dashboardsCopy.test.ts -t "C97 "`
+
+## Correções de construção
+
+- **C56, batch B (amendment 29).** The approved claim named the optional input `contextId`; a skill input's name is
+  `^[a-z][a-z0-9_]*$` (`SkillInputSchema`, `contracts/src/skills.ts`), so a `SKILL.md` with that input does not load.
+  By the coordinator's decision (the narrow option: the pattern of every skill does not change), the claim names
+  `context_id`; nothing else of C56 changed. `STATE.md` question 15 stays open with `context_id` as its default and
+  "widen the pattern for every skill" as the alternative.
 
 ## Coverage
 
@@ -988,12 +996,8 @@ Status of batch B (updated in the commit that closes each piece):
   `tests/paineis.question.test.ts` and `tests/paineis.layer.test.ts`. C54's case "a path outside the context's scope at
   the look-alike `/w/proj-old`" is proven at the validator's layer only: a question dashboard has no `contextId`
   (amendment 6 e, door 1 refuses it), so no route can give its answer a context
-- **C56 is open** on one clause: "the inputs `question` (required) and `contextId` (optional)". A skill input's name is
-  `^[a-z][a-z0-9_]*$` (`SkillInputSchema`, `contracts/src/skills.ts`), so a `SKILL.md` whose input is named `contextId`
-  does not load (`invalid frontmatter: inputs.1.name`). The skill ships with `question` only; the rest of C56 (read_only,
-  `question` required, the four default `memorySkills`, a stored `["recall"]` kept, `memoryAccess: true` on a fresh
-  home) is green. The owner chooses: widen the input-name pattern to `^[a-z][a-zA-Z0-9_]*$` for every skill, or amend
-  C56 and amendment 19 to an input named `context_id` (no question dashboard can have a context today, amendment 6 e)
+- C56: closed after amendment 29 (the input is `context_id`, "Correções de construção"); its proof is green in
+  `tests/paineis.question.test.ts`, the `context_id` clause included
 - the export (C57): closed, both proofs green in `tests/paineis.localday.test.ts` and `tests/paineis.layer.test.ts`;
   the eight routes of the Surface exist
 
@@ -1049,3 +1053,5 @@ citations }] }` (1 to 6, ids unique and not `como-foi-feita`); a refusal keeps t
 - **Abandoned (batch B):** an input named `contextId` in the `SKILL.md` (`SkillInputSchema` refuses it); the highlights
   stored in the snapshot (door 4's keys are exactly five, C7); changing migration 26 in place (a database at 26 keeps
   the old `CHECK`); a `runId` in `sources[]` (a new key of door 4)
+- **C56 (batch B, after the handoff):** closed with amendment 29 (`context_id`), the coordinator's narrow option; the
+  launch passes `inputs.context_id` when the dashboard has a context

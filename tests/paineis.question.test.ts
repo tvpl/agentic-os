@@ -295,13 +295,14 @@ describe("C54 the host checks the answer", () => {
 });
 
 describe("C56 the skill and the memory skills", () => {
-  // C56's "contextId (optional)" input is open: a skill input's name is ^[a-z][a-z0-9_]*$ (SkillInputSchema), so a
-  // SKILL.md with an input named contextId does not load; checks.md records it for the owner.
-  it("C56 skills/dashboard-answer/SKILL.md parses read_only with the input question, required", () => {
+  it("C56 skills/dashboard-answer/SKILL.md parses read_only with the inputs question (required) and context_id (optional)", () => {
     const skill = new SkillCatalog(resolvePaths(repo)).load("dashboard-answer");
     expect(skill).not.toBeNull();
     expect(skill!.mode).toBe("read_only");
-    expect(skill!.inputs.find((i) => i.name === "question")).toMatchObject({ required: true });
+    expect(skill!.inputs.map((i) => [i.name, i.required])).toEqual([
+      ["question", true],
+      ["context_id", false],
+    ]);
   });
   it("C56 the default memorySkills are recall, consolidate-memory, organize-brain and dashboard-answer", () => {
     expect(SettingsSchema.parse({}).memorySkills).toEqual([

@@ -517,6 +517,12 @@ validation`; `PUT /api/settings` troca `dashboards` inteiro, como `sentinels` (e
     `403 scope_required`, e todo dispositivo `403 owner_only` das seis escritas (C59).
 28. **`UiPreferences.dashboards` (AC 45).** `{ lastViewed: { <id>: <ms> } }`, até 200 entradas; um valor que esta versão não
     lê vira `{}` (`.catch`, como toda chave de apresentação), e a tela manda o objeto inteiro (C84).
+29. **A entrada opcional da skill é `context_id` (emenda 19, C56; lote B).** O nome de uma entrada de skill segue
+    `^[a-z][a-z0-9_]*$` (`SkillInputSchema`, `contracts/src/skills.ts`): um `SKILL.md` com uma entrada `contextId` não
+    carrega. A `dashboard-answer` tem as entradas `question` (obrigatória) e `context_id` (opcional), e a execução recebe
+    `inputs.context_id` com o contexto do painel quando há um (nenhum painel pergunta tem contexto hoje, emenda 6 e); o
+    contexto da execução segue no `contextId` da execução. Onde a emenda 19 e o C56 dizem a entrada `contextId`, vale
+    `context_id`. O padrão das entradas de toda skill não muda (pergunta 15 de `STATE.md`, que segue aberta).
 
 Perguntas novas ao dono, levantadas pela reconciliação; o padrão vale até a resposta:
 

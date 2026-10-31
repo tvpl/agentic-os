@@ -15,6 +15,10 @@ inputs:
     type: textarea
     required: true
     placeholder: e.g. Why is client onboarding slower this quarter?
+  - name: context_id
+    label: Work context (optional)
+    type: text
+    required: false
 providers: [claude, cursor, codex]
 recommendedModel: null
 recommendedEffort: medium
@@ -53,7 +57,8 @@ execução começou.
 - Sem a linha `Memory folder` no prompt, esta execução não tem a memória: não escreva `dashboard.json`; diga no resumo que
   `dashboard-answer` precisa estar em `memorySkills` (Configurações, ou `PUT /api/settings` com a lista que já existe mais
   `dashboard-answer`).
-- Quando o prompt começa com `Work context:`, a execução é de um contexto de trabalho: só cite arquivos dele.
+- Com `context_id`, ou quando o prompt começa com `Work context:`, a execução é de um contexto de trabalho: só cite
+  arquivos dele.
 
 ## Procedimento
 
