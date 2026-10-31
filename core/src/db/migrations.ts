@@ -721,4 +721,26 @@ CREATE TABLE IF NOT EXISTS memory_versions (
 CREATE INDEX IF NOT EXISTS idx_memory_versions_path ON memory_versions(path, id);
 `,
   },
+  {
+    version: 30,
+    name: "memory-proposals",
+    // cerebro-memoria-confiavel, door 5: the review inbox of what an agent writes to the memory. `run_id` is text with
+    // no foreign key (runs are pruned by `limits.runRetentionDays`, a proposal is not); `payload` and `result` are JSON.
+    // Created empty; nothing in it expires on its own.
+    sql: `
+CREATE TABLE IF NOT EXISTS memory_proposals (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  author TEXT NOT NULL,
+  run_id TEXT,
+  created_at INTEGER NOT NULL,
+  decided_at INTEGER,
+  summary TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  result TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_memory_proposals_status ON memory_proposals(status, created_at);
+`,
+  },
 ];

@@ -15,6 +15,12 @@ import {
   listVersions,
   recordFileVersion,
   restoreVersion,
+  decideProposal,
+  listProposals,
+  planNewNote,
+  readProposal,
+  storeProposal,
+  ProposalValidationError,
   folderDigests,
   generateRouters,
   homeReadScope,
@@ -46,7 +52,6 @@ import {
   workspaceScope,
   parseEscopoList,
   parseNaturezaList,
-  type FactAuthor,
   type ReadScope,
 } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
@@ -372,8 +377,12 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   });
 
   bind(app, "memory.journal.append", async ({ body }, req) => {
+    const run = req.principal?.kind === "run";
     if (req.principal?.kind === "run") ctx.noteMemoryWrite(req.principal.runId);
-    const day = appendJournal(ctx.paths, body);
+    // A line a run's credential appends, or that an agent sends through the owner's token, says an agent wrote it
+    // (cerebro-memoria-confiavel, door 9): the consolidation never promotes it by the "Decisions" rule.
+    const { author, ...entry } = body;
+    const day = appendJournal(ctx.paths, { ...entry, agent: run || author === "agent" });
     return { ...day, sections: journalSections(day.content) };
   });
 
@@ -403,13 +412,25 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   bind(app, "memory.facts.assert", async ({ body }, req, reply) => {
     // A run's credential says which run asserted the fact; the body cannot name another, nor any caller an author.
-    let author: FactAuthor = "owner";
+    // What a run asserts waits in the review inbox (cerebro-memoria-confiavel, door 9): a proposal, no fact.
     if (req.principal?.kind === "run") {
-      ctx.noteMemoryWrite(req.principal.runId);
-      body.sourceRunId = req.principal.runId;
-      author = `run:${req.principal.runId}`;
+      const runId = req.principal.runId;
+      ctx.noteMemoryWrite(runId);
+      const proposal = storeProposal(
+        ctx.db,
+        {
+          kind: "fact",
+          author: `run:${runId}`,
+          runId,
+          summary: `${body.subject} · ${body.predicate} · ${body.object}`,
+          payload: { ...body, sourceRunId: runId },
+        },
+        { capped: true },
+      );
+      reply.code(202);
+      return { proposal };
     }
-    const result = assertFact(ctx.db, { ...body, author });
+    const result = assertFact(ctx.db, { ...body, author: "owner" });
     reply.code(result.unchanged ? 200 : 201);
     return result;
   });
@@ -432,6 +453,45 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     const restored = restoreVersion(historyEnv(), body);
     reindex(path.join(ctx.paths.memory, ...restored.path.split("/")));
     return restored;
+  });
+
+  // ---- the review inbox of what an agent writes (.specs/features/cerebro-memoria-confiavel, doors 5 to 7 and 10) ----
+
+  bind(app, "memory.proposals.list", async ({ query: q }) => listProposals(ctx.db, q));
+
+  bind(app, "memory.proposals.get", async ({ params: { id } }) => readProposal(historyEnv(), id));
+
+  /** What the MCP tools send: the owner's token, an agent's words (`author: mcp`). */
+  bind(app, "memory.proposals.create", async ({ body }, _req, reply) => {
+    const { kind, ...payload } = body;
+    let summary: string;
+    if (kind === "fact") {
+      summary = `${body.subject} · ${body.predicate} · ${body.object}`;
+    } else if (kind === "note_create") {
+      // A note that could never be created as asked is refused now, naming why, rather than waiting to fail.
+      try {
+        planNewNote({ paths: ctx.paths, settings: ctx.settings() }, body);
+      } catch (err) {
+        const code = (err as { code?: string }).code ?? "validation";
+        throw new ProposalValidationError(`${code}: ${(err as Error).message}`);
+      }
+      summary = body.title.trim();
+    } else {
+      summary = path.basename(body.path);
+    }
+    const proposal = storeProposal(
+      ctx.db,
+      { kind, author: "mcp", runId: null, summary, payload },
+      { capped: true },
+    );
+    reply.code(201);
+    return { proposal };
+  });
+
+  bind(app, "memory.proposals.decide", async ({ params: { id }, body }) => {
+    const decided = decideProposal(historyEnv(), id, body);
+    for (const w of decided.written) reindex(path.join(ctx.paths.memory, ...w.path.split("/")));
+    return decided;
   });
 
   /** Dataview-style query over inline `key:: value` fields: `where=key`, `key:value` or `key:~substring`. */

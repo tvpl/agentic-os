@@ -56,7 +56,16 @@ export { COMMON_ERRORS, ErrorEnvelope, commonErrorsFor, declaredErrors } from ".
 export { checkBody, checkResponse, toWire } from "./check.js";
 export { wireSchema } from "./wireSchema.js";
 export { SettingsPatchSchema, UiPreferencesPatchSchema, type SettingsPatch } from "./system.js";
-export { isJournalDate } from "./memory.js";
+export {
+  isJournalDate,
+  // cerebro-memoria-confiavel, doors 5 and 6: what the engine reads a proposal.json by and stores a proposal as
+  PROPOSAL_FILE_MAX_BYTES,
+  PROPOSAL_KIND_VALUES,
+  PROPOSAL_STATUS_VALUES,
+  ProposalFileSchema,
+  type ProposalFile,
+  type ProposalOp,
+} from "./memory.js";
 export { QUERY_FLAG_TEXTS, QueryFlag, RUN_LIMITS } from "./common.js";
 export { NAMED_SCHEMAS } from "./schemas.js";
 export {

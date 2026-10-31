@@ -127,6 +127,7 @@ export { linksOf } from "./memory/links.js";
 export {
   classifyNotePath,
   createNote,
+  planNewNote,
   readNote,
   saveNote,
   saveProperties,
@@ -141,6 +142,13 @@ export { ESCOPOS, NATUREZAS, parseEscopoList, parseNaturezaList } from "./memory
 export { reviewsDue } from "./memory/reviews.js";
 export { decideReview } from "./memory/reviewDecisions.js";
 export { getVersion, listVersions, recordFileVersion, recordMove, restoreVersion } from "./memory/history.js";
+export {
+  ProposalValidationError,
+  decideProposal,
+  listProposals,
+  readProposal,
+  storeProposal,
+} from "./memory/proposals.js";
 export { DashboardService } from "./dashboards/service.js";
 export { DashboardStore } from "./dashboards/store.js";
 export { dashboardSources } from "./dashboards/sources.js";

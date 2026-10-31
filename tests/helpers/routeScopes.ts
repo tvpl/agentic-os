@@ -53,6 +53,12 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "GET /api/memory/history": "content",
   "GET /api/memory/history/:id": "content",
   "POST /api/memory/history/restore": "owner",
+  // cerebro-memoria-confiavel, door 10: the review inbox is read with `content`; storing and deciding a proposal is the
+  // owner's alone
+  "GET /api/memory/proposals": "content",
+  "GET /api/memory/proposals/:id": "content",
+  "POST /api/memory/proposals": "owner",
+  "POST /api/memory/proposals/:id/decide": "owner",
   "GET /api/memory/graph": "content",
   "GET /api/memory/hygiene": "content",
   "POST /api/memory/index": "owner",

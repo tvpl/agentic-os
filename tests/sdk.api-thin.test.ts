@@ -1236,6 +1236,64 @@ describe("S3 the API and the CLI start nothing of their own", () => {
         "      ]);",
       ],
     },
+    // cerebro-memoria-confiavel, batch A2, added GET /api/memory/proposals and GET /api/memory/proposals/:id (content) and
+    // POST /api/memory/proposals and POST /api/memory/proposals/:id/decide (owner), and migration 30. Each amends the
+    // head of batch A1's amendment above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel A2: the four routes of the review inbox under /api",
+      base: ["    expect(routes).toHaveLength(156);"],
+      head: ["    expect(routes).toHaveLength(160);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel A2: owners and scoped routes, with the review inbox",
+      base: ["    expect([owners, scoped]).toEqual([82, 74]);"],
+      head: ["    expect([owners, scoped]).toEqual([84, 76]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel A2: the registered routes, with the review inbox",
+      base: ["    expect(Object.keys(registered)).toHaveLength(156);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(160);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel A2: the routes of each scope, with the review inbox",
+      times: 2,
+      base: ["toEqual({ owner: 82, monitor: 33, content: 34, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 84, monitor: 33, content: 36, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel A2: the routes after the pairing passes, with the review inbox",
+      base: ["    expect(apiRoutes()).toHaveLength(156);"],
+      head: ["    expect(apiRoutes()).toHaveLength(160);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel A2: the operations of the route document, with the review inbox",
+      base: ["    expect(operations).toBe(158);"],
+      head: ["    expect(operations).toBe(162);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel A2: migration 30 after 29",
+      base: [
+        "      // batch B), a table made again with the same rows, and the keys and provenance of facts and the history of",
+        "      // memory/ (cerebro-memoria-confiavel), columns on facts and two new tables.",
+      ],
+      head: [
+        "      // batch B), a table made again with the same rows, and the keys and provenance of facts, the history of memory/",
+        "      // and the review inbox (cerebro-memoria-confiavel), columns on facts and three new tables.",
+      ],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel A2: memory-proposals after memory-history",
+      base: ['        "memory-history",', "      ]);"],
+      head: ['        "memory-history",', '        "memory-proposals",', "      ]);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

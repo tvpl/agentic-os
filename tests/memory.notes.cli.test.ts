@@ -125,14 +125,25 @@ describe("C17 the MCP note tools", () => {
   });
 
   it("C17 note_create, note_read and note_save return the route's result; a stale save is an error naming edit_conflict", async () => {
+    // Since cerebro-memoria-confiavel (door 9, AC 48, AD-045) note_create and note_save store a proposal in the review
+    // inbox and write nothing; the owner accepting it writes the note, and a stale save is edit_conflict there.
+    const waiting = /^Proposal (mp_[0-9a-f]{16}) is waiting for review in the MordomoOS inbox\.$/;
     const created = await run("note_create", { title: "Pelo agente", content: "primeira versão" });
     const file = path.join(temp.paths.memory, "notes", "pelo-agente.md");
-    expect(created).toContain(`Created ${file}`);
-    const version = /version: (sha256:[0-9a-f]{64})/.exec(created)![1]!;
+    expect(created).toMatch(waiting);
+    expect(fs.existsSync(file)).toBe(false);
+    const decide = (id: string) =>
+      app.inject({
+        method: "POST",
+        url: `/api/memory/proposals/${id}/decide`,
+        headers: { "x-mordomo-token": ctx.token(), "content-type": "application/json" },
+        payload: { action: "accept" },
+      });
+    expect((await decide(waiting.exec(created)![1]!)).statusCode).toBe(200);
     expect(fs.readFileSync(file, "utf8")).toBe("# Pelo agente\n\nprimeira versão\n");
 
     const read = await run("note_read", { path: file });
-    expect(read).toContain(`version: ${version}`);
+    const version = /version: (sha256:[0-9a-f]{64})/.exec(read)![1]!;
     expect(read).toContain("primeira versão");
 
     const saved = await run("note_save", {
@@ -140,12 +151,15 @@ describe("C17 the MCP note tools", () => {
       content: "# Pelo agente\n\nsegunda\n",
       baseVersion: version,
     });
-    expect(saved).toContain(`Saved ${file}`);
+    expect(saved).toMatch(waiting);
+    expect(fs.readFileSync(file, "utf8")).toBe("# Pelo agente\n\nprimeira versão\n");
+    expect((await decide(waiting.exec(saved)![1]!)).statusCode).toBe(200);
     expect(fs.readFileSync(file, "utf8")).toBe("# Pelo agente\n\nsegunda\n");
 
-    await expect(run("note_save", { path: file, content: "perdida", baseVersion: version })).rejects.toThrow(
-      /edit_conflict/,
-    );
+    const stale = await run("note_save", { path: file, content: "perdida", baseVersion: version });
+    const refused = await decide(waiting.exec(stale)![1]!);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.code).toBe("edit_conflict");
     expect(fs.readFileSync(file, "utf8")).toBe("# Pelo agente\n\nsegunda\n");
 
     await expect(run("note_create", { title: "" })).rejects.toThrow(/title is required/);

@@ -311,17 +311,21 @@ describe.skipIf(!POSIX)(
         200,
       );
 
-      // the fact says which run asserted it: the run's own id, whatever the body claims
+      // the fact says which run asserted it: the run's own id, whatever the body claims. Since cerebro-memoria-confiavel
+      // (door 9, AD-045) a run's fact waits in the review inbox: a proposal of the run, and no fact yet.
       const asserted = await rw("POST", "/api/memory/facts", {
         ...fact,
         object: "o2",
         sourceRunId: "somebody-else",
       });
-      expect(asserted.statusCode, asserted.body).toBe(201);
-      const stored = s.ctx.db.prepare("SELECT source_run_id FROM facts WHERE object = 'o2'").get() as {
-        source_run_id: string;
-      };
-      expect(stored.source_run_id).toBe(writeRun.id);
+      expect(asserted.statusCode, asserted.body).toBe(202);
+      const stored = s.ctx.db
+        .prepare("SELECT run_id, author, payload FROM memory_proposals WHERE id = ?")
+        .get(asserted.json().proposal.id) as { run_id: string; author: string; payload: string };
+      expect(stored.run_id).toBe(writeRun.id);
+      expect(stored.author).toBe(`run:${writeRun.id}`);
+      expect(JSON.parse(stored.payload).sourceRunId).toBe(writeRun.id);
+      expect(s.ctx.db.prepare("SELECT COUNT(*) c FROM facts WHERE object = 'o2'").get()).toEqual({ c: 0 });
 
       // recall: the owner finds a note in a granted folder, the run's credential only what is in memory/
       fs.mkdirSync(path.join(s.userFolder, "notes"), { recursive: true });

@@ -4,6 +4,12 @@
  * list and run skills, append to today's journal, query facts and read the
  * inbox — through the local HTTP API with the local token, so every call is
  * subject to the same containment and gating as the Command Centre.
+ *
+ * What a session writes to the memory waits for the owner
+ * (.specs/features/cerebro-memoria-confiavel, door 9): `facts_assert`,
+ * `note_create` and `note_save` store a proposal in the review inbox, and a
+ * journal line says an agent wrote it. The mark is provenance, not
+ * containment: this process holds the owner's token.
  */
 import { serveMcpStdio, type McpTool } from "./stdio.js";
 
@@ -26,6 +32,14 @@ export function httpApi(baseUrl: string, token: string): McpApi {
   };
   return { get: (p) => call("GET", p), post: (p, b) => call("POST", p, b), put: (p, b) => call("PUT", p, b) };
 }
+
+/** What every tool that proposes answers (AC 48). */
+const waiting = (id: string) => `Proposal ${id} is waiting for review in the MordomoOS inbox.`;
+
+const propose = async (api: McpApi, body: Record<string, unknown>): Promise<string> => {
+  const r = await api.post<{ proposal: { id: string } }>("/api/v1/memory/proposals", body);
+  return waiting(r.proposal.id);
+};
 
 const str = (v: unknown, name: string): string => {
   if (typeof v !== "string" || !v.trim()) throw new Error(`${name} is required`);
@@ -111,6 +125,7 @@ export function mordomoTools(api: McpApi): McpTool[] {
       handler: async (a) => {
         const body: Record<string, unknown> = { text: str(a.text, "text") };
         if (typeof a.section === "string") body.section = a.section;
+        body.author = "agent";
         await api.post("/api/v1/memory/journal/append", body);
         return "Appended.";
       },
@@ -118,7 +133,7 @@ export function mordomoTools(api: McpApi): McpTool[] {
     {
       name: "facts_assert",
       description:
-        "Remember one durable fact about the user or the workspace as subject / predicate / object (e.g. 'user' / 'prefers' / 'commits in Portuguese'). Use sparingly, only for what will matter in future sessions.",
+        "Propose one durable fact about the user or the workspace as subject / predicate / object (e.g. 'user' / 'prefers' / 'commits in Portuguese'); it is remembered once the owner accepts it in the MordomoOS inbox. Use sparingly, only for what will matter in future sessions.",
       inputSchema: {
         type: "object",
         properties: {
@@ -130,13 +145,13 @@ export function mordomoTools(api: McpApi): McpTool[] {
       },
       handler: async (a) => {
         const runId = process.env.MORDOMO_RUN_ID;
-        const r = await api.post<{ fact: { id: number }; unchanged: boolean }>("/api/v1/memory/facts", {
+        return propose(api, {
+          kind: "fact",
           subject: str(a.subject, "subject"),
           predicate: str(a.predicate, "predicate"),
           object: str(a.object, "object"),
           ...(runId ? { sourceRunId: runId } : {}),
         });
-        return `${r.unchanged ? "Already knew" : "Remembered"} fact #${r.fact.id}: ${str(a.subject, "subject")} ${str(a.predicate, "predicate")} ${str(a.object, "object")}`;
       },
     },
     {
@@ -157,7 +172,7 @@ export function mordomoTools(api: McpApi): McpTool[] {
     {
       name: "note_create",
       description:
-        "Create a Markdown note under memory/notes (an `area` of the settings gives it a folder). Returns its path and its version; keep the version to save later.",
+        "Propose a new Markdown note under memory/notes (an `area` of the settings gives it a folder); it is created once the owner accepts it in the MordomoOS inbox.",
       inputSchema: {
         type: "object",
         properties: {
@@ -170,11 +185,10 @@ export function mordomoTools(api: McpApi): McpTool[] {
         required: ["title"],
       },
       handler: async (a) => {
-        const body: Record<string, unknown> = { title: str(a.title, "title") };
+        const body: Record<string, unknown> = { kind: "note_create", title: str(a.title, "title") };
         for (const key of ["content", "area", "tags", "frontMatter"] as const)
           if (a[key] !== undefined) body[key] = a[key];
-        const r = await api.post<{ path: string; version: string }>("/api/v1/memory/notes", body);
-        return `Created ${r.path}\nversion: ${r.version}`;
+        return propose(api, body);
       },
     },
     {
@@ -197,7 +211,7 @@ export function mordomoTools(api: McpApi): McpTool[] {
     {
       name: "note_save",
       description:
-        "Replace a note's text, only if it is still the version you read (baseVersion). A changed note answers edit_conflict and nothing is written: read it again and merge.",
+        "Propose a note's new text against the version you read (baseVersion); the owner accepts it in the MordomoOS inbox, and a note that changed meanwhile is not overwritten.",
       inputSchema: {
         type: "object",
         properties: {
@@ -209,12 +223,12 @@ export function mordomoTools(api: McpApi): McpTool[] {
       },
       handler: async (a) => {
         if (typeof a.content !== "string") throw new Error("content is required");
-        const r = await api.put<{ path: string; version: string }>("/api/v1/memory/notes", {
+        return propose(api, {
+          kind: "note_save",
           path: str(a.path, "path"),
           content: a.content,
           baseVersion: str(a.baseVersion, "baseVersion"),
         });
-        return `Saved ${r.path}\nversion: ${r.version}`;
       },
     },
     {

@@ -4,8 +4,8 @@ Profile: ui
 Plan: `.specs/features/cerebro-memoria-confiavel/plan.md`
 Design: `.specs/features/cerebro-memoria-confiavel/design.md` (binding for the screens)
 
-147 checks in 9 slices (part A: S1, S2, S3, cross-cutting A, screens A; part B: S4, S4r, S5, screens B) · 15 one-way
-doors · the plan's 6 questions answered by the owner on 31/10/2026 with their recommended defaults (AD-045: internal
+148 checks in 9 slices (part A: S1, S2, S3, cross-cutting A, screens A; part B: S4, S4r, S5, screens B; C148 added in
+batch A2 with door 16) · 16 one-way doors · the plan's 6 questions answered by the owner on 31/10/2026 with their recommended defaults (AD-045: internal
 SQLite history; consolidation off for new installs; MCP writes go to the inbox; Codex and Cursor refused on a hidden
 folder; 50 versions and 256 MiB; S4-S5 in this feature, own batch) · 23 gaps this derivation found (`## Gaps found by
 this derivation`, G1-G23), each written into the checks with its safe default and none blocking the build.
@@ -520,6 +520,15 @@ was pruned by `limits.runRetentionDays` still reads back with its `runId` (no fo
 keeps `proposalId` (Relations, doors 2, 4, 5)
 Proof: `npx vitest run tests/memoria.migration.test.ts -t "C79 "`
 
+**C148** - (added in batch A2 with door 16, L-047) Read back through `GET /api/memory/proposals/:id`, the `payload` a
+proposal stores is, per kind: a run credential's `fact` the body of `POST /api/memory/facts` with `sourceRunId` = the
+run's id; an mcp `fact` the body of `POST /api/memory/proposals` without `kind`; `note_create` its body without `kind`;
+`note_save` `{ path, content, baseVersion }`; `consolidation` `{ v: 1, summary, ops }` as the file's; the guard's
+`memory_edit` `{ path: "MEMORY.md", content: <the run's bytes> }` (`toEqual` each); `result` is `null` while pending,
+`{ action: "reject" }` after a reject, and `{ action: "accept", ops: [0], written: [{ path: "MEMORY.md", version }],
+facts: [] }` after accepting op 0 of a consolidation, the same as the decision's answer (door 16)
+Proof: `npx vitest run tests/memoria.proposals.test.ts -t "C148 "`
+
 ### Cross-cutting A, API · 10 files · 193 KB · ~48k
 
 **C80** - The `API` table has the seven new routes with these method, path, scope and named errors (`toEqual` over the
@@ -1005,7 +1014,7 @@ blocks the build.
 | `GET /api/memory/tree` statuses (2)                                         | 200 C123 · 400 C123                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | -        |
 | `POST /api/runs`, `POST /api/skills/:slug/run` new statuses (4)             | 403 `folder_hidden` C125 · 403 `folder_read_only` C128 · 409 `folder_hide_unsupported` C127 · 404 for a device C119                                                                                                                                                                                                                                                                                                                                                                                                       | -        |
 | error codes (21)                                                            | `validation` C7 · `provenance_required` C17 · `fact_overlap` C11 · `note_not_editable` C35 · `not_found` C31 · `edit_conflict` C34 · `proposal_decided` C65 · `memory_over_budget` C59 · `note_too_large` C66 · `too_many_proposals` C47 · `owner_only` C36 · `forbidden` C68 · `scope_required` C36 · `folder_hidden` C125 · `folder_read_only` C128 · `folder_hide_unsupported` C127 · `folder_protection_unsupported` C129 · `folder_too_large` C133 · `forbidden_path` C134 · `exists` C136 · `too_many_requests` C40 | -        |
-| one-way doors (15)                                                          | 1 C1 · 2 C11 · 3 C17 · 4 C26 · 5 C79 · 6 C48 · 7 C54 · 8 C69 · 9 C40 · 10 C80 · 11 C75 · 12 C110 · 13 C126 · 14 C132 · 15 C135                                                                                                                                                                                                                                                                                                                                                                                            | -        |
+| one-way doors (16)                                                          | 1 C1 · 2 C11 · 3 C17 · 4 C26 · 5 C79 · 6 C48 · 7 C54 · 8 C69 · 9 C40 · 10 C80 · 11 C75 · 12 C110 · 13 C126 · 14 C132 · 15 C135 · 16 C148                                                                                                                                                                                                                                                                                                                                                                                  | -        |
 | entities and one-way constraints (8)                                        | keys not null, one function C5 · blob once by sha256 C26 · version by path, survives reindex and removal C24 · closed vocabularies status, kind, author C79 · closed origin and author of versions C21 · closed trust C52 · `run_id`/`proposal_id` text, no FK C79 · `memory_proposals` → `facts` (`proposal_id`) C61                                                                                                                                                                                                     | -        |
 | door 2 overlap table (4 rows)                                               | before T, overlaps C8 · at/after T, no U C10 · at/after U C9 · strictly inside C11                                                                                                                                                                                                                                                                                                                                                                                                                                        | -        |
 | fact query flags (5)                                                        | none C12 · `knownAt` C13 · `includeRetracted` C12 · `includeExpired` C12 · `asOf` C12                                                                                                                                                                                                                                                                                                                                                                                                                                     | -        |

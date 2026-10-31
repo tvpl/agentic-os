@@ -13,6 +13,7 @@ import {
   createNote,
   recordFileVersion,
   saveCleanupDecisions,
+  storeProposal,
   type Fetcher,
 } from "@mordomo/core/internal";
 import { AppContext } from "../../apps/api/src/context.js";
@@ -358,6 +359,33 @@ function versionOf(w: World, title: string): { id: number; version: string } {
   const env = { db: w.ctx.db, paths: w.ctx.paths, settings: w.ctx.settings() };
   const id = recordFileVersion(env, note.path, fs.readFileSync(note.path), "owner", "create")!;
   return { id, version: note.version };
+}
+
+/**
+ * A consolidation proposal made for a scenario (cerebro-memoria-confiavel, door 5): one `add` op citing a line of a
+ * journal day of memory/, as a run of consolidate-memory would leave it.
+ */
+function proposalOf(w: World, text: string): string {
+  const journal = path.join(w.ctx.paths.memory, "journal", "2026-10-30.md");
+  if (!fs.existsSync(journal)) {
+    fs.mkdirSync(path.dirname(journal), { recursive: true });
+    fs.writeFileSync(journal, "# 2026-10-30\n\n## Decisions\n\n- Uma decisão do cenário\n");
+  }
+  return storeProposal(
+    w.ctx.db,
+    {
+      kind: "consolidation",
+      author: "run:contract",
+      runId: "contract",
+      summary: text,
+      payload: {
+        v: 1,
+        summary: text,
+        ops: [{ op: "add", section: "Decisions", text, source: "journal/2026-10-30.md", line: 5 }],
+      },
+    },
+    { capped: false },
+  ).id;
 }
 
 /** The dashboard of the contract's context (cerebro-paineis), made by the engine when it is not there yet. */
@@ -871,6 +899,36 @@ export const SCENARIOS: Record<string, Scenario> = {
     run: (w) => {
       const v = versionOf(w, "Cenário de restauração");
       return w.call("POST", "/api/memory/history/restore", { id: v.id, baseVersion: v.version });
+    },
+  },
+  // cerebro-memoria-confiavel, door 10: the review inbox, over a consolidation proposal made for the scenario.
+  [key("GET", "/api/memory/proposals")]: {
+    run: (w) => {
+      proposalOf(w, "Cenário da lista de propostas");
+      return w.call("GET", "/api/memory/proposals?status=pending");
+    },
+  },
+  [key("GET", "/api/memory/proposals/:id")]: {
+    run: (w) => w.call("GET", `/api/memory/proposals/${proposalOf(w, "Cenário de uma proposta")}`),
+  },
+  [key("POST", "/api/memory/proposals")]: {
+    run: (w) =>
+      w.call("POST", "/api/memory/proposals", {
+        kind: "fact",
+        subject: "Gama",
+        predicate: "status",
+        object: "proposto",
+      }),
+  },
+  [key("POST", "/api/memory/proposals/:id/decide")]: {
+    run: async (w) => {
+      const id = proposalOf(w, "Cenário de uma decisão");
+      const read = await w.call("GET", `/api/memory/proposals/${id}`);
+      const baseVersion = (read.body as { baseVersion?: string | null } | null)?.baseVersion ?? undefined;
+      return w.call("POST", `/api/memory/proposals/${id}/decide`, {
+        action: "accept",
+        ...(baseVersion ? { baseVersion } : {}),
+      });
     },
   },
   [key("POST", "/api/pair/start")]: { run: (w) => w.call("POST", "/api/pair/start", { name: "phone 2" }) },

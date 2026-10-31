@@ -166,6 +166,14 @@ describe("S5 the surface is a closed list", () => {
         "recordFileVersion",
         "recordMove",
         "restoreVersion",
+        // cerebro-memoria-confiavel, batch A2: the review inbox the routes store, list, read and decide (doors 5 to 7
+        // and 10), and the checks a new note's proposal is refused by when it is made (AC 47)
+        "ProposalValidationError",
+        "decideProposal",
+        "listProposals",
+        "planNewNote",
+        "readProposal",
+        "storeProposal",
       ].sort(),
     );
   });

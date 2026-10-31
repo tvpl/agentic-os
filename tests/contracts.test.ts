@@ -127,6 +127,12 @@ describe("S1 the contracts package", () => {
         "OnExitSchema",
         "OsEventSchema",
         "PROFILES",
+        // cerebro-memoria-confiavel, batch A2: what the engine reads a run's proposal.json by and stores a proposal as
+        // (doors 5 and 6)
+        "PROPOSAL_FILE_MAX_BYTES",
+        "PROPOSAL_KIND_VALUES",
+        "PROPOSAL_STATUS_VALUES",
+        "ProposalFileSchema",
         "ProviderId",
         "ProviderSettingsSchema",
         "QUERY_FLAG_TEXTS",

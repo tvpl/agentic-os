@@ -370,6 +370,33 @@ export function newNoteText(input: CreateNoteInput, title: string, now: Date = n
  * a name taken gets `-2`, `-3` … up to `-99`.
  */
 export function createNote(ctx: NoteContext, input: CreateNoteInput, now: Date = new Date()): NoteWritten {
+  const { dir, slug, text, scope } = planNewNote(ctx, input, now);
+  for (let n = 1; n <= MAX_SAME_NAME; n++) {
+    const name = `${n === 1 ? slug : `${slug}-${n}`}.md`;
+    const target = path.join(dir, name);
+    try {
+      writeWorkspaceFile(scope, target, text, { mode: "create" });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") continue;
+      throw err;
+    }
+    ctx.history?.(target, text, "create");
+    const stat = statWorkspacePath(scope, target).stat;
+    return { path: target, name, version: versionOf(text), size: Buffer.byteLength(text, "utf8"), mtime: Math.floor(stat.mtimeMs) };
+  }
+  throw new NoteExistsError(`There are already ${MAX_SAME_NAME} notes named "${slug}".`);
+}
+
+/**
+ * What `createNote` checks before it writes anything, and the folder, the name and the text it would write: the title,
+ * the tags, the area, the size and the fixed structure (door 5). A proposal of a new note is checked the same way when
+ * it is made (.specs/features/cerebro-memoria-confiavel, AC 47), so a note that could never be created is refused then.
+ */
+export function planNewNote(
+  ctx: NoteContext,
+  input: CreateNoteInput,
+  now: Date = new Date(),
+): { dir: string; slug: string; text: string; scope: ReadScope } {
   const title = validateTitle(input.title);
   validateTags(input.tags ?? []);
   if (input.area !== undefined && !ctx.settings.areas.includes(input.area)) {
@@ -395,20 +422,7 @@ export function createNote(ctx: NoteContext, input: CreateNoteInput, now: Date =
       throw new StructureFixedError(`The structure is fixed: the folder ${dir} does not exist and is not made.`);
     }
   }
-  for (let n = 1; n <= MAX_SAME_NAME; n++) {
-    const name = `${n === 1 ? slug : `${slug}-${n}`}.md`;
-    const target = path.join(dir, name);
-    try {
-      writeWorkspaceFile(scope, target, text, { mode: "create" });
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "EEXIST") continue;
-      throw err;
-    }
-    ctx.history?.(target, text, "create");
-    const stat = statWorkspacePath(scope, target).stat;
-    return { path: target, name, version: versionOf(text), size: Buffer.byteLength(text, "utf8"), mtime: Math.floor(stat.mtimeMs) };
-  }
-  throw new NoteExistsError(`There are already ${MAX_SAME_NAME} notes named "${slug}".`);
+  return { dir, slug, text, scope };
 }
 
 function isFolder(scope: ReadScope, dir: string): boolean {

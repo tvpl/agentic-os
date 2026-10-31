@@ -49,6 +49,8 @@ import { IndexWorkerHost } from "./memory/indexHost.js";
 import { CleanupScanner } from "./memory/cleanupScan.js";
 import { SemanticSearch } from "./memory/semantic.js";
 import { installJournalHooks } from "./memory/journal.js";
+import { installConsolidationHook } from "./memory/consolidationHook.js";
+import { MemoryGuard } from "./memory/memoryGuard.js";
 import { MetricsHistory } from "./metrics/history.js";
 import { PushStore } from "./notifications/pushStore.js";
 import { installNotificationRecorder } from "./notifications/recorder.js";
@@ -192,6 +194,8 @@ export class MordomoEngine {
   readonly skillRegistry: SkillRegistry;
   /** Sentinels: the cheap observers plus the triage listener; watching starts with `start()`. */
   readonly sentinels: SentinelRunner;
+  /** The guard of `memory/MEMORY.md` around every write run (cerebro-memoria-confiavel, door 8). */
+  readonly memoryGuard: MemoryGuard;
   /** Registered providers (manifests + factories). */
   readonly providers: ProviderRegistry;
   /** Web Push subscriptions and the VAPID pair. */
@@ -380,6 +384,24 @@ export class MordomoEngine {
         routines: this.routines,
       }),
     );
+    // What an agent writes to the memory waits for the owner (cerebro-memoria-confiavel, doors 6 and 8): a finished
+    // consolidation leaves a proposal, and a write run that changed MEMORY.md is put back with its bytes proposed.
+    this.disposers.push(
+      installConsolidationHook(this.events, {
+        db: this.db,
+        paths: this.paths,
+        getSettings: () => this.settings(),
+        runs: this.runs,
+        notifications: this.notifications,
+      }),
+    );
+    this.memoryGuard = new MemoryGuard({
+      db: this.db,
+      paths: this.paths,
+      getSettings: () => this.settings(),
+      runs: this.runs,
+    });
+    this.disposers.push(this.memoryGuard.install(this.events));
     this.disposers.push(
       this.events.subscribe((event) => {
         if (event.type !== "run.finished") return;

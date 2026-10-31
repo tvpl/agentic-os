@@ -9,6 +9,9 @@ import { openDb } from "../core/src/db/db.js";
 import { MIGRATIONS } from "../core/src/db/migrations.js";
 import { factKey } from "../core/src/memory/facts.js";
 import { ensureDirs, resolvePaths } from "../core/src/paths.js";
+import { createBackup, restoreBackup } from "../core/src/backup.js";
+import { storeProposal, writeDecision } from "../core/src/memory/proposals.js";
+import { memoriaWorld } from "./helpers/memoriaWorld.js";
 
 /**
  * cerebro-memoria-confiavel, the migrations at their own layer: 28 (`fact-keys-and-provenance`, doors 1 to 3) over a
@@ -211,6 +214,187 @@ describe("C37 migration 29 makes the two tables of the history", () => {
       expect(schema()).toEqual(want);
     } finally {
       db.close();
+    }
+  });
+});
+
+describe("C79 migration 30 makes the review inbox", () => {
+  const full = (db: Database.Database, table: string) =>
+    (db.pragma(`table_info(${table})`) as Json[]).map(({ name, type, notnull, pk }) => ({
+      name,
+      type,
+      notnull,
+      pk,
+    }));
+
+  it("C79 memory_proposals with door 5's columns, created empty; again leaves it so", () => {
+    const world = homeAt27([]);
+    const { db, migration } = openDb(world.paths);
+    try {
+      expect(migration).toMatchObject({ fromVersion: 27, toVersion: 30 });
+      expect(MIGRATIONS.find((m) => m.version === 30)!.name).toBe("memory-proposals");
+      const want = [
+        { name: "id", type: "TEXT", notnull: 0, pk: 1 },
+        { name: "kind", type: "TEXT", notnull: 1, pk: 0 },
+        { name: "status", type: "TEXT", notnull: 1, pk: 0 },
+        { name: "author", type: "TEXT", notnull: 1, pk: 0 },
+        { name: "run_id", type: "TEXT", notnull: 0, pk: 0 },
+        { name: "created_at", type: "INTEGER", notnull: 1, pk: 0 },
+        { name: "decided_at", type: "INTEGER", notnull: 0, pk: 0 },
+        { name: "summary", type: "TEXT", notnull: 1, pk: 0 },
+        { name: "payload", type: "TEXT", notnull: 1, pk: 0 },
+        { name: "result", type: "TEXT", notnull: 0, pk: 0 },
+      ];
+      expect(full(db, "memory_proposals")).toEqual(want);
+      expect((db.prepare("SELECT COUNT(*) c FROM memory_proposals").get() as Json).c).toBe(0);
+      // no foreign key: a run that goes takes nothing with it
+      expect(db.pragma("foreign_key_list(memory_proposals)")).toEqual([]);
+      db.exec(MIGRATIONS.find((m) => m.version === 30)!.sql!);
+      expect(full(db, "memory_proposals")).toEqual(want);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("C79 the writer refuses a kind, a status and an author outside the closed sets", () => {
+    const world = homeAt27([]);
+    const { db } = openDb(world.paths);
+    try {
+      const ok = { kind: "fact" as const, author: "mcp", summary: "s", payload: {} };
+      expect(() => storeProposal(db, { ...ok, kind: "rename" as never })).toThrow(/kind/);
+      expect(() => storeProposal(db, { ...ok, author: "owner" })).toThrow(/author/);
+      expect(() => storeProposal(db, { ...ok, author: "run:" })).toThrow(/author/);
+      const stored = storeProposal(db, ok);
+      expect(() => writeDecision(db, stored.id, "expired" as never, 1, {})).toThrow(/status|decision/i);
+      expect(() => writeDecision(db, stored.id, "pending", 1, {})).toThrow(/decision/i);
+      expect(db.prepare("SELECT kind, status, author FROM memory_proposals").all() as Json[]).toEqual([
+        { kind: "fact", status: "pending", author: "mcp" },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("C79 a proposal whose run was pruned by limits.runRetentionDays reads back with its runId, and the fact accepted from it keeps proposalId", async () => {
+    const w = await memoriaWorld("mordomo-memoria-m30-");
+    try {
+      const run = w.run("write");
+      const res = await w.call(
+        "POST",
+        "/api/memory/facts",
+        { subject: "Podada", predicate: "p", object: "o" },
+        run.headers,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(202);
+      const id = res.body.proposal.id as string;
+      const old = Date.now() - 400 * 86_400_000;
+      w.ctx.db
+        .prepare("UPDATE runs SET status = 'done', finished_at = ?, created_at = ? WHERE id = ?")
+        .run(old, old, run.runId);
+      w.ctx.runs.prune({ keepRunDays: w.ctx.settings().limits.runRetentionDays, vacuum: false });
+      expect(w.ctx.runs.get(run.runId)).toBeNull();
+      const shown = await w.call("GET", `/api/memory/proposals/${id}`);
+      expect(shown.status).toBe(200);
+      expect(shown.body).toMatchObject({ id, runId: run.runId, author: `run:${run.runId}` });
+      const done = await w.call("POST", `/api/memory/proposals/${id}/decide`, { action: "accept" });
+      expect(done.status, JSON.stringify(done.body)).toBe(200);
+      const facts = (await w.call("GET", "/api/memory/facts?subject=podada")).body.facts as Json[];
+      expect(facts.map((f) => [f.proposalId, f.author, f.sourceRunId])).toEqual([
+        [id, `run:${run.runId}`, run.runId],
+      ]);
+    } finally {
+      await w.close();
+    }
+  });
+});
+
+describe("C39 a backup carries the history and the migrations run on restore", () => {
+  /** A fresh home, at the latest schema, with the backup `name` of `from` copied into its backups. */
+  const freshWith = (from: ReturnType<typeof resolvePaths>, name: string) => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-memoria-c39-fresh-"));
+    homes.push(home);
+    const paths = resolvePaths(home);
+    ensureDirs(paths);
+    openDb(paths).db.close();
+    fs.cpSync(path.join(from.backups, name), path.join(paths.backups, name), { recursive: true });
+    return paths;
+  };
+
+  it("C39 a backup made after versions exist, restored over a fresh home, answers the history with the same versions and a version with the same content", async () => {
+    const w = await memoriaWorld("mordomo-memoria-c39-");
+    let paths: ReturnType<typeof resolvePaths>;
+    let versions: Json[];
+    let one: Json;
+    try {
+      const note = await w.call("POST", "/api/memory/notes", { title: "Nota C39", content: "primeira" });
+      expect(note.status).toBe(201);
+      const saved = await w.call("PUT", "/api/memory/notes", {
+        path: note.body.path,
+        content: "# Nota C39\n\nsegunda\n",
+        baseVersion: note.body.version,
+      });
+      expect(saved.status).toBe(200);
+      versions = (await w.call("GET", "/api/memory/history")).body.versions as Json[];
+      expect(versions.length).toBeGreaterThanOrEqual(2);
+      one = (await w.call("GET", `/api/memory/history/${versions.at(-1)!.id}`)).body as Json;
+      const backup = await createBackup(w.ctx.paths, w.ctx.db);
+      paths = freshWith(w.ctx.paths, backup.name);
+      restoreBackup(paths, backup.name);
+    } finally {
+      await w.close();
+    }
+    const ctx = new AppContext(paths!.home);
+    const app = await buildServer(ctx);
+    try {
+      const headers = { "x-mordomo-token": ctx.token() };
+      const listed = await app.inject({ method: "GET", url: "/api/memory/history", headers });
+      expect(listed.statusCode, listed.body).toBe(200);
+      const strip = (v: Json) => ({
+        id: v.id,
+        path: v.path,
+        at: v.at,
+        author: v.author,
+        origin: v.origin,
+        sha256: v.sha256,
+        size: v.size,
+      });
+      expect((listed.json().versions as Json[]).map(strip)).toEqual(versions!.map(strip));
+      const got = await app.inject({ method: "GET", url: `/api/memory/history/${one!.id}`, headers });
+      expect(got.statusCode).toBe(200);
+      expect(got.json().content).toBe(one!.content);
+    } finally {
+      await app.close();
+      ctx.close();
+    }
+  });
+
+  it("C39 a backup made at schema 27 with facts, restored, opens at 30 with the facts' keys filled and author unknown", async () => {
+    const world = homeAt27([
+      { subject: "Cliente  São Paulo", predicate: "Status", object: "ativo", from: 1_000, to: null },
+    ]);
+    const { db } = openDb(
+      world.paths,
+      MIGRATIONS.filter((m) => m.version <= 27),
+    );
+    let name: string;
+    try {
+      expect(db.pragma("user_version", { simple: true })).toBe(27);
+      name = (await createBackup(world.paths, db)).name;
+    } finally {
+      db.close();
+    }
+    const paths = freshWith(world.paths, name!);
+    restoreBackup(paths, name!);
+    const opened = openDb(paths);
+    try {
+      expect(opened.migration).toMatchObject({ fromVersion: 27, toVersion: 30 });
+      expect(opened.db.pragma("user_version", { simple: true })).toBe(30);
+      expect(opened.db.prepare("SELECT subject_key, predicate_key, author, trust FROM facts").all()).toEqual([
+        { subject_key: "cliente sao paulo", predicate_key: "status", author: "unknown", trust: "inferido" },
+      ]);
+      expect((opened.db.prepare("SELECT COUNT(*) c FROM memory_proposals").get() as Json).c).toBe(0);
+    } finally {
+      opened.db.close();
     }
   });
 });

@@ -57,6 +57,11 @@ export interface AssertFactInput {
   proposalId?: string | null | undefined;
   /** Who writes it. Defaults to `owner` (an engine call on the owner's behalf). */
   author?: FactAuthor | undefined;
+  /**
+   * The trust the system computed for where it came from (an accepted proposal's op, AC 56 and 64). Absent: the
+   * owner's own word is `usuario`, anything else `inferido`. No request body names it.
+   */
+  trust?: FactTrust | undefined;
 }
 
 export interface AssertFactResult {
@@ -283,7 +288,7 @@ export function assertFact(db: Db, input: AssertFactInput): AssertFactResult {
         predicateKey,
         sourceLine,
         author,
-        trustOf(author),
+        input.trust ?? trustOf(author),
         proposalId,
       );
     return { fact: getFact(db, Number(info.lastInsertRowid))!, invalidated, unchanged: false };

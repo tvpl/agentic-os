@@ -19,6 +19,14 @@ import {
   recordVersion,
   storedBlobBytes,
 } from "../core/src/memory/historyStore.js";
+import { SettingsSchema } from "../core/src/config/schema.js";
+import {
+  MEMORY_MAX_BYTES,
+  MEMORY_MAX_LINES,
+  evaluateOps,
+  opTrust,
+  withinBudget,
+} from "../core/src/memory/proposals.js";
 
 /**
  * .specs/features/cerebro-memoria-confiavel, the deciding code at its own layer (checks.md, Test policy rows 1 and 2),
@@ -278,5 +286,146 @@ describe("C28 the retention by bytes", () => {
     expect(ids("notes/a.md")).toEqual(a);
     enforceByteCap(db, total - 1);
     expect(ids("notes/a.md")).toEqual(a.slice(1));
+  });
+});
+
+// ---- batch A2: the proposals (doors 6 and 7, AC 55, 56, 62) ------------------------------------------------------
+
+/** A memory/ of its own for the op checks: a journal day (line 4 the owner's, 5 an agent's, 9 under ## Runs), a note. */
+function opsHome(excludes: string[] = []) {
+  const paths = resolvePaths(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-memoria-ops-")));
+  ensureDirs(paths);
+  const put = (rel: string, text: string) => {
+    const file = path.join(paths.memory, rel);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  };
+  put(
+    "journal/2026-10-30.md",
+    "# 2026-10-30\n## Decisions\n\n- Turmas de 20\n- Sugestão (autor:: agente)\n\n## Runs\n\n- run r-1 → done\n",
+  );
+  put("notes/cliente.md", "# Cliente\n\n## Contrato\n\n- Renovação em março\n");
+  put("privado/segredo.md", "- segredo\n");
+  fs.writeFileSync(path.join(paths.home, "fora.md"), "- fora\n");
+  const settings = SettingsSchema.parse({ excludes });
+  return { env: { paths, settings }, done: () => fs.rmSync(paths.home, { recursive: true, force: true }) };
+}
+
+const addOp = (source: string, line?: number) =>
+  ({ op: "add", section: "Decisions", text: "x", source, ...(line !== undefined ? { line } : {}) }) as const;
+
+describe("C51 the source check of an op", () => {
+  it("C51 a missing file, line count + 1, an excluded folder and ../fora.md are each invalid; the last line is valid", () => {
+    const { env, done } = opsHome(["privado"]);
+    try {
+      const views = evaluateOps(
+        env as never,
+        [
+          addOp("notes/nao-existe.md", 1),
+          addOp("journal/2026-10-30.md", 10),
+          addOp("journal/2026-10-30.md", 9),
+          addOp("privado/segredo.md", 1),
+          addOp("../fora.md", 1),
+        ],
+        null,
+      );
+      expect(views.map((v) => v.state)).toEqual(["invalid", "invalid", "valid", "invalid", "invalid"]);
+      expect(views[0]!.reason).toMatch(/does not exist/);
+      expect(views[1]!.reason).toMatch(/9 lines; line 10/);
+      expect(views[3]!.reason).toMatch(/policy/);
+      expect(views[4]!.reason).toMatch(/not a file under memory/);
+    } finally {
+      done();
+    }
+  });
+
+  it("C51 the same excluded file is valid when the policy lets it be read (the refusal is the policy's)", () => {
+    const { env, done } = opsHome([]);
+    try {
+      expect(evaluateOps(env as never, [addOp("privado/segredo.md", 1)], null)[0]!.state).toBe("valid");
+    } finally {
+      done();
+    }
+  });
+});
+
+describe("C52 the trust rule", () => {
+  it("C52 a journal Decisions line of the owner is usuario", () => {
+    expect(
+      opTrust({ path: "journal/2026-10-30.md", line: 4, text: "- Turmas de 20", section: "Decisions" }),
+    ).toBe("usuario");
+  });
+  it("C52 a line of notes/cliente.md is usuario", () => {
+    expect(
+      opTrust({ path: "notes/cliente.md", line: 5, text: "- Renovação em março", section: "Contrato" }),
+    ).toBe("usuario");
+  });
+  it("C52 a journal line under ## Runs is ferramenta", () => {
+    expect(
+      opTrust({ path: "journal/2026-10-30.md", line: 9, text: "- run r-1 → done", section: "Runs" }),
+    ).toBe("ferramenta");
+  });
+  it("C52 a journal line ending (autor:: agente) is inferido", () => {
+    expect(
+      opTrust({
+        path: "journal/2026-10-30.md",
+        line: 5,
+        text: "- Sugestão (autor:: agente)",
+        section: "Decisions",
+      }),
+    ).toBe("inferido");
+  });
+  it("C52 an op with no line is inferido", () => {
+    expect(opTrust({ path: "journal/2026-10-30.md", line: null, text: null, section: null })).toBe(
+      "inferido",
+    );
+  });
+  it("C52 a line of MEMORY.md itself is inferido", () => {
+    expect(opTrust({ path: "MEMORY.md", line: 5, text: "- O curso custa 700", section: "Facts" })).toBe(
+      "inferido",
+    );
+  });
+  it("C52 a trust the agent writes into the op is ignored (evaluateOps computes it from the line)", () => {
+    const { env, done } = opsHome();
+    try {
+      const op = { ...addOp("journal/2026-10-30.md", 5), trust: "usuario" };
+      expect(evaluateOps(env as never, [op as never], null)[0]!.trust).toBe("inferido");
+      expect(evaluateOps(env as never, [addOp("journal/2026-10-30.md", 9)], null)[0]!.trust).toBe(
+        "ferramenta",
+      );
+      expect(evaluateOps(env as never, [addOp("notes/cliente.md#Contrato", 5)], null)[0]!.trust).toBe(
+        "usuario",
+      );
+    } finally {
+      done();
+    }
+  });
+});
+
+describe("C59 the ceiling of MEMORY.md", () => {
+  /** A text of exactly `lines` lines and `bytes` bytes. */
+  const text = (lines: number, bytes: number) => {
+    const rows = Array.from({ length: lines }, (_, i) => `l${i}`);
+    const short = `${rows.join("\n")}\n`;
+    rows[rows.length - 1] += "x".repeat(bytes - Buffer.byteLength(short));
+    const out = `${rows.join("\n")}\n`;
+    expect([out.split("\n").length - 1, Buffer.byteLength(out)]).toEqual([lines, bytes]);
+    return out;
+  };
+  it("C59 201 lines and 24 000 bytes over a file of 150 lines is over", () => {
+    expect(withinBudget(text(150, 20_000), text(201, 24_000))).toBe(false);
+  });
+  it("C59 180 lines and 25 001 bytes is over", () => {
+    expect(withinBudget(text(170, 20_000), text(180, 25_001))).toBe(false);
+  });
+  it("C59 exactly 200 lines and 25 000 bytes is within", () => {
+    expect([MEMORY_MAX_LINES, MEMORY_MAX_BYTES]).toEqual([200, 25_000]);
+    expect(withinBudget(text(150, 20_000), text(200, 25_000))).toBe(true);
+    expect(withinBudget(null, text(200, 25_000))).toBe(true);
+  });
+  it("C59 220 lines over a file of 230 is accepted (smaller than now)", () => {
+    expect(withinBudget(text(230, 30_000), text(220, 29_000))).toBe(true);
+    // and above the ceiling with no file before it, it is not
+    expect(withinBudget(null, text(220, 29_000))).toBe(false);
   });
 });

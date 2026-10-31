@@ -4,7 +4,7 @@ MordomoOS keeps your memory in **files you own** (markdown in the folders you
 chose) plus a **derived index** (SQLite + FTS5) that is rebuilt from those
 files and never edits them. This guide explains how a question is answered
 with a fraction of the tokens, how the daily journal works, and how nightly
-consolidation promotes what matters into long-term memory.
+consolidation proposes what matters for long-term memory, for you to review.
 
 Related: [user manual](./user-manual.md) · [skills](./skills-guide.md) ·
 [routines](./routines-guide.md) · [security](./security.md).
@@ -155,26 +155,40 @@ fixed template:
 ## 3. Consolidation ("sleep")
 
 The journal is a log; `memory/MEMORY.md` is what the agent should remember.
-The **`consolidate-memory` skill** promotes one into the other:
+The **`consolidate-memory` skill** (version 2, read-only) proposes what to promote from one into the other; it changes
+nothing itself:
 
-1. reads the last N days of journal (`?days=`), the recall statistics and the
-   current facts;
+1. reads the last N days of journal (`?days=`), the recall statistics, the
+   current facts and `MEMORY.md` as it is;
 2. scores each bullet with **recall frequency × importance × recency**
    (`skills/consolidate-memory/resources/heuristics.md`); every "Decisions"
-   line and every line repeated on 2+ days is a candidate;
-3. appends the survivors to `memory/MEMORY.md` under `## Facts`,
-   `## Decisions`, `## Open loops`, `## Reflections`, each with its source
-   (`(journal 2026-09-03)`);
-4. **never deletes**: a contradicted line moves to `## Superseded` with
-   `valid_to:: <today>`, and the new value is asserted through
-   `POST /api/memory/facts`, which closes the previous fact automatically;
-5. writes a reflection when accumulated importance crosses the threshold, and
-   an artifact `consolidation.md` listing everything it did.
+   line the owner wrote and every line repeated on 2+ days is a candidate (a line ending `(autor:: agente)` is never
+   promoted by the "Decisions" rule);
+3. leaves **one proposal** in its artifacts directory, `proposal.json`: `{ "v": 1, "summary", "ops" }` with at most 200
+   operations — `add` (a line under `Facts`, `Decisions`, `Open loops` or `Reflections`), `supersede` (an exact line to
+   `## Superseded` with `valid_to:: <day>`, and its replacement), `close_loop` (`→ closed <day>` on an open loop),
+   `move_to_topic` (lines to `memory/topics/<slug>.md`, one pointer line left) and `fact` (a fact to assert);
+4. **never deletes**: lines are superseded, closed or moved, never removed.
+
+The proposal waits in **Revisões › Do agente** (`/brain/reviews?tab=agent`). Each operation shows its source as a link,
+and a trust badge MordomoOS computes from where the source line is — *Escrito por você* (a line you wrote in the journal
+or a note), *Saída de ferramenta* (a line under the journal's `## Runs`), *Inferido pelo agente* (anything else); only
+the first starts ticked. Accepting writes the ticked operations to `MEMORY.md` through the guarded writer, each new line
+as `- <text> (fonte:: <source>:<line>) (autor:: agente) (em:: <day>)`, records a version of the history and asserts the
+accepted facts with their source and the proposal's id. `MEMORY.md` stays under **200 lines and 25 000 bytes** (what
+Claude Code loads of it): a result above that is refused unless it is smaller than the file is now. A newer
+consolidation supersedes the one still pending; a `proposal.json` that is missing or invalid leaves no proposal and one
+notification that says why.
 
 `routines/nightly-consolidation.json` runs it at **03:00** with profile
-`review_before_write` and is **disabled by default** — enable it in
-**Routines** once you trust the output. Under that profile the run proposes the
-new `MEMORY.md` as an artifact instead of writing it.
+`review_before_write` and is **disabled by default** on a new install — enable it in **Routines**, or press
+**Consolidar agora** in the empty "Do agente" tab. Its output is a proposal in **Revisões**, never a write to
+`MEMORY.md`. A home created before this keeps the value its copy of the routine had.
+
+**What agents write.** A run's credential that asserts a fact stores a proposal (`202`); the MCP tools `facts_assert`,
+`note_create` and `note_save` propose too; a journal line written by a run or by `journal_append` ends with
+`(autor:: agente)`. Any write run that changes `memory/MEMORY.md` on disk is put back when it finishes, unless you saved
+the file meanwhile, and what it wrote waits as a proposal ("Mudança no MEMORY.md").
 
 ---
 
@@ -353,4 +367,4 @@ turning it off deletes the vectors at the next index pass.
 | `core/src/memory/embeddings.ts`, `vectors.ts`, `semantic.ts` | Embedding providers and the endpoint policy; vectors and sqlite-vec ranking; fusion with the words |
 | `apps/api/src/routes/memory.ts` | All endpoints above; installs the journal hooks |
 | `skills/recall/`, `skills/consolidate-memory/` | The agent-facing side |
-| `routines/nightly-consolidation.json` | 03:00, disabled by default, `review_before_write` |
+| `routines/nightly-consolidation.json` | 03:00, disabled by default, `review_before_write`; leaves a proposal |

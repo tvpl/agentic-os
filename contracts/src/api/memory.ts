@@ -399,6 +399,172 @@ const journalDate = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD")
   .refine(isJournalDate, { message: "expected YYYY-MM-DD" });
 
+// ---- the review inbox of what an agent writes (.specs/features/cerebro-memoria-confiavel, doors 5 to 7) ----
+
+/** What an agent may propose (door 5). */
+export const PROPOSAL_KIND_VALUES = [
+  "consolidation",
+  "memory_edit",
+  "fact",
+  "note_create",
+  "note_save",
+] as const;
+/** Where a proposal stands; nothing expires on its own (door 5). */
+export const PROPOSAL_STATUS_VALUES = ["pending", "accepted", "partial", "rejected", "superseded"] as const;
+/** The trust the system gives what an agent proposes, from where it came (door 2, AC 56). */
+export const TRUST_VALUES = ["usuario", "ferramenta", "inferido"] as const;
+/** The four sections an `add` op writes to (the titles of MEMORY.md, cerebro-natureza door 3). */
+export const MEMORY_OP_SECTIONS = ["Facts", "Decisions", "Open loops", "Reflections"] as const;
+/** The bytes `artifacts/<runId>/proposal.json` may hold (door 6). */
+export const PROPOSAL_FILE_MAX_BYTES = 262_144;
+export const PROPOSAL_MAX_OPS = 200;
+
+/** A file of memory/ an op comes from: `<path relative to memory/>[#<section>]`, never absolute. */
+const OpSource = z
+  .string()
+  .min(1)
+  .max(4096)
+  .refine((v) => !/^(\/|[A-Za-z]:|\\)/.test(v), { message: "a path relative to memory/, not absolute" });
+const OpLine = z.number().int().min(1).optional();
+const OpText = z.string().min(1).max(500);
+/** A line of MEMORY.md as it is written, to be found exactly. */
+const OpOldLine = z.string().min(1).max(4000);
+
+/** One operation of a consolidation proposal (door 6). Unknown keys (a `trust` the agent writes, say) are dropped. */
+export const ProposalOpSchema = z.discriminatedUnion("op", [
+  z.object({
+    op: z.literal("add"),
+    section: z.enum(MEMORY_OP_SECTIONS),
+    text: OpText,
+    source: OpSource,
+    line: OpLine,
+  }),
+  z.object({ op: z.literal("supersede"), old: OpOldLine, text: OpText, source: OpSource, line: OpLine }),
+  z.object({ op: z.literal("close_loop"), old: OpOldLine, on: journalDate, source: OpSource, line: OpLine }),
+  z.object({
+    op: z.literal("move_to_topic"),
+    lines: z.array(OpOldLine).min(1).max(PROPOSAL_MAX_OPS),
+    topic: z
+      .string()
+      .max(80)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "a topic slug: lower-case letters, digits and single hyphens"),
+  }),
+  z.object({
+    op: z.literal("fact"),
+    subject: z.string().min(1).max(2000),
+    predicate: z.string().min(1).max(2000),
+    object: z.string().min(1).max(2000),
+    validFrom: z.number().int().optional(),
+    validTo: z.number().int().optional(),
+    source: OpSource,
+    line: OpLine,
+  }),
+]);
+export type ProposalOp = z.infer<typeof ProposalOpSchema>;
+
+/** `artifacts/<runId>/proposal.json`, what a run of `consolidate-memory` leaves (door 6). */
+export const ProposalFileSchema = z
+  .object({
+    v: z.literal(1),
+    summary: z.string().max(2000),
+    ops: z.array(ProposalOpSchema).max(PROPOSAL_MAX_OPS, `at most ${PROPOSAL_MAX_OPS} ops`),
+  })
+  .superRefine((file, ctx) => {
+    file.ops.forEach((o, i) => {
+      if (
+        o.op === "fact" &&
+        o.validTo !== undefined &&
+        o.validFrom !== undefined &&
+        o.validTo <= o.validFrom
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["ops", i, "validTo"],
+          message: "validTo: must be after validFrom",
+        });
+      }
+    });
+  });
+export type ProposalFile = z.infer<typeof ProposalFileSchema>;
+
+/** A proposal as the inbox lists it (Surface). */
+export const ProposalSummarySchema = z.object({
+  /** `mp_` and 16 hex digits. */
+  id: z.string(),
+  kind: z.enum(PROPOSAL_KIND_VALUES),
+  status: z.enum(PROPOSAL_STATUS_VALUES),
+  /** `run:<id>` or `mcp`. */
+  author: z.string(),
+  runId: z.string().nullable(),
+  createdAt: z.number(),
+  summary: z.string(),
+  opCount: z.number(),
+});
+
+/** A proposal with what it holds (`payload`: the file's `v`, `summary` and `ops`, the fact, the note) and its result. */
+export const ProposalSchema = ProposalSummarySchema.extend({
+  decidedAt: z.number().nullable(),
+  payload: z.record(z.unknown()),
+  result: z.record(z.unknown()).nullable(),
+});
+
+/** One operation of a proposal as the owner reviews it: its trust and whether it can be applied (AC 55, 56, 60). */
+export const ProposalOpViewSchema = z.object({
+  op: z.enum(["add", "supersede", "close_loop", "move_to_topic", "fact"]),
+  /** `Facts`, `Decisions`, `Open loops`, `Reflections`, `Fact` or `Topic <slug>`; null when no section is known. */
+  section: z.string().nullable(),
+  text: z.string(),
+  source: z.string().nullable(),
+  line: z.number().nullable(),
+  trust: z.enum(TRUST_VALUES),
+  state: z.enum(["valid", "invalid", "conflict"]),
+  /** Why an op is `invalid` or `conflict`. */
+  reason: z.string().optional(),
+});
+
+const ProposalBodySchema = z
+  .discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("fact"),
+      subject: z.string().min(1).max(2000),
+      predicate: z.string().min(1).max(2000),
+      object: z.string().min(1).max(2000),
+      validFrom: z.number().int().optional(),
+      validTo: z.number().int().optional(),
+      sourceRunId: z.string().max(200).nullable().optional(),
+      sourcePath: z.string().max(4096).nullable().optional(),
+      sourceLine: z.number().int().optional(),
+    }),
+    z.object({
+      kind: z.literal("note_create"),
+      title: z.string().min(1).max(600),
+      area: z.string().min(1).max(200).optional(),
+      folder: z.string().min(1).max(1000).optional(),
+      content: z.string().max(2_000_000).optional(),
+      frontMatter: z.boolean().optional(),
+      tags: z.array(z.string().max(100)).max(100).optional(),
+    }),
+    z.object({
+      kind: z.literal("note_save"),
+      path: z.string().min(1).max(4096),
+      content: z.string().max(2_000_000),
+      baseVersion: NoteVersionSchema,
+    }),
+  ])
+  .superRefine((b, ctx) => {
+    if (b.kind !== "fact") return;
+    if (b.validTo !== undefined && b.validFrom !== undefined && b.validTo <= b.validFrom) {
+      ctx.addIssue({ code: "custom", path: ["validTo"], message: "validTo: must be after validFrom" });
+    }
+    if (b.sourceLine !== undefined && (b.sourceLine < 1 || !b.sourcePath)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["sourceLine"],
+        message: "sourceLine: a line of sourcePath, from 1",
+      });
+    }
+  });
+
 const memoryScopeNote = "A run's own credential recalls from the memory folder only";
 /** What `context` does to a read (.specs/features/cerebro-contextos, S2). */
 const contextNote =
@@ -1220,6 +1386,11 @@ export const memoryRoutes = {
       section: z.enum(JOURNAL_SECTION_NAMES).optional(),
       date: journalDate.optional(),
       timestamp: z.boolean().optional(),
+      /**
+       * `agent`: an agent wrote the line through the owner's token (the MCP tool); it ends with ` (autor:: agente)`, as
+       * every line a run's credential appends does (.specs/features/cerebro-memoria-confiavel, door 9).
+       */
+      author: z.enum(["agent"]).optional(),
     }),
     responses: { 200: JournalDaySchema.extend({ sections: JournalSectionsSchema }) },
   }),
@@ -1263,7 +1434,8 @@ export const memoryRoutes = {
   "memory.facts.assert": route({
     method: "POST",
     path: "/api/memory/facts",
-    summary: "Assert a fact (201 when new, 200 when an identical open fact already existed)",
+    summary:
+      "Assert a fact (201 when new, 200 when an identical open fact already existed); a run's credential stores a proposal instead (202)",
     tag: "memory",
     scope: "owner",
     body: z
@@ -1294,6 +1466,8 @@ export const memoryRoutes = {
     responses: {
       200: z.object({ fact: FactSchema, invalidated: z.array(FactSchema), unchanged: z.boolean() }),
       201: z.object({ fact: FactSchema, invalidated: z.array(FactSchema), unchanged: z.boolean() }),
+      /** A run's credential: the fact waits in the review inbox (cerebro-memoria-confiavel, door 9). */
+      202: z.object({ proposal: ProposalSchema }),
     },
     errors: [
       err(
@@ -1306,6 +1480,7 @@ export const memoryRoutes = {
         "fact_overlap",
         "A fact of the same subject and predicate holds over the whole new interval; nothing was written",
       ),
+      err(429, "too_many_proposals", "200 proposals already wait for review; nothing was stored"),
     ],
   }),
   "memory.facts.retract": route({
@@ -1380,6 +1555,106 @@ export const memoryRoutes = {
       err(404, "not_a_file", "The path of the version names something that is not a regular file now"),
       notFound("The version (a removed version holds no bytes)"),
       err(409, "edit_conflict", "The file is not the version named, or it exists again; nothing was written"),
+    ],
+  }),
+  "memory.proposals.list": route({
+    method: "GET",
+    path: "/api/memory/proposals",
+    summary:
+      "What agents proposed to write to the memory, newest first: pending, or decided (accepted, partial, rejected, superseded) (.specs/features/cerebro-memoria-confiavel, door 5)",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      status: z.enum(["pending", "decided"]).optional(),
+      limit: z.coerce.number().int().min(1).max(200).optional(),
+    }),
+    responses: { 200: z.object({ items: z.array(ProposalSummarySchema), total: z.number() }) },
+  }),
+  "memory.proposals.get": route({
+    method: "GET",
+    path: "/api/memory/proposals/:id",
+    summary:
+      "One proposal: its operations with their trust and state, and the unified diff from the current file to what accepting it writes, with the version of the file it read",
+    tag: "memory",
+    scope: "content",
+    params: z.object({ id: z.string().regex(/^mp_[0-9a-f]{16}$/, "expected mp_ and 16 hex digits") }),
+    responses: {
+      200: ProposalSchema.extend({
+        ops: z.array(ProposalOpViewSchema),
+        diff: z.string(),
+        /** The version of the file the diff starts from (MEMORY.md, or the note), or null when there is none. */
+        baseVersion: NoteVersionSchema.nullable(),
+      }),
+    },
+    errors: [
+      err(403, "forbidden_path", "MEMORY.md or the note is reached through a link or is a private file"),
+      err(404, "not_a_file", "MEMORY.md or the note names something that is not a regular file now"),
+      err(413, "file_too_large", "MEMORY.md or the note is larger than what is read of it"),
+      notFound("The proposal"),
+    ],
+  }),
+  "memory.proposals.create": route({
+    method: "POST",
+    path: "/api/memory/proposals",
+    summary:
+      "Propose a fact, a new note or a note's new text for the owner to review (what the MCP tools send); nothing is written until it is accepted",
+    tag: "memory",
+    scope: "owner",
+    body: ProposalBodySchema,
+    responses: { 201: z.object({ proposal: ProposalSchema }) },
+    errors: [err(429, "too_many_proposals", "200 proposals already wait for review; nothing was stored")],
+  }),
+  "memory.proposals.decide": route({
+    method: "POST",
+    path: "/api/memory/proposals/:id/decide",
+    summary:
+      "Accept a proposal (all its valid operations, or the ones named) or reject it; accepting writes through the guarded writer, records the versions and asserts the facts, or nothing",
+    tag: "memory",
+    scope: "owner",
+    params: z.object({ id: z.string().regex(/^mp_[0-9a-f]{16}$/, "expected mp_ and 16 hex digits") }),
+    body: z.object({
+      action: z.enum(["accept", "reject"]),
+      /** The indexes of the operations to apply (accept); absent: every valid one. */
+      ops: z.array(z.number().int().min(0)).min(1).max(PROPOSAL_MAX_OPS).optional(),
+      /** The version of MEMORY.md the owner saw (`GET /api/memory/proposals/:id`); absent when it did not exist. */
+      baseVersion: NoteVersionSchema.optional(),
+    }),
+    responses: {
+      200: z.object({
+        proposal: ProposalSchema,
+        /** The files written, relative to memory/, with their new version. */
+        written: z.array(z.object({ path: z.string(), version: NoteVersionSchema })),
+        facts: z.array(FactSchema),
+      }),
+    },
+    errors: [
+      err(403, "forbidden_path", "A link on the way or a private file would be read or written through"),
+      err(404, "not_a_file", "MEMORY.md, a topic or the note names something that is not a regular file now"),
+      err(413, "file_too_large", "MEMORY.md or a topic is larger than what is read of it"),
+      notFound("The proposal"),
+      err(
+        409,
+        "edit_conflict",
+        "The file is not the version named, or changed while it was written; nothing was written",
+      ),
+      err(409, "proposal_decided", "The proposal was already decided"),
+      err(
+        409,
+        "memory_over_budget",
+        "With these operations MEMORY.md would pass 200 lines or 25 000 bytes and would not be smaller than now",
+      ),
+      err(413, "note_too_large", "The note is larger than the editing limit"),
+      // what accepting a note or a fact answers, as the owner's own route would
+      err(400, "unknown_area", "A note_create names an area that is not one of the areas in the settings"),
+      err(403, "note_not_editable", "A note_save names a file that is not an editable note of memory/"),
+      err(404, "note_missing", "A note_save names a note that does not exist any more; it is not created"),
+      err(409, "note_exists", "Ninety-nine notes already have the name a note_create would take"),
+      err(409, "structure_fixed", "memory.notes.fixedStructure is on and a note_create would make a folder"),
+      err(
+        409,
+        "fact_overlap",
+        "A fact of the same subject and predicate holds over the whole interval of a fact",
+      ),
     ],
   }),
   "memory.query": route({
