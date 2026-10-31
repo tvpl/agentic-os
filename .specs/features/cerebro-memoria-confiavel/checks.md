@@ -532,11 +532,16 @@ Proof: `npx vitest run tests/memoria.proposals.test.ts -t "C148 "`
 ### Cross-cutting A, API · 10 files · 193 KB · ~48k
 
 **C80** - The `API` table has the seven new routes with these method, path, scope and named errors (`toEqual` over the
-codes): `GET /api/memory/history` `content`; `GET /api/memory/history/:id` `content`, `404 not_found`; `POST
-/api/memory/history/restore` `owner`, `403 note_not_editable`, `404 not_found`, `409 edit_conflict`; `GET
-/api/memory/proposals` `content`; `GET /api/memory/proposals/:id` `content`, `404 not_found`; `POST /api/memory/proposals`
-`owner`, `429 too_many_proposals`; `POST /api/memory/proposals/:id/decide` `owner`, `404 not_found`, `409 edit_conflict`,
-`409 proposal_decided`, `409 memory_over_budget`, `413 note_too_large`; and the changed entries: `memory.facts.assert`
+codes; the codes as built, plan amendment 2, "Correções de construção"): `GET /api/memory/history` `content`, none; `GET
+/api/memory/history/:id` `content`, `403 forbidden_path`, `404 not_a_file`, `404 not_found`; `POST
+/api/memory/history/restore` `owner`, `403 forbidden_path`, `403 note_not_editable`, `404 not_a_file`, `404 not_found`,
+`409 edit_conflict`; `GET /api/memory/proposals` `content`, none; `GET /api/memory/proposals/:id` `content`, `403
+forbidden_path`, `404 not_a_file`, `404 not_found`, `413 file_too_large`; `POST /api/memory/proposals` `owner`, `429
+too_many_proposals`; `POST /api/memory/proposals/:id/decide` `owner`, `404 not_found`, `409 edit_conflict`, `409
+proposal_decided`, `409 memory_over_budget`, `413 note_too_large`, `403 forbidden_path`, `404 not_a_file`, `413
+file_too_large`, `400 unknown_area`, `403 note_not_editable`, `404 note_missing`, `409 note_exists`, `409
+structure_fixed`, `409 fact_overlap`, each of the last six answered by accepting a proposal that meets it (one case
+each, the proposal left `pending`); and the changed entries: `memory.facts.assert`
 declares `202` with `{ proposal }`, `409 fact_overlap` and `429 too_many_proposals`, `memory.facts.retract` takes `reason`,
 `memory.journal.append` takes `author`, `memory.facts.list` takes `knownAt` and `includeRetracted`; the OpenAPI document
 validates; each new route answers under `/api/v1/` the same as under `/api/` (door 10, AD-024)
@@ -962,6 +967,20 @@ exits 0 on a fresh build
 Proof: `npx vitest run tests/memoria.contract.test.ts -t "C147 "`
 Proof: `npx vitest run tests/bundle-size.test.ts -t "C31 a build within 5% of the latest recorded one passes"`
 Proof: `npm run build -w apps/command-centre && npm run bundle:check`
+
+## Correções de construção
+
+- **C80, batch A3 (plan amendment 2).** The approved claim's `toEqual` named door 10's codes alone. Batches A1 and A2
+  made four of the seven routes declare more: `403 forbidden_path` and `404 not_a_file` on the history's version, the
+  restore, the proposal and the decision, and `413 file_too_large` on the last two (they read and write through the safe
+  reader and the guarded writer, and the refusal probe, `api.refusals` C46, requires both ways that a route answering
+  one of those refusals declares it); and on the decision six codes of accepting a note or a fact (`400 unknown_area`,
+  `403 note_not_editable`, `404 note_missing`, `409 note_exists`, `409 structure_fixed`, `409 fact_overlap`), the
+  codes the owner's own routes answer for the same write. The claim as approved could not pass without dropping
+  declarations the probe requires or rewriting the decision's errors, so the claim names the codes as built: nothing of
+  door 10 left out, no scope changed, and each of the six is proven answered (C80's second test). An owner
+  question (G26): the safe default is the codes as built; the alternative is to map the acceptance's refusals onto door
+  10's codes, a product change that loses the reason today's code gives.
 
 ## Gaps found by this derivation
 

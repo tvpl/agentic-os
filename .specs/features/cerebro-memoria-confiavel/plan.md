@@ -474,6 +474,23 @@ Lições confirmadas e candidatas que estes critérios já preparam (`.specs/LES
    Entre elas: o AC 21 vale para `PUT /api/memory/tasks` (G1); cada rota legível por dispositivo deixa de fora o que está
    oculto e `artifacts/exports/` nunca é servido a dispositivos (G11); toda rota que cria uma execução recusa uma pasta oculta
    no pedido, e `RunFailure.code` ganha os três códigos de pasta (G16); exportar além de `-99` é `409 exists` (G20).
+2. **Os códigos de erro do door 10 cresceram na construção (lotes A1 e A2, registrado no lote A3).** O door 10 lista
+   `400 validation`, `403 note_not_editable`, `404 not_found`, `409 edit_conflict`, `409 proposal_decided`, `409
+memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, como foram construídas, declaram também:
+   (a) `403 forbidden_path` e `404 not_a_file` em `GET /api/memory/history/:id`, `POST /api/memory/history/restore`,
+   `GET /api/memory/proposals/:id` e `POST /api/memory/proposals/:id/decide`, e `413 file_too_large` nas duas últimas:
+   as quatro leem e escrevem pelo leitor seguro e pelo escritor guardado, e a sonda de recusas (`tests/api.refusals.test.ts`
+   C46) exige, nos dois sentidos, que a rota que responde uma dessas recusas a declare e que a que a declara a responda;
+   (b) em `.../decide`, os códigos que aceitar uma nota ou um fato responde, os mesmos das rotas do dono para a mesma
+   escrita: `400 unknown_area`, `403 note_not_editable`, `404 note_missing`, `409 note_exists` e `409 structure_fixed`
+   (`POST` e `PUT /api/memory/notes`) e `409 fact_overlap` (`POST /api/memory/facts`, door 2), porque o aceite de uma
+   proposta `note_create`, `note_save` ou `fact` faz o que essas rotas fazem, e o que mudou desde a proposta (a área
+   tirada, a nota apagada, a estrutura fixada, um fato afirmado) chega como o código delas. Nenhum código sai, nenhum
+   escopo muda, e as outras três rotas declaram o que o door 10 lhes dá. A linha aprovada do door 10 fica como foi
+   aprovada; esta emenda a completa. O C80 afirma os códigos como foram construídos (`checks.md`, "Correções de
+   construção"). Pergunta ao dono: o padrão é "os códigos como construídos"; a alternativa é mapear as recusas do aceite
+   para os códigos do door 10 (por exemplo, `409 edit_conflict` para a nota apagada e `400 validation` para a área), o que
+   muda o código de produto e perde a razão que o código de hoje dá.
 
 ## Sources
 
