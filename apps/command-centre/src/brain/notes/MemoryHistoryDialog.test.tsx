@@ -134,7 +134,7 @@ async function fromMenu() {
   const side = await screen.findByRole("complementary", { name: "Notas" });
   const heading = within(side).getByRole("heading", { name: "NOTAS" });
   const tools = heading.parentElement!.querySelector(".notes-heading-tools")!;
-  const more = await within(tools as HTMLElement).findByRole("button", { name: "Mais para as notas" });
+  const more = await within(tools as HTMLElement).findByRole("button", { name: "Opções das notas" });
   const user = userEvent.setup();
   await user.click(more);
   const item = await screen.findByRole("menuitem", { name: "Histórico da memória" });
@@ -151,7 +151,7 @@ describe("C102 where Histórico da memória opens", () => {
     const heading = within(side).getByRole("heading", { name: "NOTAS" });
     const tools = heading.parentElement!.querySelector<HTMLElement>(".notes-heading-tools")!;
     const sort = await within(tools).findByRole("button", { name: "Ordenar" });
-    const more = within(tools).getByRole("button", { name: "Mais para as notas" });
+    const more = within(tools).getByRole("button", { name: "Opções das notas" });
     expect(more.querySelector("svg.lucide-ellipsis, svg.lucide-more-horizontal")).not.toBeNull();
     expect(sort.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const buttons = [...tools.querySelectorAll("button")];
@@ -267,7 +267,7 @@ describe("C102 the rows", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     all.list = new NetError(500, "boom", "falhou o histórico");
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Mais para as notas" }));
+    await user.click(screen.getByRole("button", { name: "Opções das notas" }));
     await user.click(await screen.findByRole("menuitem", { name: "Histórico da memória" }));
     dialog = await screen.findByRole("dialog", { name: "Histórico da memória" });
     const alert = await waitFor(() => {

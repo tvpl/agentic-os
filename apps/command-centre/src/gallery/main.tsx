@@ -888,6 +888,14 @@ function Gallery() {
           <DashboardsStory />
         </Suspense>
       </Story>
+
+      <Story id="memoria" title="Trustworthy memory (memória confiável)">
+        <Suspense fallback={null}>
+          {/* through the screens' own story modules, and so their chunks */}
+          <ReviewsStory part="memoria" />
+          <NotesStory part="memoria" />
+        </Suspense>
+      </Story>
     </main>
   );
 }

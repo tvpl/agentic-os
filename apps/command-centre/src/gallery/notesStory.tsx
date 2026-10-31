@@ -2,12 +2,14 @@
  * The notes view in the gallery (.specs/features/cerebro-vista-notas, C78): the tree with a folder open and a lock, the
  * tabs with one holding unsaved changes, and a note with its properties table and the five callouts of a note's
  * nature, from fixture data seeded in the cache (the gallery never talks to the API). Fetched when the gallery opens,
- * with the view's chunk.
+ * with the view's chunk. `MemoriaHistoryStory` is the history half of the trustworthy-memory entry
+ * (cerebro-memoria-confiavel, C108): a history row, which opens the version dialog on a version seeded in the cache.
  */
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 // Through the view's own module: the gallery and the app fetch one chunk of the notes view, not two halves of it.
-import { NoteReader, NoteTabs, NotesTree } from "../brain/notes/NotesView";
+import { HistoryRow, NoteReader, NoteTabs, NotesTree } from "../brain/notes/NotesView";
+import VersionDialog, { type VersionRef } from "../brain/notes/VersionDialog";
 import type { NoteDoc, NoteLinks, TreeLevel } from "../brain/notes/notesData";
 import type { NotesState } from "../brain/notes/useNotesState";
 
@@ -91,7 +93,7 @@ const STATE = {
   open: () => true,
 } as unknown as NotesState;
 
-export default function NotesStory() {
+function NotesViewStory() {
   const qc = useQueryClient();
   // The answers the components would ask for, in the cache before they mount.
   useState(() => {
@@ -124,4 +126,41 @@ export default function NotesStory() {
       </NoteTabs>
     </div>
   );
+}
+
+const VERSION: VersionRef = {
+  id: 1,
+  at: Date.UTC(2026, 8, 2, 11, 30),
+  author: "owner",
+  origin: "save",
+  sha256: "sha256:old",
+};
+
+function MemoriaHistoryStory() {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  useState(() =>
+    qc.setQueryData(["memory", "history", "version", VERSION.id], {
+      ...VERSION,
+      path: "notes/a.md",
+      content: "",
+      diff: "@@ -1,2 +1,2 @@\n # A\n-April\n+March\n",
+      current: "sha256:now",
+    }),
+  );
+  return (
+    <>
+      <ul className="hf-list">
+        <HistoryRow version={VERSION} current={false} onOpen={() => setOpen(true)} />
+      </ul>
+      {open && (
+        <VersionDialog version={VERSION} onClose={() => setOpen(false)} onRestored={() => undefined} />
+      )}
+    </>
+  );
+}
+
+/** `part="memoria"`: the trustworthy-memory entry's half that lives in this module (and so in this chunk). */
+export default function NotesStory({ part }: { part?: "memoria" }) {
+  return part === "memoria" ? <MemoriaHistoryStory /> : <NotesViewStory />;
 }

@@ -1,0 +1,351 @@
+/**
+ * Trustworthy memory in a real browser (.specs/features/cerebro-memoria-confiavel, C106-C108): "Revisões" on "Do
+ * agente" with a consolidation (one op of each trust and state) and the note panel's "Histórico" with its version dialog
+ * open, keyboard-operable in reading order and with no serious axe violation in both themes and both shells; the S2 and
+ * S3 independent tests through the interface (a `fact` proposal accepted, a note saved twice and restored); and the
+ * gallery's entry.
+ *
+ * The consolidation of C106 is answered by the page's own routes (a run of `consolidate-memory` needs a model); the
+ * proposal and the note of C107 are real, made through the API with the page's own token under a folder of
+ * `memory/notes/` made for each test and taken away after it. The interface reads pt-BR.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { test, expect, type Page, type Route } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+import { E2E_HOME } from "./home.mjs";
+
+type Shell = "moldura" | "nucleo";
+type Theme = "dark" | "light";
+const SHELLS: Shell[] = ["moldura", "nucleo"];
+const THEMES: Theme[] = ["dark", "light"];
+const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
+const stamp = Date.now().toString(36);
+const NOTES = path.join(E2E_HOME, "memory", "notes");
+let folder = "";
+
+async function seed(page: Page, shell: Shell, theme: Theme): Promise<void> {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const fed = (patch: Record<string, unknown>) => async (route: Route) => {
+    try {
+      const response = await route.fetch();
+      if (!response.ok()) return await route.fulfill({ response });
+      await route.fulfill({ response, json: { ...(await response.json()), ...patch } });
+    } catch {
+      /* disposed with the page it was for */
+    }
+  };
+  await page.route(/\/api\/(v1\/)?ui-preferences(\?.*)?$/, fed({ shell }));
+  await page.route("**/api/v1/meta", fed({ theme, language: "pt-BR" }));
+}
+
+async function open(page: Page, shell: Shell, theme: Theme, at: string) {
+  await seed(page, shell, theme);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#${at}`);
+  await expect(page.locator(".boot-screen")).toHaveCount(0);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+  if (shell === "moldura") await expect(page.locator('[data-shell="moldura"]')).toBeVisible();
+  else await expect(page.locator(".nu-shell")).toBeVisible();
+}
+
+async function api(
+  page: Page,
+  method: string,
+  url: string,
+  body?: unknown,
+): Promise<{ status: number; json: any }> {
+  return page.evaluate(
+    async ([m, u, b]) => {
+      const token = document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content ?? "";
+      const res = await fetch(u as string, {
+        method: m as string,
+        headers: { "x-mordomo-token": token, ...(b ? { "content-type": "application/json" } : {}) },
+        ...(b ? { body: JSON.stringify(b) } : {}),
+      });
+      return { status: res.status, json: await res.json().catch(() => null) };
+    },
+    [method, url, body],
+  );
+}
+
+async function serious(page: Page, include?: string) {
+  const builder = new AxeBuilder({ page }).withTags(WCAG_TAGS);
+  if (include) builder.include(include);
+  const result = await builder.analyze();
+  return result.violations
+    .filter((v) => v.impact === "serious" || v.impact === "critical")
+    .map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target) }));
+}
+
+/** A note under memory/notes/<folder>/ made through the API: created, then saved twice. Its versions, oldest first. */
+async function makeNote(page: Page, name: string) {
+  folder = `e2e-memoria-${stamp}-${name}`;
+  const made = await api(page, "POST", "/api/v1/memory/notes", {
+    title: `Nota ${stamp}`,
+    folder,
+    content: "# Primeira\n\nO texto de antes.\n",
+  });
+  expect(made.status, JSON.stringify(made.json)).toBe(201);
+  let version = made.json.version as string;
+  // the bytes the create wrote (the route may add its own header): the first version
+  const texts = [fs.readFileSync(made.json.path as string, "utf8")];
+  for (const text of ["# Segunda\n\nMudou uma vez.\n", "# Terceira\n\nMudou duas vezes.\n"]) {
+    const saved = await api(page, "PUT", "/api/v1/memory/notes", {
+      path: made.json.path,
+      content: text,
+      baseVersion: version,
+    });
+    expect(saved.status, JSON.stringify(saved.json)).toBe(200);
+    version = saved.json.version;
+    texts.push(text);
+  }
+  return { path: made.json.path as string, texts };
+}
+
+test.afterEach(async ({ page }) => {
+  if (!page.url().startsWith("http")) return;
+  if (folder) fs.rmSync(path.join(NOTES, folder), { recursive: true, force: true });
+  folder = "";
+  // the notes view keeps its tabs in the preferences of the shared e2e home: leave none behind
+  await api(page, "PUT", "/api/v1/ui-preferences", {
+    brain: { notes: { root: null, home: {}, tabs: [], active: null, sort: "name", expanded: [] } },
+  }).catch(() => undefined);
+});
+
+/* ---------------- C106: the tab and the fold, keyboard and axe, both themes, both shells ---------------- */
+
+const CONSOLIDATION = {
+  id: "mp_00000000000000c6",
+  kind: "consolidation",
+  status: "pending",
+  author: "run:e2ec106",
+  runId: "e2ec106",
+  createdAt: Date.now() - 2 * 3_600_000,
+  summary: "Duas decisões e um fato da semana.",
+  opCount: 5,
+};
+const op = (over: Record<string, unknown>) => ({
+  op: "add",
+  section: "Decisions",
+  text: "Usar SQLite para o histórico",
+  source: "journal/2026-09-03.md#Decisions",
+  line: 12,
+  trust: "usuario",
+  state: "valid",
+  ...over,
+});
+
+/** The page's own routes answer the list and the detail of one consolidation; everything else is the server's. */
+async function oneConsolidation(page: Page) {
+  await page.route(/\/api\/v1\/memory\/proposals(\?.*)?$/, (route) =>
+    route.fulfill({ json: { items: [CONSOLIDATION], total: 1 } }),
+  );
+  await page.route(`**/api/v1/memory/proposals/${CONSOLIDATION.id}`, (route) =>
+    route.fulfill({
+      json: {
+        ...CONSOLIDATION,
+        decidedAt: null,
+        payload: {},
+        result: null,
+        ops: [
+          op({}),
+          op({ text: "O build leva 4 minutos", section: "Facts", trust: "ferramenta" }),
+          op({ text: "Manhãs são para escrever", section: "Reflections", trust: "inferido" }),
+          op({
+            text: "Uma linha de um dia que não existe",
+            state: "invalid",
+            reason: "journal/2099-01-01.md não existe",
+          }),
+          op({
+            op: "supersede",
+            text: "Uma linha mudada",
+            state: "conflict",
+            reason: "a linha não está no MEMORY.md",
+          }),
+        ],
+        diff: "--- a/MEMORY.md\n+++ b/MEMORY.md\n@@ -1,2 +1,3 @@\n ## Decisions\n-- antiga\n+- nova\n+- outra\n",
+        baseVersion: "sha256:e2e",
+      },
+    }),
+  );
+}
+
+/** The focusable controls under `scope`, in the document's order (reading order: no stylesheet reorders them). */
+const focusables = (page: Page, scope: string) =>
+  page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [...root.querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, [tabindex]")]
+      .filter(
+        (el) => !(el as HTMLButtonElement).disabled && el.tabIndex >= 0 && el.getClientRects().length > 0,
+      )
+      .map(
+        (el) => `${el.tagName}.${el.className}|${el.getAttribute("aria-label") ?? el.textContent?.trim()}`,
+      );
+  }, scope);
+const active = (page: Page) =>
+  page.evaluate(() => {
+    const el = document.activeElement as HTMLElement | null;
+    return el
+      ? `${el.tagName}.${el.className}|${el.getAttribute("aria-label") ?? el.textContent?.trim()}`
+      : "";
+  });
+
+/** The notes view with `path` open and room for its panel: the frame's conversation folded, a wide window. */
+async function openNote(page: Page, file: string) {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const close = page.getByRole("button", { name: "Fechar conversa" });
+  if (await close.isVisible()) await close.click();
+  await page.goto(`/#/brain/notes?open=${encodeURIComponent(file)}`);
+  await expect(page.locator(".notes-panel")).toBeVisible();
+}
+
+for (const theme of THEMES)
+  for (const shell of SHELLS)
+    test(`C106 the ${shell}, ${theme}: Do agente with a consolidation and the note's Histórico with its version dialog, every action by Tab in reading order and Enter, no serious axe violation`, async ({
+      page,
+    }) => {
+      test.setTimeout(150_000);
+      await open(page, shell, theme, "/brain");
+      await oneConsolidation(page);
+      await page.evaluate(() => document.fonts.ready);
+      await page.goto("/#/brain/reviews?tab=agent");
+      const rv = page.locator(".rv");
+      await expect(rv.getByRole("tab", { name: "Do agente (1)" })).toHaveAttribute("aria-selected", "true");
+      const detail = rv.locator(".ag-detail");
+      await expect(detail.locator(".ag-op")).toHaveCount(5);
+      expect(await serious(page)).toEqual([]);
+
+      // Every action of the tab by Tab, from the list item to Recusar, in the document's order.
+      const order = await focusables(page, ".rv .rv-body");
+      expect(order.length).toBeGreaterThan(8);
+      await rv.locator(".rv-pick").first().focus();
+      const seen: string[] = [];
+      for (let i = 0; i < order.length; i++) {
+        seen.push(await active(page));
+        await page.keyboard.press("Tab");
+      }
+      expect(seen).toEqual(order);
+      expect(seen.at(-1)).toContain("Recusar");
+      // Enter activates: Marcar todas ticks the three valid ops; Recusar asks first
+      await detail.getByRole("button", { name: "Marcar todas", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await expect(detail.getByRole("button", { name: "Aceitar selecionadas (3)" })).toBeVisible();
+      await detail.getByRole("button", { name: "Recusar" }).focus();
+      await page.keyboard.press("Enter");
+      const ask = page.getByRole("dialog", { name: "Recusar esta proposta?" });
+      await expect(ask).toBeVisible();
+      expect(await serious(page)).toEqual([]);
+      await ask.getByRole("button", { name: "Cancelar" }).focus();
+      await page.keyboard.press("Enter");
+      await expect(ask).toHaveCount(0);
+
+      // The note panel's Histórico, and the dialog of a version.
+      const note = await makeNote(page, `${shell}-${theme}`);
+      await openNote(page, note.path);
+      const fold = page.locator(".notes-panel .notes-fold", { hasText: "Histórico" });
+      await expect(fold.locator(".hf-pick")).toHaveCount(3);
+      expect(await serious(page)).toEqual([]);
+      const rows = await focusables(page, ".notes-panel");
+      await fold.locator(".hf-pick").first().focus();
+      // the rows are reached by Tab one after another
+      const at = rows.findIndex((r) => r.includes("hf-pick"));
+      const mine: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        mine.push(await active(page));
+        await page.keyboard.press("Tab");
+      }
+      expect(mine).toEqual(rows.slice(at, at + 3));
+      await fold.locator(".hf-pick").last().focus();
+      await page.keyboard.press("Enter");
+      const dialog = page.getByRole("dialog", { name: /^Versão de / });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator(".mc-diff")).toBeVisible();
+      const box = await dialog.boundingBox();
+      expect(Math.round(box!.width)).toBe(720);
+      expect(await serious(page)).toEqual([]);
+      // the dialog's controls by Tab in order: the diff region, Fechar, Restaurar esta versão
+      const controls = await focusables(page, '[role="dialog"]');
+      expect(controls.at(-2)).toContain("Fechar");
+      expect(controls.at(-1)).toContain("Restaurar esta versão");
+      const footer = dialog.locator(".modal-actions");
+      await footer.getByRole("button", { name: "Fechar" }).focus();
+      await page.keyboard.press("Tab");
+      expect(await active(page)).toContain("Restaurar esta versão");
+      await footer.getByRole("button", { name: "Fechar" }).focus();
+      await page.keyboard.press("Enter");
+      await expect(dialog).toHaveCount(0);
+    });
+
+/* ---------------- C107: the independent tests of S2 and S3, through the interface ---------------- */
+
+test("C107 a fact proposal accepted on Do agente becomes a fact by mcp with its proposalId; a note saved twice shows three rows and restoring the first puts its bytes back and adds Restaurada", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  await open(page, "moldura", "dark", "/");
+  const subject = `Cliente ${stamp}`;
+  const made = await api(page, "POST", "/api/v1/memory/proposals", {
+    kind: "fact",
+    subject,
+    predicate: "status",
+    object: "ativo",
+  });
+  expect(made.status, JSON.stringify(made.json)).toBe(201);
+  const id = made.json.proposal.id as string;
+  await page.goto("/#/brain/reviews?tab=agent");
+  const rv = page.locator(".rv");
+  const item = rv.locator(".rv-item", { hasText: `Fato: ${subject} · status` });
+  await expect(item).toHaveCount(1);
+  await item.locator(".rv-pick").click();
+  const detail = rv.locator(".ag-detail");
+  await expect(detail.locator(".ag-op")).toHaveCount(1);
+  await detail.getByRole("checkbox").check();
+  await detail.getByRole("button", { name: "Aceitar selecionadas (1)" }).click();
+  await expect(rv.locator(".rv-notice")).toContainText("Proposta aceita.");
+  await expect(item).toHaveCount(0);
+  const facts = await api(page, "GET", `/api/v1/memory/facts?subject=${encodeURIComponent(subject)}`);
+  expect(facts.status).toBe(200);
+  expect(facts.json.facts).toHaveLength(1);
+  expect(facts.json.facts[0]).toMatchObject({ subject, author: "mcp", proposalId: id });
+
+  const note = await makeNote(page, "c107");
+  await openNote(page, note.path);
+  const fold = page.locator(".notes-panel .notes-fold", { hasText: "Histórico" });
+  await expect(fold.locator(".hf-origin")).toHaveText(["Editada", "Editada", "Criada"]);
+  await fold.locator(".hf-pick").last().click();
+  const dialog = page.getByRole("dialog", { name: /^Versão de / });
+  await dialog.getByRole("button", { name: "Restaurar esta versão" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(fold.locator('[role="status"]')).toHaveText("Versão restaurada.");
+  expect(fs.readFileSync(note.path, "utf8")).toBe(note.texts[0]);
+  await expect(fold.locator(".hf-origin")).toHaveText(["Restaurada", "Editada", "Editada", "Criada"]);
+});
+
+/* ---------------- C108: the gallery ---------------- */
+
+for (const theme of THEMES)
+  test(`C108 the gallery has a memória confiável entry (an item of each kind, an op of each trust and state, the two banners, a history row, the version dialog) with no serious axe violation (${theme})`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`/gallery.html?theme=${theme}`);
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForLoadState("networkidle");
+    const story = page.locator("#story-memoria");
+    await expect(story.locator(".rv-list > .rv-item")).toHaveCount(5);
+    const ops = story.locator(".ag-ops > .ag-op");
+    await expect(ops).toHaveCount(5);
+    await expect(ops.locator(".mc-trust.tone-ok")).toHaveCount(1);
+    await expect(ops.locator(".mc-trust.tone-warn")).toHaveCount(1);
+    await expect(ops.locator(".mc-trust.tone-info")).toHaveCount(3);
+    await expect(ops.locator(".mc-opstate")).toHaveCount(2);
+    await expect(story.locator(".ag-banner")).toHaveCount(2);
+    await expect(story.locator(".hf-list .hf-pick")).toHaveCount(1);
+    expect(await serious(page, "#story-memoria")).toEqual([]);
+    await story.locator(".hf-pick").click();
+    const dialog = page.getByRole("dialog", { name: /^Version of / });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator(".mc-diff")).toBeVisible();
+    expect(await serious(page, '[role="dialog"]')).toEqual([]);
+  });

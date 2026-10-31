@@ -440,13 +440,12 @@ export const en = {
   "history.version": "Version of {when}",
   "history.diffTitle": "From the current text to this version",
   "history.restore": "Restore this version",
-  "history.restoreShort": "Restore",
   "history.restored": "Version restored.",
   "history.conflict": "The note changed since you opened it. Reload and try again.",
   "history.memory": "Memory history",
   "history.memory.empty": "No change recorded yet.",
   "history.deleted": "Deleted",
-  "notes.tree.more": "More for the notes",
+  "notes.tree.more": "Notes options",
 } as const;
 
 export const ptBR = {
@@ -886,11 +885,10 @@ export const ptBR = {
   "history.version": "Versão de {when}",
   "history.diffTitle": "Do texto atual para esta versão",
   "history.restore": "Restaurar esta versão",
-  "history.restoreShort": "Restaurar",
   "history.restored": "Versão restaurada.",
   "history.conflict": "A nota mudou desde que você abriu. Recarregue e tente de novo.",
   "history.memory": "Histórico da memória",
   "history.memory.empty": "Nenhuma mudança registrada ainda.",
   "history.deleted": "Apagada",
-  "notes.tree.more": "Mais para as notas",
+  "notes.tree.more": "Opções das notas",
 } satisfies Record<keyof typeof en, string>;

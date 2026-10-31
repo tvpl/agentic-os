@@ -73,7 +73,7 @@ export default function MemoryHistoryDialog({ onClose }: { onClose: () => void }
                   {t("history.deleted")}
                 </span>
                 <button type="button" className="btn sm" onClick={() => void restoreOf(v.path)}>
-                  {t("history.restoreShort")}
+                  {t("settings.restore")}
                 </button>
               </span>
             )}

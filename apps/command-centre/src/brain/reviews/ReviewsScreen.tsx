@@ -32,6 +32,9 @@ import {
   type Natureza,
 } from "../natureza";
 import { AgentTab, usePendingProposals } from "./AgentTab";
+
+/** The parts of "Do agente" the component gallery shows, from this module so the two pages share the screen's chunk. */
+export { AgentListItem, OpRow, RefusalBanner } from "./AgentTab";
 import { BecameFactDialog, type FactInput } from "./BecameFactDialog";
 import "./reviews.css";
 

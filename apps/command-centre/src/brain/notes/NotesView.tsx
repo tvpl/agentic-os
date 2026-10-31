@@ -38,6 +38,7 @@ import "./notes.css";
 
 /** The parts the component gallery shows (C78), from this module so the two pages share the view's one chunk. */
 export { NoteReader, NoteTabs, NotesTree };
+export { HistoryRow } from "./HistoryFold";
 
 export const SIDEBAR = { initial: 260, min: 200, max: 400, step: 16 } as const;
 /** Below this useful width the note panel is closed (design.md). */
