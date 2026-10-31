@@ -1211,3 +1211,71 @@ sequential, each only on green.
   - **B2** (export, import and part B's screens): S5 + screens B ≈ 26k + 60k = ≈ 86k; C132-C147 (C147's bundle bound
     weighs both parts' screens, so it lands last)
 - Mechanism: handoff, six batches A1-B2 (owner, 31/10/2026)
+
+Status of batch A1 (C1-C39):
+
+- S1, the facts (C1 to C20): closed, every proof green in `tests/memoria.facts.test.ts`, `tests/memoria.layer.test.ts`
+  and `tests/memoria.migration.test.ts`. The defect of `facts.ts:91` is proven fixed: with the old close rule put back
+  (`valid_to = max(validFrom, f.validFrom)` on every open fact, no refusal), C9's two cases and C10's two cases fail
+- S2, the history (C21 to C38): closed, every proof green in `tests/memoria.history.test.ts`,
+  `tests/memoria.layer.test.ts` and `tests/memoria.migration.test.ts`
+- C39: **open, moved to A2**. Its second clause is "restored, opens at **30**", and migration 30 (`memory_proposals`,
+  door 5) is A2's; at A1 the latest migration is 29, so the check cannot pass as written. No test was written under
+  `C39 ` (its proof line runs no test at `d0d7b12`), nothing was retargeted; A2 writes the whole check, its first clause
+  (the history read back after a backup restored over a fresh home) included, once migration 30 exists
+
+- **Boundary (batch A1):** C1-C38 closed at `d0d7b12` (code, tests and pins in one commit). On that tree: `npm run
+build`, `npm run typecheck` and `npm run lint` exit 0, `npx vitest run` at the root is green (174 files, 2545 tests
+  passed, 1 skipped), and `npm run test -w apps/command-centre` is green (176 files, 1538 tests; no file of this batch
+  is under `apps/command-centre`). Each of the 47 `Proof:` lines of C1-C38 passes run alone and runs only its check's
+  tests; C39's runs none. What A1 leaves for A2 and later to add on top: a run's credential still writes a fact directly
+  (`201`, `author: "run:<id>"`, `trust: "inferido"`; C40 turns it into `202` and a proposal); the MCP tools still call
+  the owner's routes (`author: "owner"`); no `proposal` or `guard` version is written yet (the writers exist in
+  `core/src/memory/historyStore.ts`, `recordVersion`, with `proposal_id`); `trust` of a direct fact is `usuario` for the
+  owner and `inferido` for anyone else (C52's trust rule is A2's). The pins A1 moved, so A2 and A3 add on top: 158
+  routes and scenarios, 82 owner and 34 content routes (chained amendments in `sdk.api-thin`, and `paineis.contract`
+  C60's counts as `32 + 2` and `81 + 1`), 156 checked responses, 79 raised pairs (`400 provenance_required`, `409
+fact_overlap`), `POST /api/memory/history/restore` among the routes that name `edit_conflict` and `note_*`, `GET
+/api/memory/history/:id` and the restore declaring `403 forbidden_path` and `404 not_a_file` (what the probe of
+  `api.refusals` C46 found), migrations 28 and 29 in the lists of `data.migration`, `contexts.runs`, `device-scopes`,
+  `natureza.layer` C7 and `paineis.layer` C19 and C98, the scope table, the rows of `docs/security.md`,
+  `memory.history.maxBytes` among the leaves that open nothing (`data.settings` C46) and in the v1 `settings.changed`
+  fixture, and seven names of the internal barrel (`sdk.surface` C38: `FactAuthor`, `factSourcePolicy`, `getVersion`,
+  `listVersions`, `recordFileVersion`, `recordMove`, `restoreVersion`); `docs/events.md` regenerated with no change
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) **a gap in door 2's
+  table** (an owner question, G24): a closed new fact `[T, U)` over an old fact of the same keys that begins inside
+  `[T, U)` (at or after T, before U) has no row; it is `409 fact_overlap` and nothing is written, since closing,
+  retracting or splitting the old fact would each record a belief nobody stated (proven by an extra test titled
+  "settled mid-build" in `tests/memoria.layer.test.ts`, not under a check id); the alternative is to retract it when it
+  ends at or before U and refuse otherwise; (b) only facts not retracted take part in the overlap rule and in
+  "unchanged"; a retracted fact is never closed or retracted again by an assertion; `retract` with `wrong` on a fact
+  already retracted answers it unchanged; (c) `assertFact` takes `author`, default `owner` (the engine's own calls, the
+  "Virou realidade" decision); the route sets `owner` or `run:<id>` and no body names it; (d) `knownAt` replaces the
+  default "open" filter (it returns what was recorded by K and not retracted by K, closed or not), `asOf` and `knownAt`
+  combine with AND (G5), `includeRetracted` lifts the retraction filter of both; (e) today's policy on a fact's source
+  (`factSourcePolicy`): no `sourcePath` is shown; a relative one, or one under no enabled indexed folder nor `memory/`,
+  is not (no root to judge it by); otherwise the workspace filter on its path relative to the longest root; a verdict
+  that throws leaves the fact out (`queryFacts` `allow`), and the limit counts the facts shown; (f) the history's store
+  (`historyStore.ts`: the rule, `recordVersion`, the retention) is apart from its reads and restore (`history.ts`), so
+  the index worker imports no note code; the note writers take an optional `history` callback on `NoteContext`, the
+  review decision and the cleanup's moves one each, and the routes pass `recordFileVersion` / `recordMove` with author
+  `owner`; (g) `sha256` of a version and of a blob is stored as the note version is spelled, `sha256:<hex>`; the cap
+  measures the stored (deflated) bytes, `SUM(length(bytes))`; a removed version's `size` is `null`; (h) an index pass
+  records a version only for a file it read as changed or for a path with no version yet (a file whose `mtime` and
+  size are the index's is not read again), reusing the bytes the pass read when they were read whole; the removed sweep
+  runs over every path whose newest version is not `removed` on a full pass and over the gone paths on a pass over
+  named paths, and a path the policy refuses today is not taken for gone; (i) `GET /api/memory/history?path=` takes a
+  path relative to `memory/` (no leading `/`, no drive, no `..`) and `limit` 1 to 100; the restore answers `path`
+  relative to `memory/`; a restore with `baseVersion` of a gone file, or without it over a file that exists, is `409
+edit_conflict`; (j) `memory.history.maxBytes` is an integer from 1, default 268435456, an unreadable value reads the
+  default (it opens nothing); (k) proof readings: an index pass waits for the clock to move, so no proof that runs a
+  pass fakes `Date` (C16 and the S2 file run on the real clock); C21's review is `keep` on an indexed note (a
+  `properties` write the decision makes, recorded as `review`); C28's "stored size of 12 incompressible blobs" is twelve
+  versions of 800 random hex characters, the cap set by `PUT /api/settings` to their stored size plus the thirteenth's
+  deflated size (the accepted edge, nothing dropped), then a fourteenth save (the oldest go until the store fits, and no
+  fewer); C35's link is `notes/ligado/` made a link to `notes/real/` after its version was written
+- **Abandoned:** a repository `git` under `memory/` (door 4's rejected alternative, never started); recording the
+  history from the route by reading the file back after the write (it could take another writer's bytes for the
+  owner's); a `CHECK` on the closed vocabularies of `memory_versions` (door 4's literal shape has none, and widening a
+  `CHECK` takes a table rebuild, as migration 27 did); a raw `fs.lstatSync` for "is the file still there"
+  (`security-reads` C32: the safe stat is used)
