@@ -300,6 +300,42 @@ export type DashboardSnapshot = z.infer<typeof DashboardSnapshotSchema>;
 export type SnapshotSource = z.infer<typeof SnapshotSourceSchema>;
 export type SnapshotWidget = z.infer<typeof SnapshotWidgetSchema>;
 
+// ---- door 7: the answer of a question dashboard -----------------------------------------------------------------
+
+/** The skill a question dashboard runs (door 7, amendment 19). */
+export const DASHBOARD_ANSWER_SKILL = "dashboard-answer";
+/** `artifacts/<run>/dashboard.json` is read up to this many bytes (amendment 19). */
+export const QUESTION_RESULT_MAX_BYTES = 262_144;
+/** An answer draws at most this many widgets (`design.md`, "Pergunta"). */
+export const QUESTION_MAX_WIDGETS = 6;
+
+/** Where a widget's answer comes from: a file of the index and the section of it (`nome § seção`). */
+export const QuestionCitationSchema = z.object({
+  path: z.string().min(1).max(4096),
+  section: z.string().max(200),
+});
+
+/** One widget of an answer: a snapshot widget with its title and its citations (door 7). */
+export const QuestionWidgetSchema = z.object({
+  id: z.string().regex(DASHBOARD_ID, "id: lower-case letters, digits and -"),
+  kind: z.enum(WIDGET_KINDS),
+  title: z.string().min(1).max(DASHBOARD_TITLE_MAX),
+  status: z.enum(["ok", "empty"]).optional(),
+  data: z.record(z.unknown()),
+  citations: z.array(QuestionCitationSchema),
+});
+
+/**
+ * What the skill writes to `artifacts/<run>/dashboard.json`: the widgets of door 4's snapshot, each with its title and
+ * `citations[]`. The host makes the snapshot of it (`dashboardId`, `generatedAt`, `sources` are its own) only after
+ * every rule of door 7 holds.
+ */
+export const QuestionResultSchema = z.object({
+  v: z.literal(1),
+  widgets: z.array(QuestionWidgetSchema).min(1),
+});
+export type QuestionResult = z.infer<typeof QuestionResultSchema>;
+
 /** The rules of door 5, in the order their highlights come. */
 export const HIGHLIGHT_RULES = [
   "overdue",

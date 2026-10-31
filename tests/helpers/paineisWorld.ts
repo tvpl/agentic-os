@@ -1,9 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { vi } from "vitest";
+import { ClaudeAdapter } from "@mordomo/adapter-claude";
+import type { AgentRun } from "@mordomo/core";
+import { seedHome } from "@mordomo/core/internal";
 import * as client from "../../core/src/connectors/client.js";
 import type { ConnectorData } from "../../core/src/connectors/client.js";
 import type { OsEvent } from "../../core/src/events.js";
+import { FAKE_BIN, withFakeBinPath } from "../helpers.js";
 import { notesViewWorld, type Json, type NotesViewWorld } from "./notesViewWorld.js";
 
 /**
@@ -133,4 +137,65 @@ export function dayOf(now: number, offset = 0): string {
   const d = new Date(now);
   const at = new Date(d.getFullYear(), d.getMonth(), d.getDate() + offset);
   return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+}
+
+/** A question dashboard's world (batch B, door 7): the fake Claude CLI runs the skill, and the test writes its answer. */
+export interface QuestionWorld extends PaineisWorld {
+  /** What the next runs write to `artifacts/<run>/dashboard.json` (null: nothing); a string or bytes as they are. */
+  answer: (content: unknown) => void;
+  /** Make the next runs fail (the fake CLI exits 1). */
+  failing: (on: boolean) => void;
+  /** Wait for the run and then for the `dashboard.refreshed` its end brings. */
+  settle: (id: string, runId: string) => Promise<{ id: string; generatedAt: number; status: string }>;
+}
+
+export async function questionWorld(prefix: string): Promise<QuestionWorld> {
+  const restorePath = withFakeBinPath();
+  const w = await paineisWorld(prefix);
+  // A home of the product is seeded from the bundle; a test home is seeded here (the skill is one of the seeds).
+  seedHome(w.ctx.paths, repo);
+  w.update((s) => {
+    s.providers.claude.enabled = true;
+    s.providers.claude.binaryPath = path.join(FAKE_BIN, "claude");
+    s.defaultProvider = "claude";
+  });
+  w.ctx.reloadAdapters();
+  let content: unknown = null;
+  const execute = ClaudeAdapter.prototype.execute;
+  const spy = vi.spyOn(ClaudeAdapter.prototype, "execute").mockImplementation(function (
+    this: ClaudeAdapter,
+    run: AgentRun,
+  ) {
+    if (content !== null) {
+      const dir = path.join(w.ctx.paths.artifacts, run.runId);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "dashboard.json"),
+        typeof content === "string" || Buffer.isBuffer(content) ? content : JSON.stringify(content),
+      );
+    }
+    return execute.call(this, run);
+  });
+  const close = w.close;
+  return Object.assign(w, {
+    answer(next: unknown) {
+      content = next;
+    },
+    failing(on: boolean) {
+      if (on) process.env.FAKE_CLAUDE_FAIL = "1";
+      else delete process.env.FAKE_CLAUDE_FAIL;
+    },
+    async settle(id: string, runId: string) {
+      const refreshed = w.nextRefresh(id);
+      await w.ctx.execution.wait(runId);
+      return refreshed;
+    },
+    async close() {
+      spy.mockRestore();
+      delete process.env.FAKE_CLAUDE_FAIL;
+      await w.ctx.runs.shutdown(2000);
+      await close();
+      restorePath();
+    },
+  });
 }

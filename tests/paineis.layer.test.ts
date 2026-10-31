@@ -11,6 +11,8 @@ import { ensureDirs, resolvePaths } from "../core/src/paths.js";
 import { DashboardEvaluator, snapshotStatus } from "../core/src/dashboards/evaluator.js";
 import { dashboardHighlights } from "../core/src/dashboards/highlights.js";
 import { kpiDelta } from "../core/src/dashboards/kpi.js";
+import { checkQuestionResult } from "../core/src/dashboards/question.js";
+import { resolveCleanupScope } from "../core/src/memory/cleanup.js";
 import { refreshDue, snapshotStale } from "../core/src/dashboards/schedule.js";
 import { dashboardSources, projectHealth, type DashboardSourceMap } from "../core/src/dashboards/sources.js";
 import { parseTasks } from "../core/src/memory/tasks.js";
@@ -746,5 +748,182 @@ describe("C98 migration 27, the reminder kind of the inbox", () => {
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
     }
+  });
+});
+
+// ---- batch B: the answer of a question dashboard (C54, C55) ------------------------------------------------------
+
+describe("the host's check of a question dashboard's answer, at its own layer", () => {
+  let proj: string;
+  let lookalike: string;
+  const files: Record<string, string> = {};
+  beforeAll(() => {
+    proj = path.join(work, "proj");
+    lookalike = path.join(work, "proj-old");
+    fs.mkdirSync(proj, { recursive: true });
+    fs.mkdirSync(lookalike, { recursive: true });
+    const row = (root: string, rel: string, fields: Json = {}) => {
+      const full = path.join(root, rel);
+      ctx.db
+        .prepare(
+          "INSERT INTO files (root, path, rel, name, ext, dir, area, size, mtime, indexed_at, title, tags, fields) VALUES (?, ?, ?, ?, '.md', ?, NULL, 1, 1, 1, NULL, '[]', ?)",
+        )
+        .run(root, full, rel, path.basename(full), path.dirname(full), JSON.stringify(fields));
+      return full;
+    };
+    files.ok = row(proj, "metricas.md");
+    files.plano = row(proj, "metas.md", { natureza: "plano" });
+    files.excluded = row(work, "privado/segredo.md");
+    files.outside = row(lookalike, "velho.md");
+    const s = ctx.settings();
+    s.excludes = [...s.excludes, "privado"];
+    s.contexts = [{ id: "projeto-x", name: "Projeto X", paths: [proj] }];
+    ctx.settingsStore.save(s);
+  });
+  const env = (scoped = false) => ({
+    db: ctx.db,
+    paths: ctx.paths,
+    settings: ctx.settings(),
+    scope: scoped
+      ? resolveCleanupScope({ paths: ctx.paths, settings: ctx.settings() }, { context: "projeto-x" })
+      : null,
+  });
+  const valid = (): Json => ({
+    v: 1,
+    widgets: [
+      { id: "a", kind: "kpi", title: "A", data: { value: 1 }, citations: [{ path: files.ok, section: "S" }] },
+      {
+        id: "b",
+        kind: "list",
+        title: "B",
+        data: { items: [{ title: "x", path: files.ok }] },
+        citations: [{ path: files.ok, section: "S" }],
+      },
+    ],
+  });
+  const check = (answer: unknown, scoped = false) =>
+    checkQuestionResult(Buffer.isBuffer(answer) ? answer : Buffer.from(JSON.stringify(answer)), env(scoped));
+  const reasonOf = (answer: unknown, scoped = false) => {
+    const verdict = check(answer, scoped);
+    return verdict.ok ? null : verdict.reason;
+  };
+
+  it("C54 a valid answer of two widgets, each with one citation, is accepted (also inside the context)", () => {
+    for (const scoped of [false, true]) {
+      const verdict = check(valid(), scoped);
+      expect(verdict.ok, String(scoped)).toBe(true);
+      if (verdict.ok) expect(verdict.widgets.map((w) => w.id)).toEqual(["a", "b"]);
+    }
+  });
+  const cases: Array<[string, (a: Json) => unknown, RegExp, boolean?]> = [
+    [
+      "it does not validate against the snapshot schema",
+      (a) => ({ ...a, widgets: [{ ...a.widgets[0], kind: "pie" }] }),
+      /schema/,
+    ],
+    [
+      "a widget has no citation",
+      (a) => ({ ...a, widgets: [{ ...a.widgets[0], citations: [] }, a.widgets[1]] }),
+      /no citation/,
+    ],
+    [
+      "a citation names a path the index does not have",
+      (a) => ({
+        ...a,
+        widgets: [
+          { ...a.widgets[0], citations: [{ path: path.join(proj, "nao.md"), section: "S" }] },
+          a.widgets[1],
+        ],
+      }),
+      /index does not have/,
+    ],
+    [
+      "a path today's policy excludes",
+      (a) => ({
+        ...a,
+        widgets: [{ ...a.widgets[0], citations: [{ path: files.excluded, section: "S" }] }, a.widgets[1]],
+      }),
+      /policy excludes/,
+    ],
+    [
+      "a path outside the context's scope at the look-alike proj-old",
+      (a) => ({
+        ...a,
+        widgets: [{ ...a.widgets[0], citations: [{ path: files.outside, section: "S" }] }, a.widgets[1]],
+      }),
+      /outside the dashboard's context/,
+      true,
+    ],
+    [
+      "an item of natureza plano without its label",
+      (a) => ({
+        ...a,
+        widgets: [a.widgets[0], { ...a.widgets[1], data: { items: [{ title: "Meta", path: files.plano }] } }],
+      }),
+      /natureza plano and lacks its label/,
+    ],
+    [
+      "7 widgets",
+      (a) => ({ ...a, widgets: Array.from({ length: 7 }, (_, i) => ({ ...a.widgets[0], id: `w${i}` })) }),
+      /7 widgets; at most 6/,
+    ],
+    ["256 KB + 1 byte", () => Buffer.alloc(262_145, " "), /larger than 262144 bytes/],
+  ];
+  for (const [name, change, reason, scoped] of cases) {
+    it(`C54 refuses: ${name}, for that reason alone`, () => {
+      expect(reasonOf(change(valid()), scoped)).toMatch(reason);
+    });
+  }
+  it("C54 the same refusals pass once their one fault is gone: the plano item with its label, the look-alike file without a context", () => {
+    expect(
+      check({
+        ...valid(),
+        widgets: [
+          valid().widgets[0],
+          {
+            ...valid().widgets[1],
+            data: { items: [{ title: "Meta", path: files.plano, natureza: "plano" }] },
+          },
+        ],
+      }).ok,
+    ).toBe(true);
+    expect(
+      check({
+        ...valid(),
+        widgets: [
+          { ...valid().widgets[0], citations: [{ path: files.outside, section: "S" }] },
+          valid().widgets[1],
+        ],
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("C55 an excluded file refuses the answer on each path a file arrives by: citations[], a list item's path, a table row's path", () => {
+    const viaCitation = valid();
+    viaCitation.widgets[0].citations = [{ path: files.excluded, section: "S" }];
+    const viaItem = valid();
+    viaItem.widgets[1].data.items = [{ title: "x", path: files.excluded }];
+    const viaRow = valid();
+    viaRow.widgets.push({
+      id: "t",
+      kind: "table",
+      title: "T",
+      data: { columns: ["n"], rows: [{ cells: ["1"], path: files.excluded }] },
+      citations: [{ path: files.ok, section: "S" }],
+    });
+    for (const [name, answer] of [
+      ["citations[]", viaCitation],
+      ["a list item's path", viaItem],
+      ["a table row's path", viaRow],
+    ] as const) {
+      expect(reasonOf(answer), name).toMatch(/policy excludes/);
+    }
+    // the same answer with the file nowhere passes
+    const clean = valid();
+    clean.widgets.push({
+      ...viaRow.widgets[2],
+      data: { columns: ["n"], rows: [{ cells: ["1"], path: files.ok }] },
+    });
+    expect(check(clean).ok).toBe(true);
   });
 });

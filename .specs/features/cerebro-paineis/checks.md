@@ -984,3 +984,13 @@ Status of batch B (updated in the commit that closes each piece):
   and the reminders, then that after the exclusion they are written for the home's other tasks and none names it
 - `PUT /api/memory/tasks` (C47 to C51): closed, every proof green in `tests/paineis.tasks.test.ts`; the route is the
   seventh of the eight (the export is the last)
+- the question dashboard and the skill `dashboard-answer` (C52 to C55): closed, every proof green in
+  `tests/paineis.question.test.ts` and `tests/paineis.layer.test.ts`. C54's case "a path outside the context's scope at
+  the look-alike `/w/proj-old`" is proven at the validator's layer only: a question dashboard has no `contextId`
+  (amendment 6 e, door 1 refuses it), so no route can give its answer a context
+- **C56 is open** on one clause: "the inputs `question` (required) and `contextId` (optional)". A skill input's name is
+  `^[a-z][a-z0-9_]*$` (`SkillInputSchema`, `contracts/src/skills.ts`), so a `SKILL.md` whose input is named `contextId`
+  does not load (`invalid frontmatter: inputs.1.name`). The skill ships with `question` only; the rest of C56 (read_only,
+  `question` required, the four default `memorySkills`, a stored `["recall"]` kept, `memoryAccess: true` on a fresh
+  home) is green. The owner chooses: widen the input-name pattern to `^[a-z][a-zA-Z0-9_]*$` for every skill, or amend
+  C56 and amendment 19 to an input named `context_id` (no question dashboard can have a context today, amendment 6 e)

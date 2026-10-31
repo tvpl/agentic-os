@@ -50,7 +50,12 @@ export function registerDashboardRoutes(app: FastifyInstance, ctx: AppContext): 
 
   bind(app, "dashboards.delete", async ({ params: { id } }) => ({ archived: dashboards.archive(id) }));
 
-  bind(app, "dashboards.refresh", async ({ params: { id } }) => ({
-    snapshot: await dashboards.refresh(id, { fresh: true }),
-  }));
+  bind(app, "dashboards.refresh", async ({ params: { id } }, _req, reply) => {
+    // A question dashboard starts its skill and answers at once (AC 51, door 7); the others are evaluated now.
+    if (dashboards.store.require(id).definition.kind === "question") {
+      reply.code(202);
+      return dashboards.ask(id);
+    }
+    return { snapshot: await dashboards.refresh(id, { fresh: true }) };
+  });
 }

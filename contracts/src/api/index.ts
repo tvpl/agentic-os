@@ -60,11 +60,15 @@ export { isJournalDate } from "./memory.js";
 export { QUERY_FLAG_TEXTS, QueryFlag, RUN_LIMITS } from "./common.js";
 export { NAMED_SCHEMAS } from "./schemas.js";
 export {
+  DASHBOARD_ANSWER_SKILL,
   DASHBOARD_ID,
   DASHBOARD_MAX_BYTES,
   DashboardSnapshotSchema,
   DashboardSpecSchema,
   HIGHLIGHT_RULES,
+  QUESTION_MAX_WIDGETS,
+  QUESTION_RESULT_MAX_BYTES,
+  QuestionResultSchema,
   serializeDashboard,
   type DashboardKind,
   type DashboardSnapshot,
@@ -73,6 +77,7 @@ export {
   type DashboardWidget,
   type Highlight,
   type HighlightRule,
+  type QuestionResult,
   type SnapshotSource,
   type SnapshotWidget,
   type SourceKind,

@@ -107,7 +107,7 @@
         "toolApprovalTimeoutMs": 600000
       },
       "favoriteSkills": [],
-      "memorySkills": ["recall", "consolidate-memory", "organize-brain"],
+      "memorySkills": ["recall", "consolidate-memory", "organize-brain", "dashboard-answer"],
       "routines": {
         "allowWebhooks": false,
         "heartbeatIntervalMinutes": 30,

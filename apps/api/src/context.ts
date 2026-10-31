@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { DASHBOARD_ANSWER_SKILL } from "@mordomo/contracts";
 import type { HealthStatus, PermissionBroker, ProviderCapabilities, RunMode } from "@mordomo/core";
 import {
   ConnectorDataCache,
@@ -124,6 +125,24 @@ export class AppContext extends MordomoEngine {
       events: this.events,
       db: this.db,
       notifications: this.notifications,
+      // A question dashboard's skill (door 7, amendment 19): it runs only while it exists, is enabled and is a memory
+      // skill of the settings; it starts like any skill run, read-only, through the engine's own launch.
+      question: {
+        available: () => {
+          const skill = this.skills.load(DASHBOARD_ANSWER_SKILL);
+          return (
+            skill !== null && skill.enabled && this.settings().memorySkills.includes(DASHBOARD_ANSWER_SKILL)
+          );
+        },
+        start: ({ question, contextId }) =>
+          this.execution.startSkill({
+            slug: DASHBOARD_ANSWER_SKILL,
+            // The run's context is the dashboard's (none for a question dashboard today, amendment 6 e).
+            inputs: { question },
+            ...(contextId !== undefined ? { contextId } : {}),
+            startedBy: "owner",
+          }).runId,
+      },
     });
     this.unsubscribeCredentials = this.events.subscribe((e) => {
       if (e.type !== "run.finished") return;
@@ -374,6 +393,7 @@ export class AppContext extends MordomoEngine {
 
   override close(): void {
     this.unsubscribeCredentials();
+    this.dashboards.close();
     this.telegramPoller?.stop();
     super.close();
   }

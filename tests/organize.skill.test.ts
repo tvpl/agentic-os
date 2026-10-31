@@ -300,7 +300,13 @@ describe.skipIf(!POSIX)("S1 the skill organize-brain, its guide and its question
     const fresh = makeTempHome("mordomo-organize-c9-");
     try {
       const first = new AppContext(fresh.paths.home);
-      expect(first.settings().memorySkills).toEqual(["recall", "consolidate-memory", "organize-brain"]);
+      // cerebro-paineis (door 7, amendment 19) adds dashboard-answer after organize-brain
+      expect(first.settings().memorySkills).toEqual([
+        "recall",
+        "consolidate-memory",
+        "organize-brain",
+        "dashboard-answer",
+      ]);
       first.settingsStore.save(first.settings());
       first.close();
       const stored = JSON.parse(fs.readFileSync(fresh.paths.settingsFile, "utf8")) as Json;

@@ -417,12 +417,13 @@ export const SettingsSchema = z.object({
   /**
    * Slugs of the skills that work on the second brain: a run of one is given `memory/` and a credential of its own
    * for the memory routes of the local API (AD-012). Only the owner changes it (`PUT /api/settings`); it is not a
-   * field of any SKILL.md, which anything that can write the file could set. The default names the three built-in
-   * memory skills (`organize-brain` from cerebro-organizar, AC 9); a home whose settings store another list keeps it.
+   * field of any SKILL.md, which anything that can write the file could set. The default names the four built-in
+   * memory skills (`organize-brain` from cerebro-organizar, AC 9; `dashboard-answer` from cerebro-paineis, door 7); a
+   * home whose settings store another list keeps it.
    */
   memorySkills: z
     .array(z.string().regex(/^[a-z0-9][a-z0-9-]*$/))
-    .default(["recall", "consolidate-memory", "organize-brain"]),
+    .default(["recall", "consolidate-memory", "organize-brain", "dashboard-answer"]),
   /** Routine engine defaults (F-BACKEND: routines v2). */
   routines: z
     .object({
