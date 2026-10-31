@@ -366,6 +366,9 @@ Decisões de produto e de processo que a feature `cerebro-v2` tomou com o padrã
 8. **(open) Uma citação abre o preview sem rolar até a seção (emenda 18)?** Padrão: só o preview; a seção fica no texto da citação.
 9. **(open) `dashboard-answer` entra nos `memorySkills` padrão, senão `409 skill_unavailable` (emenda 19)?** Padrão: sim; uma home com lista própria mantém a sua.
 10. **(open) O teto de peso: 24 KB de JS gzip e 4 KB de CSS gzip acima de `cerebro-natureza` (emenda 24)?** Padrão: esses valores; a construção para e pergunta se passar.
+11. **(open) A raiz do pacote `@mordomo/contracts` ganha cinco nomes (`DASHBOARD_ID`, `DASHBOARD_MAX_BYTES`, `DashboardSpecSchema`, `DashboardSnapshotSchema`, `serializeDashboard`), fixados pelo C41 de `contracts.test` (lote A).** Padrão: aceitos como a superfície das doors 1 e 4. Reverter: tirar as exportações e o pino.
+12. **(open) Os ids dos widgets dos modelos (por exemplo `prioridades-kpi`) são a chave das linhas de `dashboard_series` (lote A).** Padrão: congelados como escritos em checks.md, "Settled mid-build"; mudar um id depois perde a série daquele widget.
+13. **(open) O C14 ("a atualização não lê arquivo da home") lido como "só a definição do painel e o `connectors/calendar-google.json` do registro de conectores" (lote A).** Padrão: essa leitura; o teste registra toda abertura e prova que nada mais é lido.
 
 ### distribuicao
 
