@@ -58,4 +58,6 @@ export function registerDashboardRoutes(app: FastifyInstance, ctx: AppContext): 
     }
     return { snapshot: await dashboards.refresh(id, { fresh: true }) };
   });
+
+  bind(app, "dashboards.export", async ({ params: { id } }) => ({ path: dashboards.exportHtml(id) }));
 }

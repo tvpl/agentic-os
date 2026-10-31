@@ -161,7 +161,7 @@ describe("S1 each route says who may call it", () => {
     const device = pair([]);
     expect(ctx.devices.get(device.id)?.scopes).toEqual([]);
     const routes = apiRoutes();
-    expect(routes).toHaveLength(152);
+    expect(routes).toHaveLength(153);
     const before = {
       fp: fingerprint(),
       settings: fs.readFileSync(settingsFile()),
@@ -183,7 +183,7 @@ describe("S1 each route says who may call it", () => {
       if (expected === "owner") owners += 1;
       else scoped += 1;
     }
-    expect([owners, scoped]).toEqual([80, 72]);
+    expect([owners, scoped]).toEqual([81, 72]);
     expect(fingerprint()).toBe(before.fp);
     expect(fs.readFileSync(settingsFile()).equals(before.settings)).toBe(true);
     expect(launches()).toHaveLength(before.launches);
@@ -223,7 +223,7 @@ describe("S1 each route says who may call it", () => {
       apiRoutes().map((r) => [key(r), r.config.scope as RouteScope | undefined]),
     );
     expect(registered).toEqual(EXPECTED_ROUTE_SCOPES);
-    expect(Object.keys(registered)).toHaveLength(152);
+    expect(Object.keys(registered)).toHaveLength(153);
     const publics = app.apiRoutes.filter((r) => r.config.public === true).map(key);
     expect(publics.sort()).toEqual([...PUBLIC_ROUTES].sort());
     expect(app.apiRoutes.filter((r) => r.config.public === true && r.config.scope !== undefined)).toEqual([]);
@@ -231,7 +231,7 @@ describe("S1 each route says who may call it", () => {
       Object.fromEntries(
         (["owner", "monitor", "content", "run", "approve"] as const).map((s) => [s, routesOf(s).length]),
       ),
-    ).toEqual({ owner: 80, monitor: 33, content: 32, run: 6, approve: 1 });
+    ).toEqual({ owner: 81, monitor: 33, content: 32, run: 6, approve: 1 });
     // The route document carries the same scope on every operation that is not public.
     const doc = (
       await app.inject({ method: "GET", url: "/api/v1/openapi.json", headers: owner() })
@@ -481,7 +481,7 @@ describe("S1 each route says who may call it", () => {
     expect(await passes(brokerToken)).toEqual([...BROKER].sort());
     expect(await passes(reader)).toEqual([...READS].sort());
     expect(await passes(writer)).toEqual([...READS, ...WRITES].sort());
-    expect(apiRoutes()).toHaveLength(152);
+    expect(apiRoutes()).toHaveLength(153);
   });
 });
 
@@ -1217,7 +1217,7 @@ describe("S6 the documents say the same as the router", () => {
       }
     }
     expect(documented).toEqual(EXPECTED_ROUTE_SCOPES);
-    expect(counts).toEqual({ owner: 80, monitor: 33, content: 32, run: 6, approve: 1 });
+    expect(counts).toEqual({ owner: 81, monitor: 33, content: 32, run: 6, approve: 1 });
     // What this feature leaves open is written down, one phrase each.
     const open: Array<[string, string]> = [
       [
@@ -1273,7 +1273,7 @@ describe("S6 the documents say the same as the router", () => {
     };
     const operations = Object.values(doc.paths).reduce((n, methods) => n + Object.keys(methods).length, 0);
     expect(operations).toBe(app.apiRoutes.length);
-    expect(operations).toBe(154);
+    expect(operations).toBe(155);
     expect(doc.paths["/api/v1/stream-tickets"]!.post!["x-mordomo-scope"]).toBe("monitor");
     expect(doc.paths["/api/v1/devices/{id}"]!.patch!["x-mordomo-scope"]).toBe("owner");
     expect(doc.paths["/api/v1/devices/{id}"]!.patch!.security).toEqual([{ localToken: [] }]);

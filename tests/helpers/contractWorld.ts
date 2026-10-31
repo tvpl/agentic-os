@@ -550,6 +550,14 @@ export const SCENARIOS: Record<string, Scenario> = {
   [key("POST", "/api/dashboards/:id/refresh")]: {
     run: (w) => w.call("POST", `/api/dashboards/${dashboardOf(w).id}/refresh`),
   },
+  // cerebro-paineis, batch B: the export of the contract context's dashboard, refreshed first so it has a snapshot.
+  [key("POST", "/api/dashboards/:id/export")]: {
+    run: async (w) => {
+      const d = dashboardOf(w);
+      if (w.ctx.dashboards.store.snapshot(d.id) === null) await w.ctx.dashboards.refresh(d.id);
+      return w.call("POST", `/api/dashboards/${d.id}/export`);
+    },
+  },
   [key("DELETE", "/api/dashboards/:id")]: {
     run: (w) => w.call("DELETE", `/api/dashboards/${w.ctx.dashboards.create({ template: "overview" }).id}`),
   },

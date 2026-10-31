@@ -994,3 +994,5 @@ Status of batch B (updated in the commit that closes each piece):
   `question` required, the four default `memorySkills`, a stored `["recall"]` kept, `memoryAccess: true` on a fresh
   home) is green. The owner chooses: widen the input-name pattern to `^[a-z][a-zA-Z0-9_]*$` for every skill, or amend
   C56 and amendment 19 to an input named `context_id` (no question dashboard can have a context today, amendment 6 e)
+- the export (C57): closed, both proofs green in `tests/paineis.localday.test.ts` and `tests/paineis.layer.test.ts`;
+  the eight routes of the Surface exist

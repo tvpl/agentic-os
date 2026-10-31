@@ -511,4 +511,18 @@ export const dashboardRoutes = {
       err(409, "budget_exhausted", "The skill's daily budget is exhausted"),
     ],
   }),
+  "dashboards.export": route({
+    method: "POST",
+    path: "/api/dashboards/:id/export",
+    summary:
+      "Write the stored snapshot as one HTML page (inline SVG and CSS, every chart also a table, no script) under artifacts/dashboards/",
+    tag: "dashboards",
+    scope: "owner",
+    params: DashboardParams,
+    responses: { 200: z.object({ path: z.string() }) },
+    errors: [
+      dashboardNotFound,
+      err(409, "no_snapshot", "The dashboard has no snapshot yet; nothing was written"),
+    ],
+  }),
 } as const;

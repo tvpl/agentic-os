@@ -12,6 +12,7 @@ import { DashboardEvaluator, snapshotStatus } from "../core/src/dashboards/evalu
 import { dashboardHighlights } from "../core/src/dashboards/highlights.js";
 import { kpiDelta } from "../core/src/dashboards/kpi.js";
 import { checkQuestionResult } from "../core/src/dashboards/question.js";
+import { exportStamp, renderDashboardHtml } from "../core/src/dashboards/export.js";
 import { resolveCleanupScope } from "../core/src/memory/cleanup.js";
 import { refreshDue, snapshotStale } from "../core/src/dashboards/schedule.js";
 import { dashboardSources, projectHealth, type DashboardSourceMap } from "../core/src/dashboards/sources.js";
@@ -925,5 +926,103 @@ describe("the host's check of a question dashboard's answer, at its own layer", 
       data: { columns: ["n"], rows: [{ cells: ["1"], path: files.ok }] },
     });
     expect(check(clean).ok).toBe(true);
+  });
+});
+
+// ---- batch B: the export renderer (C57) --------------------------------------------------------------------------
+
+describe("C57 the export renderer at its own layer", () => {
+  const at = new Date(2026, 9, 30, 14, 7).getTime();
+  const snapshot = (widgets: Json[]): Json => ({
+    v: 1,
+    dashboardId: "t",
+    generatedAt: at,
+    sources: [{ id: "notes", kind: "notes", status: "ok", syncedAt: at }],
+    widgets,
+  });
+  const render = (definition: Json, widgets: Json[]) =>
+    renderDashboardHtml(definition as never, snapshot(widgets) as never, at);
+
+  it("C57 no script and no outside resource; every text escaped; each chart an SVG then the table of the same values; the footer's date; the stamp is local", () => {
+    const html = render(
+      {
+        title: `<script>alert("x")</script>`,
+        kind: "overview",
+        widgets: [
+          { id: "k", kind: "kpi", title: "<b>x</b>", source: { kind: "metrics", series: "runs24h" } },
+          { id: "b", kind: "bars", title: "Barras", source: { kind: "notes", groupBy: "status" } },
+          { id: "l", kind: "list", title: "Lista", source: { kind: "connector", id: "c", read: "list" } },
+        ],
+      },
+      [
+        {
+          id: "k",
+          kind: "kpi",
+          status: "ok",
+          data: {
+            value: 3,
+            series: [
+              { at: at - 3_600_000, value: 2 },
+              { at, value: 3 },
+            ],
+          },
+        },
+        {
+          id: "b",
+          kind: "bars",
+          status: "ok",
+          data: {
+            categories: [
+              { label: "active", count: 5 },
+              { label: "draft", count: 2 },
+            ],
+          },
+        },
+        {
+          id: "l",
+          kind: "list",
+          status: "ok",
+          data: {
+            items: [
+              { id: "a", title: "url(x) & @import <link>", href: "https://ex.example/a" },
+              { id: "b", title: "Mal", href: "javascript:alert(1)" },
+            ],
+          },
+        },
+      ],
+    );
+    for (const banned of ["<script", "src=", "url(", "@import", "<link"])
+      expect(html, banned).not.toContain(banned);
+    expect(html).toContain("&lt;script&gt;alert&#40;&quot;x&quot;)&lt;/script&gt;");
+    // text that spells a resource is written so that it no longer does
+    expect(html).toContain("url&#40;x) &amp; &#64;import &lt;link&gt;");
+    expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
+    expect(html).toContain('<a href="https://ex.example/a">');
+    expect(html).not.toContain("javascript:");
+    const charts = [...html.matchAll(/<svg[\s\S]*?<\/svg>(<table>[\s\S]*?<\/table>)/g)];
+    expect(charts).toHaveLength(2);
+    expect(charts[0]![1]).toContain("<td>2</td>");
+    expect(charts[0]![1]).toContain("<td>3</td>");
+    expect(charts[1]![1]).toContain("<td>active</td><td>5</td>");
+    expect(charts[1]![1]).toContain("<td>draft</td><td>2</td>");
+    expect(html).toContain("Exportado do MordomoOS em 30/10/2026");
+    expect(html).toContain("Atualizado às 14:07");
+    expect(exportStamp(at)).toBe("2026-10-30T1407");
+  });
+
+  it("C57 a question dashboard's citations read nome § seção", () => {
+    const html = render({ title: "Pergunta", kind: "question", widgets: [] }, [
+      {
+        id: "metas",
+        kind: "note",
+        status: "ok",
+        data: {
+          text: "Crescer",
+          title: "Metas",
+          citations: [{ path: "/m/plano.md", section: "Metas", name: "plano.md", fileId: 4 }],
+        },
+      },
+    ]);
+    expect(html).toContain("<li>plano.md § Metas</li>");
   });
 });

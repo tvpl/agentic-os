@@ -31,7 +31,7 @@ const always = (): boolean => true;
  * The routes that can answer the refusals of the path filter (`403 forbidden_path`) and of the safe reader (`404
  * not_a_file`, `413 file_too_large`). They are not common errors: `GET /api/settings` never touches a path. The lists
  * are not an opinion about which routes "look like" they read files: `tests/api.refusals.test.ts` calls each of the
- * 153 routes, once for each kind of read the route makes (one kind refuses at a time: a hostile file is one file, and
+ * 155 routes, once for each kind of read the route makes (one kind refuses at a time: a hostile file is one file, and
  * a refusal that only exists after an earlier read succeeded is not seen when that read refuses too), and compares
  * the routes that answered the refusal with these lists in both directions. `404` and `413` have a list each: a route
  * can answer one and not the other. A route that gains a read, or loses one, fails there
@@ -67,6 +67,8 @@ const FORBIDDEN_PATH_ROUTES: ReadonlySet<string> = new Set([
   "PATCH /api/contexts/:id",
   "POST /api/connectors",
   "POST /api/dashboards",
+  // cerebro-paineis, batch B: an export is written under artifacts/dashboards/ through the guarded writer.
+  "POST /api/dashboards/:id/export",
   // cerebro-faxina-guiada, door 4: the undo reads the manifest it is given through the safe reader (strict).
   "POST /api/memory/cleanup/undo",
   "POST /api/memory/journal/append",

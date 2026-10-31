@@ -13,6 +13,7 @@ import {
   calendarItems,
   fakeConnectorFetch,
   paineisWorld,
+  questionWorld,
   type Json,
   type PaineisWorld,
 } from "./helpers/paineisWorld.js";
@@ -611,5 +612,132 @@ describe("C44 the reminders of a refresh", () => {
         ],
       ]);
     });
+  });
+});
+
+// ---- batch B: the export's name and footer (C57) -----------------------------------------------------------------
+
+describe("C57 POST /api/dashboards/:id/export", () => {
+  const at1407 = new Date(2026, 9, 30, 14, 7, 20).getTime();
+  /** What every chart must be: an inline SVG followed by the table of its values. */
+  const charts = (html: string) => [...html.matchAll(/<svg[\s\S]*?<\/svg>(<table>[\s\S]*?<\/table>)?/g)];
+  const freeze = async <T>(when: number, fn: () => Promise<T>): Promise<T> => {
+    clock.set(when);
+    vi.useFakeTimers({ toFake: ["Date"], now: when });
+    try {
+      return await fn();
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+
+  it("C57 at 14:07 local the file is artifacts/dashboards/visao-geral-2026-10-30T1407.html: no script nor outside resource, each chart an SVG then its table, the title escaped, the footer's date; the same minute again is -2; no snapshot is 409 no_snapshot; nao-existe is 404", async () => {
+    await fresh(async (world) => {
+      const created = await world.create({ template: "overview" });
+      const widgets = [
+        {
+          id: "k",
+          kind: "kpi",
+          title: "Execuções",
+          source: { kind: "metrics", series: "runs24h" },
+          options: { measure: "latest" },
+        },
+        { id: "b", kind: "bars", title: "<b>x</b>", source: { kind: "notes", groupBy: "status" } },
+      ];
+      const put = await world.call("PUT", "/api/dashboards/visao-geral", {
+        definition: { ...created.body.definition, refresh: "manual", widgets },
+        baseVersion: created.body.version,
+      });
+      expect(put.status, JSON.stringify(put.body)).toBe(200);
+      const dir = path.join(world.ctx.paths.artifacts, "dashboards");
+      const listing = () => (fs.existsSync(dir) ? fs.readdirSync(dir).sort() : []);
+
+      // no snapshot yet: 409 no_snapshot and nothing written
+      const none = await freeze(at1407, () => world.call("POST", "/api/dashboards/visao-geral/export"));
+      expect([none.status, none.body.error.code]).toEqual([409, "no_snapshot"]);
+      expect(listing()).toEqual([]);
+
+      world.note(path.join(world.memory, "notes", "a.md"), { status: "active" });
+      world.note(path.join(world.memory, "notes", "b.md"), { status: "draft" });
+      await world.index();
+      for (const [when, runs] of [
+        [at1407 - 2 * 3_600_000, 4],
+        [at1407, 7],
+      ] as const) {
+        world.ctx.metricsHistory.sample(
+          {
+            runs: {
+              total: runs,
+              last24h: runs,
+              failed24h: 0,
+              costTodayUsd: 0,
+              tokensToday: 0,
+              spendWeekUsd: 0,
+            },
+            inboxUnread: 0,
+            approvalsPending: 0,
+            approvalWaitAvgMs: null,
+          },
+          when,
+        );
+        await freeze(when, async () => expect((await world.refresh("visao-geral")).status).toBe(200));
+      }
+
+      const first = await freeze(at1407, () => world.call("POST", "/api/dashboards/visao-geral/export"));
+      expect(first.status, JSON.stringify(first.body)).toBe(200);
+      expect(first.body.path).toBe(path.join(dir, "visao-geral-2026-10-30T1407.html"));
+      const html = fs.readFileSync(first.body.path, "utf8");
+      for (const banned of ["<script", "src=", "url(", "@import", "<link"])
+        expect(html, banned).not.toContain(banned);
+      const found = charts(html);
+      expect(found).toHaveLength(2);
+      for (const [, tableHtml] of found) expect(tableHtml, "a table right after each svg").toBeDefined();
+      // the KPI's table holds its two points, the bars' table its two categories
+      expect(found[0]![1]).toContain("<td>4</td>");
+      expect(found[0]![1]).toContain("<td>7</td>");
+      expect(found[1]![1]).toContain("<td>active</td><td>1</td>");
+      expect(found[1]![1]).toContain("<td>draft</td><td>1</td>");
+      expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
+      expect(html).not.toContain("<b>x</b>");
+      expect(html).toContain("Exportado do MordomoOS em 30/10/2026");
+
+      const second = await freeze(at1407 + 20_000, () =>
+        world.call("POST", "/api/dashboards/visao-geral/export"),
+      );
+      expect(second.body.path).toBe(path.join(dir, "visao-geral-2026-10-30T1407-2.html"));
+
+      const missing = await world.call("POST", "/api/dashboards/nao-existe/export");
+      expect([missing.status, missing.body.error.code]).toEqual([404, "dashboard_not_found"]);
+    });
+  });
+
+  it("C57 a question dashboard's file holds its citations as nome § seção", async () => {
+    const world = await questionWorld(`mordomo-paineis-localday-q-${++seq}-`);
+    try {
+      const file = world.note(path.join(world.memory, "notes", "plano.md"), {}, "# Plano\n\n## Metas\n\nx\n");
+      await world.index();
+      await world.create({ template: "question", question: "Quais são as metas?" });
+      world.answer({
+        v: 1,
+        widgets: [
+          {
+            id: "metas",
+            kind: "note",
+            title: "Metas",
+            data: { text: "Crescer." },
+            citations: [{ path: file, section: "Metas" }],
+          },
+        ],
+      });
+      const res = await world.refresh("pergunta");
+      expect(res.status).toBe(202);
+      expect((await world.settle("pergunta", res.body.runId)).status).toBe("ok");
+      const out = await freeze(at1407, () => world.call("POST", "/api/dashboards/pergunta/export"));
+      expect(out.status, JSON.stringify(out.body)).toBe(200);
+      expect(out.body.path).toMatch(/pergunta-2026-10-30T1407\.html$/);
+      expect(fs.readFileSync(out.body.path, "utf8")).toContain("plano.md § Metas");
+    } finally {
+      await world.close();
+    }
   });
 });

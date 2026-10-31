@@ -63,6 +63,16 @@ export class DashboardSkillUnavailableError extends Error {
   }
 }
 
+/** `409 no_snapshot`: a dashboard never refreshed has nothing to export (AC 55). */
+export class NoSnapshotError extends Error {
+  readonly statusCode = 409;
+  readonly code = "no_snapshot";
+  constructor(id: string) {
+    super(`${id} has no snapshot yet: refresh it first.`);
+    this.name = "NoSnapshotError";
+  }
+}
+
 const dashboardNotFound = (id: string) => new DashboardNotFoundError(id);
 
 export interface StoredDashboard {

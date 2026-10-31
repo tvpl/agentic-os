@@ -1083,6 +1083,44 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(153);"],
       head: ["    expect(operations).toBe(154);"],
     },
+    // cerebro-paineis, batch B, added POST /api/dashboards/:id/export (owner) on top of the tasks route.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: the export route under /api",
+      base: ["    expect(routes).toHaveLength(152);"],
+      head: ["    expect(routes).toHaveLength(153);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: owners and scoped routes, with the export",
+      base: ["    expect([owners, scoped]).toEqual([80, 72]);"],
+      head: ["    expect([owners, scoped]).toEqual([81, 72]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: the registered routes, with the export",
+      base: ["    expect(Object.keys(registered)).toHaveLength(152);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(153);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: the routes of each scope, with the export",
+      times: 2,
+      base: ["toEqual({ owner: 80, monitor: 33, content: 32, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 81, monitor: 33, content: 32, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: the routes after the pairing passes, with the export",
+      base: ["    expect(apiRoutes()).toHaveLength(152);"],
+      head: ["    expect(apiRoutes()).toHaveLength(153);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-paineis batch B: the operations of the route document, with the export",
+      base: ["    expect(operations).toBe(154);"],
+      head: ["    expect(operations).toBe(155);"],
+    },
     // cerebro-paineis, batch B, added migration 27 (the reminder kind of the inbox, door 8) on top of batch A's.
     {
       suite: "tests/device-scopes.test.ts",

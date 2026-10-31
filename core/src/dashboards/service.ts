@@ -19,9 +19,12 @@ import { refreshDue, snapshotStale } from "./schedule.js";
 import type { DashboardSourceMap } from "./sources.js";
 import { CleanupContextNotFoundError, resolveCleanupScope, type CleanupScope } from "../memory/cleanup.js";
 import { homeReadScope, readWorkspaceFile } from "../security/safeFs.js";
+import { writeWorkspaceFile } from "../security/safeWrite.js";
+import { exportStamp, renderDashboardHtml } from "./export.js";
 import { QUESTION_RUN_CARD, checkQuestionResult } from "./question.js";
 import {
   DashboardSkillUnavailableError,
+  NoSnapshotError,
   RefreshInProgressError,
   type DashboardProblem,
   type DashboardStore,
@@ -337,6 +340,30 @@ export class DashboardService {
     }
     await Promise.all(started);
     return ids;
+  }
+
+  /**
+   * Write the stored snapshot as one HTML page under `artifacts/dashboards/<id>-<AAAA-MM-DDTHHMM>.html`, local time, with
+   * `-2` and on for a second export of the same minute (AC 55, amendment 20); answers its path.
+   */
+  exportHtml(id: string, now = Date.now()): string {
+    const stored = this.store.require(id);
+    const snapshot = this.store.snapshot(id);
+    if (snapshot === null) throw new NoSnapshotError(id);
+    const html = renderDashboardHtml(stored.definition, snapshot, now);
+    const { paths } = this.deps.env;
+    const scope = homeReadScope(paths.home, [paths.artifacts], this.settings().excludes);
+    const base = `${id}-${exportStamp(now)}`;
+    for (let n = 1; ; n++) {
+      const file = path.join(paths.artifacts, "dashboards", `${base}${n === 1 ? "" : `-${n}`}.html`);
+      try {
+        writeWorkspaceFile(scope, file, html, { mode: "create" });
+        return file;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "EEXIST") continue;
+        throw err;
+      }
+    }
   }
 
   /** Archive a dashboard (AC 14) under the local day of `now`. */
