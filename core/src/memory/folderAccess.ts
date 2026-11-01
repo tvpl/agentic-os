@@ -31,7 +31,7 @@ import {
 export type { FolderAudience, FolderLevel };
 
 export interface FolderAccessEnv {
-  paths: MordomoPaths;
+  paths: Pick<MordomoPaths, "artifacts">;
   settings: Settings;
   /** Platform whose file-name rules apply (tests only); defaults to this process's. */
   platform?: NodeJS.Platform;
@@ -64,6 +64,8 @@ export interface FolderAccess {
   rules(audience: FolderAudience): AccessRule[];
   /** Whether any entry gives `audience` a level other than `write`. */
   restricts(audience: FolderAudience): boolean;
+  /** Whether any entry gives `audience` the level `hide` (so that its search needs an index of its own, door 19). */
+  hides(audience: FolderAudience): boolean;
 }
 
 const isLevel = (value: unknown): value is FolderLevel =>
@@ -155,6 +157,9 @@ export function resolveFolderAccess(env: FolderAccessEnv): FolderAccess {
     },
     restricts(audience) {
       return entries.some((e) => e[audience] !== "write");
+    },
+    hides(audience) {
+      return entries.some((e) => e[audience] === "hide");
     },
   };
 }

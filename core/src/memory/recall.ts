@@ -1,3 +1,4 @@
+import type { FtsTable } from "./audienceIndex.js";
 import path from "node:path";
 import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
@@ -62,6 +63,8 @@ export interface RecallOptions {
   natureza?: readonly Natureza[];
   /** Only excerpts of files whose scope is one of these (AC 12). */
   escopo?: readonly Escopo[];
+  /** The full-text table to rank over (`SearchFilters.index`, door 19 of cerebro-memoria-confiavel); the owner's by default. */
+  index?: FtsTable;
 }
 
 export interface RecallContext {
@@ -244,10 +247,12 @@ function scoreCandidates(db: Db, paths: MordomoPaths, settings: Settings, scope:
   const limit = Math.min(Math.max(opts.candidateLimit ?? 60, 5), 500);
   const byId = new Map<number, Scored>();
   const areaFilter = opts.area ? "AND f.area = ?" : "";
+  // One of three table names (`FtsTable`), never text from a caller.
+  const table = opts.index ?? "files_fts";
   const stmt = db.prepare(
-    `SELECT f.*, bm25(files_fts, 8.0, 3.0, 1.0) AS bm
-     FROM files_fts JOIN files f ON f.id = files_fts.rowid
-     WHERE files_fts MATCH ? ${areaFilter}
+    `SELECT f.*, bm25(${table}, 8.0, 3.0, 1.0) AS bm
+     FROM ${table} JOIN files f ON f.id = ${table}.rowid
+     WHERE ${table} MATCH ? ${areaFilter}
      ORDER BY bm LIMIT ?`,
   );
   // (b1) one FTS pass per keyword: coverage (how many keywords a file matches)

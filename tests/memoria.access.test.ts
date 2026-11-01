@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { resolveFolderAccess } from "../core/src/memory/folderAccess.js";
 import { localDateString } from "../core/src/memory/journal.js";
 import { code, memoriaWorld, runWorld, type Json, type MemoriaWorld } from "./helpers/memoriaWorld.js";
+import { FIXTURES, order, seedFixture } from "./helpers/searchFixtures.js";
 
 /**
  * .specs/features/cerebro-memoria-confiavel, batch B1, S4: the access of folders on every route a device or a run's
@@ -388,6 +389,26 @@ describe("C113 the index readers a device calls, against the twin", () => {
       expect(res.status, url).toBe(200);
       expect(seen[url], url).toEqual(stable(asNonOwner(url, res.body)));
     }
+  });
+});
+
+describe("C113 the order a hidden folder does not change", () => {
+  it("C113 a device's search order equals the twin's when the hidden notes would change the weight of a word (bm25 over the whole index would not)", async () => {
+    const fixture = FIXTURES[0]!;
+    const w = await memoriaWorld("mordomo-access-c113-order-");
+    opened.push(w);
+    const { fin, outra } = await seedFixture(w, fixture);
+    const url = `/api/memory/search?q=${encodeURIComponent(fixture.query)}&limit=200`;
+    expect(
+      order((await w.call("GET", url)).body, outra),
+      "over the whole index the order is the other one",
+    ).toEqual(["b.md", "a.md"]);
+    await setAccess(w, [{ path: fin, agents: "write", devices: "hide" }]);
+    const device = await w.call("GET", url, undefined, w.device(["content"]));
+    await twin(w);
+    const owned = await w.call("GET", url);
+    expect(order(owned.body, outra)).toEqual(fixture.twin);
+    expect(order(device.body, outra)).toEqual(fixture.twin);
   });
 });
 

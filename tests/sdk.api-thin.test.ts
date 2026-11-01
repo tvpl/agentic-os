@@ -1333,6 +1333,27 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(162);"],
       head: ["    expect(operations).toBe(164);"],
     },
+    // cerebro-memoria-confiavel, round 1 of the verification, part 2, added migration 31 (the search indexes of the
+    // audiences, door 19). Amends the head of batch A2's amendment above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel round 1: migration 31 after 30, in the comment",
+      base: [
+        "      // batch B), a table made again with the same rows, and the keys and provenance of facts, the history of memory/",
+        "      // and the review inbox (cerebro-memoria-confiavel), columns on facts and three new tables.",
+      ],
+      head: [
+        "      // batch B), a table made again with the same rows, and the keys and provenance of facts, the history of memory/",
+        "      // and the review inbox (cerebro-memoria-confiavel), columns on facts and three new tables, and the search indexes",
+        "      // of the audiences (door 19), two more.",
+      ],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel round 1: audience-search-indexes after memory-proposals",
+      base: ['        "memory-proposals",', "      ]);"],
+      head: ['        "memory-proposals",', '        "audience-search-indexes",', "      ]);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

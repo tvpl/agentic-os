@@ -743,4 +743,22 @@ CREATE TABLE IF NOT EXISTS memory_proposals (
 CREATE INDEX IF NOT EXISTS idx_memory_proposals_status ON memory_proposals(status, created_at);
 `,
   },
+  {
+    version: 31,
+    name: "audience-search-indexes",
+    // cerebro-memoria-confiavel, door 19: the full-text index each audience that is not the owner searches (`agents`, the
+    // runs; `devices`, the paired devices), holding only the files that audience may see, so that bm25 (its IDF and its
+    // average length are worked out over the whole index) ranks as it would with the hidden folders not there. Contentless
+    // (the text stays in `files_fts`, the snippet is read from it) and created EMPTY: what each holds is decided by the
+    // `meta` row `fts.<audience>` (`core/src/memory/audienceIndex.ts`), which a new database does not have, so the first
+    // search of an audience builds it. `contentless_delete` (SQLite 3.43) so a row can be deleted by its rowid.
+    sql: `
+CREATE VIRTUAL TABLE IF NOT EXISTS files_fts_agents USING fts5(
+  name, rel, content, content='', contentless_delete=1, tokenize='porter unicode61'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS files_fts_devices USING fts5(
+  name, rel, content, content='', contentless_delete=1, tokenize='porter unicode61'
+);
+`,
+  },
 ];

@@ -7,6 +7,7 @@ import { RunFailureSchema } from "../contracts/src/api/wire.js";
 import type { AgentRun } from "@mordomo/core";
 import { FAKE_BIN } from "./helpers.js";
 import { code, runWorld, type Json, type RunWorld } from "./helpers/memoriaWorld.js";
+import { FIXTURES, order, seedFixture } from "./helpers/searchFixtures.js";
 
 /**
  * .specs/features/cerebro-memoria-confiavel, batch B1, S4r: the access of folders on every way a run is created and when
@@ -177,6 +178,30 @@ describe("C120 a write run's credential and the folders hidden from agents", () 
       expect(res.status, url).toBe(200);
       expect(seen[url], url).toEqual(strip(res.body));
     }
+  });
+});
+
+describe("C120 the order a hidden folder does not change", () => {
+  it("C120 a write run's search order equals the twin's when the hidden notes would change the weight of a word (bm25 over the whole index would not)", async () => {
+    const fixture = FIXTURES[0]!;
+    const w = await runWorld("mordomo-access-c120-order-");
+    opened.push(w);
+    const { fin, outra } = await seedFixture(w, fixture);
+    const url = `/api/memory/search?q=${encodeURIComponent(fixture.query)}&limit=200`;
+    const run = w.run("write");
+    expect(
+      order((await w.call("GET", url, undefined, run.headers)).body, outra),
+      "over the whole index the order is the other one",
+    ).toEqual(["b.md", "a.md"]);
+    await setAccess(w, [{ path: fin, agents: "hide", devices: "write" }]);
+    const seen = await w.call("GET", url, undefined, run.headers);
+    w.update((s) => {
+      s.folderAccess = [];
+      s.excludes = [...s.excludes, "fin"];
+    });
+    await w.index();
+    expect(order((await w.call("GET", url, undefined, run.headers)).body, outra)).toEqual(fixture.twin);
+    expect(order(seen.body, outra)).toEqual(fixture.twin);
   });
 });
 

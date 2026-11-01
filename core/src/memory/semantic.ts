@@ -131,8 +131,7 @@ export class SemanticSearch {
 
     const byId = new Map<number, SearchHit>();
     for (const hit of text) byId.set(hit.id, hit);
-    const semanticIds = ranked.map((r) => r.id);
-    const missing = semanticIds.filter((id) => !byId.has(id));
+    const missing = ranked.map((r) => r.id).filter((id) => !byId.has(id));
     if (missing.length > 0) {
       const rows = this.db
         .prepare(`SELECT * FROM files WHERE id IN (${missing.map(() => "?").join(",")})`)
@@ -142,6 +141,9 @@ export class SemanticSearch {
         if (admits(filters, file)) byId.set(file.id, searchHitOf(file, { snippet: null, score: 0, via: "semantic" }));
       }
     }
+    // A file the filters do not admit (a folder hidden from the caller) is out of the ranking before the lists are fused,
+    // not after: a rank that counts it would give the files after it a different place than in a world without it.
+    const semanticIds = ranked.map((r) => r.id).filter((id) => byId.has(id));
     const textIds = text.map((hit) => hit.id);
     const lists = mode === "semantic" ? [semanticIds] : [textIds, semanticIds];
     const inText = new Set(mode === "semantic" ? [] : textIds);

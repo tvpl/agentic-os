@@ -14,6 +14,7 @@ import { parsePassages, type Passage } from "./natureza.js";
 import { parseTasks, type ParsedTask } from "./tasks.js";
 import { extractLinks, type ParsedLink } from "./linkParser.js";
 import { embedPending } from "./vectors.js";
+import { AudienceMirror, ensureAudienceIndex, type Audience, type FtsTable } from "./audienceIndex.js";
 import {
   DEFAULT_HISTORY_MAX_BYTES,
   MAX_VERSIONED_BYTES,
@@ -247,6 +248,8 @@ export class MemoryIndexer {
   private readonly requested = new Set<string>();
   private requestedRun: Promise<void> | null = null;
   private runner: IndexRunner | null = null;
+  /** The writer of the audience indexes of the write transaction that runs (door 19): made on first use, dropped at its end. */
+  private mirror: AudienceMirror | null = null;
   private cancelRequested = false;
   /** How long the write transactions since the last `takeWriteMs` held the write lock. */
   private writeMs = 0;
@@ -326,6 +329,7 @@ export class MemoryIndexer {
     try {
       return this.db.transaction(work).immediate();
     } finally {
+      this.mirror = null;
       this.writeMs += performance.now() - started;
     }
   }
@@ -600,6 +604,8 @@ export class MemoryIndexer {
         if (!rootArea.has(r)) rootArea.set(r, f.area);
       }
       const roots = [...rootArea.keys()].sort();
+      // The audiences' indexes follow the settings of this pass (door 19): rebuilt first if they no longer match.
+      for (const audience of ["agents", "devices"] as const) ensureAudienceIndex(this.audienceEnv(settings, roots), audience);
       const rootSet = new Set(roots);
       // Every byte below is read through the safe-read primitive on the real path, under these roots.
       const scope = readScope({ ...this.filterOptions, roots, excludes: settings.excludes });
@@ -929,6 +935,30 @@ export class MemoryIndexer {
     };
   }
 
+  private audienceMirror(): AudienceMirror {
+    return (this.mirror ??= new AudienceMirror(this.db, this.filterOptions.platform));
+  }
+
+  /**
+   * The full-text table `audience` searches (door 19): the owner's `files_fts` when nothing is hidden from it, else its
+   * own, made (or rebuilt) first if the settings no longer match the one that exists.
+   */
+  audienceTable(audience: Audience): FtsTable {
+    return ensureAudienceIndex(this.audienceEnv(this.getSettings()), audience);
+  }
+
+  private audienceEnv(settings: Settings, roots?: readonly string[]) {
+    return {
+      db: this.db,
+      homeDir: this.filterOptions.homeDir,
+      settings,
+      roots:
+        roots ??
+        [...settings.indexedFolders, ...this.implicitRoots].filter((f) => f.enabled).map((f) => path.resolve(f.path)),
+      platform: this.filterOptions.platform,
+    };
+  }
+
   /** The rows of one prepared file, inside the wave's write transaction. */
   private applyFile(file: PreparedFile, stats: IndexStats): void {
     const { root, full, rel, area } = file.c;
@@ -947,6 +977,7 @@ export class MemoryIndexer {
       this.db
         .prepare("INSERT INTO files_fts (rowid, name, rel, content) VALUES (?, ?, ?, ?)")
         .run(id, file.name, rel, file.content);
+      this.audienceMirror().upsert(id, { root, rel }, file.name, file.content);
       this.storeTerms(id, file.terms);
       stats.updated++;
     } else {
@@ -959,6 +990,7 @@ export class MemoryIndexer {
       this.db
         .prepare("INSERT INTO files_fts (rowid, name, rel, content) VALUES (?, ?, ?, ?)")
         .run(id, file.name, rel, file.content);
+      this.audienceMirror().upsert(id, { root, rel }, file.name, file.content);
       this.storeTerms(id, file.terms);
       stats.added++;
     }
@@ -1102,6 +1134,7 @@ export class MemoryIndexer {
   private removeFile(id: number, stats: IndexStats): void {
     this.db.prepare("DELETE FROM files WHERE id = ?").run(id);
     this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(id);
+    this.audienceMirror().remove(id);
     this.db.prepare("DELETE FROM note_links WHERE src_id = ?").run(id);
     // The passages go with the file, in the same transaction; its `review_state` (keyed by path, door 6) stays.
     this.db.prepare("DELETE FROM note_passages WHERE file_id = ?").run(id);

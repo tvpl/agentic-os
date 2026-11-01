@@ -231,7 +231,8 @@ describe("C79 migration 30 makes the review inbox", () => {
     const world = homeAt27([]);
     const { db, migration } = openDb(world.paths);
     try {
-      expect(migration).toMatchObject({ fromVersion: 27, toVersion: 30 });
+      // 31 (the search indexes of the audiences, cerebro-memoria-confiavel door 19) follows migration 30 in the same pass
+      expect(migration).toMatchObject({ fromVersion: 27, toVersion: 31 });
       expect(MIGRATIONS.find((m) => m.version === 30)!.name).toBe("memory-proposals");
       const want = [
         { name: "id", type: "TEXT", notnull: 0, pk: 1 },
@@ -387,8 +388,9 @@ describe("C39 a backup carries the history and the migrations run on restore", (
     restoreBackup(paths, name!);
     const opened = openDb(paths);
     try {
-      expect(opened.migration).toMatchObject({ fromVersion: 27, toVersion: 30 });
-      expect(opened.db.pragma("user_version", { simple: true })).toBe(30);
+      // the schema is 31 since door 19 (the search indexes of the audiences) follows the review inbox of 30
+      expect(opened.migration).toMatchObject({ fromVersion: 27, toVersion: 31 });
+      expect(opened.db.pragma("user_version", { simple: true })).toBe(31);
       expect(opened.db.prepare("SELECT subject_key, predicate_key, author, trust FROM facts").all()).toEqual([
         { subject_key: "cliente sao paulo", predicate_key: "status", author: "unknown", trust: "inferido" },
       ]);

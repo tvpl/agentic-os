@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { code, runWorld, type Json, type RunWorld } from "./helpers/memoriaWorld.js";
+import { FIXTURES, filler, order, seedFixture } from "./helpers/searchFixtures.js";
 
 /**
  * .specs/features/cerebro-memoria-confiavel, round 1 of the verification, part 2: what a paired device reads of the
@@ -250,5 +251,147 @@ describe("C162 a hidden folder in free text", () => {
       if (was === undefined) delete process.env.HOME;
       else process.env.HOME = was;
     }
+  });
+});
+
+// ---- C163: the search index of each audience --------------------------------------------------------------------------
+
+describe("C163 the order a device and a run are given", () => {
+  for (const fixture of FIXTURES) {
+    it(`C163 ${fixture.name}: a device's and a run's search order equals the twin's, and the shared index would not`, async () => {
+      const w = await runWorld(`mordomo-round1-c163-${fixture.name}-`);
+      opened.push(w);
+      const { fin, outra } = await seedFixture(w, fixture);
+      const url = `/api/memory/search?q=${encodeURIComponent(fixture.query)}&limit=200`;
+      const owner = await w.call("GET", url);
+      // over the whole index the hidden notes change the order (the case is not empty)
+      const shared = order(owner.body, outra);
+      expect(shared).toEqual([fixture.twin[1], fixture.twin[0]]);
+
+      const res = await w.call("PUT", "/api/settings", {
+        folderAccess: [{ path: fin, agents: "hide", devices: "hide" }],
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const device = w.device(["content"]);
+      const run = w.run("write");
+      const seen = {
+        device: await w.call("GET", url, undefined, device),
+        run: await w.call("GET", url, undefined, run.headers),
+      };
+      const recallUrl = `/api/memory/recall?q=${encodeURIComponent(fixture.query)}&record=false&k=10`;
+      const recalled = {
+        device: await w.call("GET", recallUrl, undefined, device),
+        run: await w.call("GET", recallUrl, undefined, run.headers),
+      };
+
+      // the twin: the same home with `fin` taken out of the world
+      w.update((s) => {
+        s.folderAccess = [];
+        s.excludes = [...s.excludes, "fin"];
+      });
+      await w.index();
+      const twin = await w.call("GET", url);
+      expect(order(twin.body, outra)).toEqual(fixture.twin);
+      const twinRecall = await w.call("GET", recallUrl);
+      expect(twinRecall.body.candidates.length).toBeGreaterThan(1);
+      for (const [who, answer] of Object.entries(recalled)) {
+        // the recall is ranked over the same index: the candidates and the excerpts in the twin's order, by value
+        const ranked = (r: Json) => ({
+          candidates: r.candidates.map((c: Json) => c.path),
+          answerContext: r.answerContext.map((c: Json) => [c.path, c.section, c.excerpt]),
+        });
+        expect(ranked(answer.body), who).toEqual(ranked(twinRecall.body));
+      }
+      for (const [who, answer] of Object.entries(seen)) {
+        expect(order(answer.body, outra), who).toEqual(fixture.twin);
+        // the hits are the twin's, snippet and all, with the score by place (amendment 4)
+        const strip = (hits: Json[]) => hits.map(({ score: _s, ...rest }) => rest);
+        expect(strip(answer.body), who).toEqual(strip(twin.body));
+        expect(
+          (answer.body as Json[]).map((h) => h.score),
+          who,
+        ).toEqual((answer.body as Json[]).map((_, i) => 1 / (i + 1)));
+      }
+    });
+  }
+
+  it("C163 the table follows every pass, a change of the access or of the excludes, and is rebuilt if its record is lost", async () => {
+    const w = await runWorld("mordomo-round1-c163-follow-");
+    opened.push(w);
+    const fin = path.join(w.memory, "notes", "fin");
+    const outra = path.join(w.memory, "notes", "outra");
+    w.put(path.join(outra, "um.md"), "# Um\n\nzebra zebra ${filler}\n".replace("${filler}", filler(20)));
+    w.put(path.join(fin, "segredo.md"), `# Segredo\n\nzebra ${filler(20)}\n`);
+    await w.index();
+    const docs = (table: string) =>
+      (w.ctx.db.prepare(`SELECT COUNT(*) c FROM ${table}_docsize`).get() as { c: number }).c;
+    const url = "/api/memory/search?q=zebra&limit=50";
+    const device = w.device(["content"]);
+    const names = async () =>
+      ((await w.call("GET", url, undefined, device)).body as Json[]).map((hit) =>
+        path.relative(w.memory, hit.path as string),
+      );
+
+    // nothing hidden: the device reads the owner's index and no copy is made
+    expect((await names()).sort()).toEqual(["notes/fin/segredo.md", "notes/outra/um.md"]);
+    expect(docs("files_fts_devices")).toBe(0);
+    expect(w.ctx.indexer.audienceTable("devices")).toBe("files_fts");
+
+    // hidden: its own table holds the visible rows only
+    await w.call("PUT", "/api/settings", { folderAccess: [{ path: fin, agents: "write", devices: "hide" }] });
+    expect(await names()).toEqual(["notes/outra/um.md"]);
+    expect(w.ctx.indexer.audienceTable("devices")).toBe("files_fts_devices");
+    expect(docs("files_fts_devices")).toBe(1);
+    expect(w.ctx.indexer.audienceTable("agents")).toBe("files_fts");
+    expect(docs("files_fts_agents")).toBe(0);
+
+    // a pass keeps it current: a new visible note, a new hidden one, a changed one and a removed one
+    w.put(path.join(outra, "dois.md"), `# Dois\n\nzebra ${filler(20)}\n`);
+    w.put(path.join(fin, "novo.md"), `# Novo\n\nzebra ${filler(20)}\n`);
+    fs.writeFileSync(path.join(outra, "um.md"), `# Um\n\nsem a palavra ${filler(5)}\n`);
+    await w.index();
+    expect(await names()).toEqual(["notes/outra/dois.md"]);
+    expect(docs("files_fts_devices")).toBe(2);
+    fs.rmSync(path.join(outra, "dois.md"));
+    await w.index();
+    expect(await names()).toEqual([]);
+    expect(docs("files_fts_devices")).toBe(1);
+
+    // a file that leaves the hidden folder comes into the table; one that enters leaves it
+    fs.mkdirSync(path.join(outra, "movida"), { recursive: true });
+    fs.renameSync(path.join(fin, "novo.md"), path.join(outra, "movida", "novo.md"));
+    await w.index();
+    expect(await names()).toEqual(["notes/outra/movida/novo.md"]);
+
+    // an exclude of the owner is a change of the view: rebuilt
+    w.update((s) => {
+      s.excludes = [...s.excludes, "movida"];
+    });
+    expect(await names()).toEqual([]);
+    expect(docs("files_fts_devices")).toBe(1); // um.md alone: the rows of the folder are not copied
+    w.update((s) => {
+      s.excludes = s.excludes.filter((e) => e !== "movida");
+    });
+    expect(await names()).toEqual(["notes/outra/movida/novo.md"]);
+
+    // the record is lost (a restored backup, a hand edit) while the table holds a hidden row: nothing hidden is shown
+    const hiddenId = (
+      w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(path.join(fin, "segredo.md")) as {
+        id: number;
+      }
+    ).id;
+    w.ctx.db
+      .prepare(
+        "INSERT INTO files_fts_devices (rowid, name, rel, content) VALUES (?, 'segredo.md', 'notes/fin/segredo.md', 'zebra')",
+      )
+      .run(hiddenId);
+    w.ctx.db.prepare("DELETE FROM meta WHERE key = 'fts.devices'").run();
+    expect(await names()).toEqual(["notes/outra/movida/novo.md"]);
+    expect(docs("files_fts_devices")).toBe(2); // um.md and movida/novo.md: the planted row of segredo.md is gone
+
+    // the hidden folder is shown again: back to the owner's index, the copy emptied
+    await w.call("PUT", "/api/settings", { folderAccess: [] });
+    expect((await names()).sort()).toEqual(["notes/fin/segredo.md", "notes/outra/movida/novo.md"]);
+    expect(docs("files_fts_devices")).toBe(0);
   });
 });

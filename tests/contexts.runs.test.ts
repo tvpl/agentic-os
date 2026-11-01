@@ -475,9 +475,10 @@ describe("S3 migration 23", () => {
       const { db, migration } = openDb(home.paths);
       try {
         // cerebro-faxina-guiada added migration 24 after this one, cerebro-natureza 25, cerebro-paineis 26 and 27, and
-        // cerebro-memoria-confiavel 28, 29 and 30: a home migrates to them in the same pass.
-        expect(migration.toVersion).toBe(30);
-        expect(db.pragma("user_version", { simple: true })).toBe(30);
+        // cerebro-memoria-confiavel 28, 29, 30 and 31 (the search indexes of the audiences): a home migrates to them in
+        // the same pass.
+        expect(migration.toVersion).toBe(31);
+        expect(db.pragma("user_version", { simple: true })).toBe(31);
         const added = { name: "context_id", type: "TEXT", notnull: 0, dflt_value: null, pk: 0 };
         expect(columns(db, "runs")).toEqual([...before.runs, added]);
         expect(columns(db, "sessions")).toEqual([...before.sessions, added]);
@@ -496,8 +497,8 @@ describe("S3 migration 23", () => {
         if (m23.up) m23.up(db);
         if (m23.sql) db.exec(m23.sql);
         expect(schema()).toEqual(once);
-        expect(MIGRATIONS.at(-1)!.version).toBe(30);
-        expect(MIGRATIONS.at(-1)!.name).toBe("memory-proposals");
+        expect(MIGRATIONS.at(-1)!.version).toBe(31);
+        expect(MIGRATIONS.at(-1)!.name).toBe("audience-search-indexes");
       } finally {
         db.close();
       }

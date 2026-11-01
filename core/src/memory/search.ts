@@ -2,6 +2,7 @@ import type { Db } from "../db/db.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
 import { readEscopo, readNatureza, type Escopo, type Natureza } from "./natureza.js";
 import { extractKeywords } from "./recall.js";
+import type { FtsTable } from "./audienceIndex.js";
 
 export interface SearchFilters {
   query: string;
@@ -17,6 +18,11 @@ export interface SearchFilters {
   natureza?: readonly Natureza[];
   /** Only files whose scope, read through the closed list, is one of these (cerebro-natureza, AC 9). */
   escopo?: readonly Escopo[];
+  /**
+   * The full-text table to rank over (`MemoryIndexer.audienceTable`, door 19 of cerebro-memoria-confiavel): the owner's
+   * `files_fts` by default; a device and a run's credential pass their own, which holds only what they may see.
+   */
+  index?: FtsTable;
 }
 
 /** Which half of the search found a file: the words (`text`), the vectors (`semantic`), or both. */
@@ -107,15 +113,18 @@ const hitOf = (r: Row): SearchHit =>
 function matches(db: Db, fts: string, filters: SearchFilters, limit: number, skip?: ReadonlySet<number>): SearchHit[] {
   const { clauses, params } = searchFilters(filters);
   const where = clauses.length ? `AND ${clauses.join(" AND ")}` : "";
+  // The table is one of three names (`FtsTable`), never text from a caller. A table of an audience holds the index and
+  // not the text, so it ranks and the snippet is read from the owner's table below, for the rows kept.
+  const table = filters.index ?? "files_fts";
+  const own = table === "files_fts";
   const out: SearchHit[] = [];
   let read = 0;
   for (const row of db
     .prepare(
-      `SELECT f.*, bm25(files_fts) AS score,
-              snippet(files_fts, 2, '<mark>', '</mark>', '…', 12) AS snip
-       FROM files_fts
-       JOIN files f ON f.id = files_fts.rowid
-       WHERE files_fts MATCH ? ${where}
+      `SELECT f.*, bm25(${table}) AS score${own ? ", snippet(files_fts, 2, '<mark>', '</mark>', '…', 12) AS snip" : ""}
+       FROM ${table}
+       JOIN files f ON f.id = ${table}.rowid
+       WHERE ${table} MATCH ? ${where}
        ORDER BY score`,
     )
     .iterate(fts, ...params) as IterableIterator<Row>) {
@@ -123,6 +132,20 @@ function matches(db: Db, fts: string, filters: SearchFilters, limit: number, ski
     const hit = hitOf(row);
     if (skip?.has(hit.id) || !admits(filters, hit)) continue;
     out.push(hit);
+  }
+  if (!own && out.length > 0) {
+    const ids = out.map((hit) => hit.id);
+    const snippets = new Map(
+      (
+        db
+          .prepare(
+            `SELECT rowid AS id, snippet(files_fts, 2, '<mark>', '</mark>', '…', 12) AS snip
+             FROM files_fts WHERE files_fts MATCH ? AND rowid IN (${ids.map(() => "?").join(",")})`,
+          )
+          .all(fts, ...ids) as Array<{ id: number; snip: string | null }>
+      ).map((r) => [r.id, r.snip]),
+    );
+    for (const hit of out) hit.snippet = snippets.get(hit.id) ?? null;
   }
   return out;
 }

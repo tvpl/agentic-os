@@ -202,8 +202,10 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       ? (row: Row) => policy(row) && readable(reach.scope, path.join(row.root, row.rel))
       : policy;
     const allow = within ? (row: Row) => scoped(row) && within(row) : scoped;
+    // Anyone but the owner ranks over the index of their own audience, which holds only what they may see (door 19).
+    const index = view.audience ? ctx.indexer.audienceTable(view.audience) : undefined;
     const hits = await ctx.semantic.search(
-      { ...filters, ...natureFilters(q), query: q.q, allow },
+      { ...filters, ...natureFilters(q), query: q.q, allow, ...(index ? { index } : {}) },
       mode ?? "auto",
     );
     // Anyone but the owner is given the score of a hit's place in the list, never the bm25 of the whole index (amendment 4).
@@ -411,6 +413,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       excerptChars: q.excerptChars,
       ...(reach ? { scope: reach.scope } : {}),
       ...(within ? { within } : {}),
+      ...(view.audience ? { index: ctx.indexer.audienceTable(view.audience) } : {}),
       ...natureFilters(q),
     });
     if (q.record !== false) recordRecall(ctx.db, result);
