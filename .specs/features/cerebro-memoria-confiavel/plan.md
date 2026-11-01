@@ -509,6 +509,17 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
    reader"). Pergunta ao dono (G29): o padrão é este; a alternativa em (f) é deixar esses quatro leitores do dono como
    eram e comparar o dispositivo com o "gêmeo" só onde o dono já respeitava os `excludes`.
 
+4. **O `score` da busca para quem não é o dono (G28, respondida pelo dono em 01/11/2026).** Para um dispositivo e para a
+   credencial de uma execução, `score` em `GET /api/memory/search` (e onde o recall o devolve) é `1 / posição` na lista
+   devolvida, nunca o bm25 do índice inteiro, que mudava com uma pasta oculta e deixava inferir conteúdo oculto. O dono vê o
+   bm25 como antes. Os C113 e C120 seguem como escritos, por valor.
+5. **Rotas legíveis por dispositivo que citam caminhos (respondida pelo dono em 01/11/2026).** Para um dispositivo, tiram-se
+   os caminhos sob pastas `hide` para dispositivos de: `GET /api/runs`, `/api/runs/:id`, `/api/runs/:id/stream` e os eventos
+   de execução, índice e notificação do stream de eventos; `/api/sessions*`; `/api/approvals*`; `/api/notifications`;
+   `/api/objectives*`; as facetas de `/api/memory/status`; `/api/skills/:slug*`; `/api/connectors*`. Um item que só existe
+   por um caminho oculto some; um texto livre que cita um caminho oculto o troca por `(pasta oculta)`. Construído num lote
+   B1b, antes do B2, com checks próprios (C149 em diante).
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).
