@@ -143,6 +143,7 @@ export { ESCOPOS, NATUREZAS, parseEscopoList, parseNaturezaList } from "./memory
 export { reviewsDue } from "./memory/reviews.js";
 export { decideReview } from "./memory/reviewDecisions.js";
 export { getVersion, listVersions, recordFileVersion, recordMove, restoreVersion } from "./memory/history.js";
+export { visibleHistoryPaths } from "./memory/historyStore.js";
 export { accessSettings, exportsDir, resolveFolderAccess, type FolderAccess } from "./memory/folderAccess.js";
 export { HIDDEN_PATH_TEXT, citationRedactor, type CitationRedactor } from "./memory/citations.js";
 export { exportFolder, importFolder } from "./memory/transfer.js";

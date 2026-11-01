@@ -14,7 +14,19 @@ import { parsePassages, type Passage } from "./natureza.js";
 import { parseTasks, type ParsedTask } from "./tasks.js";
 import { extractLinks, type ParsedLink } from "./linkParser.js";
 import { embedPending } from "./vectors.js";
-import { AudienceMirror, ensureAudienceIndex, type Audience, type FtsTable } from "./audienceIndex.js";
+import {
+  AudienceMirror,
+  RELATED_DEVICES_TABLE,
+  allowOf,
+  ensureAudienceIndex,
+  readRelatedSpec,
+  readSpec,
+  relatedTableFor,
+  writeRelatedSpec,
+  type Audience,
+  type FtsTable,
+  type RelatedTable,
+} from "./audienceIndex.js";
 import {
   DEFAULT_HISTORY_MAX_BYTES,
   MAX_VERSIONED_BYTES,
@@ -782,6 +794,7 @@ export class MemoryIndexer {
       const owing = this.relatedOwed();
       for (const id of this.touched) owing.add(id);
       stats.related = yield* this.refreshRelatedSteps(owing);
+      yield* this.refreshDevicesRelatedSteps(owing);
       this.touched = new Set();
 
       stats.durationMs = Date.now() - started;
@@ -933,6 +946,65 @@ export class MemoryIndexer {
       markdown,
       whole,
     };
+  }
+
+  /** The table of related edges `audience` reads (door 20): the owner's, unless a folder is hidden from the devices. */
+  relatedTable(audience: Audience): RelatedTable {
+    return relatedTableFor(audience, this.audienceTable(audience));
+  }
+
+  /**
+   * The edges the devices read, worked out over the files they may see (door 20): the same TF-IDF as `file_related`, so
+   * a percentage and the words it names come from nothing a device cannot read. Built whole when the `meta` row
+   * `rel.devices` does not name the view the index of the devices is for (a first pass, or a change of the access),
+   * and after that, for the files that changed, as the owner's are; the row is written last, so a pass cut short builds
+   * it whole again.
+   */
+  private *refreshDevicesRelatedSteps(changed: ReadonlySet<number>): Generator<void, void> {
+    const spec = readSpec(this.db, "devices");
+    const done = readRelatedSpec(this.db);
+    if (spec === null) return;
+    if (spec === "shared") {
+      if (done !== null) {
+        this.write(() => {
+          this.db.prepare(`DELETE FROM ${RELATED_DEVICES_TABLE}`).run();
+          writeRelatedSpec(this.db, null);
+        });
+      }
+      return;
+    }
+    const allow = allowOf(spec, this.filterOptions.platform);
+    const rows = this.db
+      .prepare("SELECT t.file_id, t.terms, f.root, f.rel FROM file_terms t JOIN files f ON f.id = t.file_id")
+      .all() as Array<{ file_id: number; terms: string; root: string; rel: string }>;
+    const visible = rows.filter((r) => allow(r));
+    const docs = visible.map((r) => ({ id: r.file_id, tf: new Map<string, number>(JSON.parse(r.terms) as Array<[string, number]>) }));
+    const whole = done !== spec;
+    const own = new Set(docs.map((d) => d.id));
+    const focus = whole ? new Set(own) : new Set([...changed].filter((id) => own.has(id)));
+    if (!whole && focus.size === 0) return;
+    const edges = docs.length < 2 ? [] : relatedFromTerms(docs, { topK: 3, minSim: 0.18 }, focus.size >= docs.length ? undefined : focus);
+    const now = Date.now();
+    yield;
+    if (whole || focus.size >= docs.length) this.write(() => this.db.prepare(`DELETE FROM ${RELATED_DEVICES_TABLE}`).run());
+    else {
+      const ids = [...focus];
+      const del = this.db.prepare(`DELETE FROM ${RELATED_DEVICES_TABLE} WHERE src_id = ? OR dst_id = ?`);
+      for (let i = 0; i < ids.length; i += RELATED_WRITE_ROWS) {
+        this.write(() => ids.slice(i, i + RELATED_WRITE_ROWS).forEach((id) => del.run(id, id)));
+        yield;
+      }
+    }
+    const ins = this.db.prepare(
+      `INSERT OR REPLACE INTO ${RELATED_DEVICES_TABLE} (src_id, dst_id, score, terms, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    );
+    for (let i = 0; i < edges.length; i += RELATED_WRITE_ROWS) {
+      this.write(() =>
+        edges.slice(i, i + RELATED_WRITE_ROWS).forEach((e) => ins.run(e.source, e.target, e.score, JSON.stringify(e.terms), now)),
+      );
+      yield;
+    }
+    this.write(() => writeRelatedSpec(this.db, spec));
   }
 
   private audienceMirror(): AudienceMirror {

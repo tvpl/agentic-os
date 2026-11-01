@@ -546,10 +546,10 @@ describe("C30 migration 20 on a database that already holds an index", () => {
       // the cleanup), cerebro-natureza 25 (the passages of a note and the review state of a file), and cerebro-paineis
       // 26 (the tasks of a note, the snapshots and the series of the dashboards) and 27 (the reminder kind of the inbox),
       // and cerebro-memoria-confiavel 28 (the keys and provenance of facts), 29 (the history of memory/), 30 (the
-      // review inbox) and 31 (the search indexes of the audiences)
-      expect(db.pragma("user_version", { simple: true })).toBe(31);
-      expect(MIGRATIONS.at(-1)!.version).toBe(31);
-      expect(MIGRATIONS.slice(-12).map((m) => m.name)).toEqual([
+      // review inbox), 31 (the search indexes of the audiences) and 32 (their related edges)
+      expect(db.pragma("user_version", { simple: true })).toBe(32);
+      expect(MIGRATIONS.at(-1)!.version).toBe(32);
+      expect(MIGRATIONS.slice(-13).map((m) => m.name)).toEqual([
         "note-links",
         "file-vectors",
         "drop-file-links",
@@ -562,6 +562,7 @@ describe("C30 migration 20 on a database that already holds an index", () => {
         "memory-history",
         "memory-proposals",
         "audience-search-indexes",
+        "audience-related-edges",
       ]);
       // the migration SQL twice leaves the table as it was
       const sql = MIGRATIONS.find((m) => m.version === 21)!.sql!;

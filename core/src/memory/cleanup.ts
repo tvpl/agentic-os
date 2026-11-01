@@ -1,3 +1,4 @@
+import type { RelatedTable } from "./audienceIndex.js";
 import path from "node:path";
 import type { Db } from "../db/db.js";
 import type { Settings, WorkContext } from "../config/schema.js";
@@ -235,6 +236,8 @@ function sharedTerms(db: Db, ids: readonly number[]): string[] {
 function clustersOf(
   db: Db,
   rows: ReadonlyArray<{ id: number; first: string | null }>,
+  /** The table of related edges to read (door 20 of cerebro-memoria-confiavel); one of two names, never caller text. */
+  table: RelatedTable = "file_related",
 ): CleanupInventory["clusters"] {
   const byFolder = new Map<string, number[]>();
   for (const row of rows) {
@@ -267,7 +270,7 @@ function clustersOf(
     return r;
   };
   for (const id of ids) parent.set(id, id);
-  const edges = db.prepare("SELECT src_id, dst_id FROM file_related WHERE score >= ?").all(CLUSTER_MIN_SCORE) as Array<{
+  const edges = db.prepare(`SELECT src_id, dst_id FROM ${table} WHERE score >= ?`).all(CLUSTER_MIN_SCORE) as Array<{
     src_id: number;
     dst_id: number;
   }>;
@@ -307,7 +310,7 @@ export function cleanupInventory(
   db: Db,
   env: CleanupEnv,
   scope: CleanupScope,
-  options: { now?: number } = {},
+  options: { now?: number; relatedTable?: RelatedTable } = {},
 ): CleanupInventory {
   const now = options.now ?? Date.now();
   const rows = cleanupRows(db, env, scope);
@@ -364,7 +367,7 @@ export function cleanupInventory(
     bySize: sizeBands,
     byAge,
     topFolders,
-    clusters: clustersOf(db, placed),
+    clusters: clustersOf(db, placed, options.relatedTable),
     newest,
   };
 }

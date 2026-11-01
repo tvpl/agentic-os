@@ -23,6 +23,13 @@ export const code = (r: { status: number; body: Json }): [number, unknown] => [r
 
 export async function memoriaWorld(prefix: string): Promise<MemoriaWorld> {
   const base = await notesViewWorld(prefix);
+  // A change of `folderAccess` starts a pass of its own (the devices' related edges follow the access, door 20), and a
+  // request for a pass made while it runs joins it: the pass that answers would be one that read the settings of before.
+  // `index` therefore waits for a pass in flight to end and then makes its own.
+  base.index = async () => {
+    while (base.ctx.indexer.isIndexing()) await new Promise((resolve) => setTimeout(resolve, 5));
+    return base.ctx.indexer.indexAllAsync();
+  };
   return Object.assign(base, {
     run(mode: "write" | "read_only" = "write") {
       const record = base.ctx.runs.create({

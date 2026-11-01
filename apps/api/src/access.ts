@@ -159,7 +159,29 @@ const PLACE_KEYS = ["path", "sourcePath", "cwd", "workingDir"] as const;
 /** An absolute path inside free text: from a `/` not inside a word, up to a space or a delimiter. Only for a list that cannot be read. */
 const PATH_IN_TEXT = /(?<![\w/.~%-])\/[^\s"'`<>()[\]{},;|]+/g;
 
+/**
+ * `value` with every number in it zero (round 2 finding 8): the counts of an index pass (`scanned`, `added`, `removed`,
+ * the time it took) are counted over every file, the hidden ones included, so a device that has a folder hidden from it
+ * is given none of them.
+ */
+export function zeroCounts<T>(value: T): T {
+  if (typeof value === "number") return 0 as T;
+  if (Array.isArray(value)) return value.map(zeroCounts) as T;
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, zeroCounts(v)])) as T;
+  }
+  return value;
+}
+
 export interface DeviceRedactor {
+  /** Some folder is hidden from the devices (an entry gives them `hide`): the counts over every file are not theirs. */
+  readonly hides: boolean;
+  /**
+   * The title of a notification or a sentinel's event with the folder it is about, when that folder is hidden, written
+   * `(pasta oculta)`: a title such as `3 files changed in <the folder's name>` names it by its name alone, which is no
+   * path (round 2 finding 8). The folder is the one `messageParams.folder` carries.
+   */
+  titleOf(item: { title: string; messageParams?: Record<string, unknown> | null }): string;
   /** Nothing is hidden from devices but `artifacts/exports/` (no entry gives devices `hide`). */
   readonly restricts: boolean;
   /** Whether an absolute path is one a device is never told of. */
@@ -231,13 +253,38 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
     const o = item as Record<string, unknown>;
     return PLACE_KEYS.some((k) => typeof o[k] === "string" && hiddenPath(o[k] as string));
   };
+  /** The name of the folder an item is about when that folder is hidden (`messageParams.folder`), else null. */
+  const hiddenSubject = (item: unknown): string | null => {
+    if (item === null || typeof item !== "object") return null;
+    const folder = ((item as { messageParams?: { folder?: unknown } | null }).messageParams ?? {}).folder;
+    if (typeof folder !== "string" || !path.isAbsolute(folder) || !hiddenPath(folder)) return null;
+    return path.basename(folder) || null;
+  };
+  const titleWithout = (title: string, name: string | null): string =>
+    name === null
+      ? title
+      : title.replace(
+          new RegExp(
+            `(?<![\\w/.~-])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`,
+            process.platform === "darwin" || process.platform === "win32" ? "gi" : "g",
+          ),
+          HIDDEN_PATH_TEXT,
+        );
+  const titleOf = (item: { title: string; messageParams?: Record<string, unknown> | null }): string =>
+    titleWithout(text(item.title), hiddenSubject(item));
   const value = <T>(input: T): T => {
     const walk = (node: unknown): unknown => {
       if (typeof node === "string") return text(node);
       if (Array.isArray(node)) return node.filter((item) => !placeHidden(item)).map(walk);
       if (node !== null && typeof node === "object") {
+        const subject = hiddenSubject(node);
         return Object.fromEntries(
-          Object.entries(node as Record<string, unknown>).map(([k, v]) => [k, walk(v)]),
+          Object.entries(node as Record<string, unknown>).map(([k, v]) => [
+            k,
+            k === "title" && typeof v === "string" && subject !== null
+              ? titleWithout(text(v), subject)
+              : walk(v),
+          ]),
         );
       }
       return node;
@@ -309,6 +356,8 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
     return false;
   };
   return {
+    hides: view.access.hides("devices"),
+    titleOf,
     restricts,
     hiddenPath,
     text,

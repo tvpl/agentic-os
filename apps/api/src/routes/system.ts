@@ -580,6 +580,9 @@ export function registerSystemRoutes(
     // name a folder that is now hidden from agents (cerebro-memoria-confiavel, AC 95).
     if (patch.folderAccess !== undefined && !isDeepStrictEqual(before.folderAccess, saved.folderAccess)) {
       if (fs.existsSync(path.join(ctx.paths.memory, "ROUTER.md"))) generateRouters(ctx.db, ctx.paths, saved);
+      // The search index and the related edges of the devices follow the access (door 19, door 20): the first is rebuilt by
+      // the next search, the second by a pass, which starts now. Until it ends a device is told of no "similar content".
+      void ctx.indexer.indexAllAsync().catch(() => undefined);
     }
     ctx.reloadAdapters();
     ctx.invalidateProviderCache();

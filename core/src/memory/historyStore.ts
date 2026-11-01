@@ -178,3 +178,76 @@ export function versionedPaths(db: Db): Set<string> {
   );
 }
 
+
+/**
+ * Which paths of the history a caller may be told of (cerebro-memoria-confiavel, plan amendment 11, round 2 finding 6): a
+ * path the caller may see, unless a note whose versions it holds went on to a path the caller may not see. History is
+ * keyed by path, so a move leaves the old path's versions behind with the bytes the note had; they are the note's, and
+ * a note that now sits in a hidden folder has no versions in a visible one.
+ *
+ * A path P has gone on to Q when P's newest version is a `removed` one and the bytes of its last version with bytes
+ * are the bytes of the first version of Q, recorded after it: a note carried over unchanged (a move by this system, an
+ * edit outside it that renamed the file). Followed as far as it goes; a path is hidden when it is, or when any path it
+ * went on to is. A note that was edited while it moved is not followed (the bytes are the link).
+ */
+export function visibleHistoryPaths(
+  db: Db,
+  hidden: (rel: string) => boolean,
+): (rel: string) => boolean {
+  const first = new Map<string, { id: number; sha: string | null }>();
+  const newest = new Map<string, { id: number; sha: string | null }>();
+  const live = new Map<string, string>();
+  for (const v of db
+    .prepare(
+      `SELECT v.path, v.id, v.sha256 FROM memory_versions v
+         JOIN (SELECT path, MIN(id) m FROM memory_versions GROUP BY path) f ON v.id = f.m`,
+    )
+    .all() as Array<{ path: string; id: number; sha256: string | null }>)
+    first.set(v.path, { id: v.id, sha: v.sha256 });
+  for (const v of db
+    .prepare(
+      `SELECT v.path, v.id, v.sha256 FROM memory_versions v
+         JOIN (SELECT path, MAX(id) m FROM memory_versions GROUP BY path) f ON v.id = f.m`,
+    )
+    .all() as Array<{ path: string; id: number; sha256: string | null }>)
+    newest.set(v.path, { id: v.id, sha: v.sha256 });
+  for (const v of db
+    .prepare(
+      `SELECT v.path, v.sha256 FROM memory_versions v
+         JOIN (SELECT path, MAX(id) m FROM memory_versions WHERE sha256 IS NOT NULL GROUP BY path) f ON v.id = f.m`,
+    )
+    .all() as Array<{ path: string; sha256: string }>)
+    live.set(v.path, v.sha256);
+  // The paths that begin with each set of bytes.
+  const startsWith = new Map<string, string[]>();
+  for (const [p, f] of first) {
+    if (f.sha === null) continue;
+    const list = startsWith.get(f.sha) ?? [];
+    list.push(p);
+    startsWith.set(f.sha, list);
+  }
+  const known = new Map<string, boolean>();
+  const visible = (rel: string, trail: ReadonlySet<string>): boolean => {
+    const memo = known.get(rel);
+    if (memo !== undefined) return memo;
+    if (hidden(rel)) {
+      known.set(rel, false);
+      return false;
+    }
+    const end = newest.get(rel);
+    const bytes = live.get(rel);
+    let ok = true;
+    if (end && end.sha === null && bytes !== undefined) {
+      for (const next of startsWith.get(bytes) ?? []) {
+        if (next === rel || trail.has(next) || (first.get(next)?.id ?? 0) <= end.id) continue;
+        if (!visible(next, new Set([...trail, rel]))) {
+          ok = false;
+          break;
+        }
+      }
+    }
+    known.set(rel, ok);
+    return ok;
+  };
+  return (rel) => visible(rel, new Set());
+}
