@@ -529,6 +529,13 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
    confere) e cada `path` relativo à pasta exportada com `/`. Pergunta ao dono (G33): o padrão é o hex puro; a alternativa
    é a grafia das versões e das notas, `sha256:<hex>`.
 
+7. **Um índice de busca por público (respondida pelo dono em 01/11/2026, rodada 1 da verificação).** A ordem dos resultados
+   para um dispositivo ou uma credencial de execução vinha do bm25 do índice inteiro, e por isso diferia da ordem sem a
+   pasta oculta e deixava inferir conteúdo oculto. A busca e o recall desses públicos passam a ler um índice FTS próprio de
+   cada público (agentes, dispositivos), que só contém o que aquele público vê; o índice é mantido em cada passada e
+   refeito quando `folderAccess` muda. É uma door nova (Landing 19), com check próprio. Os C113 e C120 seguem como escritos,
+   por valor e na ordem; o `score` segue a emenda 4.
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).
