@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import {
+  LINE_BREAK,
   PROPOSAL_KIND_VALUES,
   PROPOSAL_STATUS_VALUES,
   type ProposalOp,
@@ -429,6 +430,18 @@ export function evaluateOps(
           : { state: "valid" as const }),
       };
     }
+    if (LINE_BREAK.test(op.source) || ("text" in op && LINE_BREAK.test(op.text))) {
+      return {
+        op: op.op,
+        section: op.op === "add" ? op.section : null,
+        text: "text" in op ? op.text : "",
+        source: op.source,
+        line: op.line ?? null,
+        trust: "inferido",
+        state: "invalid",
+        reason: "The text or the source holds a line break: an operation writes one line.",
+      };
+    }
     const verdict = checkSource(env, op.source, op.line, cache);
     const base = {
       op: op.op,
@@ -454,6 +467,10 @@ export function evaluateOps(
 
 /** A line an agent adds to MEMORY.md (door 7). */
 export function memoryLine(text: string, source: string, line: number | undefined, day: string): string {
+  // the second guard of the one-line rule (the schema is the first): a line break would start a line with no mark
+  if (LINE_BREAK.test(text) || LINE_BREAK.test(source)) {
+    throw new ProposalValidationError("ops: an operation's text and source are one line each, with no line break");
+  }
   return `- ${text} (fonte:: ${source}${line !== undefined ? `:${line}` : ""}) (autor:: agente) (em:: ${day})`;
 }
 

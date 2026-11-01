@@ -426,13 +426,25 @@ export const PROPOSAL_FILE_MAX_BYTES = 262_144;
 export const PROPOSAL_MAX_OPS = 200;
 
 /** A file of memory/ an op comes from: `<path relative to memory/>[#<section>]`, never absolute. */
+/**
+ * A line break of any kind (`\n`, `\r`, vertical tab, form feed, NEL, U+2028, U+2029): what an op writes into
+ * MEMORY.md is one line, or a second line would carry no `fonte::`, `autor::` nor `em::` (verification round 1, finding
+ * 6).
+ */
+export const LINE_BREAK = /[\n\r\v\f\u0085\u2028\u2029]/;
+const oneLine = { message: "one line: no line break" } as const;
 const OpSource = z
   .string()
   .min(1)
   .max(4096)
-  .refine((v) => !/^(\/|[A-Za-z]:|\\)/.test(v), { message: "a path relative to memory/, not absolute" });
+  .refine((v) => !/^(\/|[A-Za-z]:|\\)/.test(v), { message: "a path relative to memory/, not absolute" })
+  .refine((v) => !LINE_BREAK.test(v), oneLine);
 const OpLine = z.number().int().min(1).optional();
-const OpText = z.string().min(1).max(500);
+const OpText = z
+  .string()
+  .min(1)
+  .max(500)
+  .refine((v) => !LINE_BREAK.test(v), oneLine);
 /** A line of MEMORY.md as it is written, to be found exactly. */
 const OpOldLine = z.string().min(1).max(4000);
 

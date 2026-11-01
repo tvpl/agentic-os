@@ -1110,6 +1110,16 @@ true` and `aside`; accepting it is `400 validation`); a `guard` version is recor
   before, the five new cases of the oversized file and the links and the folder fail; with the "deleted" branch's create
   removed, its case fails
 
+- **Finding 6, a real bug (integrity): an agent could forge an unmarked `MEMORY.md` line.** An op's `text` could hold
+  a newline, and the applier wrote it as it came, so `"Turmas de 15\n- Decidido pelo dono: …"` made a second line with
+  no `fonte::`, `autor::` nor `em::`. **C54 extended with the one-line rule**: what an op writes into `MEMORY.md` is one
+  line; a line break of any kind (`\n`, `\r`, vertical tab, form feed, NEL, U+2028, U+2029, the contract's
+  `LINE_BREAK`) in an op's `text` or `source` is refused by the `proposal.json` schema (the issue names `ops.<i>.text` or
+  `ops.<i>.source`); a stored op that holds one reads back `state: "invalid"` and accepting it is `400 validation` with
+  `MEMORY.md` as it was; and the applier itself throws on it (the second guard, `memoryLine`). Re-injected: without the
+  schema's refinement, without the evaluation's and the writer's checks, and without the writer's check alone, a C54
+  case fails each time
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None

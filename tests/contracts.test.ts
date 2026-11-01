@@ -125,6 +125,8 @@ describe("S1 the contracts package", () => {
         "IndexedFolderSchema",
         "ItemFieldsSchema",
         "KnownStreamTypes",
+        // cerebro-memoria-confiavel, verification round 1: the one-line rule of an op (finding 6)
+        "LINE_BREAK",
         "MicroAppSchema",
         "NAMED_SCHEMAS",
         "NOTIFICATION_KINDS",

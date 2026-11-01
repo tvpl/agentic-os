@@ -58,7 +58,9 @@ export { wireSchema } from "./wireSchema.js";
 export { SettingsPatchSchema, UiPreferencesPatchSchema, type SettingsPatch } from "./system.js";
 export {
   isJournalDate,
-  // cerebro-memoria-confiavel, doors 5 and 6: what the engine reads a proposal.json by and stores a proposal as
+  // cerebro-memoria-confiavel, doors 5 and 6: what the engine reads a proposal.json by and stores a proposal as, and
+  // the one-line rule of door 7 it applies ops by
+  LINE_BREAK,
   PROPOSAL_FILE_MAX_BYTES,
   PROPOSAL_KIND_VALUES,
   PROPOSAL_STATUS_VALUES,
