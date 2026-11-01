@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { resolveFolderAccess } from "../core/src/memory/folderAccess.js";
 import { localDateString } from "../core/src/memory/journal.js";
 import { code, memoriaWorld, runWorld, type Json, type MemoriaWorld } from "./helpers/memoriaWorld.js";
 
@@ -282,6 +283,72 @@ describe("C112 a folderAccess this version cannot read", () => {
     // the original is kept, as for any field this version cannot read
     expect(JSON.parse(fs.readFileSync(`${w.ctx.paths.settingsFile}.invalid`, "utf8")).folderAccess).toBe("x");
     expect(w.ctx.settings().folderAccess).toEqual([{ path: "*", agents: "read", devices: "hide" }]);
+  });
+
+  // verification round 1, finding 7: the resolver's own reading of what it cannot place, at its own layer and through
+  // a hand-edited list the stored schema lets in (a relative path)
+  it('C112 the resolver itself reads a field that is not a list ("x") as read for agents and hide for devices', async () => {
+    const w = await memoriaWorld("mordomo-access-c112-layer-");
+    opened.push(w);
+    const access = resolveFolderAccess({
+      paths: w.ctx.paths,
+      settings: { ...w.ctx.settings(), folderAccess: "x" } as never,
+    });
+    const file = path.join(w.memory, "notes", "a.md");
+    expect([access.unreadable, access.level(file, "agents"), access.level(file, "devices")]).toEqual([
+      true,
+      "read",
+      "hide",
+    ]);
+  });
+
+  it("C112 an entry whose path is relative or not a string names no folder: every path reads hide for both, beside an entry that says write", async () => {
+    const w = await memoriaWorld("mordomo-access-c112-unplaced-");
+    opened.push(w);
+    const file = path.join(w.memory, "notes", "a.md");
+    for (const bad of ["notes/fin", 42, null]) {
+      const access = resolveFolderAccess({
+        paths: w.ctx.paths,
+        settings: {
+          ...w.ctx.settings(),
+          folderAccess: [
+            { path: w.memory, agents: "write", devices: "write" },
+            { path: bad, agents: "write", devices: "write" },
+          ],
+        } as never,
+      });
+      expect([access.level(file, "agents"), access.level(file, "devices")], String(bad)).toEqual([
+        "hide",
+        "hide",
+      ]);
+      expect([access.level(w.home, "agents"), access.level(w.home, "devices")], String(bad)).toEqual([
+        "hide",
+        "hide",
+      ]);
+    }
+  });
+
+  it("C112 a hand-edited list with a relative path: a device finds nothing, any run in memory/ is 403 folder_hidden, the owner as before", async () => {
+    const { w, secret, visible } = await seeded("mordomo-access-c112-relative-", runWorld);
+    handEdit(w, (raw) => {
+      raw.folderAccess = [{ path: "notes/fin", agents: "write", devices: "write" }];
+    });
+    expect(w.ctx.settings().folderAccess).toEqual([{ path: "notes/fin", agents: "write", devices: "write" }]);
+    const device = w.device(["content"]);
+    const search = await w.call("GET", "/api/memory/search?q=orcamento", undefined, device);
+    expect(search.status).toBe(200);
+    expect(pathsIn(search.body).filter((p) => p.startsWith(w.memory))).toEqual([]);
+    expect(
+      code(await w.call("GET", `/api/memory/note?p=${encodeURIComponent(visible)}`, undefined, device)),
+    ).toEqual([404, "not_found"]);
+    for (const mode of ["write", "read_only"]) {
+      expect(
+        code(await w.call("POST", "/api/runs", { prompt: "x", mode, cwd: w.memory, provider: "claude" })),
+        mode,
+      ).toEqual([403, "folder_hidden"]);
+    }
+    const owned = await w.call("GET", "/api/memory/search?q=orcamento");
+    expect(pathsIn(owned.body)).toEqual(expect.arrayContaining([secret, visible]));
   });
 });
 

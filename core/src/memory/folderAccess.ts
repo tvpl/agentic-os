@@ -73,13 +73,16 @@ const isLevel = (value: unknown): value is FolderLevel =>
 export function resolveFolderAccess(env: FolderAccessEnv): FolderAccess {
   const platform = env.platform ?? process.platform;
   const raw: unknown = env.settings.folderAccess;
-  let unreadable = !Array.isArray(raw);
+  const unreadable = !Array.isArray(raw);
+  // An entry whose path is not a string, or is relative, names no folder: it could have covered any of them, so every
+  // path reads `hide` for both audiences (AC 89, fail closed; verification round 1, finding 7)
+  let unplaced = false;
   const entries: ResolvedFolderEntry[] = [];
   if (!unreadable) {
     for (const entry of raw as unknown[]) {
       const e = (entry ?? {}) as { path?: unknown; agents?: unknown; devices?: unknown };
       if (typeof e.path !== "string") {
-        unreadable = true;
+        unplaced = true;
         break;
       }
       if (e.path === "*") {
@@ -94,7 +97,7 @@ export function resolveFolderAccess(env: FolderAccessEnv): FolderAccess {
         continue;
       }
       if (!path.isAbsolute(e.path)) {
-        unreadable = true;
+        unplaced = true;
         break;
       }
       const lexical = path.resolve(e.path);
@@ -112,8 +115,12 @@ export function resolveFolderAccess(env: FolderAccessEnv): FolderAccess {
     }
   }
   if (unreadable) {
+    // a field that is not a list (AC 90): every root `hide` for devices and `read` for agents
     entries.length = 0;
     entries.push({ path: "*", real: null, spellings: [], agents: "read", devices: "hide", all: true });
+  } else if (unplaced) {
+    entries.length = 0;
+    entries.push({ path: "*", real: null, spellings: [], agents: "hide", devices: "hide", all: true });
   }
   const compiled = entries.map((entry) => ({
     entry,

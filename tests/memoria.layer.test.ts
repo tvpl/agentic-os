@@ -520,11 +520,7 @@ describe("the folder-level resolver (door 12), one asserted case per row", () =>
   });
 
   it("a list that cannot be read is hide for devices and read for agents on every path (AC 90, beside C112)", () => {
-    for (const unreadable of [
-      "x",
-      [{ path: "relativo/fin", agents: "write", devices: "write" }],
-      [{ path: 7 }],
-    ]) {
+    for (const unreadable of ["x", {}, 7, null]) {
       const a = access(unreadable);
       expect(a.unreadable, JSON.stringify(unreadable)).toBe(true);
       expect(both(a, path.join(memory, "notes", "outra", "b.md"))).toEqual({
@@ -542,6 +538,24 @@ describe("the folder-level resolver (door 12), one asserted case per row", () =>
       agents: "read",
       devices: "hide",
     });
+  });
+
+  it("an entry whose path is relative or not a string names no folder: every path is hide for both, beside an entry that says write (AC 89, G17, C112; round 1 finding 7)", () => {
+    for (const bad of [
+      { path: "relativo/fin", agents: "write", devices: "write" },
+      { path: 7 },
+      { path: null },
+      "texto",
+    ]) {
+      const a = access([{ path: memory, agents: "write", devices: "write" }, bad]);
+      expect(a.unreadable, JSON.stringify(bad)).toBe(false);
+      for (const file of [
+        path.join(memory, "notes", "outra", "b.md"),
+        path.join(os.tmpdir(), "anywhere", "c.md"),
+      ]) {
+        expect(both(a, file), JSON.stringify(bad)).toEqual({ agents: "hide", devices: "hide" });
+      }
+    }
   });
 
   it("C110 the workspace filter of a view refuses what the resolver hides and nothing else", () => {

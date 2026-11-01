@@ -1120,6 +1120,22 @@ true` and `aside`; accepting it is `400 validation`); a `guard` version is recor
   schema's refinement, without the evaluation's and the writer's checks, and without the writer's check alone, a C54
   case fails each time
 
+- **Finding 7, a surviving mutant (F11) and a reading the build had wrong.** The resolver's own fallback for a field
+  that is not a list (`agents: "read"`, `folderAccess.ts`) was never reached by a proof: the settings store already
+  replaces such a field by `FOLDER_ACCESS_UNREADABLE` before the resolver sees it. And a stored list holding an entry
+  whose `path` is relative or not a string (the stored schema lets a relative string in) fell into that same fallback,
+  `read` for agents. Door 12 reads such an entry as one whose path cannot be resolved, so `hide` for both (AC 89, G17);
+  since it names no folder it could have covered any of them, so every path now reads `hide` for both, whatever the
+  other entries say. **C112 extended**: the resolver itself reads `"x"` as `read` for agents and `hide` for devices; an
+  entry with the path `notes/fin`, `42` or `null` beside one that gives `memory/` `write` makes every path `hide` for
+  both; and a hand-edited `settings.json` with a relative entry leaves a device's search and `GET /api/memory/note`
+  empty (`404 not_found`), refuses every run in `memory/` with `403 folder_hidden`, and leaves the owner as before.
+  Re-injected: F11 (`agents: "read"` to `"write"`) fails the first case; the reading of before (`read` for agents on an
+  unplaced entry) fails the other two. The stored schema is not narrowed: `PUT /api/settings` already refuses a relative
+  path with `400 validation` (`assertFolderAccess`, door 12's "path absoluto"), and the stored schema must keep taking
+  the `"*"` of `FOLDER_ACCESS_UNREADABLE`; narrowing it would also turn a hand-edited relative entry into an unreadable
+  field (`read` for agents) instead of `hide` for both. A test of B1 in `tests/memoria.layer.test.ts` ("a list that cannot be read is hide for devices and read for agents…", AC 90, not under a check id) held a relative or non-string entry to the reading of before; it now keeps only the inputs that are not a list, and a new case holds the entries to `hide` for both
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None
