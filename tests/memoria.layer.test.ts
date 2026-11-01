@@ -23,10 +23,12 @@ import { SettingsSchema } from "../core/src/config/schema.js";
 import {
   MEMORY_MAX_BYTES,
   MEMORY_MAX_LINES,
+  applyOps,
   evaluateOps,
   opTrust,
   withinBudget,
 } from "../core/src/memory/proposals.js";
+import { ProposalFileSchema, type ProposalOp } from "@mordomo/contracts";
 import { resolveFolderAccess } from "../core/src/memory/folderAccess.js";
 import { accessExclude, makeWorkspaceFilter } from "../core/src/memory/excludes.js";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
@@ -632,4 +634,284 @@ describe("the deny rules of door 13 in the Claude adapter, in each mode it build
       expect(without.args.join(" ")).not.toContain(fin);
     });
   }
+});
+
+// ---- Test policy row 1: the proposal.json schema and the op applier, at their own layer (round 1, finding 8) ---------
+
+describe("the proposal.json schema (door 6), one asserted case per row", () => {
+  const add = {
+    op: "add",
+    section: "Decisions",
+    text: "Uma linha",
+    source: "journal/2026-10-30.md",
+    line: 4,
+  };
+  const good = (extra: Json = {}) => ({ v: 1, summary: "Um resumo", ops: [add], ...extra });
+  /** The path of the one issue the schema reports, or null when it takes the file. */
+  const issue = (file: unknown): string | null => {
+    const r = ProposalFileSchema.safeParse(file);
+    if (r.success) return null;
+    // one place is wrong (a value can fail two rules of the same place, as a date that is not even a pattern)
+    const places = [...new Set(r.error.issues.map((i) => i.path.join(".")))];
+    expect(places, JSON.stringify(file).slice(0, 80)).toHaveLength(1);
+    return places[0]!;
+  };
+
+  it("takes one file of each op kind, and the edges: a summary of 2 000, a text of 500, 200 ops, one op, none", () => {
+    const ops = [
+      add,
+      { op: "supersede", old: "- Turmas de 15", text: "Turmas de 20", source: "journal/2026-10-30.md" },
+      {
+        op: "close_loop",
+        old: "- Lançar a turma",
+        on: "2026-10-30",
+        source: "journal/2026-10-30.md",
+        line: 9,
+      },
+      { op: "move_to_topic", lines: ["- A", "- B"], topic: "clientes-2026" },
+      {
+        op: "fact",
+        subject: "turma",
+        predicate: "tamanho",
+        object: "20",
+        source: "notes/a.md#Contrato",
+        line: 3,
+      },
+      { op: "fact", subject: "s", predicate: "p", object: "o", source: "x.md", validFrom: 1, validTo: 2 },
+    ];
+    for (const op of ops) expect(issue(good({ ops: [op] })), String(op.op)).toBeNull();
+    expect(issue(good({ ops }))).toBeNull();
+    expect(issue(good({ summary: "s".repeat(2000) }))).toBeNull();
+    expect(issue(good({ summary: "" }))).toBeNull();
+    expect(issue(good({ ops: [{ ...add, text: "t".repeat(500) }] }))).toBeNull();
+    expect(issue(good({ ops: Array.from({ length: 200 }, () => add) }))).toBeNull();
+    expect(issue(good({ ops: [] }))).toBeNull();
+  });
+
+  it.each([
+    ["v 2", good({ v: 2 }), "v"],
+    ["no v", { summary: "s", ops: [add] }, "v"],
+    ["a summary of 2 001", good({ summary: "s".repeat(2001) }), "summary"],
+    ["201 ops", good({ ops: Array.from({ length: 201 }, () => add) }), "ops"],
+    ["ops not a list", good({ ops: add }), "ops"],
+    ["op rename", good({ ops: [{ ...add, op: "rename" }] }), "ops.0.op"],
+    ["section Notes", good({ ops: [{ ...add, section: "Notes" }] }), "ops.0.section"],
+    ["section Superseded", good({ ops: [{ ...add, section: "Superseded" }] }), "ops.0.section"],
+    ["text of 501", good({ ops: [{ ...add, text: "t".repeat(501) }] }), "ops.0.text"],
+    ["empty text", good({ ops: [{ ...add, text: "" }] }), "ops.0.text"],
+    ["a line break in the text", good({ ops: [{ ...add, text: "a\nb" }] }), "ops.0.text"],
+    ["an absolute source", good({ ops: [{ ...add, source: "/etc/passwd" }] }), "ops.0.source"],
+    ["a drive source", good({ ops: [{ ...add, source: "C:\\x.md" }] }), "ops.0.source"],
+    ["line 0", good({ ops: [{ ...add, line: 0 }] }), "ops.0.line"],
+    [
+      "a close_loop on that is not a day",
+      good({ ops: [{ op: "close_loop", old: "- x", on: "31/10/2026", source: "a.md" }] }),
+      "ops.0.on",
+    ],
+    [
+      "a close_loop on 2026-02-30",
+      good({ ops: [{ op: "close_loop", old: "- x", on: "2026-02-30", source: "a.md" }] }),
+      "ops.0.on",
+    ],
+    [
+      "a topic with a capital",
+      good({ ops: [{ op: "move_to_topic", lines: ["- A"], topic: "Clientes" }] }),
+      "ops.0.topic",
+    ],
+    [
+      "a topic with a slash",
+      good({ ops: [{ op: "move_to_topic", lines: ["- A"], topic: "a/b" }] }),
+      "ops.0.topic",
+    ],
+    [
+      "a move_to_topic with no lines",
+      good({ ops: [{ op: "move_to_topic", lines: [], topic: "a" }] }),
+      "ops.0.lines",
+    ],
+    [
+      "a fact with no object",
+      good({ ops: [{ op: "fact", subject: "s", predicate: "p", source: "a.md" }] }),
+      "ops.0.object",
+    ],
+    [
+      "a fact validTo not after validFrom",
+      good({
+        ops: [
+          { op: "fact", subject: "s", predicate: "p", object: "o", source: "a.md", validFrom: 5, validTo: 5 },
+        ],
+      }),
+      "ops.0.validTo",
+    ],
+  ])("refuses %s, for its own reason alone", (_what, file, at) => {
+    expect(issue(file)).toBe(at);
+  });
+
+  it("drops a key the agent adds to an op (a trust it declares), so the stored op never carries it", () => {
+    const r = ProposalFileSchema.parse(good({ ops: [{ ...add, trust: "usuario", extra: 1 }] }));
+    expect(r.ops[0]).toEqual(add);
+  });
+});
+
+describe("the op applier (door 7), one asserted case per op kind", () => {
+  const DAY = "2026-10-31";
+  const SRC = "journal/2026-10-30.md";
+  const BASE = [
+    "# Long-term memory",
+    "",
+    "## Facts",
+    "",
+    "- O curso custa 700",
+    "",
+    "## Decisions",
+    "",
+    "- Turmas de 15",
+    "",
+    "## Open loops",
+    "",
+    "- Lançar a turma de março",
+    "",
+    "## Reflections",
+    "",
+    "## Superseded",
+    "",
+  ].join("\n");
+  const apply = (memory: string | null, ...ops: ProposalOp[]) =>
+    applyOps(
+      memory,
+      ops.map((op, index) => ({ index, op })),
+      DAY,
+    );
+  const mark = (text: string, source: string, line?: number) =>
+    `- ${text} (fonte:: ${source}${line !== undefined ? `:${line}` : ""}) (autor:: agente) (em:: ${DAY})`;
+
+  it("add: the line is the last of its section, with fonte, autor and em; the rest of the file as it was", () => {
+    const { memory } = apply(BASE, {
+      op: "add",
+      section: "Decisions",
+      text: "Turmas de 20",
+      source: SRC,
+      line: 4,
+    });
+    expect(memory).toBe(
+      BASE.replace("- Turmas de 15\n", `- Turmas de 15\n${mark("Turmas de 20", SRC, 4)}\n`),
+    );
+    const empty = apply(BASE, { op: "add", section: "Reflections", text: "Uma reflexão", source: SRC });
+    expect(empty.memory).toBe(
+      BASE.replace("## Reflections\n", `## Reflections\n\n${mark("Uma reflexão", SRC)}\n`),
+    );
+  });
+
+  it("supersede: the exact old line ends in ## Superseded with valid_to, the new one is last in the old line's section", () => {
+    const { memory } = apply(BASE, {
+      op: "supersede",
+      old: "- Turmas de 15",
+      text: "Turmas de 20",
+      source: SRC,
+      line: 4,
+    });
+    expect(memory).toBe(
+      BASE.replace("- Turmas de 15\n", `${mark("Turmas de 20", SRC, 4)}\n`).replace(
+        /## Superseded\n$/,
+        `## Superseded\n\n- Turmas de 15 (valid_to:: ${DAY})\n`,
+      ),
+    );
+  });
+
+  it("close_loop: the exact line keeps its place and ends in → closed <on>", () => {
+    const { memory } = apply(BASE, {
+      op: "close_loop",
+      old: "- Lançar a turma de março",
+      on: "2026-10-30",
+      source: SRC,
+    });
+    expect(memory).toBe(BASE.replace("março\n", "março → closed 2026-10-30\n"));
+  });
+
+  it("move_to_topic: the lines leave, one pointer takes the first one's place, the topic receives them in order", () => {
+    const text = BASE.replace("- O curso custa 700\n", "- O curso custa 700\n- Cliente A\n- Cliente B\n");
+    const { memory, topics } = apply(text, {
+      op: "move_to_topic",
+      lines: ["- Cliente A", "- Cliente B"],
+      topic: "clientes",
+    });
+    expect(memory).toBe(
+      BASE.replace(
+        "- O curso custa 700\n",
+        `- O curso custa 700\n- Clientes → [[topics/clientes]] (autor:: agente) (em:: ${DAY})\n`,
+      ),
+    );
+    expect([...topics]).toEqual([["clientes", ["- Cliente A", "- Cliente B"]]]);
+  });
+
+  it("move_to_topic: two ops to one topic add up in the order of the ops, and a second topic is apart", () => {
+    const text = BASE.replace(
+      "- O curso custa 700\n",
+      "- O curso custa 700\n- Cliente A\n- Cliente B\n- Cliente C\n",
+    );
+    const { topics } = apply(
+      text,
+      { op: "move_to_topic", lines: ["- Cliente A"], topic: "clientes" },
+      { op: "move_to_topic", lines: ["- Cliente B"], topic: "outros" },
+      { op: "move_to_topic", lines: ["- Cliente C"], topic: "clientes" },
+    );
+    expect([...topics]).toEqual([
+      ["clientes", ["- Cliente A", "- Cliente C"]],
+      ["outros", ["- Cliente B"]],
+    ]);
+  });
+
+  it("fact: MEMORY.md is not touched and the op's index is returned to be asserted", () => {
+    const r = apply(
+      BASE,
+      { op: "add", section: "Facts", text: "x", source: SRC },
+      { op: "fact", subject: "s", predicate: "p", object: "o", source: SRC },
+    );
+    expect(r.facts).toEqual([1]);
+    expect(r.memory.split("\n").filter((l) => l.includes("(fonte::"))).toHaveLength(1);
+    expect(apply(BASE, { op: "fact", subject: "s", predicate: "p", object: "o", source: SRC }).memory).toBe(
+      BASE,
+    );
+  });
+
+  it("a section the file lacks is appended in the order of the five titles; a missing file holds only what the ops need", () => {
+    const only = apply(null, { op: "add", section: "Decisions", text: "Uma", source: SRC, line: 4 });
+    expect(only.memory).toBe(`## Decisions\n\n${mark("Uma", SRC, 4)}\n`);
+    const three = apply(
+      "## Facts\n\n- F\n",
+      { op: "add", section: "Reflections", text: "R", source: SRC },
+      { op: "add", section: "Decisions", text: "D", source: SRC },
+    );
+    expect(three.memory.split("\n").filter((l) => l.startsWith("## "))).toEqual([
+      "## Facts",
+      "## Decisions",
+      "## Reflections",
+    ]);
+  });
+
+  it("a line an earlier op took is skipped, not applied twice; the skipped index is returned", () => {
+    const closed = apply(
+      BASE,
+      { op: "close_loop", old: "- Turmas de 15", on: "2026-10-30", source: SRC },
+      { op: "supersede", old: "- Turmas de 15", text: "Outra", source: SRC },
+    );
+    // the first op changed the line, so the second no longer finds it as written
+    expect(closed.skipped).toEqual([1]);
+    expect(closed.memory).toContain("- Turmas de 15 → closed 2026-10-30");
+    expect(closed.memory).not.toContain("valid_to::");
+    const gone = apply(
+      BASE,
+      { op: "supersede", old: "- Turmas de 15", text: "Outra", source: SRC },
+      { op: "supersede", old: "- Turmas de 15", text: "Terceira", source: SRC },
+    );
+    expect(gone.skipped).toEqual([1]);
+    expect(gone.memory.match(/valid_to::/g)).toHaveLength(1);
+    expect(gone.memory).not.toContain("Terceira");
+  });
+
+  it("refuses an op whose text or source holds a line break (the second guard of the one-line rule)", () => {
+    expect(() => apply(BASE, { op: "add", section: "Facts", text: "a\nb", source: SRC })).toThrow(/one line/);
+    expect(() => apply(BASE, { op: "add", section: "Facts", text: "a", source: `j\u2028.md` })).toThrow(
+      /one line/,
+    );
+  });
 });

@@ -1136,6 +1136,31 @@ true` and `aside`; accepting it is `400 validation`); a `guard` version is recor
   the `"*"` of `FOLDER_ACCESS_UNREADABLE`; narrowing it would also turn a hand-edited relative entry into an unreadable
   field (`read` for agents) instead of `hide` for both. A test of B1 in `tests/memoria.layer.test.ts` ("a list that cannot be read is hide for devices and read for agents…", AC 90, not under a check id) held a relative or non-string entry to the reading of before; it now keeps only the inputs that are not a list, and a new case holds the entries to `hide` for both
 
+- **Finding 8, `Test policy` row 1 was not met for two deciders.** The `proposal.json` schema (door 6) and the op
+  applier (door 7) were proven only through the hook (C49) and through `decide` (C54 to C58), never at their own layer
+  with one case per row. `tests/memoria.layer.test.ts` gains two describes calling them with no HTTP:
+  - the schema, `ProposalFileSchema`: one file of each op kind taken, the accepted edges (a summary of 2 000, a text of
+    500, 200 ops, one op, none), and 21 refusals each for its own reason alone, asserted by the place the one issue
+    names (`v` 2 and absent; a summary of 2 001; 201 ops; ops not a list; an op `rename`; the sections `Notes` and
+    `Superseded`; a text of 501, empty, with a line break; an absolute and a drive source; line 0; a `close_loop` `on` that
+    is not a day or not a real day; a topic with a capital or a slash; a `move_to_topic` with no lines; a `fact` with no
+    object and with `validTo` not after `validFrom`), and a key the agent adds to an op (a `trust`) dropped;
+  - the applier, `applyOps`: `add` (last line of its section, and of an empty one), `supersede`, `close_loop`,
+    `move_to_topic` (the pointer, the topic's lines in order, two ops to one topic adding up, a second topic apart),
+    `fact` (the file untouched, the index returned), the missing sections in order and the missing file, an op whose line
+    an earlier op took skipped with its index, and a line break refused.
+    Re-injected, each failing a case: the summary limit 2000 to 2001, the text limit 500 to 501, `v` any number, a topic
+    that may be anything, `valid_to` dropped from a superseded line, `→ closed` without its date, the pointer without
+    `topics/`; and the topic's lines overwritten instead of added up, which survived the first version of these cases and
+    killed the one added for it.
+- **Finding 10 (residual), judged: not a bug, settled.** `GET /api/memory/facts?knownAt=K` returns a fact recorded by K
+  and closed (`valid_to`) after K, with the `valid_to` it has now. AC 12 defines it so: `recordedAt` at most K and
+  `retractedAt` null or after K, nothing about `valid_to`; door 2 closes a fact in place (`valid_to`) and keeps
+  transaction time for creation and for the retraction as never true (`retracted_at`). Returning the fact as it stood at
+  K would need a history of closings the door does not have (its rejected alternative splits the old fact in two, a line
+  nobody asserted). C13 gains a case that pins the value by name. An owner question (G35): the safe default is as built;
+  the alternative is to record each closing as its own row, a change of door 2.
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None

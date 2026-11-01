@@ -358,6 +358,24 @@ describe("C13 knownAt is what was recorded by then and not yet retracted", () =>
   });
 });
 
+describe("C13 knownAt and a fact closed after K (round 1, finding 10, settled)", () => {
+  it("C13 a fact recorded before K and closed (valid_to) after K is in knownAt=K, with the valid_to it has now: transaction time is creation and retraction only (AC 12, door 2)", async () => {
+    const K = NOW - DAY;
+    const s = fresh("Fechado depois");
+    at(K - 10);
+    const open = await created({ subject: s, predicate: "p", object: "x", validFrom: JAN });
+    at(K + 10);
+    const closed = await w.call("POST", `/api/memory/facts/${open.id}/retract`, { reason: "ended" });
+    expect(closed.status).toBe(200);
+    expect(closed.body.validTo).toBe(K + 10);
+    at(NOW);
+    const known = (await list(`knownAt=${K}&limit=2000`)).filter((f) => f.subject === s);
+    expect(known.map((f) => [f.id, f.validTo, f.retractedAt])).toEqual([[open.id, K + 10, null]]);
+    // while the default list (nothing asked) no longer shows it: it is closed now
+    expect((await list(`limit=2000`)).filter((f) => f.subject === s)).toEqual([]);
+  });
+});
+
 describe("C14 retract as wrong", () => {
   it("C14 reason wrong on an open fact: 200, retractedAt now, validTo null; on a closed one validTo stays; both read back so; reason oops is 400 and changes no row", async () => {
     at(NOW - DAY);
