@@ -349,3 +349,141 @@ for (const theme of THEMES)
     await expect(dialog.locator(".mc-diff")).toBeVisible();
     expect(await serious(page, '[role="dialog"]')).toEqual([]);
   });
+
+/* ---------------- C146: the folder's modals, keyboard and axe, both themes; the S4 independent test ---------------- */
+
+/** Tab from the first control of the open dialog through all of them: the order seen is the document's. */
+async function tabsInOrder(page: Page) {
+  const controls = await focusables(page, '[role="dialog"]');
+  expect(controls.length).toBeGreaterThan(1);
+  await page.locator('[role="dialog"]').locator("a[href], button, input, select, textarea").first().focus();
+  const seen: string[] = [];
+  for (let i = 0; i < controls.length; i++) {
+    seen.push(await active(page));
+    await page.keyboard.press("Tab");
+  }
+  expect(seen).toEqual(controls);
+  return controls;
+}
+
+for (const theme of THEMES)
+  test(`C146 the ${theme} theme: the permissions, export and import modals from the tree, every control by Tab in order, no serious axe violation; after Salvar with devices hide the folder shows EyeOff and a device's search no longer finds its note`, async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    await open(page, "moldura", theme, "/");
+    folder = `e2e-memoria-${stamp}-c146-${theme}`;
+    const word = `palavra${stamp}${theme}`;
+    const made = await api(page, "POST", "/api/v1/memory/notes", {
+      title: `Nota ${word}`,
+      folder,
+      content: `# Nota ${word}\n\nO texto com ${word}.\n`,
+    });
+    expect(made.status, JSON.stringify(made.json)).toBe(201);
+    const dir = path.dirname(made.json.path as string);
+    // a device holding content, paired through the API (a device is answered only while remote access is on: the
+    // test turns it on, and the afterEach puts the settings back and revokes the device)
+    const remote = (await api(page, "GET", "/api/v1/settings")).json.remote;
+    restoreRemote = remote;
+    expect(
+      (await api(page, "PUT", "/api/v1/settings", { remote: { ...remote, enabled: true } })).status,
+    ).toBe(200);
+    const start = await api(page, "POST", "/api/v1/pair/start", {
+      name: `c146-${theme}`,
+      scopes: ["content"],
+    });
+    expect(start.status, JSON.stringify(start.json)).toBe(200);
+    const claimed = await page.evaluate(async (code) => {
+      const res = await fetch("/api/v1/pair/claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code, name: "c146" }),
+      });
+      return (await res.json()) as { token: string; device: { id: string } };
+    }, start.json.code as string);
+    pairedDevice = claimed.device.id;
+    const device = claimed.token;
+    const deviceSearch = () =>
+      page.evaluate(
+        async ([token, q]) => {
+          const res = await fetch(`/api/v1/memory/search?q=${encodeURIComponent(q!)}`, {
+            headers: { "x-mordomo-token": token! },
+          });
+          return { status: res.status, body: JSON.stringify(await res.json()) };
+        },
+        [device, word],
+      );
+    await expect.poll(async () => (await deviceSearch()).body, { timeout: 30_000 }).toContain(word);
+
+    await page.goto("/#/brain/notes");
+    const tree = page.getByRole("tree");
+    await tree
+      .getByRole("treeitem", { name: /^notes/ })
+      .first()
+      .click();
+    const row = tree.locator(`[role="treeitem"][data-path$="/notes/${folder}"]`);
+    await expect(row).toHaveCount(1);
+    const menu = row.getByRole("button", { name: `Opções de ${folder}` });
+
+    // Permissões…
+    await menu.click();
+    await page.getByRole("menuitem", { name: "Permissões…" }).click();
+    let dialog = page.getByRole("dialog", { name: `Permissões de ${folder}` });
+    await expect(dialog).toBeVisible();
+    expect(Math.round((await dialog.boundingBox())!.width)).toBe(480);
+    expect(await serious(page)).toEqual([]);
+    const access = await tabsInOrder(page);
+    expect(access.at(-1)).toContain("Salvar");
+    await dialog.getByRole("combobox", { name: "Dispositivos" }).selectOption("hide");
+    await dialog.getByRole("button", { name: "Salvar" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(row.locator(":scope > .notes-row .notes-lock svg.lucide-eye-off")).toHaveCount(1);
+    const after = await deviceSearch();
+    expect(after.status).toBe(200);
+    expect(after.body).not.toContain(word);
+    expect(after.body).not.toContain(dir);
+
+    // Exportar pasta…
+    await menu.click();
+    await page.getByRole("menuitem", { name: "Exportar pasta…" }).click();
+    dialog = page.getByRole("dialog", { name: `Exportar ${folder}` });
+    await expect(dialog).toBeVisible();
+    expect(Math.round((await dialog.boundingBox())!.width)).toBe(480);
+    expect(await serious(page)).toEqual([]);
+    await tabsInOrder(page);
+    await dialog.getByRole("button", { name: "Exportar" }).click();
+    await expect(dialog.locator(".ft-done")).toContainText("1 arquivos");
+    expect(await serious(page)).toEqual([]);
+    const exported = (await dialog.locator(".ft-done .mono").textContent())!;
+    fs.rmSync(exported, { recursive: true, force: true });
+    await dialog.locator(".modal-actions").getByRole("button", { name: "Fechar" }).click();
+    await expect(dialog).toHaveCount(0);
+
+    // Importar pasta… (the NOTAS menu)
+    // the hint of the folder menu, which took the focus back from the dialog, is put away first
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Opções das notas" }).click();
+    await page.getByRole("menuitem", { name: "Importar pasta…" }).click();
+    dialog = page.getByRole("dialog", { name: "Importar pasta" });
+    await expect(dialog).toBeVisible();
+    expect(Math.round((await dialog.boundingBox())!.width)).toBe(480);
+    await dialog.getByLabel("Pasta de origem").fill("/um/caminho");
+    expect(await serious(page)).toEqual([]);
+    await tabsInOrder(page);
+  });
+
+let restoreRemote: unknown = null;
+let pairedDevice: string | null = null;
+test.afterEach(async ({ page }) => {
+  if (!page.url().startsWith("http")) return;
+  // C146 leaves no device, no remote access it turned on, and no folder restricted in the shared e2e home
+  if (pairedDevice) await api(page, "DELETE", `/api/v1/devices/${pairedDevice}`).catch(() => undefined);
+  if (restoreRemote)
+    await api(page, "PUT", "/api/v1/settings", { remote: restoreRemote }).catch(() => undefined);
+  pairedDevice = null;
+  restoreRemote = null;
+  const settings = await api(page, "GET", "/api/v1/settings").catch(() => null);
+  const list = (settings?.json?.folderAccess ?? []) as Array<{ path: string }>;
+  const kept = list.filter((e) => !e.path.includes(`e2e-memoria-${stamp}`));
+  if (kept.length !== list.length) await api(page, "PUT", "/api/v1/settings", { folderAccess: kept });
+});
