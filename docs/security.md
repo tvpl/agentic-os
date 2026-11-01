@@ -379,8 +379,18 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   folder is hidden; the connectors whose entry point is; the facets of `GET /api/memory/status`; and the text of
   skills, their notes and their text resources. A run, approval or notification whose run (or approval) can no longer
   be found is hidden from a device while devices have a hidden folder (it fails closed). The search's and the recall's
-  `score` for a device, and for a run's credential, is `1 / position` in the list it gets: the full-text score is
-  worked out over the whole index and would change with a hidden folder (plan amendment 4); the owner sees it as before.
+  `score` for a device, and for a run's credential, is `1 / position` in the list it gets (plan amendment 4), and the
+  order itself is the one the search would give with the hidden folders not there (plan amendment 7): bm25 weighs a word
+  by how many files hold it and how long they are, so ranking over the whole index let a hidden folder change a device's
+  order. A device and a run's credential search an index of their own (`files_fts_devices`, `files_fts_agents`,
+  contentless, migration 31) that holds only the files they may see, kept current by every pass and rebuilt when
+  `folderAccess` or the exclusions change; an audience that hides nothing from itself reads the owner's index and has
+  no copy (about 40 % of the owner's index per audience that has one, measured on 5 000 notes of 5 KB). The owner sees
+  the bm25 of the whole index as before. A run's `artifacts/<run id>/` is another way a run's output arrives: for a
+  device, an artifact of a run it is told does not exist (hidden folder, or a run that is gone) is not listed and
+  answers `404 not_found`, and, while a folder is hidden from devices, so does a run's `proposal.json`, which quotes the
+  notes its ops are sourced in. Hidden folders in free text are matched by their configured spellings (absolute,
+  relative to the home and to `memory/`, `~/`), so a name with a space is written `(pasta oculta)` whole.
 - **Agents.** A run's credential reads (search, recall, maps, journal, facts, the recall's statistics) leave out what is
   hidden from agents, and a run's credential appends to the journal only where agents may write (`403 folder_hidden`,
   `403 folder_read_only`). The context block and the routers in a run's prompt, and the routers and context maps the
@@ -392,7 +402,8 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   with `409 folder_hide_unsupported`**, as is a provider whose manifest does not say it keeps reads in the working
   folder: they read the whole disk (AD-015(d)), and "hidden" would be false. A write run whose folders hold a folder
   `read` for agents keeps it read-only (`protectedDirs`), and fails with `409 folder_protection_unsupported` on a
-  provider that cannot protect a folder.
+  provider that cannot protect a folder. The triage sentinel, which puts a sentinel's title and detail into the prompt
+  of a model run, writes the folders hidden from agents in them as `(pasta oculta)`, in the same spellings.
 - **When it is checked.** Every way a run is created checks the levels when it is asked for (`POST /api/runs`,
   `POST /api/skills/:slug/run`, a retry, a child, a conversation continued, a routine run now), and again when it
   launches, so a level changed in between decides; a run nobody's request waits on (a routine fired by its schedule,
@@ -403,7 +414,15 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   and Cursor can still open a hidden folder by its absolute path. Claude Code's `Bash` is not covered by the deny rules;
   it asks a human first in every profile a run uses. A binary a device is served (an image of an artifact or of a
   skill) is sent as it is, and the totals in the `x-total-count` header of `GET /api/runs` and `GET /api/sessions`
-  count every row, hidden ones included.
+  count every row, hidden ones included. **`mordomo mcp` reads with the owner's token** (it is the owner's own program),
+  so an agent session that has its tools (`recall`, `note_read`, `facts_query`) reads hidden folders: `hide` for agents
+  binds the runs MordomoOS starts and the credential it gives them, not a program the owner configures with the token.
+  A name is hidden whole only where it is written as a path: a bare folder name in a sentence (`fin`) is not a
+  citation and stays; the tail of a hidden path stops at the first space, so the part of a file name after a space
+  below a hidden folder may stay. The output of a run that was handed a folder hidden from devices only (a memory skill
+  reads `memory/` whole) can quote it, and a device reads that output; hiding from devices is enforced where a file is
+  served or indexed, not by following what an agent copies. With embeddings on, the vector ranking is cut at its depth
+  before the files a caller may not see are taken out, so a semantic hit list can be shorter than the twin's.
 
 ## Notes and the index worker
 

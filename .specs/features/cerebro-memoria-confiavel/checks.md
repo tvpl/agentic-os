@@ -1197,6 +1197,60 @@ path, real and as written, their path relative to the home and to `memory/`, and
 finding 5)
 Proof: `npx vitest run tests/memoria.access-round1.test.ts -t "C162 "`
 
+**C163** - The order of the hits a `content` device and a write run's credential are given by `GET /api/memory/search`, and
+of the candidates and excerpts of `GET /api/memory/recall`, equals the twin's (the same home with the hidden folder
+taken out of the world and the index passed again) on two fixtures in which bm25 over the whole index disagrees: `idf`
+(40 hidden notes hold one of the two words asked for, so over the whole index `b.md` leads and without them `a.md`
+does) and `avgdl` (30 hidden notes of 500 words raise the average length, so a long note holding the word twice
+overtakes a short one holding it once); each fixture first shows that the owner's answer, over the whole index, has the
+other order; the hits equal the twin's field by field, snippet included, and `score` is `1 / position`. The index of an
+audience follows the settings: with nothing hidden from the audience it reads the owner's `files_fts` and holds no row
+(`files_fts_devices_docsize` is empty); with a folder hidden it holds the visible files only; a pass that adds, changes
+or removes a visible or a hidden file, or moves one into or out of the hidden folder, keeps it equal to what the audience
+sees; a change of `folderAccess` or of the owner's excludes rebuilds it; a lost record (`meta` row) with a hidden row
+planted in the table makes the next read rebuild it, and nothing hidden is shown (L-061); and the hidden folder shown
+again returns the audience to the owner's index and empties the copy. The proofs of C113 and C120 gain the `idf` fixture
+(plan amendment 7, Landing 19, round 1 finding 4)
+Proof: `npx vitest run tests/memoria.access-round1.test.ts -t "C163 "`
+
+**C164** - The prompt of the triage run, built from a sentinel's title and detail, names no folder hidden from agents in any
+spelling a path is written in (the absolute path, relative to the home or to `memory/`, `~/`): each is written `(pasta
+oculta)`, a look-alike (`notes/fin2/…`) is put in as it is, and with nothing hidden from agents, or a folder hidden from
+devices only, the title and the detail are put in as they were (round 1 finding 10; the triage is a run of an agent, as
+the prompts and the routers are)
+Proof: `npx vitest run tests/memoria.access-round1.test.ts -t "C164 "`
+
+Builder decisions of this part, inside the approved shape (owner questions are marked):
+
+- **Findings 2 and 3 (C160, C161).** `GET /api/artifacts/{list,recent,file,raw}` for a device pass through the same
+  `hiddenRun` as the run routes: the artifacts of a run in a hidden folder, and of a run whose row is gone while devices
+  have a hidden folder (L-061), are not listed (nor counted in `total`, `skills` or `folders`, nor titled) and are `404
+not_found` to read. An artifact belongs to a run only under `artifacts/<run id>/` (the id's shape, a UUID): a folder
+  of any other name is no run's and is served as before. The rule for `proposal.json` is "a device never reads a run's,
+  at any depth of its folder, while a folder is hidden from devices": parsing the file for hidden sources would stop the
+  files the ops name but not the text an op quotes, which is the agent's, so it is the one rule that holds; with no
+  folder hidden from devices nothing changes. An owner question (G36): the output of a run that was handed a folder
+  hidden from devices only (a memory skill reads `memory/` whole) can quote it in any artifact and in its events, and
+  a device reads both; hiding from devices is enforced where a file is served or indexed, and `docs/security.md`
+  says so. The alternative is to hide from a device every output of a run that could read a folder hidden from it
+- **Finding 5 (C162).** The citations of a hidden folder are matched against the configured entries themselves, by
+  `citationRedactor` (`core/src/memory/citations.ts`, used by the device answers and the triage prompt); the generic
+  pattern stays only for a list that cannot be read, where every path of the home is hidden. A tail with a space in a
+  file name below the folder stops at the space (documented)
+- **Finding 4 (C163, plan amendment 7, Landing 19, migration 31).** `files_fts_agents` and `files_fts_devices` are
+  contentless FTS5 tables; the `meta` row `fts.<audience>` decides what each holds and every writer follows it, so a
+  pass running in the worker thread with the settings of its start cannot write another view into a table; the owner
+  keeps `files_fts` and its bm25. Cost, measured on 5 000 notes of 5.4 KB (27 MB of text): the owner's `files_fts` 50.1 MB
+  (the text and its index), one audience's copy 19.8 MB (40 %), built from the stored text in 0.9 s; an audience that
+  hides nothing from itself has no copy and no cost. The cheaper designs do not stay correct: a count of the visible
+  rows is not enough to compute bm25 without reading their text; filtering after the ranking is what leaked. The
+  semantic ranking (embeddings on, off by default) now takes the files a caller may not see out of the vector list
+  before the lists are fused, as the words' list always did; its depth cut is made before that, so a hit list can be
+  shorter than the twin's. C113 and C120 gained the `idf` fixture, the one in which the shared index orders the other
+  way, so that both fail when a device or a run is ranked over it
+- **Finding 10 (docs, C164).** `docs/security.md` says in the folder-access "Limits" that `mordomo mcp` reads with the
+  owner's token. The triage sentinel's copy is fixed rather than documented (C164)
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None
@@ -1284,6 +1338,11 @@ blocks the build.
 | device read routes (24)                                                     | search C113 · recall C113 · graph C113 · related C113 · links C113 · query C113 · tree C114 · maps C114 · hygiene C114 · journal C114 · routers/check C114 · recall/stats C114 · contexts C114 · facts C115 · reviews C115 · cleanup inventory C115 · cleanup scans C115 · dashboards C116 · history C116 · proposals C116 · artifacts C116 · runs diff C116 · note C117 · preview C117                                                                                                                                   | -        |
 | device settings fields hidden (3)                                           | `folderAccess` C118 · hidden indexed folders C118 · hidden context paths C118                                                                                                                                                                                                                                                                                                                                                                                                                                             | -        |
 | scores for anyone but the owner (3)                                         | device search and recall C149 · run credential search and recall C149 · the owner's bm25 C149                                                                                                                                                                                                                                                                                                                                                                                                                             | -        |
+| artifacts of a run a device is told is not there (6)                        | list C160 · recent C160 · file C160 · raw C160 · a run that is gone C160 · a run's proposal.json C161                                                                                                                                                                                                                                                                                                                                                                                                                     | -        |
+| hidden folder spellings in free text (4)                                    | absolute C162 · relative to the home C162 · relative to `memory/` C162 · `~/` C162                                                                                                                                                                                                                                                                                                                                                                                                                                        | -        |
+| search tables by audience (3)                                               | the owner's `files_fts` when nothing is hidden C163 · the audience's own table C163 · rebuilt when the record is lost C163                                                                                                                                                                                                                                                                                                                                                                                                | -        |
+| prompts of a run that cite a folder hidden from agents (1)                  | the triage sentinel's C164                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | -        |
+| order fixtures where bm25 over the whole index disagrees (2)                | `idf` C163, C113, C120 · `avgdl` C163                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | -        |
 | device routes that cite paths, amendment 5 (24)                             | runs list C150 · run C150 · children C150 · run stream C150 · run diff C150 · event stream C151 · sessions C152 · session C152 · approvals C153 · approval C153 · approval resolve C153 · notifications C154 · objectives C155 · objective C155 · memory status facets C156 · skill C157 · skill notes C157 · skill resource C157 · connectors C158 · connector data C158 · routines C159 · routine history C159 · routines silent C159 · every other device GET C159                                                     | -        |
 | a lookup that is missing fails closed, amendment 5 (2)                      | approval of a run that is gone C153 · notification of a run that is gone C154                                                                                                                                                                                                                                                                                                                                                                                                                                             | -        |
 | run credential read routes (6)                                              | search C120 · recall C120 · maps C120 · journal C120 · facts C120 · recall/stats C120                                                                                                                                                                                                                                                                                                                                                                                                                                     | -        |
@@ -1936,3 +1995,42 @@ not_a_file`** of the two routes through the safe reader's common list (plan amen
   restricted block right after the indexed folders (cerebro-organizar C41); 12px hints (typography C15, or a `MICROCOPY`
   entry); `404 not_a_file` in each route's own entry (it would change the codes C138 names); a gallery story of part B's
   modals (no check asks for it, and 677 B of JS gzip were left)
+
+Status of round 1 of the verification, part 2 (C160-C164, findings 2, 3, 4, 5 and 10):
+
+- C113 and C120: **still closed, and now true in general**: each gains a second test under its title with the `idf`
+  fixture, in which bm25 over the whole index orders the other way; they fail when a device or a run is ranked over it
+- C160 and C161 (findings 2 and 3), C162 (finding 5), C163 (finding 4, Landing 19 of plan amendment 7) and C164
+  (finding 10): closed, every proof green in `tests/memoria.access-round1.test.ts`
+- Finding 10, docs: the folder-access "Limits" of `docs/security.md` say that `mordomo mcp` reads with the owner's token
+  and that the output of a run handed a folder hidden from devices only can quote it (G36, an owner question)
+
+- **Boundary (round 1, part 2):** `4d3f120` (C160, C161), `9d2da96` (C162), `056931d` (C163, migration 31, Landing 19),
+  `83ce62c` (C164). On the tree after them: `npm run build`, `npm run typecheck` and `npm run lint` exit 0, `npx vitest
+run` at the root is green (187 files, 2754 tests passed, 1 skipped), `npm run test -w apps/command-centre` is green
+  (186 files, 1627 tests; nothing under `apps/command-centre` changed, so the e2e specs were not run). Each of the
+  `Proof:` lines of C160 to C164, and those of C113, C114, C116, C118, C120, C124, C150, C154, C159 and migrations C39
+  and C79, passes run alone. Faults injected and caught: (1) a hidden run's artifacts served again: C160 fails; (2) a
+  run's `proposal.json` served again: C161 fails; (3) no right boundary, no left boundary, and the generic pattern of
+  before: C162 fails each time (and C164 for the first); (4) the shared index for the search: C113, C120 and C163 fail;
+  for the recall alone: C163 fails; (5) a pass that does not mirror a file into the audience tables: C163 fails; a table
+  not rebuilt when the settings change: C163 fails; (6) the triage prompt unredacted: C164 fails. Pinned tests of other
+  features moved, all additive: the migration chain in `tests/contexts.runs.test.ts` (cerebro-contextos C25),
+  `tests/data.migration.test.ts` (C56), `tests/natureza.layer.test.ts` (C7), `tests/paineis.layer.test.ts` (C19, C98),
+  `tests/device-scopes.test.ts` (C22) with its chained amendments in `tests/sdk.api-thin.test.ts` (C29), the two
+  migration tests of this feature (`tests/memoria.migration.test.ts` C39 and C79: the schema they open at is 31), and
+  the barrel in `tests/sdk.surface.test.ts` (C38: `HIDDEN_PATH_TEXT`, `CitationRedactor`, `citationRedactor`)
+- **Settled mid-build:** nothing by the owner beyond amendment 7. Builder decisions: (a) an audience that hides nothing
+  from itself reads `files_fts` and its table is emptied (no copy at all in the default home); only `hide` makes an
+  audience's table (`read` does not), and a device whose roots hold `artifacts/exports/` (the home itself indexed)
+  too; (b) the spec stored in `meta` is the audience's exclusion list with its access mark, so a change of a `read`
+  level rebuilds the table to the same rows (harmless); (c) a snippet of a hit of an audience is read from `files_fts`
+  after the ranking, for the rows kept; (d) `ensureAudienceIndex` runs at the start of every pass, also a pass over
+  named paths, and before every search and recall of an audience; (e) the semantic fusion takes the files a caller may
+  not see out of the vector list before the lists are fused (a change that touches no caller without a hidden folder);
+  (f) the generic absolute-path pattern remains only for a list that cannot be read; (g) the `proposal.json` rule is
+  conditional on a folder being hidden from devices (default behaviour unchanged), and every file of
+  `artifacts/<uuid>/` follows its run
+- **Abandoned:** parsing `proposal.json` for hidden sources (it cannot stop what an op quotes); a bm25 of our own over
+  counts of the visible rows; copies of the text in the audience tables (2 to 3 times the text instead of 40 % of the
+  index); redacting a bare folder name (`fin`) in a sentence (it would redact every use of the word)
