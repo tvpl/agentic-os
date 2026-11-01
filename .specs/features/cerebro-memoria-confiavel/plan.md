@@ -565,6 +565,19 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
    (gravaria um texto vazio). O `aside` de um `memory_edit` passa a ser relativo a `memory/` quando começa por
    `archive/` e relativo ao home quando começa por `guard/`.
 
+10. **A confiança de uma operação exige que a linha citada a sustente (rodada 2 da verificação, achado 5; correção de
+    construção com pergunta).** O AC 56 dava a confiança só pela linha citada: uma operação inventada que cita qualquer
+    linha escrita pelo dono nascia `usuario` e marcada, e o selo dizia "Escrito por você" sobre o texto do agente. Agora,
+    além da linha, a operação diz o que afirma (`add` e `supersede`: o `text`; `fact`: o `object`; `close_loop`: o laço que
+    fecha, sem o marcador nem o rabo `(chave:: valor)`; `move_to_topic` não cita linha) e a linha citada tem de carregar
+    isso palavra por palavra (espaço colapsado, depois do marcador de lista, da caixa de tarefa e do `HH:MM` do diário, com
+    letras e dígitos inteiros); senão a confiança é `inferido`, e vale também para `ferramenta`. O mesmo vale para uma
+    proposta `fact` que cita `sourcePath` e `sourceLine`. O AC 56 e o C52 valem como escritos para a linha; o que muda é
+    que o texto da operação precisa citar a linha (as provas passam a citar). Uma operação cujo texto parafraseia a linha
+    nasce desmarcada; o dono marca à mão. Pergunta ao dono: uma operação que parafraseia uma linha sua deve nascer marcada
+    como "Escrito por você"? Padrão: não (só a citação literal). Alternativa: marcar quando a linha sustenta o texto "em
+    sentido" (exige um juízo que o sistema não faz sem um modelo).
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).

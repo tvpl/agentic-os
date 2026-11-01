@@ -24,7 +24,9 @@ import {
   MEMORY_MAX_BYTES,
   MEMORY_MAX_LINES,
   applyOps,
+  carries,
   evaluateOps,
+  loopText,
   opTrust,
   withinBudget,
 } from "../core/src/memory/proposals.js";
@@ -320,8 +322,8 @@ function opsHome(excludes: string[] = []) {
   return { env: { paths, settings }, done: () => fs.rmSync(paths.home, { recursive: true, force: true }) };
 }
 
-const addOp = (source: string, line?: number) =>
-  ({ op: "add", section: "Decisions", text: "x", source, ...(line !== undefined ? { line } : {}) }) as const;
+const addOp = (source: string, line?: number, text = "x") =>
+  ({ op: "add", section: "Decisions", text, source, ...(line !== undefined ? { line } : {}) }) as const;
 
 describe("C51 the source check of an op", () => {
   it("C51 a missing file, line count + 1, an excluded folder and ../fora.md are each invalid; the last line is valid", () => {
@@ -397,17 +399,66 @@ describe("C52 the trust rule", () => {
   it("C52 a trust the agent writes into the op is ignored (evaluateOps computes it from the line)", () => {
     const { env, done } = opsHome();
     try {
-      const op = { ...addOp("journal/2026-10-30.md", 5), trust: "usuario" };
+      const op = { ...addOp("journal/2026-10-30.md", 5, "Sugestão"), trust: "usuario" };
       expect(evaluateOps(env as never, [op as never], null)[0]!.trust).toBe("inferido");
-      expect(evaluateOps(env as never, [addOp("journal/2026-10-30.md", 9)], null)[0]!.trust).toBe(
-        "ferramenta",
-      );
-      expect(evaluateOps(env as never, [addOp("notes/cliente.md#Contrato", 5)], null)[0]!.trust).toBe(
-        "usuario",
-      );
+      expect(
+        evaluateOps(env as never, [addOp("journal/2026-10-30.md", 9, "run r-1 → done")], null)[0]!.trust,
+      ).toBe("ferramenta");
+      expect(
+        evaluateOps(env as never, [addOp("notes/cliente.md#Contrato", 5, "Renovação em março")], null)[0]!
+          .trust,
+      ).toBe("usuario");
     } finally {
       done();
     }
+  });
+});
+
+describe("C52 the claim of an op must be carried by the line it cites (round 2, finding 5)", () => {
+  const line = "- 09:30 Turmas de 20 alunos, de segunda a sexta";
+  const src = { path: "journal/2026-10-30.md", line: 4, text: line, section: "Decisions" };
+
+  it("carries: the claim is in the line as whole words, after the marker, the task box and the HH:MM stamp, white space collapsed", () => {
+    for (const [what, claim, want] of [
+      ["the words", "Turmas de 20 alunos", true],
+      ["the whole line's text", "Turmas de 20 alunos, de segunda a sexta", true],
+      ["white space collapsed", "Turmas  de   20\talunos", true],
+      ["a number as a word", "20", true],
+      ["the stamp is not part of the text", "09:30 Turmas", false],
+      ["a number inside another", "2", false],
+      ["a word cut in the middle", "urmas de 20", false],
+      ["something the line does not say", "Decidido pelo dono", false],
+      ["the empty claim", "   ", false],
+      ["a longer text that contains the line", "Turmas de 20 alunos, de segunda a sexta e sábado", false],
+    ] as const) {
+      expect(carries(line, claim), what).toBe(want);
+    }
+    expect(carries("- [ ] Lançar a turma", "Lançar a turma")).toBe(true);
+    expect(carries("1. (rascunho) pronto", "(rascunho)")).toBe(true);
+  });
+
+  it("opTrust: an owner's line is usuario for a claim it carries and inferido for one it does not; with no claim, as before", () => {
+    expect(opTrust({ ...src, claim: ["Turmas de 20 alunos"] })).toBe("usuario");
+    expect(opTrust({ ...src, claim: ["Turmas de 20 alunos", "20"] })).toBe("usuario");
+    expect(opTrust({ ...src, claim: ["Decidido pelo dono"] })).toBe("inferido");
+    expect(opTrust({ ...src, claim: ["Turmas de 20 alunos", "Decidido pelo dono"] })).toBe("inferido");
+    expect(opTrust({ ...src })).toBe("usuario");
+  });
+
+  it("opTrust: a line under ## Runs is ferramenta only for a claim it carries; an agent's line is inferido whatever it carries", () => {
+    const run = { path: "journal/2026-10-30.md", line: 9, text: "- run r-1 → done in 3s", section: "Runs" };
+    expect(opTrust({ ...run, claim: ["run r-1 → done"] })).toBe("ferramenta");
+    expect(opTrust({ ...run, claim: ["tudo certo"] })).toBe("inferido");
+    const agent = { ...src, text: "- Turmas de 20 alunos (autor:: agente)" };
+    expect(opTrust({ ...agent, claim: ["Turmas de 20 alunos"] })).toBe("inferido");
+  });
+
+  it("loopText: the loop a MEMORY.md line names, its marker, its (key:: value) tail and its closing left out", () => {
+    expect(loopText("- Lançar a turma (fonte:: journal/a.md:4) (autor:: agente) (em:: 2026-10-31)")).toBe(
+      "Lançar a turma",
+    );
+    expect(loopText("- Lançar a turma → closed 2026-10-30")).toBe("Lançar a turma");
+    expect(loopText("- Lançar a turma")).toBe("Lançar a turma");
   });
 });
 

@@ -1396,6 +1396,25 @@ fixed in the commits that carry each entry.
   answers `EEXIST` with the run's entry still at the name; and `setAsideAndWrite` has its own-layer cases (a file, a
   destination that exists, even a dangling link, left untouched with the entry still at the name; a link set aside as a
   link; a folder; a link on the way). Re-injected: without `destinationExists` a guard case and a direct case fail
+- **Finding 5: an agent could pre-tick an invented operation as "Escrito por você".** `opTrust` looked only at the
+  line an op cites, so an `add` whose text the agent invented, citing any line the owner wrote, was `usuario`, valid and
+  ticked. Rule chosen (plan amendment 10, the narrowest that keeps C52 and C91 as written for the line): an op also says
+  what it claims (`add` and `supersede` the text; `fact` the object; `close_loop` the loop it closes; `move_to_topic`
+  cites no line) and `usuario` or `ferramenta` needs the cited line to carry every claim verbatim as whole words (the
+  marker, the task box and the `HH:MM` stamp left out); otherwise `inferido`. The same holds for a `fact` proposal that
+  cites `sourcePath` and `sourceLine`. The AC 56 wording stays; its value for a line is unchanged. C91 reads the
+  trust from the API and is untouched (its mocks carry the trust). **C52 extended**: an invented `add`, an `add` whose text
+  is a number inside another, a `supersede`, a `close_loop` of a loop the line does not name and a `fact` whose object the
+  line does not carry are `inferido` while citing an owner's line; the ones that quote it are `usuario` (an `add`, a
+  `supersede`, a `fact`, a `close_loop` of a loop it names); a fact proposal with an object the line does not carry is
+  `inferido`; `carries`, `loopText` and `opTrust` have own-layer cases (the words, the stamp, the number inside a number,
+  the empty claim, `## Runs`, an agent's line, no claim). Two fixtures of C52 (the route case and the `evaluateOps` case)
+  cited lines with texts that were not quotes of them (`"dono"`, `"x"`): they now quote the lines, which leaves the
+  value each asserted (the trust a line gives) as it was, and they are named here as edited. Re-injected: the claim rule
+  removed (the rule of round 1) fails 4 cases; no claim passed by `evaluateOps`, by the fact proposal, or for
+  `close_loop` each fails 1; no word boundary before or after fails 1 and 3; the empty claim carried fails 1. Owner
+  question (G39): an op that paraphrases a line of the owner's is born unticked; should it be born ticked as "Escrito por
+  você"? Safe default: no, only a quotation. Alternative: judge "in meaning", which the system cannot do without a model
 
 ## Gaps found by this derivation
 

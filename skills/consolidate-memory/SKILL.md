@@ -91,4 +91,4 @@ This run is read-only. It changes nothing: it leaves one file, `proposal.json`, 
 - `source` is a file of the memory folder, relative to it, optionally with `#<section>`; `line` is its line, from 1.
 - `old` and `lines` are lines of the long-term memory file exactly as written; a line that changed is not applied.
 - `topic` is a slug (lower-case letters, digits, single hyphens); at most 200 ops in all.
-- Do not write a `trust`: MordomoOS computes it from where the source line is.
+- Do not write a `trust`: MordomoOS computes it from where the source line is. An op starts ticked, as "Escrito por você", only when its `text` (for a `fact`, its `object`; for a `close_loop`, the loop it closes) is carried word for word by the line it cites: quote the line, and cite the line you quote.

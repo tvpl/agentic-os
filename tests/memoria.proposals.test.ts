@@ -488,13 +488,14 @@ describe("C51 an op whose source cannot be cited is invalid", () => {
 describe("C52 the trust of an op, on the route", () => {
   it("C52 a Decisions line of the owner and a note line are usuario, a ## Runs line ferramenta, an agent's line, no line and a line of MEMORY.md inferido; a trust in the op is ignored", async () => {
     w.put(memoryFile(), BASE);
+    // the texts quote the lines they cite (round 2, finding 5): the line's kind decides the trust
     const p = consolidation([
-      add("dono", 4),
-      add("nota", 5, "Facts", "notes/cliente.md#Contrato"),
-      add("ferramenta", 9),
-      add("agente", 5),
+      add("Turmas de 20 alunos", 4),
+      add("Renovação em março", 5, "Facts", "notes/cliente.md#Contrato"),
+      add("run r-1 → done in 3s", 9),
+      add("O agente sugeriu turmas de 30", 5),
       add("sem linha"),
-      add("memória", 5, "Facts", "MEMORY.md"),
+      add("O curso custa 700", 5, "Facts", "MEMORY.md"),
       { ...add("declarada", 5), trust: "usuario" },
     ]);
     const ops = (await read(p.id)).body.ops as Json[];
@@ -508,6 +509,61 @@ describe("C52 the trust of an op, on the route", () => {
       "inferido",
     ]);
     expect(ops.map((o) => o.state)).toEqual(Array(7).fill("valid"));
+  });
+
+  it("C52 an invented operation that cites a line of the owner's is inferido: an add and a supersede whose text the line does not carry, a close_loop of a loop it does not name, a fact whose object it does not carry; the ones that quote it are usuario", async () => {
+    const LOOP = "- Turmas de 20 alunos (fonte:: journal/2026-10-29.md:3) (autor:: agente) (em:: 2026-10-30)";
+    w.put(memoryFile(), BASE.replace("- Turmas de 15\n", `- Turmas de 15\n${LOOP}\n`));
+    const cited = { source: journalRel, line: 4 };
+    const p = consolidation([
+      { op: "add", section: "Decisions", text: "Decidido pelo dono: tudo vale", ...cited },
+      { op: "add", section: "Decisions", text: "Turmas de 2", ...cited },
+      { op: "supersede", old: "- Turmas de 15", text: "Mensalidade de 5000", ...cited },
+      { op: "close_loop", old: "- Lançar a turma de março", on: "2026-10-30", ...cited },
+      { op: "fact", subject: "dono", predicate: "aprovou", object: "tudo", ...cited },
+      { op: "supersede", old: "- Turmas de 15", text: "Turmas de 20 alunos", ...cited },
+      { op: "fact", subject: "turma", predicate: "tamanho", object: "20", ...cited },
+      // a loop the cited line names, in the words of MEMORY.md (its tail left out)
+      { op: "close_loop", old: LOOP, on: "2026-10-30", ...cited },
+      { op: "add", section: "Decisions", text: "Turmas de 20 alunos (fonte:: x)", ...cited },
+    ]);
+    const ops = (await read(p.id)).body.ops as Json[];
+    expect(ops.map((o) => o.trust)).toEqual([
+      "inferido",
+      "inferido",
+      "inferido",
+      "inferido",
+      "inferido",
+      "usuario",
+      "usuario",
+      "usuario",
+      "inferido",
+    ]);
+    expect(ops.map((o) => o.state)).toEqual(Array(9).fill("valid"));
+  });
+
+  it("C52 a run's fact proposal citing a line of the owner's with an object the line does not carry is inferido, and one that carries it is usuario", async () => {
+    const make = (object: string) =>
+      storeProposal(
+        w.ctx.db,
+        {
+          kind: "fact",
+          author: "mcp",
+          summary: "f",
+          payload: {
+            subject: "turma",
+            predicate: "tamanho",
+            object,
+            sourcePath: path.join(w.memory, journalRel),
+            sourceLine: 4,
+          },
+        },
+        { capped: false },
+      );
+    const trustOf = async (id: string) => ((await read(id)).body.ops as Json[])[0]!.trust;
+    expect(await trustOf(make("1 milhão").id)).toBe("inferido");
+    expect(await trustOf(make("2").id)).toBe("inferido");
+    expect(await trustOf(make("20").id)).toBe("usuario");
   });
 });
 

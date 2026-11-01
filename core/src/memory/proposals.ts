@@ -317,19 +317,59 @@ export function proposalPaths(env: Pick<ProposalEnv, "paths" | "settings">, reco
 // ---- the trust of an op and its source (AC 55, 56) ----------------------------------------------------------------
 
 /**
+ * What a cited line says, as it is read for a quotation: the list marker, a task box and a journal's `HH:MM` stamp left
+ * out, white space made one space.
+ */
+function quotable(line: string): string {
+  return line
+    .replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(?:\d{1,2}:\d{2}\s+)?/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** A line of MEMORY.md as the loop it names: its list marker and its `(key:: value)` tail left out. */
+export function loopText(line: string): string {
+  let text = quotable(line);
+  for (;;) {
+    const next = text.replace(/\s*\((?:fonte|autor|em|valid_to)::[^)]*\)\s*$/, "").replace(/\s*→ closed \d{4}-\d{2}-\d{2}\s*$/, "");
+    if (next === text) return text;
+    text = next;
+  }
+}
+
+/**
+ * Whether a cited line carries `claim` verbatim (round 2, finding 5): the claim, white space collapsed, is in the line
+ * as whole words (no letter or digit touches it on either side). An empty claim is carried by no line.
+ */
+export function carries(line: string, claim: string): boolean {
+  const wanted = claim.replace(/\s+/g, " ").trim();
+  if (wanted === "") return false;
+  const edge = (c: string) => /[\p{L}\p{N}]/u.test(c);
+  const before = edge(wanted[0]!) ? "(?<![\\p{L}\\p{N}])" : "";
+  const after = edge(wanted[wanted.length - 1]!) ? "(?![\\p{L}\\p{N}])" : "";
+  const escaped = wanted.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`${before}${escaped}${after}`, "u").test(quotable(line));
+}
+
+/**
  * The trust of an op from its source line (AC 56), never from what the agent wrote: a line of `MEMORY.md` itself, no
  * line, or a line that ends `(autor:: agente)` is `inferido`; a line under the journal's `## Runs` is `ferramenta`; any
- * other line of the journal or of a note is `usuario`.
+ * other line of the journal or of a note is `usuario`. When the op says what it claims (`claim`: the text it would write,
+ * the object of a fact), the cited line must carry every claim verbatim (`carries`); a line that does not support what
+ * the op says is no origin for it, and the op is `inferido`: an agent's pointer at any line of the owner's does not make
+ * its own text the owner's (round 2, finding 5).
  */
 export function opTrust(src: {
   path: string;
   line?: number | null | undefined;
   text?: string | null | undefined;
   section?: string | null | undefined;
+  claim?: readonly string[] | undefined;
 }): FactTrust {
   if (!src.line || src.text === null || src.text === undefined) return "inferido";
   if (src.path === MEMORY_FILE) return "inferido";
   if (AGENT_MARK.test(src.text)) return "inferido";
+  if (src.claim !== undefined && !src.claim.every((c) => carries(src.text!, c))) return "inferido";
   const journal = src.path.split("/")[0] === "journal";
   if (journal && src.section === "Runs") return "ferramenta";
   return "usuario";
@@ -404,6 +444,14 @@ function checkSource(
   return { ok: true, rel: normal, text: lines[line - 1]!, section: sectionAt(lines, line - 1) };
 }
 
+/** What an op says that its cited line must carry: the text it writes, the loop it closes, the object of its fact. */
+function claimOf(op: ProposalOp): string[] | undefined {
+  if (op.op === "add" || op.op === "supersede") return [op.text];
+  if (op.op === "close_loop") return [loopText(op.old)];
+  if (op.op === "fact") return [op.object];
+  return undefined;
+}
+
 /** Each op as the owner reviews it, against the `MEMORY.md` read now (null: there is none). */
 export function evaluateOps(
   env: Pick<ProposalEnv, "paths" | "settings">,
@@ -449,7 +497,15 @@ export function evaluateOps(
       op: op.op,
       source: op.source,
       line: op.line ?? null,
-      trust: verdict.ok ? opTrust({ path: verdict.rel, line: op.line, text: verdict.text, section: verdict.section }) : ("inferido" as const),
+      trust: verdict.ok
+        ? opTrust({
+            path: verdict.rel,
+            line: op.line,
+            text: verdict.text,
+            section: verdict.section,
+            claim: claimOf(op),
+          })
+        : ("inferido" as const),
     };
     const view = (section: string | null, text: string): OpView => ({ ...base, section, text, state: "valid" });
     let out: OpView;
@@ -646,7 +702,14 @@ function factOpView(env: Pick<ProposalEnv, "paths" | "settings">, payload: Recor
     const rel = path.relative(path.resolve(env.paths.memory), path.resolve(sourcePath));
     if (rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)) {
       const verdict = checkSource(env, rel.split(path.sep).join("/"), line, new Map());
-      if (verdict.ok) trust = opTrust({ path: verdict.rel, line, text: verdict.text, section: verdict.section });
+      if (verdict.ok)
+        trust = opTrust({
+          path: verdict.rel,
+          line,
+          text: verdict.text,
+          section: verdict.section,
+          claim: [String(payload.object)],
+        });
     }
   }
   return {
