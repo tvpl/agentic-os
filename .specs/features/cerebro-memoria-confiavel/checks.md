@@ -1161,6 +1161,29 @@ true` and `aside`; accepting it is `400 validation`); a `guard` version is recor
   nobody asserted). C13 gains a case that pins the value by name. An owner question (G35): the safe default is as built;
   the alternative is to record each closing as its own row, a change of door 2.
 
+## Correções da rodada 1 (parte 2)
+
+What round 1 of the verification found in what a paired device and a run's credential read (findings 2, 3, 4, 5 and
+10), fixed in the commits that carry each entry. Nothing approved is weakened; the claims below are new checks.
+
+**C160** - With `notes/fin` `hide` for devices, a `content` device's `GET /api/artifacts/list` and `/recent` hold no
+artifact of a run whose folder is hidden, and none of a run that is gone (the folder `artifacts/<run id>/` with no run
+row): the items, their titles, the run ids in `folders` and `total` are exactly those of the other artifacts (a visible
+run's and a file outside any run's folder); `GET /api/artifacts/file` and `/raw` of the hidden run's and of the gone
+run's files answer it `404 not_found`, and the owner `200`; a visible run's files answer `200`; with no folder hidden
+from devices the gone run's and the formerly hidden files are served again, as before (round 1 finding 2, L-055 and
+L-061: the artifacts are another way a run's output arrives)
+Proof: `npx vitest run tests/memoria.access-round1.test.ts -t "C160 "`
+
+**C161** - While a folder is hidden from devices, `GET /api/artifacts/file` of a run's `proposal.json` (in its folder
+`artifacts/<run id>/`, at any depth) answers a `content` device `404 not_found` although the run is visible, it is in
+neither the list nor the recent ones, and the owner reads it; the look-alikes are served as before: `proposal.json.md`
+in the run's folder and a `proposal.json` in a folder that is no run's; with no folder hidden from devices the
+`proposal.json` is served as before. The rule is "never, while a folder is hidden" and not "when an op is sourced in
+a hidden folder": a proposal quotes the text of the note it cites, and an op's `text` is the agent's, so no rule over
+the sources would stop it quoting a hidden note it read (round 1 finding 3, G14)
+Proof: `npx vitest run tests/memoria.access-round1.test.ts -t "C161 "`
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None

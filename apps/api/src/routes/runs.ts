@@ -239,6 +239,8 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     const runs = ctx.runs.list({ limit: 200 });
     // A device is never served `artifacts/exports/` (cerebro-memoria-confiavel, G11), nor a file hidden from it.
     const scope = accessView(ctx, req.principal).scopeOf([ctx.paths.artifacts]);
+    // A device is told of no artifact of a run it is told does not exist (round 1, finding 2).
+    const device = redactorFor(ctx, req.principal);
     const artifacts: Array<{
       runId: string;
       file: string;
@@ -252,6 +254,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     for (const run of runs) {
       for (const rel of run.artifacts) {
         const abs = path.join(ctx.paths.artifacts, rel);
+        if (device?.hiddenArtifact(abs)) continue;
         let sizeBytes: number | null = null;
         try {
           sizeBytes = statWorkspacePath(scope, abs).stat.size;
@@ -277,6 +280,8 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   /** Read one artifact (text) — strictly inside the artifacts dir. */
   bind(app, "artifacts.file", async ({ query: { p } }, req) => {
     let file: ReturnType<typeof openWorkspaceFile>;
+    // A device is answered `404` for what it is told is not there, as the run's own route does (round 1, findings 2, 3).
+    if (redactorFor(ctx, req.principal)?.hiddenArtifact(p)) throw httpError(404, "Artifact not found");
     try {
       // PathAccessError → 403 (outside artifacts/, a link out of it, a secret name; for a device, `artifacts/exports/`).
       file = openWorkspaceFile(accessView(ctx, req.principal).scopeOf([ctx.paths.artifacts]), p);

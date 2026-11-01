@@ -59,7 +59,13 @@ function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: s
   }
 }
 import { httpError, principalName, requireAdapter, requireProvider, startedByOf } from "./common.js";
-import { accessView, redactorFor, settingsForDevice, type AccessView } from "../access.js";
+import {
+  accessView,
+  redactorFor,
+  settingsForDevice,
+  type AccessView,
+  type DeviceRedactor,
+} from "../access.js";
 import { requireContext } from "./contexts.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -300,6 +306,8 @@ export function listArtifacts(
   q: ArtifactListQueryT,
   /** The caller's view (cerebro-memoria-confiavel, G11): a device is never served `artifacts/exports/`. */
   view: AccessView = accessView(ctx, { kind: "owner" }),
+  /** The caller's redactor when it is a paired device: what it is never served is not listed (round 1, finding 2). */
+  device: DeviceRedactor | null = null,
 ): { items: ArtifactListItem[]; total: number; skills: string[]; folders: string[] } {
   const root = ctx.paths.artifacts;
   const byRel = new Map<string, { runId: string; skillSlug: string | null; createdAt: number }>();
@@ -336,6 +344,7 @@ export function listArtifacts(
       if (!entry.isFile) continue;
       const rel = path.relative(realRoot, entry.path).split(path.sep).join("/");
       const abs = path.join(root, ...rel.split("/"));
+      if (device?.hiddenArtifact(abs)) continue;
       const meta = byRel.get(rel);
       const kind = artifactKind(entry.name);
       const folder = rel.split("/")[0] ?? "";
@@ -770,12 +779,13 @@ export function registerSystemRoutes(
 
   // ---- Artifacts gallery (desktop search, /artifacts, /generations) --------
   bind(app, "artifacts.list", async ({ query: q }, req) => {
-    return listArtifacts(ctx, q, accessView(ctx, req.principal));
+    return listArtifacts(ctx, q, accessView(ctx, req.principal), redactorFor(ctx, req.principal));
   });
 
   /** Binary artifact (images / video) for thumbnails — strictly inside the artifacts dir, allow-listed types only. */
   bind(app, "artifacts.raw", async ({ query: { p } }, req, reply) => {
     let file: WorkspaceFile;
+    if (redactorFor(ctx, req.principal)?.hiddenArtifact(p)) throw httpError(404, "Artifact not found");
     try {
       // PathAccessError → 403; the descriptor, not the path, is what gets streamed (a device: never artifacts/exports/).
       file = openWorkspaceFile(accessView(ctx, req.principal).scopeOf([ctx.paths.artifacts]), p);

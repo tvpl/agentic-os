@@ -146,6 +146,9 @@ export function rankScored<T extends { score: number }>(list: readonly T[]): T[]
   return list.map((item, i) => ({ ...item, score: 1 / (i + 1) }));
 }
 
+/** The id of a run (`crypto.randomUUID()`): the name of its folder in `artifacts/`. */
+const RUN_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
 /** What a hidden path is written as in free text a device reads (amendment 5). */
 export const HIDDEN_PATH_TEXT = "(pasta oculta)";
 
@@ -171,6 +174,12 @@ export interface DeviceRedactor {
   hiddenRun(runId: string | null | undefined): boolean;
   /** Whether an approval is one a device is never told of: its run is hidden, or the run it would start is in a hidden folder. */
   hiddenApproval(approval: { payload?: unknown } | null | undefined): boolean;
+  /**
+   * Whether a file under `artifacts/` is one a device is never served (round 1, findings 2 and 3): an artifact of a run
+   * a device is told does not exist (`hiddenRun`, a run that is gone included), and, while devices have a hidden
+   * folder, a run's `proposal.json`, which quotes the notes its ops are sourced in whatever their folder.
+   */
+  hiddenArtifact(absolute: string): boolean;
   /** Whether a notification is one a device is never told of: its run or its approval is hidden, or its link points at a hidden file. */
   hiddenNotification(n: { runId?: string | null; approvalId?: string | null; href?: string | null }): boolean;
   /** Whether an event of the stream is one a device is never told of (the run, notification or approval it is about). */
@@ -269,7 +278,30 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
     }
     return false;
   };
-  return { restricts, hiddenPath, text, value, hiddenRun, hiddenApproval, hiddenNotification, hiddenEvent };
+  const artifactsDir = [path.resolve(ctx.paths.artifacts), realpathLenient(ctx.paths.artifacts)];
+  const hiddenArtifact = (absolute: string): boolean => {
+    for (const spelling of new Set([path.resolve(absolute), realpathLenient(absolute)])) {
+      const dir = artifactsDir.find((d) => isInside(d, spelling));
+      if (!dir) continue;
+      const parts = path.relative(dir, spelling).split(path.sep);
+      // Only a run's own folder (`artifacts/<run id>/`) belongs to a run: any other folder of artifacts/ is no run's.
+      if (parts.length < 2 || !RUN_ID.test(parts[0]!)) continue;
+      if (hiddenRun(parts[0])) return true;
+      if (restricts && parts[parts.length - 1] === "proposal.json") return true;
+    }
+    return false;
+  };
+  return {
+    restricts,
+    hiddenPath,
+    text,
+    value,
+    hiddenRun,
+    hiddenApproval,
+    hiddenArtifact,
+    hiddenNotification,
+    hiddenEvent,
+  };
 }
 
 /** The redactor of a paired device's request, or null for any other caller. */
