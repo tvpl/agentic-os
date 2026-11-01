@@ -41,6 +41,7 @@ beforeEach(async () => {
   w.during(null);
   w.ctx.db.prepare("DELETE FROM memory_proposals").run();
   fs.rmSync(path.join(w.memory, "archive"), { recursive: true, force: true });
+  fs.rmSync(path.join(w.home, "guard"), { recursive: true, force: true });
   // a link or a folder a test left at the name goes first, so the start state is a plain file
   fs.rmSync(memoryFile(), { recursive: true, force: true });
   w.put(memoryFile(), START);
@@ -194,7 +195,9 @@ describe("C71 the file changed again after the run", () => {
 
 const guardRows = () =>
   w.ctx.notifications.list({ limit: 500 }).filter((n) => n.messageKey === "memory.guard");
-const asideOf = (runId: string) => path.join(w.memory, "archive", `guard-${runId}-MEMORY.md`);
+/** Where the guard sets a run's entry aside (round 2): the home's guard/, which no run is handed. */
+const asideOf = (runId: string, n = 1) =>
+  path.join(w.home, "guard", `guard-${runId}${n === 1 ? "" : `-${n}`}-MEMORY.md`);
 const payloadOf = (row: Json) => JSON.parse(row.payload as string) as Json;
 
 describe("C69 what the guard cannot read in place is still taken back (round 1)", () => {
@@ -213,7 +216,7 @@ describe("C69 what the guard cannot read in place is still taken back (round 1)"
     const payload = payloadOf(edit!);
     expect(payload).toMatchObject({
       path: "MEMORY.md",
-      aside: `archive/guard-${run.id}-MEMORY.md`,
+      aside: `guard/guard-${run.id}-MEMORY.md`,
       truncated: true,
     });
     expect(Buffer.byteLength(payload.content as string)).toBe(256 * 1024);
@@ -231,7 +234,7 @@ describe("C69 what the guard cannot read in place is still taken back (round 1)"
     expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
   });
 
-  it("C69 a run that replaces MEMORY.md by a link to a file it wrote: the name is a plain file with the start bytes again, the link is set aside as a link, the proposal holds the text it pointed to, a guard version, an inbox row", async () => {
+  it("C69 a run that replaces MEMORY.md by a link to a file it wrote: the name is a plain file with the start bytes again, the link is set aside as a link, the proposal names the link's target and holds no content, a guard version, an inbox row", async () => {
     const mark = maxVersion();
     const rows = guardRows().length;
     const planted = path.join(w.memory, "notes", "plantado.md");
@@ -249,8 +252,9 @@ describe("C69 what the guard cannot read in place is still taken back (round 1)"
     const payload = payloadOf(edits()[0]!);
     expect(payload).toEqual({
       path: "MEMORY.md",
-      content: "- Decidido pelo dono: tudo vale\n",
-      aside: `archive/guard-${run.id}-MEMORY.md`,
+      content: "",
+      aside: `guard/guard-${run.id}-MEMORY.md`,
+      linkTarget: planted,
     });
     const guard = (await versionsSince(mark)).filter((v) => v.origin === "guard");
     expect(guard.map((v) => v.sha256)).toEqual([sha(START)]);
@@ -313,28 +317,217 @@ describe("C71 a put-back the guarded replace refuses (round 1)", () => {
     }
   });
 
-  it("C71 when nothing can be put back (a folder took the name), the proposal is still stored with the run's bytes, a guard version of them, and the owner is told it failed", async () => {
+  it("C71 when nothing can be put back (the set-aside folder is unusable), the proposal is still stored with the run's bytes, a guard version of them, and the owner is told it failed", async () => {
     const mark = maxVersion();
     const rows = guardRows().length;
+    // the set-aside folder is the owner's side of the disk (no run reaches it); here it is made unusable
+    fs.writeFileSync(path.join(w.home, "guard"), "não sou uma pasta\n");
     const putBack = w.ctx.memoryGuard.putBack.bind(w.ctx.memoryGuard);
     const spy = vi.spyOn(w.ctx.memoryGuard, "putBack").mockImplementation((start, runBytes) => {
       fs.rmSync(memoryFile());
-      fs.mkdirSync(memoryFile());
+      fs.symlinkSync(path.join(w.memory, "notes", "x.md"), memoryFile());
       putBack(start, runBytes);
     });
     const runBytes = `${START}- Da execução\n`;
     try {
       w.during(append("- Da execução"));
       const run = await w.prompt("write");
-      expect(fs.statSync(memoryFile()).isDirectory()).toBe(true);
-      expect(edits().map((e) => [e.run_id, payloadOf(e).content])).toEqual([[run.id, runBytes]]);
-      const guard = (await versionsSince(mark)).filter((v) => v.origin === "guard");
-      expect(guard.map((v) => v.sha256)).toEqual([sha(runBytes)]);
+      expect(edits().map((e) => e.run_id)).toEqual([run.id]);
       expect(guardRows().length).toBe(rows + 1);
       expect(guardRows()[0]).toMatchObject({ runId: run.id, tone: "danger" });
       expect(guardRows()[0]!.body).toMatch(/could not put MEMORY\.md back/);
+      // the link was put by the mock after the run's bytes were read: the proposal holds none of a link's content
+      expect(payloadOf(edits()[0]!).content).toBe(runBytes);
+      const guard = (await versionsSince(mark)).filter((v) => v.origin === "guard");
+      expect(guard.map((v) => v.sha256)).toEqual([sha(runBytes)]);
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it("C71 a folder that took the name is set aside with what it holds, and the start bytes are written", async () => {
+    w.during(() => {
+      fs.rmSync(memoryFile());
+      fs.mkdirSync(memoryFile());
+      fs.writeFileSync(path.join(memoryFile(), "dentro.md"), "- dentro\n");
+    });
+    const run = await w.prompt("write");
+    expect(fs.lstatSync(memoryFile()).isFile()).toBe(true);
+    expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+    expect(fs.readFileSync(path.join(asideOf(run.id), "dentro.md"), "utf8")).toBe("- dentro\n");
+    expect(edits().map((e) => e.run_id)).toEqual([run.id]);
+  });
+});
+
+// ---- verification round 2, findings 1 and 2: the guard does not depend on what the run can shape --------------------------
+
+describe("C69 and C71 the run shapes memory/archive first (round 2, finding 1)", () => {
+  const shapes: Array<[string, () => void]> = [
+    [
+      "a regular file",
+      () => {
+        fs.rmSync(path.join(w.memory, "archive"), { recursive: true, force: true });
+        fs.writeFileSync(path.join(w.memory, "archive"), "não sou uma pasta\n");
+      },
+    ],
+    [
+      "a link to a folder",
+      () => {
+        const elsewhere = path.join(w.home, "workspace", "outro");
+        fs.mkdirSync(elsewhere, { recursive: true });
+        fs.rmSync(path.join(w.memory, "archive"), { recursive: true, force: true });
+        fs.symlinkSync(elsewhere, path.join(w.memory, "archive"));
+      },
+    ],
+    [
+      "a dangling link",
+      () => {
+        fs.rmSync(path.join(w.memory, "archive"), { recursive: true, force: true });
+        fs.symlinkSync(path.join(w.home, "nada", "aqui"), path.join(w.memory, "archive"));
+      },
+    ],
+  ];
+  const big = `${START}${"x".repeat(4 * 1024 * 1024 + 10)}\n`;
+  const triggers: Array<[string, (planted: string) => void]> = [
+    ["grows MEMORY.md past 4 MiB", () => fs.writeFileSync(memoryFile(), big)],
+    [
+      "replaces MEMORY.md by a link to a file it wrote",
+      (planted) => {
+        fs.mkdirSync(path.dirname(planted), { recursive: true });
+        fs.writeFileSync(planted, "- INJECTED\n");
+        fs.rmSync(memoryFile());
+        fs.symlinkSync(planted, memoryFile());
+      },
+    ],
+    ["deletes MEMORY.md", () => fs.rmSync(memoryFile())],
+  ];
+
+  for (const [shape, make] of shapes) {
+    for (const [trigger, act] of triggers) {
+      it(`C69 the run makes memory/archive ${shape}, then ${trigger}: the owner's bytes are at the name, the run's entry is set aside in guard/, the proposal is stored`, async () => {
+        const rows = guardRows().length;
+        const planted = path.join(w.memory, "notes", "plantado-archive.md");
+        w.during(() => {
+          make();
+          act(planted);
+        });
+        const run = await w.prompt("write");
+        expect(fs.lstatSync(memoryFile()).isFile()).toBe(true);
+        expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+        expect(fs.readFileSync(memoryFile(), "utf8")).not.toContain("INJECTED");
+        expect(edits().map((e) => e.run_id)).toEqual([run.id]);
+        if (trigger !== "deletes MEMORY.md") {
+          expect(
+            fs.lstatSync(asideOf(run.id)).isSymbolicLink() || fs.statSync(asideOf(run.id)).size > 0,
+          ).toBe(true);
+          expect(guardRows().length).toBe(rows + 1);
+          expect(guardRows()[0]!.tone).toBe("warn");
+        }
+      });
+    }
+    it(`C69 the run makes memory/archive ${shape}, then creates MEMORY.md where there was none: no MEMORY.md, the run's file set aside in guard/, the proposal stored`, async () => {
+      fs.rmSync(memoryFile());
+      await w.index();
+      w.during(() => {
+        make();
+        fs.writeFileSync(memoryFile(), "- INJECTED\n");
+      });
+      const run = await w.prompt("write");
+      expect(fs.existsSync(memoryFile())).toBe(false);
+      expect(fs.readFileSync(asideOf(run.id), "utf8")).toBe("- INJECTED\n");
+      expect(edits().map((e) => [e.run_id, payloadOf(e).content])).toEqual([[run.id, "- INJECTED\n"]]);
+    });
+  }
+
+  it("C69 a run that makes guard/<runId> names taken beforehand is not needed: an earlier set-aside is never overwritten, the second one is -2 and the first is as it was", async () => {
+    const first = asideOf("r-antes");
+    fs.mkdirSync(path.dirname(first), { recursive: true });
+    fs.writeFileSync(first, "- ANTIGO\n");
+    w.during((run) => {
+      // the name of this run's set-aside is taken (by an earlier set-aside of the same run id)
+      fs.writeFileSync(asideOf(run.runId), "- ANTIGO DESTA EXECUCAO\n");
+      fs.writeFileSync(memoryFile(), big);
+    });
+    const run = await w.prompt("write");
+    expect(fs.readFileSync(first, "utf8")).toBe("- ANTIGO\n");
+    expect(fs.readFileSync(asideOf(run.id), "utf8")).toBe("- ANTIGO DESTA EXECUCAO\n");
+    expect(fs.statSync(asideOf(run.id, 2)).size).toBe(Buffer.byteLength(big));
+    expect(payloadOf(edits()[0]!).aside).toBe(`guard/guard-${run.id}-2-MEMORY.md`);
+    expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+  });
+});
+
+describe("C69 the guard never follows a link at MEMORY.md (round 2, finding 2)", () => {
+  const SECRET = "SEGREDO-CONFIDENCIAL-9f3a";
+
+  it("C69 a link to a note hidden from agents and devices: the proposal names the link's target and holds no content, and no byte of the note is in the proposal, the inbox, or any answer a device gets", async () => {
+    const secret = w.put(path.join(w.memory, "notes", "fin", "segredo.md"), `# Segredo\n\n${SECRET}\n`);
+    const saved = await w.call("PUT", "/api/settings", {
+      folderAccess: [{ path: path.join(w.memory, "notes", "fin"), agents: "hide", devices: "hide" }],
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    await w.index();
+    try {
+      w.during(() => {
+        fs.rmSync(memoryFile());
+        fs.symlinkSync(secret, memoryFile());
+      });
+      const run = await w.prompt("write");
+      expect(fs.lstatSync(memoryFile()).isFile()).toBe(true);
+      expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+      const [edit] = edits();
+      expect(payloadOf(edit!)).toEqual({
+        path: "MEMORY.md",
+        content: "",
+        aside: `guard/guard-${run.id}-MEMORY.md`,
+        linkTarget: secret,
+      });
+      expect(JSON.stringify(edit)).not.toContain(SECRET);
+      expect(JSON.stringify(guardRows())).not.toContain(SECRET);
+      expect(JSON.stringify(w.ctx.db.prepare("SELECT * FROM memory_versions").all())).not.toContain(SECRET);
+      // the owner reads the proposal and sees the name, no text
+      const owner = await w.call("GET", `/api/memory/proposals/${edit!.id}`);
+      expect(owner.status).toBe(200);
+      expect(JSON.stringify(owner.body)).not.toContain(SECRET);
+      // a device holding every scope reads nothing of the note, whichever route it asks
+      const device = w.device(["content", "monitor", "run", "approve"]);
+      const answers = [
+        await w.call("GET", `/api/memory/proposals/${edit!.id}`, undefined, device),
+        await w.call("GET", "/api/memory/proposals", undefined, device),
+        await w.call("GET", "/api/notifications?limit=100", undefined, device),
+        await w.call("GET", "/api/memory/history?path=MEMORY.md&limit=100", undefined, device),
+        await w.call("GET", "/api/memory/search?q=SEGREDO", undefined, device),
+        await w.call("GET", `/api/artifacts/list`, undefined, device),
+      ];
+      for (const a of answers)
+        expect(JSON.stringify(a.body), JSON.stringify(a.body).slice(0, 80)).not.toContain(SECRET);
+      expect(answers[0]!.status).toBe(404);
+      expect((answers[1]!.body.items as Json[]).map((i) => i.id)).not.toContain(edit!.id);
+      // the inbox row does not name the target either
+      expect(JSON.stringify(answers[2]!.body)).not.toContain("segredo.md");
+      // accepting a proposal that holds no content is refused, never a blanked MEMORY.md
+      const refused = await w.call("POST", `/api/memory/proposals/${edit!.id}/decide`, {
+        action: "accept",
+        baseVersion: sha(START),
+      });
+      expect([refused.status, refused.body.error.code]).toEqual([400, "validation"]);
+      expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+    } finally {
+      await w.call("PUT", "/api/settings", { folderAccess: [] });
+    }
+  });
+
+  it("C69 a link to a note the run owns is not followed either: no content, the target's name", async () => {
+    const planted = path.join(w.memory, "notes", "do-agente.md");
+    w.during(() => {
+      fs.mkdirSync(path.dirname(planted), { recursive: true });
+      fs.writeFileSync(planted, "- INJECTED\n");
+      fs.rmSync(memoryFile());
+      fs.symlinkSync(planted, memoryFile());
+    });
+    await w.prompt("write");
+    const payload = payloadOf(edits()[0]!);
+    expect(payload.content).toBe("");
+    expect(payload.linkTarget).toBe(planted);
   });
 });

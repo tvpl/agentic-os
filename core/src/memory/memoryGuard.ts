@@ -6,11 +6,18 @@ import { EditConflictError } from "../errors.js";
 import type { EventBus, OsEvent } from "../events.js";
 import type { NotificationInput } from "../notifications/store.js";
 import type { MordomoPaths } from "../paths.js";
-import { FileTooLargeError, homeReadScope, readWorkspaceFile, type ReadScope } from "../security/safeFs.js";
+import {
+  FileTooLargeError,
+  homeReadScope,
+  readScope,
+  readWorkspaceFile,
+  type ReadScope,
+} from "../security/safeFs.js";
 import {
   moveWorkspaceFile,
   setAsideAndWrite,
   workspaceEntryKind,
+  workspaceLinkTarget,
   writeWorkspaceFile,
 } from "../security/safeWrite.js";
 import { historyMaxBytes, newestVersion, recordVersion } from "./historyStore.js";
@@ -25,11 +32,15 @@ import { MEMORY_FILE, storeProposal } from "./proposals.js";
  * `memory/archive/guard-<runId>-MEMORY.md`) and what the run wrote waits as a `memory_edit` proposal. Only the file at
  * the root of `memory/`: a `notes/MEMORY.md` is a note like any other.
  *
- * It fails closed (verification round 1, finding 1): what the run left that cannot be read whole (past the read limit),
- * a link at the name, anything that is not a regular file, or a put-back the guarded replace refuses, is set aside
- * whole to `memory/archive/guard-<runId>-MEMORY.md` (never followed, never lost) and the owner's bytes are written back;
- * the proposal holds what could be read of the run's text (a prefix, marked `truncated`, when it was too large) and
- * names where the rest lies; and the owner is told in the inbox. A step that still fails is told there too.
+ * It fails closed (verification rounds 1 and 2): what the run left that cannot be read whole (past the read limit), a
+ * link at the name, anything that is not a regular file, or a put-back the guarded replace refuses, is set aside whole
+ * (never followed, never lost) and the owner's bytes are written back. The set-aside lies in `<home>/guard/`, a folder
+ * of the home that is no folder a run is handed (its working folder, `memory/` and its artifacts are), so a run cannot
+ * shape it: `memory/archive/` is the run's to make a file or a link, and the take-back must not depend on it. A link is
+ * detected by `lstat` and never read through (the guard holds the owner's scope, which sees what the run may not): the
+ * proposal names the link's target as written and holds no content. The proposal holds what could be read of a file
+ * (a prefix, marked `truncated`, when it was too large); and the owner is told in the inbox. A step that still fails
+ * is told there too.
  *
  * The start states live on this instance (one per engine), never in module state.
  */
@@ -55,12 +66,21 @@ interface StartState {
 export const GUARD_READ_LIMIT = 4 * 1024 * 1024;
 /** The most bytes of an oversized file a `memory_edit` proposal holds (the rest stays in the file set aside). */
 export const GUARD_PROPOSAL_PREFIX = 256 * 1024;
+/** Where the guard sets aside what a run left at the name, in the home and outside every folder a run is handed. */
+export const GUARD_DIR = "guard";
 
 /** What a run left at the name: nothing, a regular file read whole, or something the guard does not put back in place. */
 type Left =
   | { kind: "none" }
   | { kind: "file"; bytes: Buffer }
-  | { kind: "odd"; why: "too_large" | "link" | "not_a_file" | "unreadable"; bytes: Buffer | null; truncated: boolean };
+  | {
+      kind: "odd";
+      why: "too_large" | "link" | "not_a_file" | "unreadable";
+      bytes: Buffer | null;
+      truncated: boolean;
+      /** A link's target, as written in the link (never followed). */
+      target?: string | null;
+    };
 
 const sha = (bytes: Uint8Array) => crypto.createHash("sha256").update(bytes).digest("hex");
 const same = (a: Buffer | null, b: Buffer | null) => (a === null ? b === null : b !== null && a.equals(b));
@@ -85,6 +105,11 @@ export class MemoryGuard {
     return homeReadScope(this.deps.paths.home, [this.deps.paths.memory], this.deps.getSettings().excludes);
   }
 
+  /** The folder of the set-asides (judged by its own scope: it is no part of `memory/`). */
+  private guardScope(): ReadScope {
+    return readScope({ homeDir: this.deps.paths.home, roots: [path.join(this.deps.paths.home, GUARD_DIR)] });
+  }
+
   private read(): Buffer | null {
     try {
       return readWorkspaceFile(this.scope(), this.file, { maxBytes: GUARD_READ_LIMIT, strict: true }).bytes;
@@ -94,7 +119,7 @@ export class MemoryGuard {
     }
   }
 
-  /** What is at the name now, never thrown about: a link is a link, a file too large is read in part. */
+  /** What is at the name now, never thrown about: a link is never read through, a file too large is read in part. */
   private look(): Left {
     let kind: ReturnType<typeof workspaceEntryKind>;
     try {
@@ -104,6 +129,15 @@ export class MemoryGuard {
     }
     if (kind === "none") return { kind: "none" };
     if (kind === "other") return { kind: "odd", why: "not_a_file", bytes: null, truncated: false };
+    if (kind === "link") {
+      let target: string | null = null;
+      try {
+        target = workspaceLinkTarget(this.scope(), this.file);
+      } catch {
+        /* the name is all that is lost */
+      }
+      return { kind: "odd", why: "link", bytes: null, truncated: false, target };
+    }
     let bytes: Buffer | null = null;
     let tooLarge = false;
     try {
@@ -118,7 +152,14 @@ export class MemoryGuard {
         }
       }
     }
-    if (kind === "link") return { kind: "odd", why: "link", bytes, truncated: tooLarge };
+    // a link put at the name while it was read is not a file read: what was read is not kept
+    try {
+      if (workspaceEntryKind(this.scope(), this.file) !== "file") {
+        return { kind: "odd", why: "link", bytes: null, truncated: false, target: workspaceLinkTarget(this.scope(), this.file) };
+      }
+    } catch {
+      return { kind: "odd", why: "unreadable", bytes: null, truncated: false };
+    }
     if (tooLarge) return { kind: "odd", why: "too_large", bytes, truncated: true };
     if (bytes === null) return { kind: "odd", why: "unreadable", bytes: null, truncated: false };
     return { kind: "file", bytes };
@@ -185,16 +226,26 @@ export class MemoryGuard {
     writeWorkspaceFile(this.scope(), this.file, start, { mode: "replace", expectSha256: sha(runBytes) });
   }
 
-  /** Set the run's entry aside whole and write the start state back (no file: nothing is written). */
+  /**
+   * Set the run's entry aside whole in `<home>/guard/` and write the start state back (no file: nothing is written).
+   * The name is `guard-<runId>-MEMORY.md`, then `-2` ... `-99`: an earlier set-aside is never overwritten (the
+   * safe writer refuses a `to` that exists, `EEXIST`, and the next name is tried). Answers the path from the home.
+   */
   private takeBack(runId: string, start: Buffer | null): string {
-    const rel = `archive/guard-${runId}-${MEMORY_FILE}`;
-    let to = path.join(this.deps.paths.memory, ...rel.split("/"));
-    for (let n = 2; n <= 99; n++) {
-      if (workspaceEntryKind(this.scope(), to) === "none") break;
-      to = path.join(this.deps.paths.memory, "archive", `guard-${runId}-${n}-${MEMORY_FILE}`);
+    const dir = path.join(this.deps.paths.home, GUARD_DIR);
+    for (let n = 1; n <= 99; n++) {
+      const name = `guard-${runId}${n === 1 ? "" : `-${n}`}-${MEMORY_FILE}`;
+      try {
+        setAsideAndWrite(this.scope(), this.file, path.join(dir, name), start, this.guardScope());
+        return `${GUARD_DIR}/${name}`;
+      } catch (err) {
+        // only a name that is taken moves on to the next; the run's entry is still at the name when it was
+        const taken =
+          (err as NodeJS.ErrnoException).code === "EEXIST" && workspaceEntryKind(this.scope(), this.file) !== "none";
+        if (!taken || n === 99) throw err;
+      }
     }
-    setAsideAndWrite(this.scope(), this.file, to, start);
-    return path.relative(this.deps.paths.memory, to).split(path.sep).join("/");
+    throw new Error("unreachable");
   }
 
   onFinished(runId: string): void {
@@ -261,12 +312,13 @@ export class MemoryGuard {
         author: `run:${runId}`,
         runId,
         summary: odd
-          ? `The run ${runId} left MEMORY.md ${WHY[odd.why]}; the guard set it aside${aside ? ` at ${aside}` : ""}.`
+          ? `The run ${runId} left MEMORY.md ${odd.why === "link" ? "replaced by a link" : WHY[odd.why]}; the guard set it aside${aside ? ` at ${aside}` : ""}.`
           : `The run ${runId} changed MEMORY.md; the guard put the file back.`,
         payload: {
           path: MEMORY_FILE,
           content: runBytes === null ? "" : runBytes.toString("utf8"),
           ...(aside ? { aside } : {}),
+          ...(odd?.target !== undefined && odd.target !== null ? { linkTarget: odd.target } : {}),
           ...(odd?.truncated ? { truncated: true } : {}),
         },
       },

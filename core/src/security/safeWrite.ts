@@ -478,35 +478,49 @@ export function workspaceEntryKind(scope: ReadScope, candidate: string): Workspa
 }
 
 /**
+ * What a link at `candidate` points to, as it is written in the link and never followed: the name, not the content. Null
+ * when the entry is not a link. The folders on the way must hold no link and lie inside the scope.
+ */
+export function workspaceLinkTarget(scope: ReadScope, candidate: string): string | null {
+  const full = path.resolve(candidate);
+  assertNoLinkOnTheWay(scope, path.dirname(full));
+  try {
+    return fs.lstatSync(full).isSymbolicLink() ? fs.readlinkSync(full) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Take a name back from whatever was put there (the guard of `MEMORY.md`, .specs/features/cerebro-memoria-confiavel
- * door 8): the entry at `candidate` is renamed to `to` as it is, a link as a link (never followed) and a file of any
- * size as that file, and then `data` (when given) is written at `candidate` as a new file by `writeWorkspaceFile` in
- * `create` mode. Nothing is removed: what was there stays at `to`. A folder at the name, a link on the way to either
- * folder, a `to` the filter refuses or that exists, is refused before anything moves. Answers what was set aside.
+ * door 8): the entry at `candidate` is renamed to `to` as it is (a link as a link, never followed; a file of any size;
+ * a folder with what it holds), and then `data` (when given) is written at `candidate` as a new file by
+ * `writeWorkspaceFile` in `create` mode. Nothing is removed: what was there stays at `to`, which must not exist
+ * (`EEXIST`, and what is there is untouched). `to` is judged by `toScope` (default: `scope`), so it can lie in a folder
+ * of its own that the run whose entry it is cannot shape. A link on the way to either folder, or a `to` the filter
+ * refuses, is refused before anything moves. Answers what was set aside.
  */
 export function setAsideAndWrite(
   scope: ReadScope,
   candidate: string,
   to: string,
   data: string | Uint8Array | null,
-): { aside: "file" | "link" | null } {
+  toScope: ReadScope = scope,
+): { aside: "file" | "link" | "other" | null } {
   const full = path.resolve(candidate);
   const kind = workspaceEntryKind(scope, full);
-  if (kind === "other") throw new NotRegularFileError(candidate);
-  let aside: "file" | "link" | null = null;
+  let aside: "file" | "link" | "other" | null = null;
   if (kind !== "none") {
-    assertNoLinkOnTheWay(scope, path.dirname(path.resolve(to)));
+    assertNoLinkOnTheWay(toScope, path.dirname(path.resolve(to)));
     try {
       fs.lstatSync(path.resolve(to));
       throw destinationExists(to);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "EEXIST") throw err;
     }
-    const realTo = assertWritablePath(scope, to);
-    fs.mkdirSync(path.dirname(realTo), { recursive: true });
-    assertNoLinkOnTheWay(scope, path.dirname(path.resolve(to)));
-    // the name is looked at once more right before the rename: a folder that took its place is not moved
-    if (workspaceEntryKind(scope, full) === "other") throw new NotRegularFileError(candidate);
+    const realTo = assertWritablePath(toScope, to);
+    fs.mkdirSync(path.dirname(realTo), { recursive: true, mode: 0o700 });
+    assertNoLinkOnTheWay(toScope, path.dirname(path.resolve(to)));
     fs.renameSync(full, realTo);
     aside = kind;
   }

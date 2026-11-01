@@ -291,6 +291,8 @@ export function proposalPaths(env: Pick<ProposalEnv, "paths" | "settings">, reco
   const out: string[] = [];
   if (record.kind === "consolidation" || record.kind === "memory_edit") {
     out.push(path.join(memory, MEMORY_FILE));
+    // a link the guard found at MEMORY.md names where it pointed: that is a file the proposal names (round 2, finding 2)
+    if (typeof p.linkTarget === "string") out.push(path.resolve(memory, p.linkTarget));
     for (const op of record.kind === "consolidation" ? opsOf(record) : []) {
       const o = op as unknown as Record<string, unknown>;
       if (typeof o.source === "string") out.push(inMemory(o.source));
@@ -866,9 +868,9 @@ export function decideProposal(
 
   if (record.kind === "memory_edit") {
     // a run's file too large for the guard to read whole is held in part: accepting the part would lose the rest
-    if (p.truncated === true) {
+    if (p.truncated === true || typeof p.linkTarget === "string") {
       throw new ProposalValidationError(
-        `The run's MEMORY.md was too large to read whole; it is kept at ${String(p.aside ?? "memory/archive/")}. Reject this proposal and open that file.`,
+        `The run's MEMORY.md was ${p.truncated === true ? "too large to read whole" : "replaced by a link"}, and what it left is kept at ${String(p.aside ?? "guard/")} (under memory/ for archive/, under the home for guard/); this proposal holds ${p.truncated === true ? "only its beginning" : "none of it"}. Reject it and open that file.`,
       );
     }
     if (!sameBase) throw new EditConflictError();

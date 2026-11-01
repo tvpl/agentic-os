@@ -29,6 +29,8 @@ import {
   withinBudget,
 } from "../core/src/memory/proposals.js";
 import { ProposalFileSchema, type ProposalOp } from "@mordomo/contracts";
+import { readScope } from "../core/src/security/safeFs.js";
+import { setAsideAndWrite, workspaceEntryKind, workspaceLinkTarget } from "../core/src/security/safeWrite.js";
 import { resolveFolderAccess } from "../core/src/memory/folderAccess.js";
 import { accessExclude, makeWorkspaceFilter } from "../core/src/memory/excludes.js";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
@@ -913,5 +915,84 @@ describe("the op applier (door 7), one asserted case per op kind", () => {
     expect(() => apply(BASE, { op: "add", section: "Facts", text: "a", source: `j\u2028.md` })).toThrow(
       /one line/,
     );
+  });
+});
+
+// ---- the set-aside of the safe writer (the guard's take-back; round 2, F16) -------------------------------------------
+
+describe("setAsideAndWrite, one asserted case per entry kind and refusal", () => {
+  let root: string;
+  let scope: ReturnType<typeof readScope>;
+  let aside: ReturnType<typeof readScope>;
+  const at = (...p: string[]) => path.join(root, ...p);
+  beforeAll(() => {
+    root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-setaside-")));
+    fs.mkdirSync(at("memory"), { recursive: true });
+    scope = readScope({ homeDir: root, roots: [at("memory")] });
+    aside = readScope({ homeDir: root, roots: [at("guard")] });
+  });
+  afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it("a file goes to the other scope's folder whole, the name gets the new bytes, nothing is removed", () => {
+    fs.writeFileSync(at("memory", "A.md"), "run\n");
+    const r = setAsideAndWrite(scope, at("memory", "A.md"), at("guard", "a-1.md"), "owner\n", aside);
+    expect(r).toEqual({ aside: "file" });
+    expect(fs.readFileSync(at("guard", "a-1.md"), "utf8")).toBe("run\n");
+    expect(fs.readFileSync(at("memory", "A.md"), "utf8")).toBe("owner\n");
+  });
+
+  it("a destination that exists is EEXIST and is left untouched, and so is the entry at the name (F16)", () => {
+    fs.writeFileSync(at("memory", "B.md"), "run B\n");
+    fs.writeFileSync(at("guard", "b-1.md"), "earlier\n");
+    expect(() =>
+      setAsideAndWrite(scope, at("memory", "B.md"), at("guard", "b-1.md"), "owner\n", aside),
+    ).toThrow(expect.objectContaining({ code: "EEXIST" }));
+    expect(fs.readFileSync(at("guard", "b-1.md"), "utf8")).toBe("earlier\n");
+    expect(fs.readFileSync(at("memory", "B.md"), "utf8")).toBe("run B\n");
+    // a dangling link at the destination is taken too
+    fs.symlinkSync(at("nowhere"), at("guard", "b-2.md"));
+    expect(() => setAsideAndWrite(scope, at("memory", "B.md"), at("guard", "b-2.md"), null, aside)).toThrow(
+      expect.objectContaining({ code: "EEXIST" }),
+    );
+    expect(fs.readFileSync(at("memory", "B.md"), "utf8")).toBe("run B\n");
+  });
+
+  it("a link is set aside as a link and never followed: its target is not read, only named", () => {
+    fs.writeFileSync(at("memory", "alvo.md"), "ALVO\n");
+    fs.symlinkSync(at("memory", "alvo.md"), at("memory", "C.md"));
+    expect(workspaceEntryKind(scope, at("memory", "C.md"))).toBe("link");
+    expect(workspaceLinkTarget(scope, at("memory", "C.md"))).toBe(at("memory", "alvo.md"));
+    expect(workspaceLinkTarget(scope, at("memory", "alvo.md"))).toBeNull();
+    expect(setAsideAndWrite(scope, at("memory", "C.md"), at("guard", "c-1.md"), "owner\n", aside)).toEqual({
+      aside: "link",
+    });
+    expect(fs.lstatSync(at("guard", "c-1.md")).isSymbolicLink()).toBe(true);
+    expect(fs.readFileSync(at("memory", "alvo.md"), "utf8")).toBe("ALVO\n");
+    expect(fs.lstatSync(at("memory", "C.md")).isFile()).toBe(true);
+  });
+
+  it("a folder at the name is set aside with what it holds; nothing at the name just writes the bytes", () => {
+    fs.mkdirSync(at("memory", "D.md"));
+    fs.writeFileSync(at("memory", "D.md", "x"), "x\n");
+    expect(setAsideAndWrite(scope, at("memory", "D.md"), at("guard", "d-1"), "owner\n", aside)).toEqual({
+      aside: "other",
+    });
+    expect(fs.readFileSync(at("guard", "d-1", "x"), "utf8")).toBe("x\n");
+    expect(setAsideAndWrite(scope, at("memory", "E.md"), at("guard", "e-1.md"), "novo\n", aside)).toEqual({
+      aside: null,
+    });
+    expect(fs.readFileSync(at("memory", "E.md"), "utf8")).toBe("novo\n");
+    expect(fs.existsSync(at("guard", "e-1.md"))).toBe(false);
+  });
+
+  it("a link on the way to the destination is refused before anything moves", () => {
+    fs.mkdirSync(at("elsewhere"), { recursive: true });
+    fs.symlinkSync(at("elsewhere"), at("guard", "ligacao"));
+    fs.writeFileSync(at("memory", "F.md"), "run F\n");
+    expect(() =>
+      setAsideAndWrite(scope, at("memory", "F.md"), at("guard", "ligacao", "f.md"), "o\n", aside),
+    ).toThrow();
+    expect(fs.readFileSync(at("memory", "F.md"), "utf8")).toBe("run F\n");
+    expect(fs.readdirSync(at("elsewhere"))).toEqual([]);
   });
 });

@@ -1354,6 +1354,49 @@ salvas`) and the next save meets the disk's change as the editor's own conflict,
   JS gzip (+15 738 B over `cerebro-paineis`, 646 B under C147's 16 KB) and 81 791 B CSS gzip (+1 588 B, 1 484 B under its
   3 KB); `bundle:check` and `pixel.plugin` C28 pass
 
+## Correções da rodada 2 (parte A)
+
+What round 2 of the verification found in the guard and in the proposals' trust (findings 1, 2, 5 and the survivor F16),
+fixed in the commits that carry each entry.
+
+- **Finding 1, a real bug (security): the guard was still switched off by the run it guards.** The take-back of round 1
+  set an odd entry aside in `memory/archive/`, a folder a write run owns; a run that made `memory/archive` a file or a
+  link and then grew `MEMORY.md` past 4 MiB (or replaced it by a link) kept its change. Design chosen (plan amendment
+  9): the set-aside lies in `<home>/guard/`, a folder of the home that is no folder a run is handed, judged by a scope
+  of its own, and not in `memory/`. The alternative, storing the set-aside as a `guard` version, was rejected: a file
+  past the read limit has no size bound (a run can write gigabytes), and the history keeps 1 MiB per versioned file and
+  256 MiB in all. The restore of the owner's bytes does not touch `memory/archive` at all (a plain put-back, or the
+  set-aside plus a create at the name). The approved wording of C69 for a file created where there was none ("the run's
+  file at `memory/archive/guard-<runId>-MEMORY.md`") stays true and stays the ordinary path; when `archive` does not
+  serve, the file goes to `guard/` (the proposal's `aside` says which). **C69 extended**: for `memory/archive` made a
+  regular file, a link to a folder, and a dangling link, each of: a run that grows `MEMORY.md` past 4 MiB, one that
+  replaces it by a link to a file it wrote, one that deletes it, and one that creates it where there was none, leaves
+  the owner's bytes at the name (or none, for the created one), the run's entry set aside in `guard/`, the proposal
+  stored and no injected text anywhere at the name; an earlier set-aside of the same run id is never overwritten (the
+  next one is `-2`, the first as it was). **C71 extended**: a folder that takes the name is set aside with what it holds
+  and the start bytes written; when `guard/` itself is unusable (a file; the owner's side of the disk, no run reaches
+  it), the proposal is still stored with the run's bytes and one `guard` version of them, and the owner is told it
+  failed (the folder case of round 1 moved to this trigger: a folder at the name is no longer a failure). A folder
+  `memory/archive` the run cannot enter (mode 000) is not testable here: the tests run as root, which enters it. Re-injected:
+  the set-aside put back in `memory/archive` fails 16 of the new and old cases
+- **Finding 2, a real bug (security): the guard followed a link inside `memory/` into a hidden note.** `look()` read
+  through a link at `MEMORY.md` with the owner's scope, which sees what the run may not, and stored the text in the
+  `memory_edit` payload, which a device could read. The guard now detects a link by `lstat` and never reads through it
+  (nor keeps bytes read while a link took the name): the proposal says the file was replaced by a link, holds
+  `linkTarget` (the name as written in the link) and an empty `content`; the old rule, which read a link to a note the run
+  owns, is dropped (narrowed). The inbox row names no target. A proposal that names a target hidden from an audience is
+  hidden from it (`proposalPaths` includes `linkTarget`), and accepting one is `400 validation`. **C69 extended**: a link
+  to a note hidden from agents and devices (`folderAccess` `hide` for both): the proposal holds `linkTarget` and no
+  content, no byte of the note is in the proposal, the inbox, the history or any answer a device holding every scope
+  gets (the proposal itself is `404` to it), and accepting is refused; a link to a note the run owns holds no content
+  either. The round 1 link case that asserted the pointed-to text in the proposal now asserts `content: ""` and the
+  target (a retarget forced by this finding, named here). Re-injected: reading through the link fails 3 cases
+- **F16, a surviving mutant.** `setAsideAndWrite` without `destinationExists` stayed green because the guard picked a
+  free name before the call. The guard now tries `guard-<runId>`, `-2` … `-99` and moves on only when the safe writer
+  answers `EEXIST` with the run's entry still at the name; and `setAsideAndWrite` has its own-layer cases (a file, a
+  destination that exists, even a dangling link, left untouched with the entry still at the name; a link set aside as a
+  link; a folder; a link on the way). Re-injected: without `destinationExists` a guard case and a direct case fail
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None

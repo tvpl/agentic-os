@@ -550,6 +550,21 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
    256 KiB, de um arquivo grande demais); aceitar uma proposta `truncated` é `400 validation`, porque gravaria só o
    começo. Um `MEMORY.md` do dono que já não se lê inteiro no `run.started` não é guardado, e o dono é avisado.
 
+9. **O lugar do que a guarda põe de lado (rodada 2 da verificação, achados 1 e 2; correção de construção, sem pergunta).**
+   A emenda 8 punha o que a execução deixa em `memory/archive/`, uma pasta que uma execução que escreve controla: uma
+   execução que fazia `memory/archive` um arquivo ou um link desligava a devolução. O que a guarda põe de lado agora vai
+   para `<home>/guard/guard-<runId>-MEMORY.md` (`-2` … `-99` se o nome existe; um nome que existe nunca é sobrescrito), uma
+   pasta do home que não é pasta de trabalho, pasta adicionada, `memory/` nem pasta de artefatos de nenhuma execução, julgada
+   por um escopo próprio do escritor seguro; ela não é copiada pelo backup (só `config/` escolhido e as pastas de
+   `BACKUP_SETS` são). O caminho comum de um arquivo que a execução criou onde não havia `MEMORY.md` segue sendo
+   `memory/archive/guard-<runId>-MEMORY.md` (o texto aprovado do C69), e cai em `guard/` quando `archive` não serve.
+   Uma pasta no nome também é posta de lado, com o que tem dentro. A guarda **nunca segue um link** no nome: o link é
+   detectado por `lstat`, posto de lado como link, e a proposta `memory_edit` ganha `linkTarget` (o alvo como está escrito
+   no link) e `content` vazio; a proposta que nomeia um alvo escondido de um público é escondida desse público como
+   qualquer outra (G14: `proposalPaths` inclui `linkTarget`), e aceitar uma proposta com `linkTarget` é `400 validation`
+   (gravaria um texto vazio). O `aside` de um `memory_edit` passa a ser relativo a `memory/` quando começa por
+   `archive/` e relativo ao home quando começa por `guard/`.
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).
