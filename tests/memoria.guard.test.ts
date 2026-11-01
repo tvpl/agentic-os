@@ -294,6 +294,7 @@ describe("C71 a put-back the guarded replace refuses (round 1)", () => {
     const planted = path.join(w.memory, "notes", "plantado-71.md");
     const putBack = w.ctx.memoryGuard.putBack.bind(w.ctx.memoryGuard);
     const spy = vi.spyOn(w.ctx.memoryGuard, "putBack").mockImplementation((start, runBytes) => {
+      fs.mkdirSync(path.dirname(planted), { recursive: true });
       fs.writeFileSync(planted, "- plantado\n");
       fs.rmSync(memoryFile());
       fs.symlinkSync(planted, memoryFile());
