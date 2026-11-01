@@ -1,7 +1,8 @@
-import os from "node:os";
 import path from "node:path";
 import {
+  HIDDEN_PATH_TEXT,
   accessSettings,
+  citationRedactor,
   exportsDir,
   grantedReadScope,
   inspectPath,
@@ -150,19 +151,13 @@ export function rankScored<T extends { score: number }>(list: readonly T[]): T[]
 /** The id of a run (`crypto.randomUUID()`): the name of its folder in `artifacts/`. */
 const RUN_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
-/** What a hidden path is written as in free text a device reads (amendment 5). */
-export const HIDDEN_PATH_TEXT = "(pasta oculta)";
+export { HIDDEN_PATH_TEXT };
 
 /** The keys whose value names the place an item lives in: an item whose such value is hidden is no item for a device. */
 const PLACE_KEYS = ["path", "sourcePath", "cwd", "workingDir"] as const;
 
 /** An absolute path inside free text: from a `/` not inside a word, up to a space or a delimiter. Only for a list that cannot be read. */
 const PATH_IN_TEXT = /(?<![\w/.~%-])\/[^\s"'`<>()[\]{},;|]+/g;
-
-/** What may follow a hidden folder's name in a citation: a `/` and the rest of the path, up to a delimiter. */
-const PATH_TAIL = "(?:\\/[^\\s\"'`<>()\\[\\]{},;|]*)?";
-
-const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export interface DeviceRedactor {
   /** Nothing is hidden from devices but `artifacts/exports/` (no entry gives devices `hide`). */
@@ -207,63 +202,20 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
     if (everywhere && !places.some((p) => isInside(p, absolute))) return false;
     return view.hidden(absolute);
   };
-  // The ways a hidden folder is written in a citation (round 1, finding 5), from the configured entries themselves: its
-  // absolute path (its real path and as written), relative to the home, relative to `memory/`, and `~/…` from the user's
-  // own home. A folder whose name holds a space is matched as it is spelled, not cut at the space; a folder that only
-  // starts like one (`fin2`, `fin-old`) or a path that merely ends like one (`outro/notes/fin`) is not matched.
-  const platform = process.platform;
-  const insensitive = platform === "darwin" || platform === "win32";
-  const spellings = new Set<string>();
-  const hiddenEntries = view.access.entries
-    .filter((e) => !e.all && e.devices === "hide")
-    .flatMap((e) => e.spellings);
-  for (const abs of [
-    ...hiddenEntries,
-    ...[ctx.paths.artifacts, realpathLenient(ctx.paths.artifacts)].map((a) => path.join(a, "exports")),
-  ]) {
-    const relTo = (base: string): string | null => {
-      for (const b of new Set([path.resolve(base), realpathLenient(base)])) {
-        const rel = path.relative(b, abs);
-        if (rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel))
-          return rel.split(path.sep).join("/");
-      }
-      return null;
-    };
-    spellings.add(abs.split(path.sep).join("/"));
-    const fromHome = relTo(ctx.paths.home);
-    if (fromHome) spellings.add(fromHome);
-    const fromMemory = relTo(ctx.paths.memory);
-    if (fromMemory) spellings.add(fromMemory);
-    const fromUser = relTo(os.homedir());
-    if (fromUser) spellings.add(`~/${fromUser}`);
-  }
-  const flags = insensitive ? "i" : "";
-  const alternatives = [...spellings]
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRegExp)
-    .join("|");
-  const cited = alternatives
-    ? new RegExp(`(?<![\\w~./-])(?:${alternatives})(?![\\w-])(${PATH_TAIL})`, `g${flags}`)
-    : null;
-  const citedWhole = alternatives ? new RegExp(`^(?:${alternatives})(?![\\w-])${PATH_TAIL}$`, flags) : null;
+  // The ways a hidden folder is written in a citation (round 1, finding 5): `core/src/memory/citations.ts`.
+  const citations = citationRedactor(ctx.paths, view.access, "devices");
   /** A link of the screens (`#/brain/notes?open=…`, `/brain/reviews?path=…`) that opens a hidden file. */
   const linkHidden = (input: string): boolean => {
     const query = input.includes("?") ? input.slice(input.indexOf("?") + 1) : "";
     const params = new URLSearchParams(query);
     return ["path", "open"].some((key) => {
       const v = params.get(key);
-      return v !== null && ((path.isAbsolute(v) && hiddenPath(v)) || Boolean(citedWhole?.test(v)));
+      return v !== null && ((path.isAbsolute(v) && hiddenPath(v)) || citations.whole(v));
     });
   };
   const text = (input: string): string => {
     if (linkHidden(input)) return HIDDEN_PATH_TEXT;
-    let out = input;
-    if (cited) {
-      out = out.replace(cited, (match, tail: string) => {
-        const trailing = /[.:]+$/.exec(tail)?.[0] ?? "";
-        return HIDDEN_PATH_TEXT + trailing;
-      });
-    }
+    let out = citations.text(input);
     // A list that cannot be read hides every path of the home and the indexed folders: judged one by one.
     if (everywhere) {
       out = out.replace(PATH_IN_TEXT, (token) => {
@@ -274,8 +226,7 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
     return out;
   };
   const placeHidden = (item: unknown): boolean => {
-    if (typeof item === "string")
-      return (path.isAbsolute(item) && hiddenPath(item)) || Boolean(citedWhole?.test(item));
+    if (typeof item === "string") return (path.isAbsolute(item) && hiddenPath(item)) || citations.whole(item);
     if (item === null || typeof item !== "object" || Array.isArray(item)) return false;
     const o = item as Record<string, unknown>;
     return PLACE_KEYS.some((k) => typeof o[k] === "string" && hiddenPath(o[k] as string));

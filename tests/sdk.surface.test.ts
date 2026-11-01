@@ -183,6 +183,11 @@ describe("S5 the surface is a closed list", () => {
         "resolveFolderAccess",
         // a finished cleanup scan, worked out again over a device's view (C115)
         "scanCleanupScope",
+        // cerebro-memoria-confiavel, round 1 part 2: how a hidden folder is written in a citation, for a device's answer
+        // and for the triage prompt (finding 5, finding 10)
+        "HIDDEN_PATH_TEXT",
+        "CitationRedactor",
+        "citationRedactor",
         "storedRowFilter",
         // cerebro-memoria-confiavel batch B2: export and import a folder (doors 14 and 15)
         "exportFolder",

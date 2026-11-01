@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { code, runWorld, type Json, type RunWorld } from "./helpers/memoriaWorld.js";
 import { FIXTURES, filler, order, seedFixture } from "./helpers/searchFixtures.js";
+import { triageSentinel } from "../core/src/sentinels/triage.js";
 
 /**
  * .specs/features/cerebro-memoria-confiavel, round 1 of the verification, part 2: what a paired device reads of the
@@ -393,5 +394,57 @@ describe("C163 the order a device and a run are given", () => {
     await w.call("PUT", "/api/settings", { folderAccess: [] });
     expect((await names()).sort()).toEqual(["notes/fin/segredo.md", "notes/outra/movida/novo.md"]);
     expect(docs("files_fts_devices")).toBe(0);
+  });
+});
+
+// ---- C164: what the triage sentinel puts in a model's prompt ----------------------------------------------------------
+
+describe("C164 the prompt of the triage run", () => {
+  it("C164 names no folder hidden from agents, in any spelling; the same sentinel with nothing hidden is put in as it is", async () => {
+    const { w, fin } = await seeded("mordomo-round1-c164-");
+    w.update((s) => {
+      s.sentinels.triage.enabled = true;
+      s.sentinels.triage.dailyBudgetUsd = 1;
+    });
+    const prompts: string[] = [];
+    const deps = {
+      db: w.ctx.db,
+      bus: w.ctx.events,
+      runs: {
+        create: (input: { prompt: string }) => {
+          prompts.push(input.prompt);
+          return { id: "triagem" } as never;
+        },
+        execute: async () => ({}) as never,
+        lastAssistantText: () => null,
+      },
+      notifications: { add: () => ({ id: "unused" }) },
+      getSettings: () => w.ctx.settings(),
+      cwd: w.home,
+    };
+    const payload = {
+      sentinel: "repeatedFailure" as const,
+      severity: "warn" as const,
+      title: `falhou em ${fin}/segredo.md`,
+      body: `3 arquivos sob ${fin}/x.md; veja notes/fin/segredo.md e notes/fin2/ok.md`,
+      triage: true,
+    };
+    const detail = () => /Detail: (.*)/.exec(prompts.at(-1)!)![1];
+    await triageSentinel(deps, payload);
+    expect(detail()).toBe(payload.body);
+    expect(prompts.at(-1)).toContain(`Title: ${payload.title}`);
+
+    const set = await w.call("PUT", "/api/settings", {
+      folderAccess: [{ path: fin, agents: "hide", devices: "write" }],
+    });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    await triageSentinel(deps, payload);
+    expect(detail()).toBe("3 arquivos sob (pasta oculta); veja (pasta oculta) e notes/fin2/ok.md");
+    expect(prompts.at(-1)).toContain("Title: falhou em (pasta oculta)");
+    expect(prompts.at(-1)).not.toContain(fin);
+    // hidden from devices only: an agent may be told
+    await w.call("PUT", "/api/settings", { folderAccess: [{ path: fin, agents: "write", devices: "hide" }] });
+    await triageSentinel(deps, payload);
+    expect(detail()).toBe(payload.body);
   });
 });
