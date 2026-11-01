@@ -487,3 +487,91 @@ test.afterEach(async ({ page }) => {
   const kept = list.filter((e) => !e.path.includes(`e2e-memoria-${stamp}`));
   if (kept.length !== list.length) await api(page, "PUT", "/api/v1/settings", { folderAccess: kept });
 });
+
+/* ---------------- C165 and C167: the computed layout of the tab and the computed tones ---------------- */
+
+for (const shell of SHELLS)
+  test(`C165 the ${shell}: on Do agente the list is on the left and the detail on the right, side by side from the same top, the list the narrower`, async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await open(page, shell, "dark", "/brain");
+    await oneConsolidation(page);
+    await page.goto("/#/brain/reviews?tab=agent");
+    const body = page.locator(".rv .rv-body");
+    await expect(body.locator(".ag-detail .ag-op")).toHaveCount(5);
+    const list = (await body.locator("> .rv-list").boundingBox())!;
+    const detail = (await body.locator("> .ag-detail").boundingBox())!;
+    // side by side: the list ends before the detail starts, and they begin at the same height
+    expect(list.x + list.width).toBeLessThanOrEqual(detail.x);
+    expect(Math.abs(list.y - detail.y)).toBeLessThanOrEqual(1);
+    // 2fr against 3fr: the list is the narrower column
+    expect(list.width).toBeLessThan(detail.width);
+    expect(list.width).toBeGreaterThanOrEqual(240);
+    const grid = await body.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { display: s.display, columns: s.gridTemplateColumns.split(" ").length };
+    });
+    expect(grid).toEqual({ display: "grid", columns: 2 });
+  });
+
+for (const theme of THEMES)
+  test(`C167 the gallery, ${theme}: each trust badge and each diff row draws the token of its tone (the computed colour is the token's), with its icon and its text or sign`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`/gallery.html?theme=${theme}`);
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForLoadState("networkidle");
+    const story = page.locator("#story-memoria");
+    await story.locator(".hf-pick").click();
+    const dialog = page.getByRole("dialog", { name: /^Version of / });
+    await expect(dialog.locator(".mc-diff .mc-add")).toHaveCount(1);
+    // what a token computes to in this theme: a probe element painted with it
+    const resolved = (prop: "color" | "backgroundColor", token: string) =>
+      page.evaluate(
+        ([p, t]) => {
+          const probe = document.createElement("div");
+          probe.style.setProperty(p === "color" ? "color" : "background-color", `var(${t})`);
+          document.body.appendChild(probe);
+          const value = getComputedStyle(probe)[p as "color"];
+          probe.remove();
+          return value;
+        },
+        [prop, token],
+      );
+    const computed = (selector: string, prop: "color" | "backgroundColor", within = story) =>
+      within
+        .locator(selector)
+        .first()
+        .evaluate((el, p) => getComputedStyle(el)[p as "color"], prop);
+    const tones = [
+      ["tone-ok", "--ok", "lucide-user-check"],
+      ["tone-warn", "--warn", "lucide-wrench"],
+      ["tone-info", "--info", "lucide-sparkles"],
+    ] as const;
+    const seen = new Set<string>();
+    for (const [cls, token, icon] of tones) {
+      const badge = story.locator(`.mc-trust.${cls}`).first();
+      await expect(badge).toBeVisible();
+      expect(await computed(`.mc-trust.${cls}`, "color")).toBe(await resolved("color", token));
+      await expect(badge.locator(`svg.${icon}`)).toHaveCount(1);
+      expect(((await badge.textContent()) ?? "").trim().length).toBeGreaterThan(0);
+      seen.add(await computed(`.mc-trust.${cls}`, "color"));
+    }
+    expect(seen.size).toBe(3);
+    // the diff of the open version dialog: a soft ground, the sign in the tone
+    expect(await computed("tr.mc-add", "backgroundColor", dialog)).toBe(
+      await resolved("backgroundColor", "--ok-bg"),
+    );
+    expect(await computed("tr.mc-del", "backgroundColor", dialog)).toBe(
+      await resolved("backgroundColor", "--danger-bg"),
+    );
+    expect(await computed("tr.mc-add .mc-sign", "color", dialog)).toBe(await resolved("color", "--ok"));
+    expect(await computed("tr.mc-del .mc-sign", "color", dialog)).toBe(await resolved("color", "--danger"));
+    await expect(dialog.locator("tr.mc-add .mc-sign")).toHaveText("+");
+    await expect(dialog.locator("tr.mc-del .mc-sign")).toHaveText("-");
+    // a context row has no ground of its own
+    const ctx = await computed("tr.mc-ctx", "backgroundColor", dialog);
+    expect(ctx).toBe("rgba(0, 0, 0, 0)");
+  });
