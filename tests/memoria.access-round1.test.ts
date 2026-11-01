@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { code, runWorld, type Json, type RunWorld } from "./helpers/memoriaWorld.js";
@@ -170,5 +171,84 @@ describe("C161 a run's proposal.json", () => {
     expect(recent.body.map((a: Json) => a.path)).toEqual([lookalike]);
     expect(text(list.body) + text(recent.body)).not.toContain("sigiloso");
     expect(fin).toBeTruthy();
+  });
+});
+
+// ---- C162: how a hidden folder is written in free text ------------------------------------------------------------
+
+describe("C162 a hidden folder in free text", () => {
+  it("C162 a name with a space, a path relative to memory/ or to the home and a ~/ one are written (pasta oculta); look-alikes are not", async () => {
+    const { w, outra } = await seeded("mordomo-round1-c162-");
+    const userHome = w.outside("userhome");
+    const documentos = path.join(userHome, "Documentos");
+    const pessoal = path.join(w.memory, "notes", "Fin Pessoal");
+    const ficha = path.join(documentos, "Fin Pessoal");
+    fs.mkdirSync(ficha, { recursive: true });
+    w.put(path.join(pessoal, "segredo.md"), "# Segredo\n\nficha pessoal\n");
+    w.put(path.join(ficha, "ficha.md"), "# Ficha\n");
+    w.update((s) => {
+      s.indexedFolders = [...s.indexedFolders, { path: documentos, area: null, enabled: true }];
+    });
+    await w.index();
+    const was = process.env.HOME;
+    process.env.HOME = userHome;
+    try {
+      const prompt = [
+        `a ${pessoal}/segredo.md`,
+        "b memory/notes/Fin Pessoal/segredo.md",
+        "c notes/Fin Pessoal/segredo.md",
+        "d ~/Documentos/Fin Pessoal/ficha.md",
+        "e notes/Fin Pessoal2/x.md",
+        "f notes/Fin/x.md",
+        "g outro/notes/Fin Pessoal/x.md",
+        `h ${outra}/visivel.md fim`,
+      ].join(", ");
+      const runId = await ownerRun(w, outra, prompt);
+      w.ctx.db
+        .prepare("UPDATE runs SET files_changed_json = ? WHERE id = ?")
+        .run(
+          JSON.stringify([`${pessoal}/segredo.md`, "notes/Fin Pessoal/segredo.md", `${outra}/visivel.md`]),
+          runId,
+        );
+      w.ctx.notifications.add({
+        kind: "system",
+        title: "cita",
+        body: "veja notes/Fin Pessoal/segredo.md.",
+        runId,
+      });
+      await hide(w, [
+        [pessoal, "hide"],
+        [ficha, "hide"],
+      ]);
+      const device = w.device(["monitor"]);
+      const detail = await w.call("GET", `/api/runs/${runId}`, undefined, device);
+      expect(detail.status, JSON.stringify(detail.body)).toBe(200);
+      expect(detail.body.run.promptSummary).toBe(
+        [
+          "a (pasta oculta)",
+          "b (pasta oculta)",
+          "c (pasta oculta)",
+          "d (pasta oculta)",
+          "e notes/Fin Pessoal2/x.md",
+          "f notes/Fin/x.md",
+          "g outro/notes/Fin Pessoal/x.md",
+          `h ${outra}/visivel.md fim`,
+        ].join(", "),
+      );
+      expect(detail.body.run.filesChanged).toEqual([`${outra}/visivel.md`]);
+      const notes = await w.call("GET", "/api/notifications", undefined, device);
+      expect(notes.body.items.find((n: Json) => n.title === "cita").body).toBe("veja (pasta oculta).");
+      // the owner's answers carry every spelling as written
+      const owner = await w.call("GET", `/api/runs/${runId}`);
+      expect(owner.body.run.promptSummary).toBe(prompt);
+      expect(owner.body.run.filesChanged).toEqual([
+        `${pessoal}/segredo.md`,
+        "notes/Fin Pessoal/segredo.md",
+        `${outra}/visivel.md`,
+      ]);
+    } finally {
+      if (was === undefined) delete process.env.HOME;
+      else process.env.HOME = was;
+    }
   });
 });

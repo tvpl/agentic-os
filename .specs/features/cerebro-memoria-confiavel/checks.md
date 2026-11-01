@@ -1184,6 +1184,19 @@ a hidden folder": a proposal quotes the text of the note it cites, and an op's `
 the sources would stop it quoting a hidden note it read (round 1 finding 3, G14)
 Proof: `npx vitest run tests/memoria.access-round1.test.ts -t "C161 "`
 
+**C162** - With `notes/Fin Pessoal` (a name with a space, under `memory/`) and `~/Documentos/Fin Pessoal` (an indexed folder
+under the user's home) `hide` for devices, a visible run's prompt that cites them reaches a `monitor` device with
+each citation written `(pasta oculta)`: the absolute path, `memory/notes/Fin Pessoal/segredo.md` (relative to the
+home), `notes/Fin Pessoal/segredo.md` (relative to `memory/`) and `~/Documentos/Fin Pessoal/ficha.md`, as the exact
+string; the run's `filesChanged` drops a hidden file given by a relative path too; a notification body citing one
+reads `veja (pasta oculta).`, its full stop kept; and the look-alikes are shown as written: `notes/Fin Pessoal2/x.md`,
+`notes/Fin/x.md` and `outro/notes/Fin Pessoal/x.md` (a path that only ends like a hidden one); the owner's answers carry
+every spelling as written. The citations are matched against the configured hidden entries themselves (their absolute
+path, real and as written, their path relative to the home and to `memory/`, and their `~/` form, with the artifacts'
+`exports/`), not by a generic pattern, which cut a name at its first space and never judged a relative path (round 1
+finding 5)
+Proof: `npx vitest run tests/memoria.access-round1.test.ts -t "C162 "`
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None
