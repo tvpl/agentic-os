@@ -232,12 +232,19 @@ export function contextMembership(env: ContextEnv, context: WorkContext): (row: 
 }
 
 /** What the routes answer for every context, in the order of `settings.contexts`: one pass over the index for all. */
-export function describeContexts(db: Db, env: ContextEnv, only?: WorkContext): ContextView[] {
+export function describeContexts(
+  db: Db,
+  env: ContextEnv,
+  only?: WorkContext,
+  /** The rows the caller may count (cerebro-memoria-confiavel, door 12); every row without it. */
+  allow?: (row: { root: string; rel: string }) => boolean,
+): ContextView[] {
   const list = only ? [only] : env.settings.contexts;
   if (list.length === 0) return [];
   const members = list.map((context) => contextMembership(env, context));
   const counts = list.map(() => 0);
   for (const row of db.prepare("SELECT root, rel FROM files").iterate() as IterableIterator<{ root: string; rel: string }>) {
+    if (allow && !allow(row)) continue;
     members.forEach((member, i) => {
       if (member(row)) counts[i]!++;
     });

@@ -343,6 +343,56 @@ commands, sending data to external services — are declared for connectors and 
 agent contract but are not yet raised by any code path. **Adding an indexed folder is
 validated (absolute, existing directory, outside `config/`) but not approval-gated.**
 
+## Folder access
+
+The owner says, per folder, what agents and paired devices may do there (`settings.folderAccess`,
+`.specs/features/cerebro-memoria-confiavel`, door 12). There are three levels and two audiences, `agents` (the runs:
+what the agent may reach on disk and what a run's credential reads) and `devices` (the paired devices): `write` is what
+every folder has when no entry covers it, `read` refuses what would write there, and `hide` leaves the folder out of
+everything the audience reads. A level other than `write` only narrows; nothing here gives anyone more than they had.
+The owner's token is never bound by a level: the owner reads and writes every folder whatever its levels.
+
+- **Which entry decides.** At most 200 entries, each an absolute path inside `memory/` or an enabled indexed folder
+  (`PUT /api/settings` answers `400 validation` otherwise). The entry whose real path is the longest prefix of the path
+  decides, by whole segments (`notes/fin` covers `notes/fin/a.md`, not `notes/fin2/`). It fails closed: an entry whose
+  level cannot be read is `hide` for both audiences; one whose path cannot be resolved (a link loop, a folder that is
+  not there) is `hide` for both over its path as written; a list that cannot be read (or that holds a path that is not
+  absolute) is `hide` for devices and `read` for agents on every path, and the file is kept as `settings.json.invalid`.
+- **Devices.** Every route a device reads leaves out what is hidden from it, through the same filter that leaves out the
+  owner's excludes (the search, the recall and the links it follows, the graph, related, links, the tree, the maps,
+  hygiene, the field query, the journal, the routers' check, the recall's statistics, the contexts, the facts by their
+  source, the reviews, the cleanup's inventory and scans, the dashboards, the history, the proposals and the run diff).
+  A note or a file it may not see answers `404 not_found`, the same body as one that does not exist, so the answer
+  does not say the folder is there; a hidden journal day is `404 not_found` and is not created. `GET /api/settings`,
+  and the `settings.changed` events of its stream, carry no `folderAccess` and no indexed folder or context path hidden
+  from devices. `artifacts/exports/` is never served to a device, whatever the levels. A dashboard's snapshot is
+  computed once for every caller: a device gets it without the items whose `path` or `sourcePath` is hidden and without
+  the highlights that point at one, but the numbers (counts, totals, KPIs) stay as they were computed. A run a device
+  asks for in a folder hidden from devices is `404 not_found`; one that would write in a folder `read` for devices is
+  `403 folder_read_only`.
+- **Agents.** A run's credential reads (search, recall, maps, journal, facts, the recall's statistics) leave out what is
+  hidden from agents, and a run's credential appends to the journal only where agents may write (`403 folder_hidden`,
+  `403 folder_read_only`). The context block and the routers in a run's prompt, and the routers and context maps the
+  engine writes into `memory/` (the map every agent reads), never name a folder hidden from agents. A run that would
+  start in a folder `hide` for agents, or be handed one to read, is refused with `403 folder_hidden`; a write run in a
+  folder `read` for agents with `403 folder_read_only`. When the run's folder (or a folder it is handed) holds a folder
+  hidden from agents, Claude Code launches with `--disallowedTools` denying `Read`, `Grep`, `Glob`, `Edit` and
+  `Write` under it (the rule syntax is not exercised against the installed CLI here); **Codex and Cursor are refused
+  with `409 folder_hide_unsupported`**, as is a provider whose manifest does not say it keeps reads in the working
+  folder: they read the whole disk (AD-015(d)), and "hidden" would be false. A write run whose folders hold a folder
+  `read` for agents keeps it read-only (`protectedDirs`), and fails with `409 folder_protection_unsupported` on a
+  provider that cannot protect a folder.
+- **When it is checked.** Every way a run is created checks the levels when it is asked for (`POST /api/runs`,
+  `POST /api/skills/:slug/run`, a retry, a child, a conversation continued, a routine run now), and again when it
+  launches, so a level changed in between decides; a run nobody's request waits on (a routine fired by its schedule,
+  an objective's step, a dashboard's question) is checked when it launches and fails with `failure.code`
+  `folder_hidden`, `folder_read_only` or `folder_hide_unsupported`.
+- **Limits.** The levels are what MordomoOS serves and what it hands a run; they are not a sandbox. A provider that
+  reads the whole disk is refused only when a hidden folder lies inside the run's folders: in a sibling folder, Codex
+  and Cursor can still open a hidden folder by its absolute path. Claude Code's `Bash` is not covered by the deny rules;
+  it asks a human first in every profile a run uses. The full-text score of a search hit is worked out over the whole
+  index, so it can differ in the last digits from what the same search scores with the hidden folder excluded.
+
 ## Notes and the index worker
 
 - **Writing a note is the owner's.** `POST /api/memory/notes` and `PUT /api/memory/notes` are `owner` routes

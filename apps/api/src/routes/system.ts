@@ -59,6 +59,7 @@ function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: s
   }
 }
 import { httpError, principalName, requireAdapter, requireProvider, startedByOf } from "./common.js";
+import { accessView, settingsForDevice, type AccessView } from "../access.js";
 import { requireContext } from "./contexts.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -266,9 +267,39 @@ export function artifactTitle(scope: ReadScope, abs: string, kind: ArtifactKind)
 type ArtifactListQueryT = HandlerCall<"artifacts.list">["query"];
 
 /** Walk artifacts/ (bounded), merge run metadata by relative path, filter and sort newest first. */
+/**
+ * The entries of `folderAccess` a patch may store (cerebro-memoria-confiavel, door 12): each path absolute, and inside
+ * `memory/` or an enabled indexed folder (the ones the patch leaves, or the stored ones). `400 validation` otherwise,
+ * and nothing is stored. The levels and the count are the schema's.
+ */
+function assertFolderAccess(
+  ctx: AppContext,
+  entries: ReadonlyArray<{ path: string }>,
+  folders: ReadonlyArray<{ path: string; enabled?: boolean }>,
+): void {
+  const roots = [ctx.paths.memory, ...folders.filter((f) => f.enabled !== false).map((f) => f.path)].map(
+    (r) => realpathLenient(path.resolve(r)),
+  );
+  for (const entry of entries) {
+    if (!path.isAbsolute(entry.path)) {
+      throw httpError(400, `folderAccess: ${entry.path} is not an absolute path.`, "validation");
+    }
+    const real = realpathLenient(path.resolve(entry.path));
+    if (!roots.some((root) => isInside(root, real) || isInside(root, path.resolve(entry.path)))) {
+      throw httpError(
+        400,
+        `folderAccess: ${entry.path} is not inside memory/ or an enabled indexed folder.`,
+        "validation",
+      );
+    }
+  }
+}
+
 export function listArtifacts(
   ctx: AppContext,
   q: ArtifactListQueryT,
+  /** The caller's view (cerebro-memoria-confiavel, G11): a device is never served `artifacts/exports/`. */
+  view: AccessView = accessView(ctx, { kind: "owner" }),
 ): { items: ArtifactListItem[]; total: number; skills: string[]; folders: string[] } {
   const root = ctx.paths.artifacts;
   const byRel = new Map<string, { runId: string; skillSlug: string | null; createdAt: number }>();
@@ -286,7 +317,7 @@ export function listArtifacts(
 
   const items: ArtifactListItem[] = [];
   // Listed and sized through the safe-read primitive: a link in artifacts/ is not an artifact.
-  const scope = ctx.scopeOf([root]);
+  const scope = view.scopeOf([root]);
   const realRoot = realpathLenient(root);
   const walk = (dir: string, depth: number) => {
     if (items.length >= LIST_MAX_FILES || depth > 6) return;
@@ -459,7 +490,13 @@ export function registerSystemRoutes(
     };
   });
 
-  bind(app, "settings.get", async () => ctx.settings());
+  // A device reads the settings without `folderAccess` and without the indexed folders and context paths hidden from it
+  // (cerebro-memoria-confiavel, AC 93): the list would name the folders the owner meant to hide.
+  bind(app, "settings.get", async (_input, req) => {
+    const settings = ctx.settings();
+    const view = accessView(ctx, req.principal);
+    return view.audience === "devices" ? settingsForDevice(view, settings) : settings;
+  });
 
   // ---- UI preferences (config/ui-preferences.json) ---------------------------
   bind(app, "uiPreferences.get", async () => ctx.uiPreferences.load());
@@ -521,6 +558,8 @@ export function registerSystemRoutes(
       );
       delete patch.bindAddress;
     }
+    if (patch.folderAccess !== undefined)
+      assertFolderAccess(ctx, patch.folderAccess, patch.indexedFolders ?? before.indexedFolders);
     const newFolders = (patch.indexedFolders ?? []).filter(
       (f) => !before.indexedFolders.some((b) => path.resolve(b.path) === path.resolve(f.path)),
     );
@@ -528,6 +567,11 @@ export function registerSystemRoutes(
 
     // SettingsStore.save() emits `settings.changed` on the event bus.
     const saved = ctx.settingsStore.save(deepMergeSettings(before, patch));
+    // The routers are the map agents read: a change of the access of folders rewrites the ones that exist, so they never
+    // name a folder that is now hidden from agents (cerebro-memoria-confiavel, AC 95).
+    if (patch.folderAccess !== undefined && !isDeepStrictEqual(before.folderAccess, saved.folderAccess)) {
+      if (fs.existsSync(path.join(ctx.paths.memory, "ROUTER.md"))) generateRouters(ctx.db, ctx.paths, saved);
+    }
     ctx.reloadAdapters();
     ctx.invalidateProviderCache();
     ctx.scheduler.reload();
@@ -714,16 +758,16 @@ export function registerSystemRoutes(
   });
 
   // ---- Artifacts gallery (desktop search, /artifacts, /generations) --------
-  bind(app, "artifacts.list", async ({ query: q }) => {
-    return listArtifacts(ctx, q);
+  bind(app, "artifacts.list", async ({ query: q }, req) => {
+    return listArtifacts(ctx, q, accessView(ctx, req.principal));
   });
 
   /** Binary artifact (images / video) for thumbnails — strictly inside the artifacts dir, allow-listed types only. */
-  bind(app, "artifacts.raw", async ({ query: { p } }, _req, reply) => {
+  bind(app, "artifacts.raw", async ({ query: { p } }, req, reply) => {
     let file: WorkspaceFile;
     try {
-      // PathAccessError → 403; the descriptor, not the path, is what gets streamed.
-      file = openWorkspaceFile(ctx.scopeOf([ctx.paths.artifacts]), p);
+      // PathAccessError → 403; the descriptor, not the path, is what gets streamed (a device: never artifacts/exports/).
+      file = openWorkspaceFile(accessView(ctx, req.principal).scopeOf([ctx.paths.artifacts]), p);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT" || err instanceof NotRegularFileError)
         throw httpError(404, "Artifact not found");

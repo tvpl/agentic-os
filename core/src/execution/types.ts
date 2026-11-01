@@ -11,6 +11,11 @@ export interface StartOptions {
    * records its failure). Without it the failure is only on the run.
    */
   onError?: (error: unknown, runId: string) => void;
+  /**
+   * Check the access of folders only when the run launches (`CreateRunInput.folderCheck`): for a run no request waits
+   * on (a dashboard's question), which then fails with the folder's code instead of being refused.
+   */
+  folderCheck?: "launch";
 }
 
 /** What starting a prompt, a skill or a repeat answers. */

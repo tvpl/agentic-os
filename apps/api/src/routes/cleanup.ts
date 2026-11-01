@@ -4,10 +4,12 @@ import {
   cleanupInventory,
   cleanupScanFor,
   resolveCleanupScope,
+  scanCleanupScope,
   saveCleanupDecisions,
   recordMove,
   undoCleanup,
 } from "@mordomo/core/internal";
+import { accessView } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
@@ -30,9 +32,11 @@ export function registerCleanupRoutes(app: FastifyInstance, ctx: AppContext): vo
   };
 
   /** What a scope holds, from the index rows alone (AC 1 to AC 5). */
-  bind(app, "memory.cleanup.inventory", async ({ query }) => {
-    const scope = resolveCleanupScope(env(), { context: query.context, dir: query.dir });
-    return cleanupInventory(ctx.db, env(), scope);
+  bind(app, "memory.cleanup.inventory", async ({ query }, req) => {
+    // The caller's view of the settings: no folder, count or group from a folder hidden from it (door 12).
+    const seen = { paths: ctx.paths, settings: accessView(ctx, req.principal).settings };
+    const scope = resolveCleanupScope(seen, { context: query.context, dir: query.dir });
+    return cleanupInventory(ctx.db, seen, scope);
   });
 
   /** Start a scan (AC 7, AC 15): `202` with its id; the progress goes on the bus as `cleanup.*`. */
@@ -42,11 +46,29 @@ export function registerCleanupRoutes(app: FastifyInstance, ctx: AppContext): vo
     return { scanId };
   });
 
-  bind(app, "memory.cleanup.scans.get", async ({ params: { id } }) => {
+  bind(app, "memory.cleanup.scans.get", async ({ params: { id } }, req) => {
     const scan = ctx.cleanup.get(id);
     if (!scan) throw httpError(404, `No cleanup scan is called ${id}.`, "not_found");
     const { scopeKey: _key, ...view } = scan;
-    return view;
+    // A scan is the owner's, over every file. A device is told of its findings as if the folders hidden from it were not
+    // there (cerebro-memoria-confiavel, door 12): a finished scan's findings are worked out again over the device's view
+    // (a link into a hidden note is a link that leads nowhere, a note only a hidden one links to is an orphan); while
+    // it runs, no finding that names a file it may not be told of.
+    const access = accessView(ctx, req.principal);
+    if (access.audience === null) return view;
+    if (view.status === "finished") {
+      const seen = { paths: ctx.paths, settings: access.settings };
+      const request = view.scope.kind === "dir" ? { dir: view.scope.path } : { context: view.scope.id };
+      const again = await scanCleanupScope(ctx.db, seen, resolveCleanupScope(seen, request));
+      return { ...view, findings: again.findings, decided: again.decided };
+    }
+    const told = (p: string | undefined) => p === undefined || access.allowsPath(p);
+    return {
+      ...view,
+      findings: view.findings.filter(
+        (f) => f.files.every((file) => told(file.path)) && told(f.detail.target) && told(f.detail.folder),
+      ),
+    };
   });
 
   /** The owner's answers to findings of the newest scan of a scope (AC 19 to AC 22, AC 25). */

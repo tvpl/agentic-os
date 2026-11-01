@@ -27,6 +27,11 @@ import {
   opTrust,
   withinBudget,
 } from "../core/src/memory/proposals.js";
+import { resolveFolderAccess } from "../core/src/memory/folderAccess.js";
+import { accessExclude, makeWorkspaceFilter } from "../core/src/memory/excludes.js";
+import { ClaudeAdapter } from "@mordomo/adapter-claude";
+import type { AgentRun } from "@mordomo/core";
+import { FAKE_BIN, withFakeBinPath } from "./helpers.js";
 
 /**
  * .specs/features/cerebro-memoria-confiavel, the deciding code at its own layer (checks.md, Test policy rows 1 and 2),
@@ -428,4 +433,189 @@ describe("C59 the ceiling of MEMORY.md", () => {
     // and above the ceiling with no file before it, it is not
     expect(withinBudget(null, text(220, 29_000))).toBe(false);
   });
+});
+
+// ---- batch B1: the folder-level resolver of door 12 and the deny rules of door 13, at their own layer ---------------
+
+describe("the folder-level resolver (door 12), one asserted case per row", () => {
+  let root: string;
+  let memory: string;
+  const access = (entries: unknown) =>
+    resolveFolderAccess({
+      paths: resolvePaths(root),
+      settings: { ...SettingsSchema.parse({}), folderAccess: entries } as never,
+    });
+  const both = (a: ReturnType<typeof access>, file: string) => ({
+    agents: a.level(file, "agents"),
+    devices: a.level(file, "devices"),
+  });
+  beforeAll(() => {
+    root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-access-layer-")));
+    memory = path.join(root, "memory");
+    for (const dir of ["notes/fin", "notes/fin2", "notes/outra"])
+      fs.mkdirSync(path.join(memory, dir), { recursive: true });
+    fs.symlinkSync(path.join(memory, "notes", "fin"), path.join(memory, "atalho-fin"));
+    // A link that points at itself: its real path cannot be resolved (ELOOP).
+    fs.symlinkSync(path.join(memory, "notes", "laco"), path.join(memory, "notes", "laco"));
+  });
+  afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it("C110 no entry: write for both audiences", () => {
+    expect(both(access([]), path.join(memory, "notes", "fin", "a.md"))).toEqual({
+      agents: "write",
+      devices: "write",
+    });
+  });
+
+  it("C110 the longest entry decides: notes/fin/ is hide, notes/outra/ is read, notes/fin2/ is read (the separator)", () => {
+    const a = access([
+      { path: path.join(memory, "notes"), agents: "read", devices: "read" },
+      { path: path.join(memory, "notes", "fin"), agents: "hide", devices: "hide" },
+    ]);
+    expect(both(a, path.join(memory, "notes", "fin", "a.md"))).toEqual({ agents: "hide", devices: "hide" });
+    expect(both(a, path.join(memory, "notes", "fin"))).toEqual({ agents: "hide", devices: "hide" });
+    expect(both(a, path.join(memory, "notes", "outra", "b.md"))).toEqual({ agents: "read", devices: "read" });
+    expect(both(a, path.join(memory, "notes", "fin2", "c.md"))).toEqual({ agents: "read", devices: "read" });
+    // outside every entry, as before
+    expect(both(a, path.join(memory, "MEMORY.md"))).toEqual({ agents: "write", devices: "write" });
+  });
+
+  it("C110 an entry written through a link to notes/fin decides for notes/fin/ by its real path", () => {
+    const a = access([{ path: path.join(memory, "atalho-fin"), agents: "read", devices: "hide" }]);
+    expect(a.entries[0]!.real).toBe(path.join(memory, "notes", "fin"));
+    expect(both(a, path.join(memory, "notes", "fin", "a.md"))).toEqual({ agents: "read", devices: "hide" });
+    expect(both(a, path.join(memory, "notes", "outra", "b.md"))).toEqual({
+      agents: "write",
+      devices: "write",
+    });
+  });
+
+  it("C111 an entry with a level this version cannot read is hide for both audiences", () => {
+    const a = access([{ path: path.join(memory, "notes", "fin"), agents: "read", devices: "secret" }]);
+    expect(both(a, path.join(memory, "notes", "fin", "a.md"))).toEqual({ agents: "hide", devices: "hide" });
+    expect(both(a, path.join(memory, "notes", "outra", "b.md"))).toEqual({
+      agents: "write",
+      devices: "write",
+    });
+  });
+
+  it("C111 an entry whose path cannot be resolved (a link loop) is hide for both and covers its lexical path (G17)", () => {
+    const loop = path.join(memory, "notes", "laco");
+    const a = access([{ path: loop, agents: "write", devices: "read" }]);
+    expect(a.entries[0]!.real).toBeNull();
+    expect(a.entries[0]!.spellings).toEqual([loop]);
+    expect(both(a, path.join(loop, "a.md"))).toEqual({ agents: "hide", devices: "hide" });
+    expect(both(a, loop)).toEqual({ agents: "hide", devices: "hide" });
+    // it covers its own path, not its siblings
+    expect(both(a, path.join(memory, "notes", "outra", "b.md"))).toEqual({
+      agents: "write",
+      devices: "write",
+    });
+  });
+
+  it("C111 an entry for a folder that is not there is hide for both, covering its lexical path (G17)", () => {
+    const gone = path.join(memory, "notes", "ainda-nao");
+    const a = access([{ path: gone, agents: "write", devices: "write" }]);
+    expect(both(a, path.join(gone, "a.md"))).toEqual({ agents: "hide", devices: "hide" });
+  });
+
+  it("a list that cannot be read is hide for devices and read for agents on every path (AC 90, beside C112)", () => {
+    for (const unreadable of [
+      "x",
+      [{ path: "relativo/fin", agents: "write", devices: "write" }],
+      [{ path: 7 }],
+    ]) {
+      const a = access(unreadable);
+      expect(a.unreadable, JSON.stringify(unreadable)).toBe(true);
+      expect(both(a, path.join(memory, "notes", "outra", "b.md"))).toEqual({
+        agents: "read",
+        devices: "hide",
+      });
+      expect(both(a, path.join(os.tmpdir(), "anywhere", "c.md"))).toEqual({
+        agents: "read",
+        devices: "hide",
+      });
+    }
+    // what the settings store reads an unreadable list as (`failClosed.ts`) gives the same levels
+    const closed = access([{ path: "*", agents: "read", devices: "hide" }]);
+    expect(both(closed, path.join(memory, "notes", "outra", "b.md"))).toEqual({
+      agents: "read",
+      devices: "hide",
+    });
+  });
+
+  it("C110 the workspace filter of a view refuses what the resolver hides and nothing else", () => {
+    const a = access([
+      { path: path.join(memory, "notes"), agents: "read", devices: "read" },
+      { path: path.join(memory, "notes", "fin"), agents: "hide", devices: "write" },
+    ]);
+    const filter = makeWorkspaceFilter([accessExclude({ rules: a.rules("agents"), deny: [] })], {
+      homeDir: root,
+    });
+    expect(filter.isExcluded("notes/fin/a.md", path.join(memory, "notes", "fin", "a.md"))).toBe(true);
+    expect(filter.isExcluded("notes/fin2/c.md", path.join(memory, "notes", "fin2", "c.md"))).toBe(false);
+    expect(filter.isExcluded("notes/outra/b.md", path.join(memory, "notes", "outra", "b.md"))).toBe(false);
+    // no absolute path to judge by: refused (fail closed)
+    expect(filter.isExcluded("notes/outra/b.md")).toBe(true);
+    // the devices' rules hide nothing here
+    const devices = makeWorkspaceFilter([accessExclude({ rules: a.rules("devices"), deny: [] })], {
+      homeDir: root,
+    });
+    expect(devices.isExcluded("notes/fin/a.md", path.join(memory, "notes", "fin", "a.md"))).toBe(false);
+    // a mark that cannot be read hides every path
+    const broken = makeWorkspaceFilter(["\u0000folder-access:{not json"], { homeDir: root });
+    expect(broken.isExcluded("notes/outra/b.md", path.join(memory, "notes", "outra", "b.md"))).toBe(true);
+  });
+});
+
+describe("the deny rules of door 13 in the Claude adapter, in each mode it builds", () => {
+  const fin = "/tmp/mordomo-home/memory/notes/fin";
+  const rules = [
+    `Read(/${fin}/**)`,
+    `Grep(/${fin}/**)`,
+    `Glob(/${fin}/**)`,
+    `Edit(/${fin}/**)`,
+    `Write(/${fin}/**)`,
+  ];
+  const adapter = new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") });
+  let restorePath: () => void;
+  beforeAll(() => {
+    restorePath = withFakeBinPath();
+  });
+  afterAll(() => restorePath());
+  const run = (overrides: Partial<AgentRun>): AgentRun => ({
+    runId: `layer-${Math.random().toString(36).slice(2)}`,
+    prompt: "go",
+    cwd: "/tmp/mordomo-home/memory",
+    model: null,
+    effort: "default",
+    mode: "read_only",
+    timeoutMs: 20_000,
+    profile: "read_only",
+    artifactsDir: "/tmp/mordomo-home/artifacts/x",
+    ...overrides,
+  });
+  const denied = (args: string[]): string[] =>
+    args.flatMap((arg, i) => (args[i - 1] === "--disallowedTools" ? arg.split(",") : []));
+  const modes: Array<[string, Partial<AgentRun>]> = [
+    ["read_only", { mode: "read_only" }],
+    [
+      "write with the permission broker",
+      {
+        mode: "write",
+        profile: "controlled_write",
+        permissionBroker: { command: "node", args: ["broker.js"], env: {} },
+      },
+    ],
+    ["write with acceptEdits", { mode: "write", profile: "controlled_write" }],
+  ];
+  for (const [name, overrides] of modes) {
+    it(`C126 ${name}: the five rules for the hidden folder, and none without one`, async () => {
+      const withHidden = await adapter.buildInvocation(run({ ...overrides, hiddenDirs: [fin] }));
+      expect(denied(withHidden.args)).toEqual(expect.arrayContaining(rules));
+      const without = await adapter.buildInvocation(run(overrides));
+      expect(denied(without.args).filter((r) => r.includes(fin))).toEqual([]);
+      expect(without.args.join(" ")).not.toContain(fin);
+    });
+  }
 });

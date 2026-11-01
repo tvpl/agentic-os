@@ -6,6 +6,7 @@ import { MordomoError } from "../errors.js";
 import type { RunMode } from "../agents/types.js";
 import type { CreateRunInput } from "../runs/runManager.js";
 import { contextPromptBlock } from "../memory/contexts.js";
+import { accessSettings } from "../memory/folderAccess.js";
 
 /**
  * The block a run of a work context begins with (cerebro-contextos, AC 21), or null for a run without one. A context
@@ -13,7 +14,8 @@ import { contextPromptBlock } from "../memory/contexts.js";
  */
 function contextBlock(engine: MordomoEngine, contextId: string | undefined): string | null {
   if (!contextId) return null;
-  const settings = engine.settings();
+  // As agents see the folders (cerebro-memoria-confiavel, AC 95): a path of the context hidden from them is not named.
+  const settings = accessSettings({ paths: engine.paths, settings: engine.settings() }, "agents");
   const context = settings.contexts.find((c) => c.id === contextId);
   return context ? contextPromptBlock({ paths: engine.paths, settings }, context) : null;
 }

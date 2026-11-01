@@ -1,6 +1,7 @@
 /** The second brain: the file index, search, graph, previews, recall, the journal, hygiene and bi-temporal facts. */
 import { z } from "zod";
 import { isAbsolutePath } from "../workContext.js";
+import { FOLDER_LEVELS } from "../settings.js";
 import { IdParams, QueryFlag, err, notFound } from "./common.js";
 import { ContextQuery, contextNotFound } from "./contexts.js";
 import { route } from "./route.js";
@@ -147,6 +148,11 @@ const MemoryTreeSchema = z.object({
       count: z.number().int().min(0),
       editable: z.boolean(),
       reason: z.enum(TREE_REASONS).optional(),
+      /**
+       * The folder's access when it is not `write` for both audiences (.specs/features/cerebro-memoria-confiavel, door
+       * 12): its own entry's levels or the ones it inherits from the nearest entry above it.
+       */
+      access: z.object({ agents: z.enum(FOLDER_LEVELS), devices: z.enum(FOLDER_LEVELS) }).optional(),
     }),
   ),
   files: z.array(
@@ -938,6 +944,8 @@ export const memoryRoutes = {
         "source_missing",
         "The source was moved or removed: refresh the index and select an existing file",
       ),
+      // cerebro-memoria-confiavel, AC 92: what a paired device is answered for a file hidden from it or not there.
+      notFound("For a paired device: a file in a folder hidden from it, or one that does not exist"),
     ],
   }),
   "memory.open": route({
@@ -972,6 +980,8 @@ export const memoryRoutes = {
       ),
       err(404, "not_a_file", "The path names something that is not a regular file"),
       err(404, "note_missing", "The file does not exist"),
+      // cerebro-memoria-confiavel, AC 92: what a paired device is answered for a note hidden from it or not there.
+      notFound("For a paired device: a note in a folder hidden from it, or one that does not exist"),
       err(
         413,
         "note_too_large",
@@ -1374,6 +1384,9 @@ export const memoryRoutes = {
         }),
       ]),
     },
+    // cerebro-memoria-confiavel, G15: one day the caller may not see (`journal/` hidden from it) is not there, and is
+    // not made.
+    errors: [notFound("For a paired device or a run: a day in a folder hidden from it")],
   }),
   "memory.journal.append": route({
     method: "POST",
@@ -1393,6 +1406,11 @@ export const memoryRoutes = {
       author: z.enum(["agent"]).optional(),
     }),
     responses: { 200: JournalDaySchema.extend({ sections: JournalSectionsSchema }) },
+    // cerebro-memoria-confiavel, door 12: a run's credential writes the journal only where agents may write.
+    errors: [
+      err(403, "folder_hidden", "A run's credential: the journal is hidden from agents"),
+      err(403, "folder_read_only", "A run's credential: agents may only read the journal"),
+    ],
   }),
   "memory.hygiene": route({
     method: "GET",

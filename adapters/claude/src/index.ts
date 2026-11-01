@@ -243,6 +243,18 @@ export class ClaudeAdapter implements AgentAdapter {
       const rule = dir.startsWith("/") ? `/${dir}` : dir;
       return [`Edit(${rule}/**)`, `Write(${rule}/**)`, `MultiEdit(${rule}/**)`];
     });
+    // The folders hidden from agents inside what the run reads (cerebro-memoria-confiavel, door 13): no read, search or
+    // edit tool reaches them, in every mode. Same rule syntax as above; not exercised against the installed CLI here.
+    const hiddenRules = (run.hiddenDirs ?? []).flatMap((dir) => {
+      const rule = dir.startsWith("/") ? `/${dir}` : dir;
+      return [
+        `Read(${rule}/**)`,
+        `Grep(${rule}/**)`,
+        `Glob(${rule}/**)`,
+        `Edit(${rule}/**)`,
+        `Write(${rule}/**)`,
+      ];
+    });
     if (run.mode === "read_only") {
       // Headless default mode auto-denies permission prompts; writes are only
       // pre-approved inside the artifacts directory. Claude Code permission
@@ -254,7 +266,7 @@ export class ClaudeAdapter implements AgentAdapter {
         "--allowedTools",
         `Write(${artifactsRule}/**),Edit(${artifactsRule}/**)`,
         "--disallowedTools",
-        ["Bash(rm:*)", "Bash(sudo:*)", ...protectedRules].join(","),
+        ["Bash(rm:*)", "Bash(sudo:*)", ...protectedRules, ...hiddenRules].join(","),
       );
     } else if (run.permissionBroker) {
       // Every prompt the CLI would raise goes to a human through the
@@ -275,8 +287,8 @@ export class ClaudeAdapter implements AgentAdapter {
     } else {
       args.push("--permission-mode", "acceptEdits");
     }
-    if (run.mode !== "read_only" && protectedRules.length > 0)
-      args.push("--disallowedTools", protectedRules.join(","));
+    if (run.mode !== "read_only" && protectedRules.length + hiddenRules.length > 0)
+      args.push("--disallowedTools", [...protectedRules, ...hiddenRules].join(","));
     const env: Record<string, string> = {};
     const thinking = { low: "1024", medium: "8192", high: "31999" }[run.effort as string];
     if (thinking) env.MAX_THINKING_TOKENS = thinking;

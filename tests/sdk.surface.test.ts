@@ -174,6 +174,16 @@ describe("S5 the surface is a closed list", () => {
         "planNewNote",
         "readProposal",
         "storeProposal",
+        // cerebro-memoria-confiavel, batch B1: the access of folders the routes read every request through (door 12),
+        // the stored-row filter of a caller's view, and the files a proposal names (G14)
+        "FolderAccess",
+        "accessSettings",
+        "exportsDir",
+        "proposalPaths",
+        "resolveFolderAccess",
+        // a finished cleanup scan, worked out again over a device's view (C115)
+        "scanCleanupScope",
+        "storedRowFilter",
       ].sort(),
     );
   });

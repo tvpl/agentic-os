@@ -1062,7 +1062,8 @@ describe("S2 the real answer is checked", () => {
     // batch B (no_snapshot).
     // cerebro-memoria-confiavel, batch A1: two more (provenance_required, fact_overlap), and three in batch A2
     // (too_many_proposals, proposal_decided, memory_over_budget).
-    expect(raised.size).toBe(82);
+    // cerebro-memoria-confiavel, batch B1: `403 folder_hidden`, `403 folder_read_only`, `409 folder_hide_unsupported`
+    expect(raised.size).toBe(85);
     expect([...raised.keys()].filter((pair) => pair.includes("<unresolved>"))).toEqual([]);
     expect(raised.has("409 approval_resolved")).toBe(true);
     // The other way: every pair an entry lists as its own is raised somewhere in the tree. A documented answer no code

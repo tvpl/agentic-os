@@ -7,6 +7,7 @@ import {
   recordFileVersion,
   reviewsDue,
 } from "@mordomo/core/internal";
+import { accessView } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { requireContext } from "./contexts.js";
@@ -22,9 +23,11 @@ export function registerReviewRoutes(app: FastifyInstance, ctx: AppContext): voi
   const env = () => ({ paths: ctx.paths, settings: ctx.settings() });
 
   /** What fell due, or what has no nature (AC 17 to AC 23, AC 46). Reads the settings at each request (C39). */
-  bind(app, "memory.reviews.list", async ({ query: q }) => {
-    const context = requireContext(ctx, q.context);
-    const notes = env();
+  bind(app, "memory.reviews.list", async ({ query: q }, req) => {
+    // The caller's view of the settings: a file in a folder hidden from it is no item (cerebro-memoria-confiavel, door 12).
+    const view = accessView(ctx, req.principal);
+    const context = requireContext(ctx, q.context, view.settings);
+    const notes = { paths: ctx.paths, settings: view.settings };
     const editable = (file: string): boolean => {
       try {
         return classifyNotePath(notes, file).editable;

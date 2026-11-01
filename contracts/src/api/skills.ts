@@ -13,7 +13,7 @@ import {
   settingsWriteErrors,
 } from "./common.js";
 import { ContextIdField } from "./contexts.js";
-import { RunLaunchSchema, runContextErrors } from "./runs.js";
+import { RunLaunchSchema, folderAccessErrors, runContextErrors } from "./runs.js";
 import { binary, route } from "./route.js";
 
 const SkillWithFavoriteSchema = SkillSchema.extend({ favorite: z.boolean() });
@@ -283,6 +283,7 @@ export const skillRoutes = {
       err(409, "workspace_unavailable", "The working folder cannot be used"),
       err(429, "too_many_requests", "The queue of runs is full"),
       ...runContextErrors,
+      ...folderAccessErrors,
     ],
   }),
 } as const;

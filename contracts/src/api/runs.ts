@@ -111,6 +111,20 @@ const submissionErrors = [
 export const runContextErrors = [contextNotFound, contextUnavailable];
 
 /** The refusals any route that starts a run can answer. */
+/**
+ * What a folder's access refuses when a run is asked for (.specs/features/cerebro-memoria-confiavel, door 12 and 13,
+ * G16): the same three codes on every route that creates a run.
+ */
+export const folderAccessErrors = [
+  err(403, "folder_hidden", "The run's folder, or a folder it would be handed, is hidden from agents"),
+  err(403, "folder_read_only", "The run would write in a folder that agents, or this device, may only read"),
+  err(
+    409,
+    "folder_hide_unsupported",
+    "The run's folder holds a folder hidden from agents and the provider reads the whole disk",
+  ),
+];
+
 const startErrors = [
   err(400, "unknown_provider", "No adapter is registered for the provider"),
   err(400, "bad_request", "The provider is not enabled"),
@@ -122,6 +136,7 @@ const startErrors = [
   ),
   err(409, "workspace_unavailable", "The working folder cannot be used"),
   err(429, "too_many_requests", "The queue of runs is full"),
+  ...folderAccessErrors,
 ];
 
 export const runRoutes = {

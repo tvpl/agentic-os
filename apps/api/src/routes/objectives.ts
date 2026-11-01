@@ -58,6 +58,8 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
             cwd,
             timeoutMs,
             startedBy: startedByOf(req),
+            // A step is dispatched in a batch: a folder its access refuses fails that step's run at launch (G16).
+            folderCheck: "launch",
           };
           started = ctx.execution.gateAndLaunchSkill(input, `Objective step: ${step.title}`, onError);
         } else {
@@ -76,7 +78,7 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
               timeoutMs: body.timeoutMs,
               startedBy: startedByOf(req),
             },
-            { onError, composed: true },
+            { onError, composed: true, folderCheck: "launch" },
           );
         }
         const { runId, status } = started;

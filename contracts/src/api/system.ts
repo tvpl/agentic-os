@@ -315,7 +315,12 @@ export const systemRoutes = {
     summary: "The engine settings",
     tag: "settings",
     scope: "monitor",
-    responses: { 200: SettingsSchema },
+    // A paired device is answered without `folderAccess` (cerebro-memoria-confiavel, AC 93).
+    responses: {
+      200: SettingsSchema.extend({
+        folderAccess: SettingsSchema.shape.folderAccess.removeDefault().optional(),
+      }),
+    },
   }),
   "settings.update": route({
     method: "PUT",

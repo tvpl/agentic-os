@@ -207,7 +207,14 @@ export const CEREBRO_V2_ROUTES: Record<
     scope: "content",
     success: [200],
     reads: "query",
-    errors: ["403 forbidden_path", "404 not_a_file", "404 note_missing", "413 note_too_large"],
+    // cerebro-memoria-confiavel, AC 92: a paired device is answered `404 not_found` for a note hidden from it or not there
+    errors: [
+      "403 forbidden_path",
+      "404 not_a_file",
+      "404 not_found",
+      "404 note_missing",
+      "413 note_too_large",
+    ],
   },
   "POST /api/memory/notes": {
     id: "memory.notes.create",

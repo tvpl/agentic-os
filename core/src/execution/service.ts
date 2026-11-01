@@ -95,7 +95,7 @@ export class ExecutionService implements Execution {
     // `composed`: the prompt was assembled by the engine from its own records (an objective's context packet), so
     // the bound meant for text a caller typed does not apply.
     const body = (options.composed === true ? TrustedPromptSchema : StartPromptSchema).parse(input);
-    return this.submitPrompt(body, options.onError ?? noop).body;
+    return this.submitPrompt(body, options.onError ?? noop, options.folderCheck).body;
   }
 
   startSkill(input: StartSkillInput, options: StartOptions = {}): StartedRun {
@@ -153,6 +153,7 @@ export class ExecutionService implements Execution {
       timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
       startedBy: body.startedBy,
       ...(body.contextId !== undefined ? { contextId: body.contextId } : {}),
+      ...(options.folderCheck ? { folderCheck: options.folderCheck } : {}),
     };
     return this.gateAndLaunchSkill(
       skillInput,
@@ -285,8 +286,12 @@ export class ExecutionService implements Execution {
    * conversation": resolve the session's defaults (provider and cwd, unless the caller overrides them), apply the
    * write gate, then launch. `waiting_approval` when the profile wants a human first.
    */
-  private submitPrompt(body: PromptBody, onError: (err: unknown, runId: string) => void): PromptRunResponse {
-    if (!body.submissionId) return this.createPromptSubmission(body, onError);
+  private submitPrompt(
+    body: PromptBody,
+    onError: (err: unknown, runId: string) => void,
+    folderCheck?: "launch",
+  ): PromptRunResponse {
+    if (!body.submissionId) return this.createPromptSubmission(body, onError, folderCheck);
     const { submissionId, ...payload } = body;
     const { startedBy, ...request } = payload;
     // Who asked is part of the request's identity: a receipt holds the run ids of the one who made it, so the same
@@ -322,7 +327,7 @@ export class ExecutionService implements Execution {
     );
     let result: PromptRunResponse;
     try {
-      result = this.createPromptSubmission(payload, onError);
+      result = this.createPromptSubmission(payload, onError, folderCheck);
     } catch (error) {
       db.prepare("DELETE FROM prompt_submissions WHERE id = ?").run(submissionId);
       throw error;
@@ -339,6 +344,7 @@ export class ExecutionService implements Execution {
   private createPromptSubmission(
     body: Omit<PromptBody, "submissionId">,
     onError: (err: unknown, runId: string) => void,
+    folderCheck?: "launch",
   ): PromptRunResponse {
     const engine = this.engine;
     const settings = engine.settings();
@@ -383,9 +389,12 @@ export class ExecutionService implements Execution {
       ...(body.parentRunId ? { parentRunId: body.parentRunId } : {}),
       startedBy: body.startedBy,
       ...(contextId !== undefined ? { contextId } : {}),
+      ...(folderCheck ? { folderCheck } : {}),
     };
     // Refused writes must not leave an empty conversation behind.
     engine.assertWriteAllowed(body.mode, "manual");
+    // Nor a folder the access of folders refuses (cerebro-memoria-confiavel, door 12): checked again by `create`.
+    if (!folderCheck) engine.runs.assertFolderAccess(input);
     input.sessionId = this.ensureSession(input);
     const gate = engine.gateWrite(
       body.mode,

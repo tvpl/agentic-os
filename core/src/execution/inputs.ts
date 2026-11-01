@@ -22,6 +22,8 @@ export interface PromptRunInput {
   startedBy: string | null;
   /** The work context the run is in (cerebro-contextos): `cwd` already lies inside it, and the prompt begins with it. */
   contextId?: string;
+  /** Check the access of folders only at launch (`CreateRunInput.folderCheck`). */
+  folderCheck?: "launch";
 }
 
 export interface SkillRunInput {
@@ -38,6 +40,8 @@ export interface SkillRunInput {
   startedBy: string | null;
   /** The work context the run is in (see `PromptRunInput.contextId`). */
   contextId?: string;
+  /** Check the access of folders only at launch (see `PromptRunInput.folderCheck`). */
+  folderCheck?: "launch";
 }
 
 /** What an approved `write_run` approval replays (also its stored payload shape). */
@@ -60,5 +64,6 @@ export function promptRunFields(input: PromptRunInput): Omit<CreateRunInput, "pr
     ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
     startedBy: input.startedBy,
     ...(input.contextId ? { contextId: input.contextId } : {}),
+    ...(input.folderCheck ? { folderCheck: input.folderCheck } : {}),
   };
 }

@@ -20,7 +20,7 @@ import { unifiedDiff } from "../sync/diff.js";
 import { assertFact, type Fact, type FactTrust } from "./facts.js";
 import { recordFileVersion } from "./history.js";
 import { localDateString } from "./journal.js";
-import { createNote, newNoteText, saveNote, versionOf, type NoteContext } from "./notes.js";
+import { createNote, newNoteText, planNewNote, saveNote, versionOf, type NoteContext } from "./notes.js";
 
 /**
  * The review inbox of what an agent writes to the memory (.specs/features/cerebro-memoria-confiavel, doors 5 to 7).
@@ -253,14 +253,62 @@ export function getProposal(db: Db, id: string): ProposalRecord | null {
 export function listProposals(
   db: Db,
   q: { status?: "pending" | "decided" | undefined; limit?: number | undefined } = {},
+  /** Which proposals the caller may see (cerebro-memoria-confiavel, door 12, G14); all without it. */
+  allow?: (record: ProposalRecord) => boolean,
 ): { items: ProposalSummary[]; total: number } {
   const where = q.status === "pending" ? "WHERE status = 'pending'" : q.status === "decided" ? "WHERE status != 'pending'" : "";
   const limit = Math.min(Math.max(q.limit ?? 50, 1), 200);
-  const rows = db
-    .prepare(`SELECT * FROM memory_proposals ${where} ORDER BY created_at DESC, rowid DESC LIMIT ?`)
-    .all(limit) as Row[];
-  const total = (db.prepare(`SELECT COUNT(*) c FROM memory_proposals ${where}`).get() as { c: number }).c;
-  return { items: rows.map((r) => summaryOf(fromRow(r))), total };
+  if (!allow) {
+    const rows = db
+      .prepare(`SELECT * FROM memory_proposals ${where} ORDER BY created_at DESC, rowid DESC LIMIT ?`)
+      .all(limit) as Row[];
+    const total = (db.prepare(`SELECT COUNT(*) c FROM memory_proposals ${where}`).get() as { c: number }).c;
+    return { items: rows.map((r) => summaryOf(fromRow(r))), total };
+  }
+  const items: ProposalSummary[] = [];
+  let total = 0;
+  for (const row of db
+    .prepare(`SELECT * FROM memory_proposals ${where} ORDER BY created_at DESC, rowid DESC`)
+    .iterate() as IterableIterator<Row>) {
+    const record = fromRow(row);
+    if (!allow(record)) continue;
+    total++;
+    if (items.length < limit) items.push(summaryOf(record));
+  }
+  return { items, total };
+}
+
+/**
+ * Every file a proposal names, as absolute paths (cerebro-memoria-confiavel, G14): what it would write (`MEMORY.md`, a
+ * topic file, the note it saves or creates) and every source of its ops or of its fact. Null when one of them cannot be
+ * worked out (a new note whose place is no longer one), which a caller that hides folders reads as hidden.
+ */
+export function proposalPaths(env: Pick<ProposalEnv, "paths" | "settings">, record: ProposalRecord): string[] | null {
+  const memory = env.paths.memory;
+  const inMemory = (source: string) => path.join(memory, ...splitSource(source).rel.split("/"));
+  const p = record.payload as Record<string, unknown>;
+  const out: string[] = [];
+  if (record.kind === "consolidation" || record.kind === "memory_edit") {
+    out.push(path.join(memory, MEMORY_FILE));
+    for (const op of record.kind === "consolidation" ? opsOf(record) : []) {
+      const o = op as unknown as Record<string, unknown>;
+      if (typeof o.source === "string") out.push(inMemory(o.source));
+      if (typeof o.topic === "string") out.push(path.join(memory, "topics", `${o.topic}.md`));
+    }
+  } else if (record.kind === "note_save") {
+    if (typeof p.path !== "string") return null;
+    out.push(path.isAbsolute(p.path) ? p.path : path.join(memory, p.path));
+  } else if (record.kind === "note_create") {
+    try {
+      const plan = planNewNote({ paths: env.paths, settings: env.settings }, p as never);
+      out.push(path.join(plan.dir, `${plan.slug}.md`));
+    } catch {
+      return null;
+    }
+  } else if (typeof p.sourcePath === "string") {
+    out.push(p.sourcePath);
+  }
+  return out;
 }
 
 // ---- the trust of an op and its source (AC 55, 56) ----------------------------------------------------------------

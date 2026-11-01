@@ -452,6 +452,9 @@ export class RoutineScheduler {
         parentRunId,
         attempts: attempt,
         maxCostUsd: remainingBudget(),
+        // The access of folders (cerebro-memoria-confiavel, G16): "run now" is a request, refused at once; a fire of the
+        // schedule (and a retry) has nobody to answer, so it is checked when the run launches and fails with the code.
+        ...(reason === "manual" && attempt === 1 ? {} : { folderCheck: "launch" as const }),
       });
 
     let first: RunRecord;

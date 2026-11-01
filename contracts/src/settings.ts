@@ -46,6 +46,36 @@ export const IndexedFolderSchema = z.object({
 });
 export type IndexedFolder = z.infer<typeof IndexedFolderSchema>;
 
+/**
+ * The access of a folder for one audience (.specs/features/cerebro-memoria-confiavel, door 12): `write` is what every
+ * folder has today, `read` keeps what an agent or a device may read and refuses what it would write, `hide` leaves the
+ * folder out of everything it reads. A level other than `write` only narrows; the owner's token is never bound by one.
+ */
+export const FOLDER_LEVELS = ["write", "read", "hide"] as const;
+export type FolderLevel = (typeof FOLDER_LEVELS)[number];
+/** The two audiences a folder's access is set for: the runs' agents and the paired devices. */
+export const FOLDER_AUDIENCES = ["agents", "devices"] as const;
+export type FolderAudience = (typeof FOLDER_AUDIENCES)[number];
+/** The most entries `settings.folderAccess` holds (door 12). */
+export const FOLDER_ACCESS_MAX = 200;
+/**
+ * What an unreadable `folderAccess` reads as (AC 90): one entry that covers every path (`"*"`, a path the API never
+ * accepts) with `hide` for devices and `read` for agents.
+ */
+export const FOLDER_ACCESS_UNREADABLE = Object.freeze({
+  path: "*",
+  agents: "read",
+  devices: "hide",
+} as const);
+
+/** One entry of `settings.folderAccess`: an absolute folder and its level for each audience (door 12). */
+export const FolderAccessEntrySchema = z.object({
+  path: z.string().min(1).max(4096),
+  agents: z.enum(FOLDER_LEVELS),
+  devices: z.enum(FOLDER_LEVELS),
+});
+export type FolderAccessEntry = z.infer<typeof FolderAccessEntrySchema>;
+
 export const DEFAULT_EXCLUDES = [
   ".git",
   "node_modules",
@@ -361,6 +391,13 @@ export const SettingsSchema = z.object({
     .default({}),
   indexedFolders: z.array(IndexedFolderSchema).default([]),
   excludes: z.array(z.string()).default(DEFAULT_EXCLUDES),
+  /**
+   * The access of folders for agents and devices (.specs/features/cerebro-memoria-confiavel, door 12), at most 200
+   * entries; a folder no entry covers is `write` for both. The most specific entry by real path decides. An entry
+   * with a level this version cannot read reads as `hide` for both audiences; a list this version cannot read reads as
+   * `FOLDER_ACCESS_UNREADABLE` (`core/src/config/failClosed.ts`).
+   */
+  folderAccess: z.array(FolderAccessEntrySchema).max(FOLDER_ACCESS_MAX).default([]),
   areas: z.array(z.string()).default(["Worker", "Documentos", "Finanças", "Projetos"]),
   /**
    * The work contexts (.specs/features/cerebro-contextos, door 1), at most 50, each `id` once. A duplicate `id` or an

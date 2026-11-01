@@ -729,6 +729,7 @@ export class MordomoEngine {
       parentRunId: input.parentRunId ?? null,
       startedBy: input.startedBy,
       ...(input.contextId ? { contextId: input.contextId } : {}),
+      ...(input.folderCheck ? { folderCheck: input.folderCheck } : {}),
     };
   }
 }

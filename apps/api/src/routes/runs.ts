@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
-import type { RunEvent } from "@mordomo/core";
+import type { RunEvent, Settings } from "@mordomo/core";
 import {
   NotRegularFileError,
   inspectPath,
@@ -12,6 +12,7 @@ import {
   statWorkspacePath,
 } from "@mordomo/core/internal";
 import { currentRunFrameVersion, type RunFrameType } from "@mordomo/contracts";
+import { accessView } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { grantedRoots, httpError, startedByOf } from "./common.js";
@@ -110,7 +111,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
    * otherwise (or for untracked files) a containment-checked snapshot with the
    * same rules as `/api/memory/preview`.
    */
-  bind(app, "runs.diff", async ({ params: { id }, query: { file } }) => {
+  bind(app, "runs.diff", async ({ params: { id }, query: { file } }, req) => {
     const run = ctx.runs.get(id);
     if (!run) throw httpError(404, "Run not found");
     const cwd = run.cwd ?? ctx.paths.home;
@@ -119,7 +120,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     // `file` comes from a run's record: it must lie in a granted root and outside the home's config/ and logs/ (403);
     // the rest of the filter (secret names, excludes) answers "unavailable" inside runFileDiff.
     const resolved = inspectPath(ctx.readScope([ctx.paths.artifacts]), target).real;
-    return runFileDiff(ctx, resolved, roots);
+    return runFileDiff(ctx, resolved, roots, accessView(ctx, req.principal).settings);
   });
 
   bind(app, "runs.cancel", async ({ params: { id } }) => {
@@ -214,9 +215,10 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
 
   bind(app, "metrics.get", async () => ctx.runs.metrics());
 
-  bind(app, "artifacts.recent", async ({ query: { limit } }) => {
+  bind(app, "artifacts.recent", async ({ query: { limit } }, req) => {
     const runs = ctx.runs.list({ limit: 200 });
-    const scope = ctx.scopeOf([ctx.paths.artifacts]);
+    // A device is never served `artifacts/exports/` (cerebro-memoria-confiavel, G11), nor a file hidden from it.
+    const scope = accessView(ctx, req.principal).scopeOf([ctx.paths.artifacts]);
     const artifacts: Array<{
       runId: string;
       file: string;
@@ -253,11 +255,11 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   });
 
   /** Read one artifact (text) — strictly inside the artifacts dir. */
-  bind(app, "artifacts.file", async ({ query: { p } }) => {
+  bind(app, "artifacts.file", async ({ query: { p } }, req) => {
     let file: ReturnType<typeof openWorkspaceFile>;
     try {
-      // PathAccessError → 403 (outside artifacts/, a link out of it, a secret name).
-      file = openWorkspaceFile(ctx.scopeOf([ctx.paths.artifacts]), p);
+      // PathAccessError → 403 (outside artifacts/, a link out of it, a secret name; for a device, `artifacts/exports/`).
+      file = openWorkspaceFile(accessView(ctx, req.principal).scopeOf([ctx.paths.artifacts]), p);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT" || err instanceof NotRegularFileError)
         throw httpError(404, "Artifact not found");
@@ -304,13 +306,19 @@ export function findGitRoot(start: string): string | null {
 const DIFF_MAX_CHARS = 512 * 1024;
 const ARTIFACT_TEXT_MAX_BYTES = 2 * 1024 * 1024;
 
-async function runFileDiff(ctx: AppContext, resolved: string, roots: string[]): Promise<RunDiffResult> {
+async function runFileDiff(
+  ctx: AppContext,
+  resolved: string,
+  roots: string[],
+  /** The caller's view of the settings (cerebro-memoria-confiavel, door 12): a file hidden from it is unavailable. */
+  settings: Settings,
+): Promise<RunDiffResult> {
   const filterOptions = { homeDir: ctx.paths.home };
   // The same filter as the preview, before git runs: a diff of a tracked secret
   // or of the home's config/ would otherwise bypass it.
   let access: ReturnType<typeof checkWorkspacePath>;
   try {
-    access = checkWorkspacePath(ctx.settings(), roots, resolved, filterOptions);
+    access = checkWorkspacePath(settings, roots, resolved, filterOptions);
   } catch (err) {
     throw httpError(403, (err as Error).message, "forbidden_path");
   }
@@ -321,7 +329,7 @@ async function runFileDiff(ctx: AppContext, resolved: string, roots: string[]): 
       return { kind: "unavailable", file: resolved, message: "File no longer exists." };
     let preview: ReturnType<typeof previewFile>;
     try {
-      preview = previewFile(ctx.settings(), roots, resolved, filterOptions);
+      preview = previewFile(settings, roots, resolved, filterOptions);
     } catch (err) {
       throw httpError(403, (err as Error).message, "forbidden_path");
     }
@@ -358,7 +366,7 @@ async function runFileDiff(ctx: AppContext, resolved: string, roots: string[]): 
     if (listed.truncated) return false; // a list cut short cannot be judged whole
     for (const name of listed.stdout.split("\0").filter(Boolean)) {
       try {
-        if (checkWorkspacePath(ctx.settings(), roots, path.join(repoRoot, name), filterOptions).blockedReason)
+        if (checkWorkspacePath(settings, roots, path.join(repoRoot, name), filterOptions).blockedReason)
           return false;
       } catch {
         return false; // outside every root, or the home's config/ and logs/: not shown either

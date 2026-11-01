@@ -9,6 +9,7 @@ import {
   newContext,
   removeContextMap,
 } from "@mordomo/core/internal";
+import { accessView } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
@@ -25,20 +26,30 @@ const envOf = (ctx: AppContext, settings: Settings = ctx.settings()) => ({ paths
 export function contextFilter(
   ctx: AppContext,
   value: string | undefined,
+  /** The caller's view of the settings (cerebro-memoria-confiavel, door 12); the settings as they are without it. */
+  settings: Settings = ctx.settings(),
 ): ((row: { root: string; rel: string }) => boolean) | undefined {
-  const context = requireContext(ctx, value);
-  return context ? contextMembership(envOf(ctx), context) : undefined;
+  const context = requireContext(ctx, value, settings);
+  return context ? contextMembership(envOf(ctx, settings), context) : undefined;
 }
 
 /** The context `value` names, `null` for the whole index, `404 context_not_found` for an id that names none. */
-export function requireContext(ctx: AppContext, value: string | undefined): WorkContext | null {
-  const context = findContext(ctx.settings(), value);
+export function requireContext(
+  ctx: AppContext,
+  value: string | undefined,
+  settings: Settings = ctx.settings(),
+): WorkContext | null {
+  const context = findContext(settings, value);
   if (context === undefined) throw httpError(404, `No work context is called ${value}.`, "context_not_found");
   return context;
 }
 
 export function registerContextRoutes(app: FastifyInstance, ctx: AppContext): void {
-  bind(app, "contexts.list", async () => ({ contexts: describeContexts(ctx.db, envOf(ctx)) }));
+  // A device sees no context path in a folder hidden from it, nor a file of one in its counts (door 12, G11).
+  bind(app, "contexts.list", async (_input, req) => {
+    const view = accessView(ctx, req.principal);
+    return { contexts: describeContexts(ctx.db, envOf(ctx, view.settings), undefined, view.rowFilter()) };
+  });
 
   bind(app, "contexts.create", async ({ body }, _req, reply) => {
     let created: WorkContext | null = null;

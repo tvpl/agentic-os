@@ -23,6 +23,7 @@ import { fileRowFromDb, storedRowFilter, type FileRow } from "./indexer.js";
 import { ensureJournal, journalSections, localDateString, readJournal, shiftDate, type JournalDay } from "./journal.js";
 import { linkEdges } from "./links.js";
 import { folderDigests, type FolderMap } from "./maps.js";
+import { accessSettings } from "./folderAccess.js";
 
 /**
  * Memory routers (ARMS Memory L2): a short master router plus one index per
@@ -90,10 +91,15 @@ export function renderJournalBlock(days: JournalDay[], budgetTokens: number): st
 export function generateRouters(
   db: Db,
   paths: MordomoPaths,
-  settings: Settings,
+  owned: Settings,
 ): { written: string[] } {
   fs.mkdirSync(paths.memory, { recursive: true });
   const written: string[] = [];
+  // The routers are the map every agent reads (and the sync compiler embeds): written as agents see the folders
+  // (cerebro-memoria-confiavel, door 12), so a folder hidden from agents is never named in them, nor a file in it.
+  const settings = accessSettings({ paths, settings: owned }, "agents");
+  const shown = storedRowFilter(settings.excludes, { homeDir: paths.home });
+  const journalHidden = !shown({ root: paths.memory, rel: path.join("journal", `${localDateString()}.md`) });
   const areas = settings.areas;
   const folders = settings.indexedFolders.filter((f) => f.enabled);
 
@@ -109,7 +115,7 @@ export function generateRouters(
     const rows = db
       .prepare("SELECT * FROM files WHERE area = ? ORDER BY mtime DESC LIMIT 42")
       .all(area) as Array<Record<string, unknown>>;
-    areaFiles.set(area, rows.map(fileRowFromDb).filter((file) => !isRouter(file)).slice(0, 40));
+    areaFiles.set(area, rows.map(fileRowFromDb).filter((file) => !isRouter(file) && shown(file)).slice(0, 40));
   }
 
   // Master router
@@ -145,7 +151,7 @@ export function generateRouters(
   const today = localDateString();
   // A day that is a link out of memory/ is left out; it must not stop the routers from being written.
   const days: JournalDay[] = [];
-  for (const read of [() => ensureJournal(paths, today), () => readJournal(paths, shiftDate(today, -1))]) {
+  for (const read of journalHidden ? [] : [() => ensureJournal(paths, today), () => readJournal(paths, shiftDate(today, -1))]) {
     try {
       const day = read();
       if (day) days.push(day);
@@ -359,7 +365,13 @@ function writeContextMaps(
 }
 
 /** Detect stale routers and broken pointers (M-L2 "stale pointer" rule). */
-export function checkRouters(db: Db, paths: MordomoPaths, settings: Settings): RouterIssue[] {
+export function checkRouters(
+  db: Db,
+  paths: MordomoPaths,
+  settings: Settings,
+  /** Which pointers the caller may be told of (today's policy, and the folders hidden from it); all without it. */
+  allow?: (absolute: string) => boolean,
+): RouterIssue[] {
   const issues: RouterIssue[] = [];
   const masterPath = path.join(paths.memory, "ROUTER.md");
   if (!fs.existsSync(masterPath)) {
@@ -394,6 +406,7 @@ export function checkRouters(db: Db, paths: MordomoPaths, settings: Settings): R
     }
     for (const match of content.matchAll(/`(\/[^`]+|[A-Za-z]:\\[^`]+)`/g)) {
       const target = match[1]!;
+      if (allow && !allow(target)) continue;
       if (!fs.existsSync(target)) {
         issues.push({ file, problem: `Broken pointer: ${target} no longer exists.` });
       }

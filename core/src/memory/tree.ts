@@ -9,6 +9,7 @@ import { fieldsFromDb } from "./fields.js";
 import { storedRowFilter } from "./indexer.js";
 import { INDEX_NOTE, MAPS_DIR, rootSlug } from "./maps.js";
 import { GENERATED_DIRS, GENERATED_FILES } from "./notes.js";
+import type { FolderAccess, FolderLevel } from "./folderAccess.js";
 
 /**
  * The notes tree (.specs/features/cerebro-vista-notas, door 1): one level of one root per request, built from the
@@ -38,6 +39,8 @@ export interface TreeFolder {
   count: number;
   editable: boolean;
   reason?: TreeReason;
+  /** The folder's levels when either is not `write` (cerebro-memoria-confiavel, door 12, AC 104). */
+  access?: { agents: FolderLevel; devices: FolderLevel };
 }
 
 export interface TreeFile {
@@ -75,6 +78,8 @@ export interface TreeQuery {
   sort?: TreeSort | undefined;
   /** Whether an index pass runs now (every root says so: a pass walks them all). */
   indexing?: boolean;
+  /** The access of folders, to mark the folders that are not `write` for both audiences (AC 104). */
+  access?: FolderAccess;
 }
 
 /** `400 unknown_root`: not a root of this tree. */
@@ -315,11 +320,17 @@ export function memoryTree(db: Db, env: TreeEnv, query: TreeQuery = {}): MemoryT
   files.sort((a, b) => (sort === "updated" ? b.row.mtime - a.row.mtime || byName(a.name, b.name) : byName(a.name, b.name)));
 
   const relOf = (name: string) => (dirRel === "" ? name : `${dirRel}/${name}`);
+  const marked = (folder: string): { access?: { agents: FolderLevel; devices: FolderLevel } } => {
+    if (!query.access) return {};
+    const levels = { agents: query.access.level(folder, "agents"), devices: query.access.level(folder, "devices") };
+    return levels.agents === "write" && levels.devices === "write" ? {} : { access: levels };
+  };
   const entryFolders: TreeFolder[] = folderNames.map((name) => ({
     rel: relOf(name),
     name,
     count: folders.get(name)!.count,
     ...entryEditability(memory, path.join(target, name), true),
+    ...marked(path.join(target, name)),
   }));
   const entryFiles: TreeFile[] = files.map(({ row, name }) => ({
     id: row.id,

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { accessView, targetsHidden, withoutHiddenItems } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 
@@ -18,18 +19,25 @@ export function registerDashboardRoutes(app: FastifyInstance, ctx: AppContext): 
     return created;
   });
 
-  bind(app, "dashboards.get", async ({ params: { id }, query: { since } }) => {
+  bind(app, "dashboards.get", async ({ params: { id }, query: { since } }, req) => {
     const found = dashboards.get(id, Date.now(), since);
     if (found.stale) {
       // Answer with the stored snapshot, then refresh (amendment 13): the refresh starts after this answer is made.
       setImmediate(() => dashboards.refreshIfStale(id));
     }
+    // The snapshot is computed once for every caller (G13): a device gets it without the items that name a file in a
+    // folder hidden from it, and without the highlights that point at one; the numbers stay as computed.
+    const view = accessView(ctx, req.principal);
+    const hidden = (p: string) => view.hidden(p);
     return {
       definition: found.definition,
       version: found.version,
-      snapshot: found.snapshot,
+      snapshot: view.audience === null ? found.snapshot : withoutHiddenItems(found.snapshot, hidden),
       stale: found.stale,
-      highlights: found.highlights,
+      highlights:
+        view.audience === null
+          ? found.highlights
+          : found.highlights.filter((h) => !targetsHidden(h.target, hidden)),
     };
   });
 

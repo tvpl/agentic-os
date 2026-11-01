@@ -135,6 +135,7 @@ export {
 } from "./memory/notes.js";
 export { memoryTree } from "./memory/tree.js";
 export { cleanupInventory, resolveCleanupScope } from "./memory/cleanup.js";
+export { scanCleanupScope } from "./memory/cleanupScan.js";
 export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from "./memory/cleanupApply.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
@@ -142,10 +143,12 @@ export { ESCOPOS, NATUREZAS, parseEscopoList, parseNaturezaList } from "./memory
 export { reviewsDue } from "./memory/reviews.js";
 export { decideReview } from "./memory/reviewDecisions.js";
 export { getVersion, listVersions, recordFileVersion, recordMove, restoreVersion } from "./memory/history.js";
+export { accessSettings, exportsDir, resolveFolderAccess, type FolderAccess } from "./memory/folderAccess.js";
 export {
   ProposalValidationError,
   decideProposal,
   listProposals,
+  proposalPaths,
   readProposal,
   storeProposal,
 } from "./memory/proposals.js";
@@ -319,7 +322,7 @@ export {
   type ProcessProbe,
 } from "./ownerLock.js";
 export { pidAlive, processStartMarker, realProbeIo, type ProbeIo } from "./processIdentity.js";
-export { INDEX_CHUNK_SIZE, type IndexProgress } from "./memory/indexer.js"; // B3 exports
+export { INDEX_CHUNK_SIZE, storedRowFilter, type IndexProgress } from "./memory/indexer.js"; // B3 exports
 export {
   versionStatus,
   installedVersion,

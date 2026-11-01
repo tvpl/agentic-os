@@ -54,6 +54,8 @@ function leafVariants(node: unknown): unknown[] {
       [...node, "https://example.com/index.json"],
       [...node, { path: "/tmp/kept-folder" }],
       [...node, { id: "kept-context", name: "Kept", paths: ["/tmp/kept-folder"] }],
+      // cerebro-memoria-confiavel, door 12: an entry of `folderAccess`
+      [...node, { path: "/tmp/kept-folder", agents: "read", devices: "hide" }],
     ];
   if (node !== null && typeof node === "object") {
     return Object.entries(node).flatMap(([key, value]) =>
@@ -93,6 +95,8 @@ const d = defaults as Record<string, any>;
 const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
   securityProfile: "read_only",
   memorySkills: [],
+  // cerebro-memoria-confiavel, AC 90: an unreadable list hides every folder from devices and leaves agents only reading
+  folderAccess: [{ path: "*", agents: "read", devices: "hide" }],
   limits: { ...d.limits, dailyBudgetUsd: 0.01, approvalTtlDays: 1 },
   remote: { ...d.remote, deviceTtlDays: 1 },
   sentinels: {
@@ -115,8 +119,8 @@ const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
 describe("S3 settings tolerate an invalid field", () => {
   it("C19 an invalid value in any top-level field costs only that field", () => {
     const keys = Object.keys(SettingsSchema.shape);
-    // cerebro-paineis: `dashboards` (door 5, amendment 16)
-    expect(keys).toHaveLength(29);
+    // cerebro-paineis: `dashboards` (door 5, amendment 16); cerebro-memoria-confiavel: `folderAccess` (door 12)
+    expect(keys).toHaveLength(30);
     const good: Record<string, unknown> = {};
     for (const key of keys) good[key] = key === "version" ? defaults.version : variantOf(key, defaults[key]);
     // The base document is itself accepted as written.

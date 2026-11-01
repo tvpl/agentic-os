@@ -50,10 +50,14 @@ import {
   saveTask,
   statWorkspacePath,
   workspaceScope,
+  journalDir,
+  journalPath,
+  proposalPaths,
   parseEscopoList,
   parseNaturezaList,
   type ReadScope,
 } from "@mordomo/core/internal";
+import { accessView, type AccessView } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
@@ -68,14 +72,32 @@ import { contextFilter, requireContext } from "./contexts.js";
 function runReach(
   ctx: AppContext,
   req: FastifyRequest,
+  view: AccessView,
 ): { scope: ReadScope; context: string | undefined } | null {
   if (req.principal?.kind !== "run") return null;
-  const settings = ctx.settings();
+  // The run's view of the settings (cerebro-memoria-confiavel, door 12): a folder hidden from agents is no part of it.
+  const settings = view.settings;
   const contextId = ctx.runs.get(req.principal.runId)?.contextId ?? null;
   const context = contextId ? settings.contexts.find((c) => c.id === contextId) : undefined;
-  if (!context) return { scope: homeReadScope(ctx.paths.home, [ctx.paths.memory]), context: undefined };
+  if (!context)
+    return {
+      scope: homeReadScope(ctx.paths.home, [ctx.paths.memory], settings.excludes),
+      context: undefined,
+    };
   const roots = [ctx.paths.memory, ...contextOkPaths({ paths: ctx.paths, settings }, context)];
   return { scope: homeReadScope(ctx.paths.home, roots, settings.excludes), context: context.id };
+}
+
+/**
+ * What a device answers for a note or a file it may not see (cerebro-memoria-confiavel, AC 92): the same `404
+ * not_found` as for one that does not exist, so the answer does not say the folder is there.
+ */
+function hiddenFromDevice(what: "note" | "file"): Error {
+  return httpError(
+    404,
+    what === "note" ? "The note does not exist." : "The file does not exist.",
+    "not_found",
+  );
 }
 
 /** Whether the scope lets `file` be read today (a refused path is not a hit). */
@@ -163,9 +185,10 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   bind(app, "memory.search", async ({ query: q }, req) => {
     // Rows are judged by today's policy as they are read (an old index may still hold a private path).
     const { mode, context, natureza: _natureza, escopo: _escopo, ...filters } = q;
-    const reach = runReach(ctx, req);
-    const within = contextFilter(ctx, context ?? reach?.context);
-    const policy = ctx.indexer.rowFilter();
+    const view = accessView(ctx, req.principal);
+    const reach = runReach(ctx, req, view);
+    const within = contextFilter(ctx, context ?? reach?.context, view.settings);
+    const policy = view.rowFilter();
     type Row = { root: string; rel: string };
     const scoped = reach
       ? (row: Row) => policy(row) && readable(reach.scope, path.join(row.root, row.rel))
@@ -174,7 +197,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     return ctx.semantic.search({ ...filters, ...natureFilters(q), query: q.q, allow }, mode ?? "auto");
   });
 
-  bind(app, "memory.graph", async ({ query: q }) => {
+  bind(app, "memory.graph", async ({ query: q }, req) => {
     const within = contextFilter(ctx, q.context);
     return buildGraph(ctx.db, {
       area: q.area,
@@ -182,33 +205,38 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       query: q.q,
       maxNodes: q.maxNodes,
       related: q.related,
-      // Rows are judged by today's policy as they are read: an excluded file is no node, no edge, no count.
-      allow: ctx.indexer.rowFilter(),
+      // Rows are judged by today's policy as they are read: an excluded file is no node, no edge, no count; nor is a
+      // file in a folder hidden from the caller (cerebro-memoria-confiavel, door 12).
+      allow: accessView(ctx, req.principal).rowFilter(),
       ...(within ? { within } : {}),
     });
   });
 
-  bind(app, "memory.related", async ({ query: { id, context } }) => {
+  bind(app, "memory.related", async ({ query: { id, context } }, req) => {
     const within = contextFilter(ctx, context);
-    const related = relatedFiles(ctx.db, id, ctx.indexer.rowFilter(), within);
+    const related = relatedFiles(ctx.db, id, accessView(ctx, req.principal).rowFilter(), within);
     if (!related) throw httpError(404, "File not found", "not_found");
     return related;
   });
 
-  bind(app, "memory.links", async ({ query: { id } }) => {
+  bind(app, "memory.links", async ({ query: { id } }, req) => {
     // Rows are judged by today's policy as they are read: a stale row under a private path is not a file here.
-    const links = linksOf(ctx.db, id, ctx.indexer.rowFilter());
+    const links = linksOf(ctx.db, id, accessView(ctx, req.principal).rowFilter());
     if (!links) throw httpError(404, "File not found", "not_found");
     return links;
   });
 
-  bind(app, "memory.preview", async ({ query: { p } }) => {
+  bind(app, "memory.preview", async ({ query: { p } }, req) => {
     // previewFile enforces root containment, the secret blocklist and the home's
     // private config/ and logs/ (403 on violation).
+    const view = accessView(ctx, req.principal);
+    const device = view.audience === "devices";
+    if (device && view.hidden(p)) throw hiddenFromDevice("file");
     try {
-      const preview = previewFile(ctx.settings(), [ctx.paths.home], p, { homeDir: ctx.paths.home });
+      const preview = previewFile(view.settings, [ctx.paths.home], p, { homeDir: ctx.paths.home });
       return { ...preview, editable: previewIsEditable(noteContext(), p, preview.kind) };
     } catch (err) {
+      if (device && (err as NodeJS.ErrnoException).code === "ENOENT") throw hiddenFromDevice("file");
       if ((err as NodeJS.ErrnoException).code === "ENOENT")
         throw httpError(
           404,
@@ -263,10 +291,14 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     };
   };
 
-  bind(app, "memory.note", async ({ query: { p } }) => {
+  bind(app, "memory.note", async ({ query: { p } }, req) => {
+    const view = accessView(ctx, req.principal);
+    const device = view.audience === "devices";
+    if (device && view.hidden(p)) throw hiddenFromDevice("note");
     try {
-      return readNote(noteContext(), p);
+      return readNote({ ...noteContext(), settings: view.settings }, p);
     } catch (err) {
+      if (device && (err as NodeJS.ErrnoException).code === "ENOENT") throw hiddenFromDevice("note");
       if ((err as NodeJS.ErrnoException).code === "ENOENT")
         throw httpError(404, "The note does not exist.", "note_missing");
       throw err;
@@ -303,15 +335,21 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
    * One level of the notes tree (.specs/features/cerebro-vista-notas, door 1), from the index rows alone: no file is
    * opened, and a row today's policy hides is neither listed nor counted.
    */
-  bind(app, "memory.tree", async ({ query: q }) => {
-    const context = requireContext(ctx, q.context);
-    return memoryTree(ctx.db, noteContext(), {
-      context,
-      root: q.root,
-      dir: q.dir,
-      sort: q.sort,
-      indexing: ctx.indexHost.status().state === "running",
-    });
+  bind(app, "memory.tree", async ({ query: q }, req) => {
+    const view = accessView(ctx, req.principal);
+    const context = requireContext(ctx, q.context, view.settings);
+    return memoryTree(
+      ctx.db,
+      { ...noteContext(), settings: view.settings },
+      {
+        context,
+        root: q.root,
+        dir: q.dir,
+        sort: q.sort,
+        indexing: ctx.indexHost.status().state === "running",
+        access: view.access,
+      },
+    );
   });
 
   /**
@@ -319,7 +357,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
    * credential sees `memory/notes/` and the folders the run was handed; a root outside them is `404`.
    */
   bind(app, "memory.maps", async ({ query: q }, req) => {
-    const env = { paths: ctx.paths, settings: ctx.settings() };
+    const env = { paths: ctx.paths, settings: accessView(ctx, req.principal).settings };
     let reach: string[] | undefined;
     if (req.principal?.kind === "run") {
       const run = ctx.runs.get(req.principal.runId);
@@ -339,7 +377,11 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     return { written: result.written };
   });
 
-  bind(app, "memory.routers.check", async () => checkRouters(ctx.db, ctx.paths, ctx.settings()));
+  bind(app, "memory.routers.check", async (_input, req) => {
+    // A pointer the caller may not be told of is not reported (today's policy, and the folders hidden from it).
+    const view = accessView(ctx, req.principal);
+    return checkRouters(ctx.db, ctx.paths, view.settings, (target) => view.allowsPath(target));
+  });
 
   // ---- memory v2: layered recall, journal, hygiene, facts, inline fields ----
 
@@ -347,9 +389,10 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   bind(app, "memory.recall", async ({ query: q }, req) => {
     // A run's credential recalls from the memory folder and its work context, not from every folder the owner
     // granted; without `context` it follows the run's context (door 7).
-    const reach = runReach(ctx, req);
-    const within = contextFilter(ctx, q.context ?? reach?.context);
-    const result = recall(ctx.db, ctx.paths, ctx.settings(), q.q, {
+    const view = accessView(ctx, req.principal);
+    const reach = runReach(ctx, req, view);
+    const within = contextFilter(ctx, q.context ?? reach?.context, view.settings);
+    const result = recall(ctx.db, ctx.paths, view.settings, q.q, {
       k: q.k,
       area: q.area,
       excerptChars: q.excerptChars,
@@ -361,23 +404,41 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     return result;
   });
 
-  bind(app, "memory.recall.stats", async ({ query: { limit } }) => {
-    return recallStats(ctx.db, limit);
+  bind(app, "memory.recall.stats", async ({ query: { limit } }, req) => {
+    // A path the caller may not be told of is not listed (today's policy, and the folders hidden from it).
+    const view = accessView(ctx, req.principal);
+    return recallStats(ctx.db, limit, (p) => view.allowsPath(p));
   });
 
   /** A day's journal (created from the template on first access) — or the last N days with `days=`. */
-  bind(app, "memory.journal", async ({ query: q }) => {
+  bind(app, "memory.journal", async ({ query: q }, req) => {
+    // The days are read through the caller's scope: today's policy, and for a device or a run the folders hidden from it.
+    const view = accessView(ctx, req.principal);
     if (q.days) {
       const today = q.date ?? localDateString();
-      const days = recentJournals(ctx.paths, q.days, today);
+      const days = recentJournals(ctx.paths, q.days, today, view.scopeOf([ctx.paths.memory]));
       return { today, days: days.map((d) => ({ ...d, sections: journalSections(d.content) })) };
     }
-    const day = ensureJournal(ctx.paths, q.date ?? localDateString());
+    const date = q.date ?? localDateString();
+    // A day the caller may not see is not there, and is not made (G15): `404 not_found`.
+    if (view.hidden(journalDir(ctx.paths)) || view.hidden(journalPath(ctx.paths, date))) {
+      throw httpError(404, "No journal day the caller may read is there.", "not_found");
+    }
+    const day = ensureJournal(ctx.paths, date);
     return { ...day, sections: journalSections(day.content), dates: listJournalDates(ctx.paths) };
   });
 
   bind(app, "memory.journal.append", async ({ body }, req) => {
     const run = req.principal?.kind === "run";
+    // A run's credential writes the journal only where agents may write (cerebro-memoria-confiavel, door 12).
+    if (run) {
+      const view = accessView(ctx, req.principal);
+      const day = journalPath(ctx.paths, body.date ?? localDateString());
+      const level = [journalDir(ctx.paths), day].map((p) => view.access.level(p, "agents"));
+      if (level.includes("hide")) throw httpError(403, "The journal is hidden from agents.", "folder_hidden");
+      if (level.includes("read"))
+        throw httpError(403, "Agents may only read the journal.", "folder_read_only");
+    }
     if (req.principal?.kind === "run") ctx.noteMemoryWrite(req.principal.runId);
     // A line a run's credential appends, or that an agent sends through the owner's token, says an agent wrote it
     // (cerebro-memoria-confiavel, door 9): the consolidation never promotes it by the "Decisions" rule.
@@ -387,11 +448,12 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   });
 
   /** Orphans, dangling router links, stale files, skills never run, silent routines, unused connectors. */
-  bind(app, "memory.hygiene", async ({ query: q }) => {
+  bind(app, "memory.hygiene", async ({ query: q }, req) => {
+    const view = accessView(ctx, req.principal);
     return memoryHygiene(
       ctx.db,
       ctx.paths,
-      ctx.settings(),
+      view.settings,
       {
         skills: ctx.skills.list(),
         routines: ctx.routines.list(),
@@ -399,14 +461,15 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
         // Same verdict as GET /api/routines/silent, so both views agree.
         silent: ctx.scheduler.silent(q.silentRoutineDays ?? 30),
       },
-      { ...q, allow: ctx.indexer.rowFilter() },
+      { ...q, allow: view.rowFilter() },
     );
   });
 
   /** Bi-temporal facts: currently valid by default; `asOf=` for a point in time; `includeExpired=true` for history. */
-  bind(app, "memory.facts.list", async ({ query: q }) => {
-    // A fact whose source today's policy refuses, or cannot judge, is not shown (cerebro-memoria-confiavel, AC 20).
-    const allow = factSourcePolicy({ settings: ctx.settings(), paths: ctx.paths });
+  bind(app, "memory.facts.list", async ({ query: q }, req) => {
+    // A fact whose source today's policy refuses, or cannot judge, is not shown (cerebro-memoria-confiavel, AC 20); nor
+    // one whose source lies in a folder hidden from the caller (door 12).
+    const allow = factSourcePolicy({ settings: accessView(ctx, req.principal).settings, paths: ctx.paths });
     return { facts: queryFacts(ctx.db, { ...q, allow }), stats: factStats(ctx.db) };
   });
 
@@ -443,11 +506,27 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   // ---- the history of memory/ (.specs/features/cerebro-memoria-confiavel, doors 4 and 10) ----
 
-  bind(app, "memory.history.list", async ({ query: q }) => ({
-    versions: listVersions(historyEnv(), { path: q.path, limit: q.limit }),
+  /** A path of the history (relative to memory/) the caller may see: none in a folder hidden from it (door 12). */
+  const historyAllow = (view: AccessView) =>
+    view.audience === null
+      ? undefined
+      : (rel: string) => !view.hidden(path.join(ctx.paths.memory, ...rel.split("/")));
+
+  bind(app, "memory.history.list", async ({ query: q }, req) => ({
+    versions: listVersions(historyEnv(), {
+      path: q.path,
+      limit: q.limit,
+      allow: historyAllow(accessView(ctx, req.principal)),
+    }),
   }));
 
-  bind(app, "memory.history.get", async ({ params: { id } }) => getVersion(historyEnv(), id));
+  bind(app, "memory.history.get", async ({ params: { id } }, req) => {
+    const version = getVersion(historyEnv(), id);
+    const allow = historyAllow(accessView(ctx, req.principal));
+    if (allow && !allow(version.path))
+      throw httpError(404, `No version of memory/ with bytes has the id ${id}.`, "not_found");
+    return version;
+  });
 
   bind(app, "memory.history.restore", async ({ body }) => {
     const restored = restoreVersion(historyEnv(), body);
@@ -457,9 +536,28 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   // ---- the review inbox of what an agent writes (.specs/features/cerebro-memoria-confiavel, doors 5 to 7 and 10) ----
 
-  bind(app, "memory.proposals.list", async ({ query: q }) => listProposals(ctx.db, q));
+  /**
+   * The proposals the caller may see (G14): none that names a file in a folder hidden from it, as a source, a target or
+   * the note it writes; one whose files cannot be worked out is hidden too.
+   */
+  const proposalAllow = (view: AccessView) =>
+    view.audience === null
+      ? undefined
+      : (record: Parameters<typeof proposalPaths>[1]) => {
+          const named = proposalPaths(historyEnv(), record);
+          return named !== null && !named.some((p) => view.hidden(p));
+        };
 
-  bind(app, "memory.proposals.get", async ({ params: { id } }) => readProposal(historyEnv(), id));
+  bind(app, "memory.proposals.list", async ({ query: q }, req) =>
+    listProposals(ctx.db, q, proposalAllow(accessView(ctx, req.principal))),
+  );
+
+  bind(app, "memory.proposals.get", async ({ params: { id } }, req) => {
+    const proposal = readProposal(historyEnv(), id);
+    const allow = proposalAllow(accessView(ctx, req.principal));
+    if (allow && !allow(proposal)) throw httpError(404, `No proposal has the id ${id}.`, "not_found");
+    return proposal;
+  });
 
   /** What the MCP tools send: the owner's token, an agent's words (`author: mcp`). */
   bind(app, "memory.proposals.create", async ({ body }, _req, reply) => {
@@ -495,7 +593,11 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   });
 
   /** Dataview-style query over inline `key:: value` fields: `where=key`, `key:value` or `key:~substring`. */
-  bind(app, "memory.query", async ({ query: q }) => {
-    return { where: q.where, files: queryFilesByField(ctx.db, q) };
+  bind(app, "memory.query", async ({ query: q }, req) => {
+    // Rows are judged by today's policy as they are read, and by the folders hidden from the caller (door 12).
+    return {
+      where: q.where,
+      files: queryFilesByField(ctx.db, { ...q, allow: accessView(ctx, req.principal).rowFilter() }),
+    };
   });
 }

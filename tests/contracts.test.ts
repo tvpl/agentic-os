@@ -98,6 +98,12 @@ describe("S1 the contracts package", () => {
         "DASHBOARD_MAX_BYTES",
         "DEFAULT_DEVICE_SCOPES",
         "DEFAULT_EXCLUDES",
+        // cerebro-memoria-confiavel, batch B1: the access of folders the settings hold and the engine reads (door 12)
+        "FOLDER_ACCESS_MAX",
+        "FOLDER_ACCESS_UNREADABLE",
+        "FOLDER_AUDIENCES",
+        "FOLDER_LEVELS",
+        "FolderAccessEntrySchema",
         "DEFAULT_HUD",
         "DEVICE_SCOPES",
         // cerebro-paineis: door 1's definition and door 4's snapshot, which the engine reads a file and a row by

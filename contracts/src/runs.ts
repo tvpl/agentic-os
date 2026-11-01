@@ -36,7 +36,13 @@ export interface RunFailure {
     /** The run's folder (door 5 of cerebro-organizar) stopped being one a run may be handed before it launched. */
     | "folder_not_indexed"
     /** The run's provider cannot keep a folder read-only (door 5 of cerebro-organizar). */
-    | "folder_protection_unsupported";
+    | "folder_protection_unsupported"
+    /** The run's folder, or one it is handed, is hidden from agents (cerebro-memoria-confiavel, door 12, G16). */
+    | "folder_hidden"
+    /** The run would write in a folder agents may only read (cerebro-memoria-confiavel, door 12, G16). */
+    | "folder_read_only"
+    /** The run's folder holds a folder hidden from agents and its provider reads the whole disk (door 13, G16). */
+    | "folder_hide_unsupported";
   message: string;
   recoverable: boolean;
   effectsUncertain: boolean;

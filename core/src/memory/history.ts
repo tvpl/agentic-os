@@ -114,15 +114,29 @@ function existsInMemory(env: HistoryEnv, rel: string): boolean {
 }
 
 /** The versions of a path, or of all of `memory/`, newest first (`limit` at most 100). */
-export function listVersions(env: HistoryEnv, q: { path?: string | undefined; limit?: number | undefined }): VersionView[] {
+export function listVersions(
+  env: HistoryEnv,
+  q: {
+    path?: string | undefined;
+    limit?: number | undefined;
+    /** Which paths (relative to memory/) the caller may see (cerebro-memoria-confiavel, door 12); all without it. */
+    allow?: ((rel: string) => boolean) | undefined;
+  },
+): VersionView[] {
   const limit = Math.min(Math.max(q.limit ?? HISTORY_LIST_LIMIT, 1), HISTORY_LIST_LIMIT);
   const where = q.path !== undefined ? "WHERE v.path = ?" : "";
-  const rows = env.db
-    .prepare(
-      `SELECT v.id, v.path, v.at, v.author, v.origin, v.sha256, b.size FROM memory_versions v
-        LEFT JOIN memory_blobs b ON b.sha256 = v.sha256 ${where} ORDER BY v.id DESC LIMIT ?`,
-    )
-    .all(...(q.path !== undefined ? [q.path] : []), limit) as Array<Omit<VersionView, "exists">>;
+  const statement = env.db.prepare(
+    `SELECT v.id, v.path, v.at, v.author, v.origin, v.sha256, b.size FROM memory_versions v
+      LEFT JOIN memory_blobs b ON b.sha256 = v.sha256 ${where} ORDER BY v.id DESC`,
+  );
+  const rows: Array<Omit<VersionView, "exists">> = [];
+  for (const row of statement.iterate(...(q.path !== undefined ? [q.path] : [])) as IterableIterator<
+    Omit<VersionView, "exists">
+  >) {
+    if (q.allow && !q.allow(row.path)) continue;
+    rows.push(row);
+    if (rows.length >= limit) break;
+  }
   const exists = new Map<string, boolean>();
   return rows.map((r) => {
     if (!exists.has(r.path)) exists.set(r.path, existsInMemory(env, r.path));

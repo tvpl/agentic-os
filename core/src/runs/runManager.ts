@@ -22,6 +22,8 @@ import {
   type ReadScope,
 } from "../security/safeFs.js";
 import { contextNotesDir, contextOkPaths } from "../memory/contexts.js";
+import { checkRunFolders, folderLevelFailureCode, type RunFolderVerdict } from "./folderLevels.js";
+import { resolveFolderAccess } from "../memory/folderAccess.js";
 import {
   askedFolder,
   assertProtectsDirs,
@@ -121,6 +123,25 @@ export interface CreateRunInput {
    * visible in the Runs list; `markApproved()` moves it to `queued`.
    */
   status?: Extract<RunStatus, "queued" | "waiting_approval">;
+  /**
+   * When the access of folders (cerebro-memoria-confiavel, door 12, G16) is checked: by default when the run is asked
+   * for (`create` refuses with `403 folder_hidden`, `403 folder_read_only`, `409 folder_hide_unsupported`, and records
+   * nothing) and again when it launches; `launch` only when it launches, for a run no request is waiting on (a routine
+   * fired by the schedule, an objective's step, a dashboard's question), which then fails with that code. Never
+   * skipped: the launch always checks.
+   */
+  folderCheck?: "launch";
+}
+
+/** What the access of folders reads of a run: where it starts, what it is handed, who asked and how it runs. */
+export interface RunFolderInput {
+  cwd: string;
+  mode: RunMode;
+  provider: ProviderId;
+  startedBy: string | null | undefined;
+  skillSlug?: string | null;
+  request?: RunRequestSpec | null;
+  contextId?: string | null;
 }
 
 export interface PruneOptions {
@@ -643,11 +664,79 @@ export class RunManager {
     );
   }
 
+  /**
+   * The folders a run is handed besides its working folder, as they are asked for (cerebro-memoria-confiavel, door 12):
+   * `memory/` of a memory skill, the folder a memory skill is handed through its input, and the other `ok` paths of its
+   * work context. The launch hands the same ones (`skillContext`, `contextDirs`) and checks them again.
+   */
+  private askedReadDirs(input: RunFolderInput, cwd: string): string[] {
+    const dirs: string[] = [];
+    const settings = this.getSettings();
+    const access =
+      input.skillSlug && isValidId(input.skillSlug) ? (this.skillAccess?.(input.skillSlug) ?? null) : null;
+    if (access?.memory) dirs.push(realpathLenient(this.paths.memory));
+    const asked =
+      access?.memory && access.folder && input.request?.kind === "skill"
+        ? askedFolder(input.request.inputs)
+        : null;
+    if (asked !== null && path.isAbsolute(asked)) dirs.push(realpathLenient(asked));
+    const context = input.contextId ? settings.contexts.find((c) => c.id === input.contextId) : undefined;
+    if (context) {
+      const env = { paths: this.paths, settings, ...(this.platform ? { platform: this.platform } : {}) };
+      dirs.push(...contextOkPaths(env, context).map((p) => realpathLenient(p)));
+    }
+    return [...new Set(dirs.filter((d) => d !== cwd))];
+  }
+
+  /** Check the access of folders for a run with these folders (see `checkRunFolders`); throws the refusal. */
+  private folderVerdict(
+    input: RunFolderInput,
+    cwd: string,
+    readDirs: readonly string[] | (() => readonly string[]),
+  ): RunFolderVerdict {
+    const env = {
+      paths: this.paths,
+      settings: this.getSettings(),
+      ...(this.platform ? { platform: this.platform } : {}),
+    };
+    const access = resolveFolderAccess(env);
+    if (!access.restricts("agents") && !access.restricts("devices"))
+      return { hiddenDirs: [], readOnlyDirs: [] };
+    return checkRunFolders(
+      env,
+      {
+        cwd,
+        readDirs: typeof readDirs === "function" ? readDirs() : readDirs,
+        mode: input.mode,
+        device: isDeviceActor(input.startedBy),
+        provider: () => {
+          const adapter = this.getAdapter(input.provider);
+          return {
+            readConfinement: adapter?.manifest?.capabilities?.readConfinement,
+            name: adapter?.manifest?.displayName ?? input.provider,
+          };
+        },
+      },
+      access,
+    );
+  }
+
+  /**
+   * Refuse a run the access of folders refuses, before anything is made for it (cerebro-memoria-confiavel, door 12,
+   * G16): `create` asks it of every run it records; a caller that would leave something behind first (a conversation)
+   * asks it up front, as for `assertMayStart`.
+   */
+  assertFolderAccess(input: RunFolderInput): void {
+    const cwd = this.resolveCwd(input.cwd);
+    this.folderVerdict(input, cwd, () => this.askedReadDirs(input, cwd));
+  }
+
   // -------------------------------------------------------------- create --
 
   create(input: CreateRunInput): RunRecord {
     this.assertMayStart(input.startedBy, input.provider);
     const cwd = this.resolveCwd(input.cwd);
+    if (input.folderCheck !== "launch") this.folderVerdict(input, cwd, () => this.askedReadDirs(input, cwd));
     const settings = this.getSettings();
     const maxQueued = settings.limits.maxConcurrentRuns * QUEUE_DEPTH_FACTOR;
     const queued = (
@@ -846,8 +935,21 @@ export class RunManager {
       const cwd = handedFolder ? this.defaultCwd() : this.resolveCwd(record.cwd);
       const context = this.contextDirs(record, cwd);
       const readDirs = [...new Set([...(skillContext.readDirs ?? []), ...context.dirs])];
+      // The access of folders, read again now (cerebro-memoria-confiavel, AC 101): a refusal fails the run with its code
+      // before the adapter is called; what stays is denied to the agent's tools or kept read-only (doors 12 and 13).
+      const handedReadDirs = readDirs.filter((dir) => !isInside(realpathLenient(this.paths.skills), dir));
+      const levels = this.folderVerdict(
+        { cwd, mode, provider: record.provider, startedBy: record.startedBy },
+        cwd,
+        handedReadDirs,
+      );
+      if (levels.readOnlyDirs.length > 0) assertProtectsDirs(adapter.manifest, record.provider);
       const protectedDirs = [
-        ...new Set([...(skillContext.protectedDirs ?? []), ...(handedFolder ? context.paths : [])]),
+        ...new Set([
+          ...(skillContext.protectedDirs ?? []),
+          ...(handedFolder ? context.paths : []),
+          ...levels.readOnlyDirs,
+        ]),
       ];
       const agentRun: AgentRun = {
         runId,
@@ -862,6 +964,7 @@ export class RunManager {
         ...skillContext,
         ...(readDirs.length > 0 ? { readDirs } : {}),
         ...(protectedDirs.length > 0 ? { protectedDirs } : {}),
+        ...(levels.hiddenDirs.length > 0 ? { hiddenDirs: levels.hiddenDirs } : {}),
         // MordomoOS's own secrets stay in the service (docs/security.md).
         dropEnv: providerEnvDrop(this.getSettings()),
         ...(record.sessionId ? { sessionId: record.sessionId } : {}),
@@ -1001,7 +1104,7 @@ export class RunManager {
       const status: RunStatus = signal.aborted ? (active.shutdown ? "interrupted" : "cancelled") : "failed";
       const failure = classifyRunFailure(message, status, mode === "write");
       // The run's folder was refused when it launched (cerebro-organizar, door 11): say which rule, nothing to retry.
-      const folderCode = status === "failed" ? folderFailureCode(err) : null;
+      const folderCode = status === "failed" ? (folderFailureCode(err) ?? folderLevelFailureCode(err)) : null;
       if (folderCode) Object.assign(failure, { code: folderCode, recoverable: false });
       this.settle(runId, ["running", "queued"], status, {
         duration_ms: Date.now() - startedAt,

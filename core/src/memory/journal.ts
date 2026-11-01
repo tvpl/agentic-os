@@ -155,9 +155,14 @@ export function listJournalDates(paths: MordomoPaths, limit = 60): string[] {
 }
 
 /** The last `days` days that have a journal (today included when it exists). */
-export function recentJournals(paths: MordomoPaths, days = 7, today: string = localDateString()): JournalDay[] {
+export function recentJournals(
+  paths: MordomoPaths,
+  days = 7,
+  today: string = localDateString(),
+  /** The scope the days are read through (a caller's own, which may hide `journal/`); one for the whole window. */
+  scope = homeReadScope(paths.home, [paths.memory]),
+): JournalDay[] {
   const out: JournalDay[] = [];
-  const scope = homeReadScope(paths.home, [paths.memory]); // one scope for the whole window
   for (let i = 0; i < days; i++) {
     try {
       const day = readJournal(paths, shiftDate(today, -i), scope);

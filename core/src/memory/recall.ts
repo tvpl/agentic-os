@@ -730,9 +730,15 @@ export function recordRecall(db: Db, result: RecallResult, now = Date.now()): vo
   );
 }
 
-export function recallStats(db: Db, limit = 50): RecallStats {
+export function recallStats(
+  db: Db,
+  limit = 50,
+  /** Which paths the caller may see (today's policy, and the folders hidden from it); all without it. */
+  allow?: (absolute: string) => boolean,
+): RecallStats {
   const stats = loadStats(db);
   const paths = Object.entries(stats.paths)
+    .filter(([p]) => !allow || allow(p))
     .map(([p, s]) => ({ path: p, count: s.count, lastAt: s.lastAt }))
     .sort((a, b) => b.count - a.count || b.lastAt - a.lastAt || a.path.localeCompare(b.path))
     .slice(0, limit);

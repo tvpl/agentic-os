@@ -81,6 +81,12 @@ export interface AgentRun {
    * run trusts). The Claude adapter denies its edit tools there; a provider that cannot, ignores it.
    */
   protectedDirs?: string[];
+  /**
+   * Folders inside the working folder or `readDirs` that are hidden from agents (cerebro-memoria-confiavel, door 13):
+   * the Claude adapter denies its read, search and edit tools there in every mode. A run on a provider that cannot keep
+   * its reads in the working folder is refused before it gets here (`409 folder_hide_unsupported`).
+   */
+  hiddenDirs?: string[];
   /** Variables added to the provider process on top of what it inherits (the run-scoped API credential). */
   extraEnv?: Record<string, string>;
   /**
