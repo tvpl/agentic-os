@@ -123,3 +123,18 @@ export const OPEN_MEMORY_HISTORY_EVENT = "mordomo:open-memory-history";
 export function openMemoryHistory(): void {
   window.dispatchEvent(new Event(OPEN_MEMORY_HISTORY_EVENT));
 }
+
+/** A folder's level for one audience (door 12), and the copy of each (design.md "Diálogo - Permissões da pasta"). */
+export type Level = "write" | "read" | "hide";
+export interface Access {
+  agents: Level;
+  devices: Level;
+}
+export const LEVEL = {
+  agents: { write: "access.agents.write", read: "access.agents.read", hide: "access.agents.hide" },
+  devices: { write: "access.devices.write", read: "access.devices.read", hide: "access.devices.hide" },
+} as const satisfies Record<keyof Access, Record<Level, TKey>>;
+
+/** "Agentes: Só ler · Dispositivos: Esconder": the levels by name (the tree's mark, C141). */
+export const accessText = (t: T, a: Access) =>
+  t("access.tooltip", { agents: t(LEVEL.agents[a.agents]), devices: t(LEVEL.devices[a.devices]) });

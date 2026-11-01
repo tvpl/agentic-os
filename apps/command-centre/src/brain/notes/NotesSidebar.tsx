@@ -5,7 +5,7 @@
  * "Ordenar" and its `Menu` ("Histórico da memória", cerebro-memoria-confiavel G18), and the tree with its empty,
  * loading and failed states.
  */
-import { useRef, useState } from "react";
+import { Suspense, lazy, useRef, useState } from "react";
 import {
   ArrowDownWideNarrow,
   Ban,
@@ -14,6 +14,7 @@ import {
   ChevronsDownUp,
   CircleAlert,
   Crosshair,
+  FolderInput,
   FolderOpen,
   History,
   Home,
@@ -102,7 +103,14 @@ export function NotesSidebar(p: NotesSidebarProps) {
             </button>
           </Tooltip>
           <SortMenu state={p.state} />
-          <HeadingMenu />
+          <HeadingMenu
+            memory={p.root !== null && p.root === p.memoryRoot}
+            onImported={(folder) => {
+              // The new folder of notes/, open and selected (C144).
+              p.state.setExpanded(`${p.root}/notes`, true);
+              p.onSelectFolder({ root: p.root!, rel: `notes/${baseName(folder)}`, name: baseName(folder) });
+            }}
+          />
         </span>
       </div>
       <TreeArea {...p} nothingIndexed={nothingIndexed} onReindex={index.reindex} />
@@ -380,26 +388,45 @@ function SortMenu({ state }: { state: NotesState }) {
   );
 }
 
-/** The NOTAS heading's `Menu`, its last tool (G18). */
-function HeadingMenu() {
+/** "Importar pasta…" (cerebro-memoria-confiavel, C144): a chunk fetched when it opens. */
+const FolderTool = lazy(() => import("./FolderTools"));
+
+/** The NOTAS heading's `Menu`, its last tool (G18); "Importar pasta…" only with the root `memory/` (C144). */
+function HeadingMenu({ memory, onImported }: { memory: boolean; onImported: (folder: string) => void }) {
   const t = useT();
+  const [importing, setImporting] = useState(false);
+  const items: MenuEntry[] = [
+    {
+      id: "memory-history",
+      icon: <History aria-hidden />,
+      label: t("history.memory"),
+      onSelect: openMemoryHistory,
+    },
+  ];
+  if (memory)
+    items.push({
+      id: "import",
+      icon: <FolderInput aria-hidden />,
+      label: t("import.menu"),
+      onSelect: () => setImporting(true),
+    });
   return (
-    <DropdownMenu
-      tip={t("notes.tree.more")}
-      items={[
-        {
-          id: "memory-history",
-          icon: <History aria-hidden />,
-          label: t("history.memory"),
-          onSelect: openMemoryHistory,
-        },
-      ]}
-      trigger={
-        <button type="button" className="notes-icon-btn" aria-label={t("notes.tree.more")}>
-          <MoreHorizontal aria-hidden />
-        </button>
-      }
-    />
+    <>
+      <DropdownMenu
+        tip={t("notes.tree.more")}
+        items={items}
+        trigger={
+          <button type="button" className="notes-icon-btn" aria-label={t("notes.tree.more")}>
+            <MoreHorizontal aria-hidden />
+          </button>
+        }
+      />
+      {importing && (
+        <Suspense fallback={null}>
+          <FolderTool kind="import" onClose={() => setImporting(false)} onImported={onImported} />
+        </Suspense>
+      )}
+    </>
   );
 }
 

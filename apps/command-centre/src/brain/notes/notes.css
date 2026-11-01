@@ -907,3 +907,18 @@
 .modal.notes-folder-dialog {
   width: min(420px, 100%);
 }
+
+/* A folder's menu at the end of its row (cerebro-memoria-confiavel, G18). */
+.notes-item[data-kind="folder"] {
+  position: relative;
+}
+
+.notes-item[data-kind="folder"] > .notes-row {
+  padding-right: 30px;
+}
+
+.notes-fmenu {
+  position: absolute;
+  top: 0;
+  right: 0;
+}

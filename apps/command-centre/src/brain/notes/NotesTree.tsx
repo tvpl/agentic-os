@@ -5,11 +5,23 @@
  * a file in a tab or shows a folder. What cannot be edited carries the `Lock` with its reason, as text in its hint and
  * in its name; a folder past the cap ends with "+N não mostrados".
  */
-import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Lock } from "lucide-react";
+import { Suspense, lazy, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  EyeOff,
+  FileText,
+  Folder,
+  FolderOpen,
+  FolderOutput,
+  Lock,
+  MoreHorizontal,
+  Shield,
+} from "lucide-react";
 import { useT, type TKey } from "../../i18n";
-import { Tooltip } from "../../ui";
+import { DropdownMenu, Tooltip } from "../../ui";
 import { Button } from "../../components/primitives";
+import { accessText } from "../memoria";
 import type { TreeFile, TreeFolder, TreeLevel } from "./notesData";
 import { useTreeLevel, withoutExt } from "./notesData";
 import type { FolderSelection, NotesSort } from "./useNotesState";
@@ -35,6 +47,11 @@ export interface NotesTreeProps {
 }
 
 const join = (root: string, rel: string) => `${root}/${rel}`;
+/** An event of a folder's menu, or of a menu or dialog it opened (a portal: not inside the row in the page). */
+const ownedByMenu = (e: { target: EventTarget; currentTarget: Element }) =>
+  !e.currentTarget.contains(e.target as Node) || Boolean((e.target as Element).closest(".notes-fmenu"));
+/** The permissions and export dialogs (cerebro-memoria-confiavel, C139, C143): a chunk fetched when one opens. */
+const FolderTool = lazy(() => import("./FolderTools"));
 
 export function NotesTree(props: NotesTreeProps) {
   const t = useT();
@@ -49,7 +66,7 @@ export function NotesTree(props: NotesTreeProps) {
   };
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     const el = (e.target as HTMLElement).closest<HTMLElement>('[role="treeitem"]');
-    if (!el || !ref.current?.contains(el)) return;
+    if (!el || !ref.current?.contains(el) || ownedByMenu(e)) return;
     const all = items();
     const at = all.indexOf(el);
     const path = el.dataset.path!;
@@ -184,6 +201,7 @@ function FolderItem(p: LevelProps & { folder: TreeFolder }) {
       onKeyDown={p.onKeyItem}
       onClick={(e) => {
         e.stopPropagation();
+        if (ownedByMenu(e)) return;
         p.setExpanded(path, !open);
         p.onSelectFolder({ root: p.root, rel: folder.rel, name: folder.name });
       }}
@@ -199,9 +217,59 @@ function FolderItem(p: LevelProps & { folder: TreeFolder }) {
         )}
         <span className="notes-name">{folder.name}</span>
         {!folder.editable && folder.reason && <LockMark text={t(REASON[folder.reason])} />}
+        {folder.access && (
+          <LockMark
+            text={accessText(t, folder.access)}
+            icon={Object.values(folder.access).includes("hide") ? <EyeOff aria-hidden /> : undefined}
+          />
+        )}
       </span>
+      <FolderMenu path={path} name={folder.name} tabbable={p.tabStop === path} />
       {open && <FolderChildren {...p} />}
     </li>
+  );
+}
+
+/** The `Menu` at the end of a folder's row (G18): "Permissões…" then "Exportar pasta…" (C139). */
+function FolderMenu({ path, name, tabbable }: { path: string; name: string; tabbable: boolean }) {
+  const t = useT();
+  const [kind, setKind] = useState<"access" | "export" | null>(null);
+  return (
+    // The tree leaves alone what is pressed here, and what the menu and the dialogs (portals) are given.
+    <span className="notes-fmenu">
+      <DropdownMenu
+        tip={t("notes.folder.more", { name })}
+        items={[
+          {
+            id: "access",
+            icon: <Shield aria-hidden />,
+            label: t("access.menu"),
+            onSelect: () => setKind("access"),
+          },
+          {
+            id: "export",
+            icon: <FolderOutput aria-hidden />,
+            label: t("export.menu"),
+            onSelect: () => setKind("export"),
+          },
+        ]}
+        trigger={
+          <button
+            type="button"
+            className="notes-icon-btn"
+            tabIndex={tabbable ? 0 : -1}
+            aria-label={t("notes.folder.more", { name })}
+          >
+            <MoreHorizontal aria-hidden />
+          </button>
+        }
+      />
+      {kind && (
+        <Suspense fallback={null}>
+          <FolderTool kind={kind} path={path} name={name} onClose={() => setKind(null)} />
+        </Suspense>
+      )}
+    </span>
   );
 }
 
@@ -238,11 +306,11 @@ function FolderChildren(p: LevelProps & { folder: TreeFolder }) {
   );
 }
 
-function LockMark({ text }: { text: string }) {
+function LockMark({ text, icon = <Lock aria-hidden /> }: { text: string; icon?: ReactNode }) {
   return (
     <Tooltip label={text}>
       <span className="notes-lock" role="img" aria-label={text}>
-        <Lock aria-hidden />
+        {icon}
       </span>
     </Tooltip>
   );

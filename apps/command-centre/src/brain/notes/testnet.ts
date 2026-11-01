@@ -96,6 +96,10 @@ export const net = {
   calls: [] as Call[],
   /** `settings.memory.notes.fixedStructure` (door 5), as `GET /api/settings` answers it. */
   fixedStructure: false,
+  /** `settings.folderAccess` (cerebro-memoria-confiavel, door 12), as `GET /api/settings` answers it. */
+  folderAccess: [] as Array<{ path: string; agents: string; devices: string }>,
+  /** The `access` of a folder of the tree, by `<root>|<rel>` (cerebro-memoria-confiavel, C123). */
+  access: {} as Record<string, { agents: string; devices: string }>,
   writes: new Map<string, (body: unknown) => Promise<unknown>>(),
 };
 
@@ -120,6 +124,8 @@ export function resetNet(): void {
   net.overrides = [];
   net.calls = [];
   net.fixedStructure = false;
+  net.folderAccess = [];
+  net.access = {};
   net.writes.clear();
 }
 
@@ -196,7 +202,15 @@ function tree(u: Asked): unknown {
     dir,
     folders: [...folders.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, count]) => ({ rel: prefix + name, name, count, editable: root === MEM })),
+      .map(([name, count]) => ({
+        rel: prefix + name,
+        name,
+        count,
+        editable: root === MEM,
+        ...(net.access[`${root}|${prefix + name}`]
+          ? { access: { ...net.access[`${root}|${prefix + name}`] } }
+          : {}),
+      })),
     files: files.map((f) => ({
       id: f.id,
       rel: f.rel,
@@ -295,6 +309,7 @@ function read(url: string): Promise<unknown> {
           areas: [],
           limits: { maxIndexedFileBytes: 1024 * 1024 },
           memory: { notes: { fixedStructure: net.fixedStructure } },
+          folderAccess: structuredClone(net.folderAccess),
         });
       case "/api/system/info":
         return Promise.resolve({ home: HOME });

@@ -123,6 +123,72 @@ describe("C104 the part-A copy of design.md in both locales", () => {
   );
 });
 
+/** key → [pt-BR, en] for rows 36-63 of "Texto" (part B); `.read` after `access.agents.write` is `access.agents.read`. */
+function partB(): Array<[string, string, string]> {
+  const table = DESIGN.slice(DESIGN.indexOf("## Texto"))
+    .split("\n")
+    .filter((l) => /^\|\s*`/.test(l))
+    .map(cells);
+  const keys: Array<[string, string, string]> = [];
+  table.slice(35, 63).forEach(([key, pt, en]) => {
+    const raw = [...key!.matchAll(/`([^`]+)`/g)].map((m) => m[1]!);
+    const names = raw.map((n) => (n.startsWith(".") ? raw[0]!.replace(/\.[^.]+$/, n) : n));
+    const pts = names.length > 1 ? pt!.split(" / ") : [pt!];
+    const ens = names.length > 1 ? en!.split(" / ") : [en!];
+    names.forEach((n, j) => keys.push([n, pts[j]!, ens[j]!]));
+  });
+  return keys;
+}
+
+describe("C145 the part-B copy of design.md in both locales", () => {
+  it("C145 rows 36-63 of Texto give 35 keys (access.agents / access.devices 2, access.agents.* 3, access.devices.* 3, export.menu / import.menu 2, import.source / import.sourceHint 2), each in en and ptBR with the table's text", () => {
+    const keys = partB();
+    expect(keys).toHaveLength(35);
+    expect(new Set(keys.map(([k]) => k)).size).toBe(35);
+    expect(keys.map(([k]) => k)).toEqual(
+      expect.arrayContaining([
+        "access.agents",
+        "access.devices",
+        "access.agents.write",
+        "access.agents.read",
+        "access.agents.hide",
+        "access.devices.write",
+        "access.devices.read",
+        "access.devices.hide",
+        "export.menu",
+        "import.menu",
+        "import.source",
+        "import.sourceHint",
+      ]),
+    );
+    expect(keys[0]![0]).toBe("access.menu");
+    expect(keys.at(-1)![0]).toBe("import.forbidden");
+    for (const [key, pt, en] of keys) {
+      expect((brain.ptBR as Record<string, string>)[key], `${key} (pt-BR)`).toBe(pt);
+      expect((brain.en as Record<string, string>)[key], `${key} (en)`).toBe(en);
+    }
+  });
+
+  it("C145 en and ptBR hold the same keys", () => {
+    expect(Object.keys(brain.ptBR).sort()).toEqual(Object.keys(brain.en).sort());
+  });
+
+  it(
+    "C145 every one of the 35 is spelled by the production source (no unused key)",
+    { timeout: 60_000 },
+    () => {
+      const tree = loadTree();
+      const defines = (file: string) => file === "i18n.ts" || file.startsWith("locales/");
+      const spelled = spelledIn(tree, productionFiles(tree), defines);
+      expect(
+        partB()
+          .filter(([k]) => !spelled.words.has(k))
+          .map(([k]) => k),
+      ).toEqual([]);
+    },
+  );
+});
+
 const SHEETS = ["memoria.css", "memoriaDiff.css", "reviews/agent.css", "notes/history.css"].map((f) => ({
   file: f,
   path: join(__dirname, f),

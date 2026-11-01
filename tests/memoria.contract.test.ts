@@ -8,6 +8,7 @@ import type * as CoreInternal from "@mordomo/core/internal";
 import { responsesValidated } from "../apps/api/src/contract.js";
 import { storeProposal } from "../core/src/memory/proposals.js";
 import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
+import { ENTRIES, edgesOf, loadTree, reachable } from "../apps/command-centre/src/testing/sourceGraph.js";
 import { code, memoriaWorld, sha, type Json, type MemoriaWorld } from "./helpers/memoriaWorld.js";
 
 /**
@@ -797,4 +798,71 @@ describe("C86 the earlier behaviour this feature must not change", () => {
       "too_many_requests",
     ]);
   }, 60_000);
+});
+
+// ---- C147: the screens' chunks and their weight (batch B2) ---------------------------------------------------------
+
+describe("C147 the dialogs' chunks and the weight of both screen batches", () => {
+  it("C147 the version dialog, the memory history dialog and the folder tools (the permissions, export and import modals) are reached from both entries only by a dynamic import(); the baseline's cerebro-memoria-confiavel entry follows cerebro-paineis with a reason of more than 40 characters and the four numbers, at most 16 KB of JS gzip and 3 KB of CSS gzip above it (574 327 B and 80 203 B)", () => {
+    const tree = loadTree(path.join(repoRoot, "apps", "command-centre", "src"));
+    const dialogs = [
+      "brain/notes/VersionDialog.tsx",
+      "brain/notes/MemoryHistoryDialog.tsx",
+      "brain/notes/FolderTools.tsx",
+    ];
+    // What each page loads without anyone asking: its entry and what that imports statically.
+    for (const entry of ENTRIES) {
+      expect(["main.tsx", "gallery/main.tsx"]).toContain(entry);
+      const seen = new Set<string>([entry]);
+      const queue = [entry];
+      while (queue.length > 0)
+        for (const edge of edgesOf(tree, queue.pop()!)) {
+          if (edge.how === "dynamic" || edge.how === "url" || seen.has(edge.to)) continue;
+          seen.add(edge.to);
+          queue.push(edge.to);
+        }
+      expect(
+        dialogs.filter((d) => seen.has(d)),
+        entry,
+      ).toEqual([]);
+    }
+    expect(ENTRIES).toHaveLength(2);
+    for (const file of dialogs) expect(reachable(tree).has(file), file).toBe(true);
+    // The folder tools' ways in, every one an import(): the tree's folder menu, the NOTAS menu, Settings › Memória.
+    const importers = (to: string) =>
+      [...tree.keys()].filter((f) => !/\.test\./.test(f) && edgesOf(tree, f).some((e) => e.to === to)).sort();
+    const how = (from: string, to: string) => edgesOf(tree, from).find((e) => e.to === to)?.how;
+    expect(importers("brain/notes/FolderTools.tsx")).toEqual([
+      "brain/notes/NotesSidebar.tsx",
+      "brain/notes/NotesTree.tsx",
+      "views/settings/memory.tsx",
+    ]);
+    for (const from of importers("brain/notes/FolderTools.tsx"))
+      expect(how(from, "brain/notes/FolderTools.tsx"), from).toBe("dynamic");
+
+    type Entry = {
+      feature: string;
+      reason: string;
+      jsRaw: number;
+      jsGzip: number;
+      cssRaw: number;
+      cssGzip: number;
+    };
+    const baseline = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, "scripts", "bundle-baseline.json"), "utf8"),
+    ) as {
+      after: Entry[];
+    };
+    const i = baseline.after.findIndex((e) => e.feature === "cerebro-memoria-confiavel");
+    expect(i, "the entry exists").toBeGreaterThan(0);
+    const entry = baseline.after[i]!;
+    const before = baseline.after[i - 1]!;
+    expect(before.feature).toBe("cerebro-paineis");
+    expect([before.jsGzip, before.cssGzip]).toEqual([574_327, 80_203]);
+    expect(entry.reason.length).toBeGreaterThan(40);
+    for (const k of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
+      expect(Number.isInteger(entry[k]) && entry[k] > 0, k).toBe(true);
+    expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(16 * 1024);
+    expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(3 * 1024);
+  });
 });

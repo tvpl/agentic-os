@@ -1,5 +1,5 @@
 /** Settings › memory (split out of Settings.tsx, refino item 17). */
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import { ArrowRight, CheckCircle2, RefreshCw, X } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "../../api";
@@ -22,6 +22,9 @@ import type { SettingsShape } from "./shared";
 import { Tooltip } from "../../ui";
 import { ContextsSettings } from "../../contexts/ContextsSettings";
 import { AgentStance } from "./AgentStance";
+
+/** "Pastas com acesso restrito" (cerebro-memoria-confiavel, C142): the folder tools' chunk, fetched with the tab. */
+const FolderTool = lazy(() => import("../../brain/notes/FolderTools"));
 
 export function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
   const t = useT();
@@ -138,6 +141,10 @@ export function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
       </Field>
       {/* After the indexed folders (cerebro-contextos design: "Configurações › Memória › Contextos"). */}
       <ContextsSettings />
+      {/* Below the indexed folders and their contexts (cerebro-memoria-confiavel design: "Configurações › Memória"). */}
+      <Suspense fallback={null}>
+        <FolderTool kind="restricted" />
+      </Suspense>
       <p className="hint">
         <RefreshCw size={11} style={{ verticalAlign: -1 }} aria-hidden /> {t("brain.refresh")}:{" "}
         {t("nav.brain")} <ArrowRight size={11} style={{ verticalAlign: -1 }} aria-hidden />{" "}
