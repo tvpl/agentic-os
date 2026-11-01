@@ -606,3 +606,94 @@ describe("C96 the keys of Do agente, and the Núcleo", () => {
     window.localStorage.clear();
   });
 });
+
+/* ---------------- C165: the two regions of the tab ---------------- */
+
+describe("C165 the list on the left, the detail on the right", () => {
+  it("C165 .rv-body holds the list first and the detail second, in the DOM and in the grid: two columns, the list's the narrower, aligned to the start; no rule reorders them", async () => {
+    const items = [proposal({ summary: "um" }), proposal({ summary: "dois" })];
+    pending(items);
+    for (const p of items) detailOf(p, { ops: [op()], diff: DIFF });
+    mountReviews({ search: "?tab=agent" });
+    await waitFor(() => expect(document.querySelector(".ag-detail")).not.toBeNull());
+    const body = document.querySelector<HTMLElement>(".rv-body")!;
+    // the DOM: exactly two regions, the list then the detail, and the list holds the items, not the detail
+    expect([...body.children].map((c) => `${c.tagName.toLowerCase()}.${c.className}`)).toEqual([
+      "ul.rv-list",
+      "div.rv-detail ag-detail",
+    ]);
+    const [list, detail] = [...body.children];
+    expect(before(list!, detail!)).toBe(true);
+    expect(list!.querySelectorAll(".rv-item")).toHaveLength(2);
+    expect(list!.contains(detailEl())).toBe(false);
+    expect(detail!.contains(document.querySelector(".rv-pick"))).toBe(false);
+    // the grid: two tracks, the list's 2fr (at least 240px) and the detail's 3fr, from the top
+    expect(rule("reviews.css", ".rv-body")).toMatchObject({
+      display: "grid",
+      "grid-template-columns": "minmax(240px, 2fr) 3fr",
+      "align-items": "start",
+    });
+    // nothing puts the detail before the list or both in one column
+    for (const sel of [".rv-body", ".rv-list", ".rv-detail", ".ag-detail"])
+      for (const file of ["reviews.css", "agent.css"]) {
+        const declared = rule(file, sel);
+        for (const prop of ["order", "grid-column", "grid-row", "grid-area", "direction", "float"])
+          expect(declared[prop], `${file} ${sel} ${prop}`).toBeUndefined();
+      }
+  });
+});
+
+/* ---------------- C169: the list's state is announced ---------------- */
+
+describe("C169 the tab's state is announced in role=status", () => {
+  const live = () => [...document.querySelectorAll<HTMLElement>('[role="status"], [role="alert"]')];
+  const line = () => document.querySelector<HTMLElement>(".rv-status")!;
+
+  it("C169 loading: Carregando… is a role=status of its own (a spinner with the text), and the screen's line is empty", async () => {
+    proposals.list = "pending";
+    mountReviews({ search: "?tab=agent" });
+    const state = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('.rv-state[role="status"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(state.textContent).toBe("Carregando…");
+    expect(state.querySelector(".spinner")).not.toBeNull();
+    expect(line().getAttribute("role")).toBe("status");
+    expect(line().textContent).toBe("");
+  });
+
+  it("C169 empty: the screen's role=status line says 0 propostas do agente para revisar while the tab shows Nada do agente para revisar.", async () => {
+    pending([]);
+    mountReviews({ search: "?tab=agent" });
+    await waitFor(() => expect(document.querySelector(".ag-empty")).not.toBeNull());
+    await waitFor(() => expect(line().textContent).toBe("0 propostas do agente para revisar"));
+    expect(line().getAttribute("role")).toBe("status");
+    expect(document.querySelector(".ag-empty")!.textContent).toContain("Nada do agente para revisar.");
+  });
+
+  it("C169 with items: the line says 2 propostas do agente para revisar and no loading state is left", async () => {
+    const items = [proposal({ summary: "um" }), proposal({ summary: "dois" })];
+    pending(items);
+    for (const p of items) detailOf(p, { ops: [op()], diff: DIFF });
+    proposals.decide = (id) => Promise.resolve(accepted(items.find((p) => p.id === id)!));
+    mountReviews({ search: "?tab=agent" });
+    await waitFor(() => expect(line().textContent).toBe("2 propostas do agente para revisar"));
+    await waitFor(() => expect(document.querySelector(".ag-detail")).not.toBeNull());
+    expect(live().filter((e) => e.matches(".rv-state"))).toEqual([]);
+  });
+
+  it("C169 failed: the message is a role=alert (an assertive live region of its own), with Tentar de novo, and the line stays empty so nothing is said twice", async () => {
+    proposals.list = new NetError(500, "boom", "falhou a lista");
+    mountReviews({ search: "?tab=agent" });
+    const failed = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('.rv-state[role="alert"]');
+      expect(el?.textContent).toContain("falhou a lista");
+      return el!;
+    });
+    expect(within(failed).getByRole("button", { name: "Tentar de novo" })).toBeTruthy();
+    expect(failed.querySelector("svg.lucide-triangle-alert, svg.lucide-alert-triangle")).not.toBeNull();
+    expect(line().textContent).toBe("");
+    expect(live().filter((e) => e.textContent?.includes("falhou a lista"))).toEqual([failed]);
+  });
+});

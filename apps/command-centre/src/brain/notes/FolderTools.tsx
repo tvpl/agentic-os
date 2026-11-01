@@ -98,9 +98,10 @@ function AccessModal({ path, name, onClose }: { path: string; name: string; onCl
         </div>
       ))}
       {above && (
-        <p className="ft-hint">
+        // A short label (12px, design.md), not a sentence like the hints above.
+        <div className="ft-inherited">
           <CornerLeftUp aria-hidden /> {t("access.inherited", { folder: base(above.path) })}
-        </p>
+        </div>
       )}
       {error && (
         <p className="ft-error" role="alert">

@@ -51,14 +51,22 @@
   font-size: var(--fs-3);
 }
 
+/* The conflict band of the editor (noteEditor.css `.note-editor-banner`, cerebro-v2): the same border, ground and icon. */
 .vd-failure {
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  padding: var(--s-3);
+  border: 1px solid var(--warn);
+  border-radius: var(--r-3);
+  background: var(--warn-bg);
+  color: var(--text);
+}
+
+.vd-failure > svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
   color: var(--warn);
 }
 
-.vd-failure svg,
 .hf-notice svg,
 .mh-deleted svg {
   width: 14px;

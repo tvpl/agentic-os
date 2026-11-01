@@ -148,11 +148,15 @@ export function OpRow({
   );
 }
 
-/** The list's and the detail's own states: "Carregando…", and the message with "Tentar de novo". */
+/**
+ * The list's and the detail's own states: "Carregando…" (a `role="status"`, so it is announced), and the message with
+ * "Tentar de novo" (a `role="alert"`, an assertive live region of its own). The count, and so the empty tab, is said by
+ * the screen's own `role="status"` line (cerebro-natureza design.md: the list's state is announced there).
+ */
 function Loading() {
   const t = useT();
   return (
-    <p className="rv-state">
+    <p className="rv-state" role="status">
       <span className="spinner" aria-hidden />
       {t("common.loading")}
     </p>

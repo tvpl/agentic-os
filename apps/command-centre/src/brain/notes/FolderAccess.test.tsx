@@ -299,3 +299,53 @@ describe("C141 the tree's mark of a restricted folder", () => {
     );
   });
 });
+
+/* ---------------- C168: the sizes of the hints and of "Herdado de" ---------------- */
+
+/** `--fs-2` and `--fs-3` as the theme defines them, in px. */
+const px = (value: string) => {
+  const token = /^var\((--[\w-]+)\)$/.exec(value)?.[1];
+  const sheet = postcss.parse(readFileSync(join(__dirname, "..", "..", "theme.css"), "utf8"));
+  let found: string | undefined;
+  sheet.walkRules(":root", (r) => r.walkDecls(token ?? "", (d) => void (found ??= d.value)));
+  return Number.parseFloat(found ?? value);
+};
+
+describe("C168 the six hints are sentences at 13px and Herdado de is a label at 12px", () => {
+  it("C168 each of the six hints is a full sentence in .ft-hint, 13px (--fs-3), and none is under the 12px floor; the feature's design.md says 12px for them, the design-system says 13px for sentences (G37, the design-system wins)", async () => {
+    const { user, dialog } = await openAccess();
+    const hints: string[] = [];
+    for (const [aud, name] of [
+      ["agents", "Agentes"],
+      ["devices", "Dispositivos"],
+    ] as const)
+      for (const level of ["write", "read", "hide"] as const) {
+        const s = select(dialog, name);
+        await user.selectOptions(s, level);
+        const hint = document.getElementById(s.getAttribute("aria-describedby")!)!;
+        expect(hint.className, `${aud} ${level}`).toBe("ft-hint");
+        hints.push(hint.textContent!);
+      }
+    expect(hints).toHaveLength(6);
+    for (const text of hints) expect(text, text).toMatch(/^\p{Lu}.*\.$/u);
+    const size = css("folderTools.css", ".ft-hint")["font-size"]!;
+    expect(size).toBe("var(--fs-3)");
+    expect(px(size)).toBe(13);
+    expect(px(size)).toBeGreaterThanOrEqual(12);
+  });
+
+  it("C168 Herdado de <pasta> is a short label with CornerLeftUp in .ft-inherited, 12px (--fs-2) as design.md gives it, and not a paragraph", async () => {
+    net.folderAccess = [{ path: NOTES, agents: "read", devices: "hide" }];
+    const { dialog } = await openAccess();
+    const label = await within(dialog).findByText("Herdado de notes");
+    expect(label.className).toBe("ft-inherited");
+    expect(label.tagName).toBe("DIV");
+    expect(label.querySelector("svg.lucide-corner-left-up")).not.toBeNull();
+    expect(label.textContent).not.toMatch(/\.$/);
+    const size = css("folderTools.css", ".ft-inherited")["font-size"]!;
+    expect(size).toBe("var(--fs-2)");
+    expect(px(size)).toBe(12);
+    // the label is the only 12px text of the modal; the rest is sentences at 13px or the path in mono 12px (.mono)
+    expect(css("folderTools.css", ".ft-hint")["font-size"]).toBe("var(--fs-3)");
+  });
+});
