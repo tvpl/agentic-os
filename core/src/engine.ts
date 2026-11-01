@@ -400,6 +400,7 @@ export class MordomoEngine {
       paths: this.paths,
       getSettings: () => this.settings(),
       runs: this.runs,
+      notifications: this.notifications,
     });
     this.disposers.push(this.memoryGuard.install(this.events));
     this.disposers.push(

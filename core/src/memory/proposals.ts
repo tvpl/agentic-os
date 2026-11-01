@@ -848,6 +848,12 @@ export function decideProposal(
   const memoryFile = path.join(env.paths.memory, MEMORY_FILE);
 
   if (record.kind === "memory_edit") {
+    // a run's file too large for the guard to read whole is held in part: accepting the part would lose the rest
+    if (p.truncated === true) {
+      throw new ProposalValidationError(
+        `The run's MEMORY.md was too large to read whole; it is kept at ${String(p.aside ?? "memory/archive/")}. Reject this proposal and open that file.`,
+      );
+    }
     if (!sameBase) throw new EditConflictError();
     const after = String(p.content ?? "");
     return env.db.transaction((): Decided => {

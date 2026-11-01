@@ -457,6 +457,63 @@ function assertNoLinkOnTheWay(scope: ReadScope, candidate: string): void {
   }
 }
 
+/** What is at a name, looked at without following a link at its last component. */
+export type WorkspaceEntryKind = "none" | "file" | "link" | "other";
+
+/**
+ * What is at `candidate` now, never followed: nothing, a regular file, a link (dangling or not), or anything else (a
+ * folder, a pipe). The folders on the way must hold no link and lie inside the scope (`PathAccessError` otherwise).
+ */
+export function workspaceEntryKind(scope: ReadScope, candidate: string): WorkspaceEntryKind {
+  const full = path.resolve(candidate);
+  assertNoLinkOnTheWay(scope, path.dirname(full));
+  let info: fs.Stats;
+  try {
+    info = fs.lstatSync(full);
+  } catch {
+    return "none";
+  }
+  if (info.isSymbolicLink()) return "link";
+  return info.isFile() ? "file" : "other";
+}
+
+/**
+ * Take a name back from whatever was put there (the guard of `MEMORY.md`, .specs/features/cerebro-memoria-confiavel
+ * door 8): the entry at `candidate` is renamed to `to` as it is, a link as a link (never followed) and a file of any
+ * size as that file, and then `data` (when given) is written at `candidate` as a new file by `writeWorkspaceFile` in
+ * `create` mode. Nothing is removed: what was there stays at `to`. A folder at the name, a link on the way to either
+ * folder, a `to` the filter refuses or that exists, is refused before anything moves. Answers what was set aside.
+ */
+export function setAsideAndWrite(
+  scope: ReadScope,
+  candidate: string,
+  to: string,
+  data: string | Uint8Array | null,
+): { aside: "file" | "link" | null } {
+  const full = path.resolve(candidate);
+  const kind = workspaceEntryKind(scope, full);
+  if (kind === "other") throw new NotRegularFileError(candidate);
+  let aside: "file" | "link" | null = null;
+  if (kind !== "none") {
+    assertNoLinkOnTheWay(scope, path.dirname(path.resolve(to)));
+    try {
+      fs.lstatSync(path.resolve(to));
+      throw destinationExists(to);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") throw err;
+    }
+    const realTo = assertWritablePath(scope, to);
+    fs.mkdirSync(path.dirname(realTo), { recursive: true });
+    assertNoLinkOnTheWay(scope, path.dirname(path.resolve(to)));
+    // the name is looked at once more right before the rename: a folder that took its place is not moved
+    if (workspaceEntryKind(scope, full) === "other") throw new NotRegularFileError(candidate);
+    fs.renameSync(full, realTo);
+    aside = kind;
+  }
+  if (data !== null) writeWorkspaceFile(scope, full, data, { mode: "create" });
+  return { aside };
+}
+
 /**
  * Move a file the engine owns inside the scope (.specs/features/cerebro-faxina-guiada, door 1), never deleting one
  * without a confirmed copy:

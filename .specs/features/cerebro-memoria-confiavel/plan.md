@@ -536,6 +536,19 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
    refeito quando `folderAccess` muda. É uma door nova (Landing 19), com check próprio. Os C113 e C120 seguem como escritos,
    por valor e na ordem; o `score` segue a emenda 4.
 
+8. **A guarda do `MEMORY.md` falha fechada (rodada 1 da verificação, achado 1; correção de construção, sem pergunta).**
+   O door 8 dizia como devolver os bytes do início por `replace` guardado ou por `moveWorkspaceFile`; o que a execução
+   deixa e esses dois recusam (um arquivo acima do limite de leitura de 4 MiB, um link no nome, algo que não é arquivo
+   regular, uma devolução recusada por um link posto depois) passava sem devolução nem proposta. Agora o que está no nome
+   é posto de lado inteiro, sem seguir link, em `memory/archive/guard-<runId>-MEMORY.md` (`-2` … `-99` se o nome existe)
+   por `setAsideAndWrite` do escritor seguro, e os bytes do início são gravados de volta em `create`; a proposta
+   `memory_edit` sempre é guardada; uma versão `guard` sempre é gravada (dos bytes do início, quando voltaram, ou dos
+   bytes da execução, quando lidos inteiros); e o dono é avisado no inbox (`messageKey: "memory.guard"`) em todo caso
+   desses e em toda falha que ainda reste. O `payload` de um `memory_edit` (door 16) ganha dois campos opcionais:
+   `aside` (onde ficou o que a execução deixou, relativo a `memory/`) e `truncated: true` (o `content` é só o começo,
+   256 KiB, de um arquivo grande demais); aceitar uma proposta `truncated` é `400 validation`, porque gravaria só o
+   começo. Um `MEMORY.md` do dono que já não se lê inteiro no `run.started` não é guardado, e o dono é avisado.
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).

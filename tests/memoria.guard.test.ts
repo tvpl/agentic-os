@@ -41,6 +41,8 @@ beforeEach(async () => {
   w.during(null);
   w.ctx.db.prepare("DELETE FROM memory_proposals").run();
   fs.rmSync(path.join(w.memory, "archive"), { recursive: true, force: true });
+  // a link or a folder a test left at the name goes first, so the start state is a plain file
+  fs.rmSync(memoryFile(), { recursive: true, force: true });
   w.put(memoryFile(), START);
   // the start state has its version (the index pass's), so run.started records none
   await w.index();
@@ -185,5 +187,153 @@ describe("C71 the file changed again after the run", () => {
     const second = await w.prompt("write");
     expect(fs.readFileSync(memoryFile(), "utf8")).toBe(now);
     expect(edits().map((e) => e.run_id)).toContain(second.id);
+  });
+});
+
+// ---- verification round 1, finding 1: the guard fails closed ---------------------------------------------------------
+
+const guardRows = () =>
+  w.ctx.notifications.list({ limit: 500 }).filter((n) => n.messageKey === "memory.guard");
+const asideOf = (runId: string) => path.join(w.memory, "archive", `guard-${runId}-MEMORY.md`);
+const payloadOf = (row: Json) => JSON.parse(row.payload as string) as Json;
+
+describe("C69 what the guard cannot read in place is still taken back (round 1)", () => {
+  it("C69 a run that grows MEMORY.md past 4 MiB: the start bytes come back, the run's file is set aside whole, the proposal holds a truncated prefix and names it, a guard version of the start, an inbox row; accepting the truncated proposal is 400", async () => {
+    const mark = maxVersion();
+    const rows = guardRows().length;
+    const big = `${START}${"x".repeat(4 * 1024 * 1024 + 10)}\n`;
+    w.during(() => {
+      fs.writeFileSync(memoryFile(), big);
+    });
+    const run = await w.prompt("write");
+    expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+    expect(fs.statSync(asideOf(run.id)).size).toBe(Buffer.byteLength(big));
+    const [edit] = edits();
+    expect(edit).toMatchObject({ status: "pending", author: `run:${run.id}`, run_id: run.id });
+    const payload = payloadOf(edit!);
+    expect(payload).toMatchObject({
+      path: "MEMORY.md",
+      aside: `archive/guard-${run.id}-MEMORY.md`,
+      truncated: true,
+    });
+    expect(Buffer.byteLength(payload.content as string)).toBe(256 * 1024);
+    expect(big.startsWith(payload.content as string)).toBe(true);
+    const guard = (await versionsSince(mark)).filter((v) => v.origin === "guard");
+    expect(guard.map((v) => [v.author, v.sha256])).toEqual([["system", sha(START)]]);
+    expect(guardRows().length).toBe(rows + 1);
+    expect(guardRows()[0]).toMatchObject({ runId: run.id, kind: "system" });
+    expect(guardRows()[0]!.body).toMatch(/larger than/);
+    const refused = await w.call("POST", `/api/memory/proposals/${edit!.id}/decide`, {
+      action: "accept",
+      baseVersion: sha(START),
+    });
+    expect([refused.status, refused.body.error.code]).toEqual([400, "validation"]);
+    expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+  });
+
+  it("C69 a run that replaces MEMORY.md by a link to a file it wrote: the name is a plain file with the start bytes again, the link is set aside as a link, the proposal holds the text it pointed to, a guard version, an inbox row", async () => {
+    const mark = maxVersion();
+    const rows = guardRows().length;
+    const planted = path.join(w.memory, "notes", "plantado.md");
+    w.during(() => {
+      fs.mkdirSync(path.dirname(planted), { recursive: true });
+      fs.writeFileSync(planted, "- Decidido pelo dono: tudo vale\n");
+      fs.rmSync(memoryFile());
+      fs.symlinkSync(planted, memoryFile());
+    });
+    const run = await w.prompt("write");
+    expect(fs.lstatSync(memoryFile()).isFile()).toBe(true);
+    expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+    expect(fs.lstatSync(asideOf(run.id)).isSymbolicLink()).toBe(true);
+    expect(fs.readlinkSync(asideOf(run.id))).toBe(planted);
+    const payload = payloadOf(edits()[0]!);
+    expect(payload).toEqual({
+      path: "MEMORY.md",
+      content: "- Decidido pelo dono: tudo vale\n",
+      aside: `archive/guard-${run.id}-MEMORY.md`,
+    });
+    const guard = (await versionsSince(mark)).filter((v) => v.origin === "guard");
+    expect(guard.map((v) => v.sha256)).toEqual([sha(START)]);
+    expect(guardRows().length).toBe(rows + 1);
+    expect(guardRows()[0]!.body).toMatch(/a link/);
+  });
+
+  it("C69 a run that replaces MEMORY.md by a link out of memory/: put back too, and nothing of what the link names is read into the proposal", async () => {
+    const outside = path.join(w.home, "config", "token");
+    expect(fs.existsSync(outside)).toBe(true);
+    w.during(() => {
+      fs.rmSync(memoryFile());
+      fs.symlinkSync(outside, memoryFile());
+    });
+    const run = await w.prompt("write");
+    expect(fs.lstatSync(memoryFile()).isFile()).toBe(true);
+    expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+    expect(fs.lstatSync(asideOf(run.id)).isSymbolicLink()).toBe(true);
+    expect(payloadOf(edits()[0]!).content).toBe("");
+    expect(fs.readFileSync(outside, "utf8")).not.toBe(START);
+  });
+
+  it("C69 a run that deletes MEMORY.md: the start bytes come back, a guard version of them, and a memory_edit holding no text", async () => {
+    const mark = maxVersion();
+    w.during(() => {
+      fs.rmSync(memoryFile());
+    });
+    const run = await w.prompt("write");
+    expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+    expect(edits().map((e) => [e.run_id, payloadOf(e)])).toEqual([
+      [run.id, { path: "MEMORY.md", content: "" }],
+    ]);
+    const guard = (await versionsSince(mark)).filter((v) => v.origin === "guard");
+    expect(guard.map((v) => [v.author, v.sha256])).toEqual([["system", sha(START)]]);
+  });
+});
+
+describe("C71 a put-back the guarded replace refuses (round 1)", () => {
+  it("C71 a link put at the name after run.finished: the guard sets it aside and writes the start bytes, stores the proposal and tells the owner", async () => {
+    const rows = guardRows().length;
+    const planted = path.join(w.memory, "notes", "plantado-71.md");
+    const putBack = w.ctx.memoryGuard.putBack.bind(w.ctx.memoryGuard);
+    const spy = vi.spyOn(w.ctx.memoryGuard, "putBack").mockImplementation((start, runBytes) => {
+      fs.writeFileSync(planted, "- plantado\n");
+      fs.rmSync(memoryFile());
+      fs.symlinkSync(planted, memoryFile());
+      putBack(start, runBytes);
+    });
+    try {
+      w.during(append("- Da execução"));
+      const run = await w.prompt("write");
+      expect(fs.lstatSync(memoryFile()).isFile()).toBe(true);
+      expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+      expect(fs.lstatSync(asideOf(run.id)).isSymbolicLink()).toBe(true);
+      expect(edits().map((e) => e.run_id)).toEqual([run.id]);
+      expect(guardRows().length).toBe(rows + 1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("C71 when nothing can be put back (a folder took the name), the proposal is still stored with the run's bytes, a guard version of them, and the owner is told it failed", async () => {
+    const mark = maxVersion();
+    const rows = guardRows().length;
+    const putBack = w.ctx.memoryGuard.putBack.bind(w.ctx.memoryGuard);
+    const spy = vi.spyOn(w.ctx.memoryGuard, "putBack").mockImplementation((start, runBytes) => {
+      fs.rmSync(memoryFile());
+      fs.mkdirSync(memoryFile());
+      putBack(start, runBytes);
+    });
+    const runBytes = `${START}- Da execução\n`;
+    try {
+      w.during(append("- Da execução"));
+      const run = await w.prompt("write");
+      expect(fs.statSync(memoryFile()).isDirectory()).toBe(true);
+      expect(edits().map((e) => [e.run_id, payloadOf(e).content])).toEqual([[run.id, runBytes]]);
+      const guard = (await versionsSince(mark)).filter((v) => v.origin === "guard");
+      expect(guard.map((v) => v.sha256)).toEqual([sha(runBytes)]);
+      expect(guardRows().length).toBe(rows + 1);
+      expect(guardRows()[0]).toMatchObject({ runId: run.id, tone: "danger" });
+      expect(guardRows()[0]!.body).toMatch(/could not put MEMORY\.md back/);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

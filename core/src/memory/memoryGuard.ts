@@ -4,9 +4,15 @@ import type { Settings } from "../config/schema.js";
 import type { Db } from "../db/db.js";
 import { EditConflictError } from "../errors.js";
 import type { EventBus, OsEvent } from "../events.js";
+import type { NotificationInput } from "../notifications/store.js";
 import type { MordomoPaths } from "../paths.js";
-import { homeReadScope, readWorkspaceFile, type ReadScope } from "../security/safeFs.js";
-import { moveWorkspaceFile, writeWorkspaceFile } from "../security/safeWrite.js";
+import { FileTooLargeError, homeReadScope, readWorkspaceFile, type ReadScope } from "../security/safeFs.js";
+import {
+  moveWorkspaceFile,
+  setAsideAndWrite,
+  workspaceEntryKind,
+  writeWorkspaceFile,
+} from "../security/safeWrite.js";
 import { historyMaxBytes, newestVersion, recordVersion } from "./historyStore.js";
 import { MEMORY_FILE, storeProposal } from "./proposals.js";
 
@@ -19,6 +25,12 @@ import { MEMORY_FILE, storeProposal } from "./proposals.js";
  * `memory/archive/guard-<runId>-MEMORY.md`) and what the run wrote waits as a `memory_edit` proposal. Only the file at
  * the root of `memory/`: a `notes/MEMORY.md` is a note like any other.
  *
+ * It fails closed (verification round 1, finding 1): what the run left that cannot be read whole (past the read limit),
+ * a link at the name, anything that is not a regular file, or a put-back the guarded replace refuses, is set aside
+ * whole to `memory/archive/guard-<runId>-MEMORY.md` (never followed, never lost) and the owner's bytes are written back;
+ * the proposal holds what could be read of the run's text (a prefix, marked `truncated`, when it was too large) and
+ * names where the rest lies; and the owner is told in the inbox. A step that still fails is told there too.
+ *
  * The start states live on this instance (one per engine), never in module state.
  */
 
@@ -29,6 +41,8 @@ export interface MemoryGuardDeps {
   runs: {
     get(id: string): { request: { mode: string } | null; permissionProfile: string | null } | null;
   };
+  /** Where the owner is told what the guard did not do the ordinary way (the inbox). */
+  notifications?: { add(input: NotificationInput): unknown };
 }
 
 interface StartState {
@@ -37,8 +51,26 @@ interface StartState {
   mark: number;
 }
 
+/** The most bytes of `MEMORY.md` the guard reads (the ceiling of door 7 is 25 000). */
+export const GUARD_READ_LIMIT = 4 * 1024 * 1024;
+/** The most bytes of an oversized file a `memory_edit` proposal holds (the rest stays in the file set aside). */
+export const GUARD_PROPOSAL_PREFIX = 256 * 1024;
+
+/** What a run left at the name: nothing, a regular file read whole, or something the guard does not put back in place. */
+type Left =
+  | { kind: "none" }
+  | { kind: "file"; bytes: Buffer }
+  | { kind: "odd"; why: "too_large" | "link" | "not_a_file" | "unreadable"; bytes: Buffer | null; truncated: boolean };
+
 const sha = (bytes: Uint8Array) => crypto.createHash("sha256").update(bytes).digest("hex");
 const same = (a: Buffer | null, b: Buffer | null) => (a === null ? b === null : b !== null && a.equals(b));
+
+const WHY: Record<Extract<Left, { kind: "odd" }>["why"], string> = {
+  too_large: `larger than ${GUARD_READ_LIMIT} bytes`,
+  link: "a link",
+  not_a_file: "not a regular file",
+  unreadable: "unreadable",
+};
 
 export class MemoryGuard {
   private readonly started = new Map<string, StartState>();
@@ -55,11 +87,41 @@ export class MemoryGuard {
 
   private read(): Buffer | null {
     try {
-      return readWorkspaceFile(this.scope(), this.file, { maxBytes: 4 * 1024 * 1024, strict: true }).bytes;
+      return readWorkspaceFile(this.scope(), this.file, { maxBytes: GUARD_READ_LIMIT, strict: true }).bytes;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw err;
     }
+  }
+
+  /** What is at the name now, never thrown about: a link is a link, a file too large is read in part. */
+  private look(): Left {
+    let kind: ReturnType<typeof workspaceEntryKind>;
+    try {
+      kind = workspaceEntryKind(this.scope(), this.file);
+    } catch {
+      return { kind: "odd", why: "unreadable", bytes: null, truncated: false };
+    }
+    if (kind === "none") return { kind: "none" };
+    if (kind === "other") return { kind: "odd", why: "not_a_file", bytes: null, truncated: false };
+    let bytes: Buffer | null = null;
+    let tooLarge = false;
+    try {
+      bytes = this.read();
+    } catch (err) {
+      tooLarge = err instanceof FileTooLargeError || (err as NodeJS.ErrnoException).code === "file_too_large";
+      if (tooLarge) {
+        try {
+          bytes = readWorkspaceFile(this.scope(), this.file, { maxBytes: GUARD_PROPOSAL_PREFIX }).bytes;
+        } catch {
+          bytes = null;
+        }
+      }
+    }
+    if (kind === "link") return { kind: "odd", why: "link", bytes, truncated: tooLarge };
+    if (tooLarge) return { kind: "odd", why: "too_large", bytes, truncated: true };
+    if (bytes === null) return { kind: "odd", why: "unreadable", bytes: null, truncated: false };
+    return { kind: "file", bytes };
   }
 
   private record(bytes: Buffer | null, origin: "guard" | "removed"): void {
@@ -68,6 +130,24 @@ export class MemoryGuard {
       { rel: MEMORY_FILE, bytes, author: "system", origin },
       historyMaxBytes(this.deps.getSettings()),
     );
+  }
+
+  /** Tell the owner, in the inbox, what the guard did not do the ordinary way (never only in a log). */
+  private tell(runId: string | null, body: string, tone: "warn" | "danger" = "warn"): void {
+    try {
+      this.deps.notifications?.add({
+        kind: "system",
+        tone,
+        messageKey: "memory.guard",
+        messageParams: {},
+        title: "A guarda do MEMORY.md precisou de atenção",
+        body,
+        href: "/brain/reviews?tab=agent",
+        ...(runId ? { runId } : {}),
+      });
+    } catch (err) {
+      console.error("[memory] the guard of MEMORY.md could not write to the inbox", err);
+    }
   }
 
   /** Whether the run writes: its request says so; a run with none is taken to write unless its profile only reads. */
@@ -85,7 +165,13 @@ export class MemoryGuard {
 
   onStarted(runId: string): void {
     if (this.started.has(runId) || !this.writes(runId)) return;
-    const bytes = this.read();
+    const left = this.look();
+    if (left.kind === "odd") {
+      // the owner's own MEMORY.md cannot be kept whole: nothing would be put back, and the owner is told so
+      this.tell(runId, `At the start of the run ${runId} MEMORY.md is ${WHY[left.why]}: the guard cannot keep it.`);
+      return;
+    }
+    const bytes = left.kind === "file" ? left.bytes : null;
     if (bytes !== null) {
       const newest = newestVersion(this.deps.db, MEMORY_FILE);
       if (!newest || newest.sha256 !== `sha256:${sha(bytes)}`) this.record(bytes, "guard");
@@ -99,46 +185,101 @@ export class MemoryGuard {
     writeWorkspaceFile(this.scope(), this.file, start, { mode: "replace", expectSha256: sha(runBytes) });
   }
 
+  /** Set the run's entry aside whole and write the start state back (no file: nothing is written). */
+  private takeBack(runId: string, start: Buffer | null): string {
+    const rel = `archive/guard-${runId}-${MEMORY_FILE}`;
+    let to = path.join(this.deps.paths.memory, ...rel.split("/"));
+    for (let n = 2; n <= 99; n++) {
+      if (workspaceEntryKind(this.scope(), to) === "none") break;
+      to = path.join(this.deps.paths.memory, "archive", `guard-${runId}-${n}-${MEMORY_FILE}`);
+    }
+    setAsideAndWrite(this.scope(), this.file, to, start);
+    return path.relative(this.deps.paths.memory, to).split(path.sep).join("/");
+  }
+
   onFinished(runId: string): void {
     const start = this.started.get(runId);
     if (!start) return;
     this.started.delete(runId);
-    const now = this.read();
-    if (same(start.bytes, now)) return;
-    const owner = this.deps.db
-      .prepare("SELECT 1 FROM memory_versions WHERE path = ? AND author = 'owner' AND id > ? LIMIT 1")
-      .get(MEMORY_FILE, start.mark);
-    if (owner) return; // the owner wrote MEMORY.md during the run: what is there is theirs (AC 73)
-    if (now !== null) this.record(now, "guard");
-    try {
-      if (start.bytes !== null && now !== null) {
-        this.putBack(start.bytes, now);
-        this.record(start.bytes, "guard");
-      } else if (start.bytes === null && now !== null) {
-        const aside = path.join(this.deps.paths.memory, "archive", `guard-${runId}-${MEMORY_FILE}`);
-        moveWorkspaceFile(this.scope(), this.file, aside, { expectSha256: sha(now) });
-        this.record(null, "removed");
-      } else if (start.bytes !== null) {
-        // the run removed MEMORY.md: its bytes come back
-        writeWorkspaceFile(this.scope(), this.file, start.bytes, { mode: "create" });
-        this.record(start.bytes, "guard");
-      }
-    } catch (err) {
-      // the file changed again after the run (G7): it stays as it is, and the run's bytes still wait for review
-      if (!(err instanceof EditConflictError) && (err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    let left = this.look();
+    if (left.kind === "none" ? start.bytes === null : left.kind === "file" && same(start.bytes, left.bytes)) return;
+    if (left.kind !== "odd") {
+      const owner = this.deps.db
+        .prepare("SELECT 1 FROM memory_versions WHERE path = ? AND author = 'owner' AND id > ? LIMIT 1")
+        .get(MEMORY_FILE, start.mark);
+      if (owner) return; // the owner wrote MEMORY.md during the run: what is there is theirs (AC 73)
     }
+    const runBytes = left.kind === "none" ? null : left.bytes;
+    if (left.kind === "file") this.record(left.bytes, "guard");
+    let aside: string | null = null;
+    let restored = false;
+    const failed: string[] = [];
+    const forced = () => {
+      try {
+        aside = this.takeBack(runId, start.bytes);
+        restored = true;
+      } catch (err) {
+        failed.push(`the guard could not put MEMORY.md back: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+    if (left.kind === "odd") forced();
+    else {
+      try {
+        if (start.bytes !== null && left.kind === "file") this.putBack(start.bytes, left.bytes);
+        else if (start.bytes === null && left.kind === "file") {
+          aside = `archive/guard-${runId}-${MEMORY_FILE}`;
+          moveWorkspaceFile(this.scope(), this.file, path.join(this.deps.paths.memory, ...aside.split("/")), {
+            expectSha256: sha(left.bytes),
+          });
+        } else if (start.bytes !== null) {
+          // the run removed MEMORY.md: its bytes come back
+          writeWorkspaceFile(this.scope(), this.file, start.bytes, { mode: "create" });
+        }
+        restored = true;
+      } catch (err) {
+        aside = null;
+        const again = this.look();
+        if (err instanceof EditConflictError && again.kind === "file") {
+          // the file changed again after the run (G7): it stays as it is, and the run's bytes still wait for review
+        } else {
+          // anything else the ordinary put-back refuses (a link put there, a file grown past the limit, a name taken
+          // since): the name is taken back by setting what is there aside (finding 1)
+          left = again;
+          forced();
+        }
+      }
+    }
+    if (restored) {
+      if (start.bytes !== null) this.record(start.bytes, "guard");
+      else this.record(null, "removed");
+    }
+    const odd = left.kind === "odd" ? left : null;
     storeProposal(
       this.deps.db,
       {
         kind: "memory_edit",
         author: `run:${runId}`,
         runId,
-        summary: `The run ${runId} changed MEMORY.md; the guard put the file back.`,
-        payload: { path: MEMORY_FILE, content: now === null ? "" : now.toString("utf8") },
+        summary: odd
+          ? `The run ${runId} left MEMORY.md ${WHY[odd.why]}; the guard set it aside${aside ? ` at ${aside}` : ""}.`
+          : `The run ${runId} changed MEMORY.md; the guard put the file back.`,
+        payload: {
+          path: MEMORY_FILE,
+          content: runBytes === null ? "" : runBytes.toString("utf8"),
+          ...(aside ? { aside } : {}),
+          ...(odd?.truncated ? { truncated: true } : {}),
+        },
       },
       // the guard has no caller to answer a 429 to: it always stores (G8)
       { capped: false },
     );
+    if (odd || failed.length > 0) {
+      const what = odd ? `The run ${runId} left MEMORY.md ${WHY[odd.why]}.` : `The run ${runId} changed MEMORY.md.`;
+      const done = restored
+        ? ` The guard put the owner's MEMORY.md back${aside ? ` and set the run's entry aside at ${aside}` : ""}.`
+        : "";
+      this.tell(runId, `${what}${done}${failed.length > 0 ? ` ${failed.join("; ")}.` : ""}`, restored ? "warn" : "danger");
+    }
   }
 
   /** Subscribe to the bus; returns the unsubscribe function. */
@@ -152,6 +293,11 @@ export class MemoryGuard {
         else this.onFinished(runId);
       } catch (err) {
         console.error(`[memory] the guard of MEMORY.md failed at ${event.type}`, err);
+        this.tell(
+          runId,
+          `The guard of MEMORY.md failed at ${event.type} of the run ${runId}: ${err instanceof Error ? err.message : String(err)}`,
+          "danger",
+        );
       }
     });
   }

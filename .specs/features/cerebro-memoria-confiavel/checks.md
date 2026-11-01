@@ -1086,6 +1086,30 @@ Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C159 "`
     case fails (`topics/a.md` exists); with the note's take-back removed, the note case fails (`notes/nota-g6.md`
     exists); with the whole file of before, both fail
 
+## Correções da rodada 1
+
+What round 1 of the verification found in the core (findings 1, 6, 7, 8 and the residual note on `knownAt`), fixed in
+the commits that carry each entry. Each claim below extends the check it names; nothing approved is weakened.
+
+- **Finding 1, a real bug (security): the guard of `MEMORY.md` could be walked past.** A write run that grew
+  `memory/MEMORY.md` past the guard's 4 MiB read limit, or replaced it by a link, kept its change: the read and the
+  guarded put-back threw, and `install` only logged it (`memoryGuard.ts`). The guard now fails closed (plan amendment
+  8): what it cannot read whole or put back in place is set aside whole (a link as a link, never followed) to
+  `memory/archive/guard-<runId>-MEMORY.md` by the new `setAsideAndWrite` of the safe writer, built on
+  `workspaceEntryKind` (an `lstat` of the name, the folders on the way checked for links); the owner's bytes are
+  written back; the `memory_edit` proposal is always stored (the oversized text as a 256 KiB prefix with `truncated:
+true` and `aside`; accepting it is `400 validation`); a `guard` version is recorded; and the owner is told in the inbox
+  (`messageKey: "memory.guard"`, `tone` `warn`, or `danger` when the name could not be taken back), also when the guard
+  itself throws. **C69 extended**: a run that grows `MEMORY.md` past 4 MiB, one that replaces it by a link to a file it
+  wrote, one that replaces it by a link out of `memory/` (to `config/token`: nothing of it is read into the proposal),
+  and one that deletes it (the branch A2 settled (d) left without a proof) each leave the start bytes at the name as a
+  regular file, a pending `memory_edit` and a `guard` version of the start bytes, and the first three an inbox row.
+  **C71 extended**: a link put at the name after `run.finished` (the guarded replace refuses it) is set aside and the
+  start bytes written; a folder at the name (nothing can be put back) still stores the proposal with the run's bytes and
+  one `guard` version of them, and the inbox row says it could not put `MEMORY.md` back. Re-injected: with the guard of
+  before, the five new cases of the oversized file and the links and the folder fail; with the "deleted" branch's create
+  removed, its case fails
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None
