@@ -164,7 +164,7 @@ Só rotas novas ou cuja assinatura muda. O envelope de erro é o de sempre (`err
 | `GET /api/memory/proposals/:id`                        | —                                                               | a proposta · `ops[]` (`op` · `section` · `text` · `source` · `trust` · `state`, `reason?`) · `diff` · `baseVersion` | `200`, `404`                                                                           |
 | `POST /api/memory/proposals`                           | `kind` (`fact`, `note_create`, `note_save`) e o corpo do tipo   | `proposal`                                                                                                          | `201`, `400`, `403`, `429`                                                             |
 | `POST /api/memory/proposals/:id/decide`                | `action` (`accept`, `reject`), `ops?` (índices), `baseVersion?` | `proposal` · `written[]` (`path` · `version`) · `facts[]`                                                           | `200`, `400`, `403`, `404`, `409`, `413`                                               |
-| `POST /api/memory/export`                              | `folder`                                                        | `path` · `files` · `bytes`                                                                                          | `200`, `400`, `403`, `404`, `413`                                                      |
+| `POST /api/memory/export`                              | `folder`                                                        | `path` · `files` · `bytes`                                                                                          | `200`, `400`, `403`, `404`, `409`, `413`                                               |
 | `POST /api/memory/import`                              | `sourceDir`, `folder?`                                          | `folder` · `files` · `bytes` · `skipped[]`                                                                          | `200`, `400`, `403`, `404`, `409`, `413`                                               |
 | `GET /api/memory/tree` (muda)                          | —                                                               | cada pasta ganha `access?` (`agents` · `devices`)                                                                   | `200`, `400`                                                                           |
 | `POST /api/runs`, `POST /api/skills/:slug/run` (mudam) | —                                                               | —                                                                                                                   | ganham `403` (`folder_hidden`, `folder_read_only`) e `409` (`folder_hide_unsupported`) |
@@ -519,6 +519,15 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
    `/api/objectives*`; as facetas de `/api/memory/status`; `/api/skills/:slug*`; `/api/connectors*`. Um item que só existe
    por um caminho oculto some; um texto livre que cita um caminho oculto o troca por `(pasta oculta)`. Construído num lote
    B1b, antes do B2, com checks próprios (C149 em diante).
+6. **O que o lote B2 acrescentou ao contrato (registrado na construção, lote B2).** Nenhuma rota além das duas do door 14
+   e do door 15, e nenhum escopo muda: (a) a linha `POST /api/memory/export` da `Surface` ganha `409` (`exists`, além de
+   `-99`), como o padrão de G20 aceito na emenda 1 dizia; (b) as duas rotas respondem `404 not_a_file` quando um arquivo da
+   pasta copiada é trocado por uma pasta ou por um link para fora no meio da cópia, como `POST /api/skills/import`: a
+   sonda de recusas (`tests/api.refusals.test.ts` C46) o acha, e as duas entram na lista comum do leitor seguro
+   (`NOT_A_FILE_ROUTES`, `contracts/src/api/errors.ts`), não na entrada de cada rota, que fica com os códigos nomeados
+   (C138); (c) o manifesto escreve cada `sha256` como os 64 dígitos hexadecimais dos bytes copiados (o que `sha256sum`
+   confere) e cada `path` relativo à pasta exportada com `/`. Pergunta ao dono (G33): o padrão é o hex puro; a alternativa
+   é a grafia das versões e das notas, `sha256:<hex>`.
 
 ## Sources
 
