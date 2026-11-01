@@ -280,6 +280,8 @@ export const routineRoutes = {
     scope: "monitor",
     params: IdParams,
     responses: { 200: z.array(RoutineHistoryEntrySchema) },
+    // cerebro-memoria-confiavel, amendment 5: a routine that works in a folder hidden from devices, for a device.
+    errors: [notFound("For a paired device: a routine whose working folder is hidden from devices")],
   }),
 
   // ---- connectors

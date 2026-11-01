@@ -369,7 +369,16 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   computed once for every caller: a device gets it without the items whose `path` or `sourcePath` is hidden and without
   the highlights that point at one, but the numbers (counts, totals, KPIs) stay as they were computed. A run a device
   asks for in a folder hidden from devices is `404 not_found`; one that would write in a folder `read` for devices is
-  `403 folder_read_only`.
+  `403 folder_read_only`. Beyond the files, every answer a device reads leaves out what exists only through a hidden
+  path, and writes a hidden path in free text as `(pasta oculta)` (plan amendment 5): the runs that ran in, or were
+  handed, a hidden folder (absent from `GET /api/runs` and a run's children, `404 not_found` for the run, its stream,
+  its children and its diff), their conversations, approvals (which a device can neither read nor resolve) and
+  notifications; the events of the stream about them; the context sources of objectives; the routines whose working
+  folder is hidden; the connectors whose entry point is; the facets of `GET /api/memory/status`; and the text of
+  skills, their notes and their text resources. A run, approval or notification whose run (or approval) can no longer
+  be found is hidden from a device while devices have a hidden folder (it fails closed). The search's and the recall's
+  `score` for a device, and for a run's credential, is `1 / position` in the list it gets: the full-text score is
+  worked out over the whole index and would change with a hidden folder (plan amendment 4); the owner sees it as before.
 - **Agents.** A run's credential reads (search, recall, maps, journal, facts, the recall's statistics) leave out what is
   hidden from agents, and a run's credential appends to the journal only where agents may write (`403 folder_hidden`,
   `403 folder_read_only`). The context block and the routers in a run's prompt, and the routers and context maps the
@@ -390,8 +399,9 @@ The owner's token is never bound by a level: the owner reads and writes every fo
 - **Limits.** The levels are what MordomoOS serves and what it hands a run; they are not a sandbox. A provider that
   reads the whole disk is refused only when a hidden folder lies inside the run's folders: in a sibling folder, Codex
   and Cursor can still open a hidden folder by its absolute path. Claude Code's `Bash` is not covered by the deny rules;
-  it asks a human first in every profile a run uses. The full-text score of a search hit is worked out over the whole
-  index, so it can differ in the last digits from what the same search scores with the hidden folder excluded.
+  it asks a human first in every profile a run uses. A binary a device is served (an image of an artifact or of a
+  skill) is sent as it is, and the totals in the `x-total-count` header of `GET /api/runs` and `GET /api/sessions`
+  count every row, hidden ones included.
 
 ## Notes and the index worker
 

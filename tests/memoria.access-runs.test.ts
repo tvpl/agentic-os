@@ -147,9 +147,7 @@ describe("C120 a write run's credential and the folders hidden from agents", () 
       "/api/memory/journal?days=7",
     ];
     const strip = (body: unknown) =>
-      JSON.parse(JSON.stringify(body), (k, v) =>
-        ["durationMs", "generatedAt", "score"].includes(k) ? undefined : v,
-      );
+      JSON.parse(JSON.stringify(body), (k, v) => (["durationMs", "generatedAt"].includes(k) ? undefined : v));
     const seen: Record<string, unknown> = {};
     for (const url of urls) {
       const res = await w.call("GET", url, undefined, run.headers);

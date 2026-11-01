@@ -969,6 +969,73 @@ Proof: `npx vitest run tests/memoria.contract.test.ts -t "C147 "`
 Proof: `npx vitest run tests/bundle-size.test.ts -t "C31 a build within 5% of the latest recorded one passes"`
 Proof: `npm run build -w apps/command-centre && npm run bundle:check`
 
+## Checks acrescentados na construção (B1b)
+
+Plan amendments 4 and 5 (the owner's answers of 01/11/2026 to G28 and to the routes B1 left as they were). The routes
+were enumerated from the `API` table filtered by every scope a device can hold (`content`, `monitor`, `run`,
+`approve`): besides the ones amendment 5 names, `GET /api/runs/:id/children`, `GET /api/routines`,
+`/api/routines/:id/history`, `/api/routines/silent`, `/api/doctor`, `/api/system/info`, `/api/dashboards`,
+`/api/ui-preferences` and `POST /api/approvals/:id/resolve` can name a path, and are covered by C150, C153 and C159.
+"A hidden path" is one under a folder `hide` for devices, or under `artifacts/exports/`.
+
+**C149** - For a `content` device and for a write run's credential, every hit of `GET /api/memory/search` and every item
+of `answerContext` and of `candidates` of `GET /api/memory/recall` has `score` = `1 / position` in its list (1, 0.5,
+0.333…), and the owner's same two requests give each hit its bm25 as before (the value `searchFiles` gives, below 0 for
+`via: "text"`), and the recall's own scores, unchanged (amendment 4)
+Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C149 "`
+
+**C150** - With `notes/fin` `hide` for devices, a `monitor` device: `GET /api/runs` and `GET /api/runs/:id/children` list
+no run whose `cwd`, or whose skill's folder input, lies under it; `GET /api/runs/:id`, `/children`, `/stream` and `/diff`
+of such a run answer `404 not_found`; a visible run that cites a hidden path in its prompt, its error or its events has
+each written as `(pasta oculta)`, and its `filesChanged` lists no hidden file and keeps the visible one; the owner's
+answers name every path as before (amendment 5)
+Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C150 "`
+
+**C151** - On `GET /api/events` a `monitor` device gets no `run.*` event of a hidden run and no `notification.created`
+of one, and the events of a visible run that cite a hidden path carry `(pasta oculta)` instead; the owner's stream carries
+all of them as emitted (amendment 5, L-055: the stream is another way a run arrives)
+Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C151 "`
+
+**C152** - A device's `GET /api/sessions` lists no conversation whose `cwd` is hidden, and `GET /api/sessions/:id` of one
+answers `404 not_found`; a visible conversation's `runs` hold no hidden run; the owner's answers hold both (amendment 5)
+Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C152 "`
+
+**C153** - A device's `GET /api/approvals` lists no approval of a hidden run (one asked in a hidden folder, or handed
+one), `GET /api/approvals/:id` of it is `404 not_found`, and an `approve` device's `POST /api/approvals/:id/resolve` of it
+is `404 not_found` and leaves it `pending`; an approval whose run row is gone is hidden from a device while devices have
+a hidden folder, and shown once they have none (L-061); the owner lists all (amendment 5)
+Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C153 "`
+
+**C154** - A device's `GET /api/notifications` holds no notification of a hidden run, of a run whose row is gone (L-061),
+or whose `href` opens a hidden file; a visible one whose body cites a hidden path reads `(pasta oculta)`; `unread` counts
+only what the device is shown; the owner's answer holds all (amendment 5)
+Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C154 "`
+
+**C155** - A device's `GET /api/objectives` and `GET /api/objectives/:id` hold no context source whose `path` is hidden,
+keep the visible source, and write a hidden path in the description as `(pasta oculta)`; the owner's hold both (amendment 5)
+Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C155 "`
+
+**C156** - With `notes/fin` `hide` for devices, a device's `GET /api/memory/status` has `facets` equal, by value, to the
+twin's (the owner's with `fin` excluded): no tag, extension or count from the hidden files (amendment 5)
+Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C156 "`
+
+**C157** - A device's `GET /api/skills/:slug`, `/notes` and a text `/resource` of a skill write every hidden path in them
+as `(pasta oculta)`, and the owner's carry the path (amendment 5)
+Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C157 "`
+
+**C158** - A device's `GET /api/connectors` lists no connector whose `entryPoint` is hidden and writes a hidden path in a
+visible connector's `notes` as `(pasta oculta)`; `GET /api/connectors/:id/data` of the hidden one answers it `404
+not_found` (amendment 5)
+Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C158 "`
+
+**C159** - Every `GET` route of the `API` table a paired device may call (scope other than `owner`, read from the table,
+the two streams and `GET /api/artifacts/raw` and `/api/skills/:slug/resource` aside, which C116, C150, C151 and C157
+prove) answers a device that holds every scope, over a home where the hidden folder is cited by runs, sessions,
+approvals, notifications, objectives, routines, skills, connectors, settings and the notes, with no hidden path in its
+body; a route the table gains that the test does not call fails it; `GET /api/routines` lists no routine whose
+`workingDir` is hidden and `/api/routines/:id/history` of it is `404 not_found` (amendment 5, L-015)
+Proof: `npx vitest run tests/memoria.access-paths.test.ts -t "C159 "`
+
 ## Correções de construção
 
 - **C80, batch A3 (plan amendment 2).** The approved claim's `toEqual` named door 10's codes alone. Batches A1 and A2
@@ -1103,6 +1170,9 @@ blocks the build.
 | folder-level resolution (6)                                                 | no entry C110 · longest prefix C110 · separator C110 · unknown level C111 · unresolved path C111 · unreadable field C112                                                                                                                                                                                                                                                                                                                                                                                                  | -        |
 | device read routes (24)                                                     | search C113 · recall C113 · graph C113 · related C113 · links C113 · query C113 · tree C114 · maps C114 · hygiene C114 · journal C114 · routers/check C114 · recall/stats C114 · contexts C114 · facts C115 · reviews C115 · cleanup inventory C115 · cleanup scans C115 · dashboards C116 · history C116 · proposals C116 · artifacts C116 · runs diff C116 · note C117 · preview C117                                                                                                                                   | -        |
 | device settings fields hidden (3)                                           | `folderAccess` C118 · hidden indexed folders C118 · hidden context paths C118                                                                                                                                                                                                                                                                                                                                                                                                                                             | -        |
+| scores for anyone but the owner (3)                                         | device search and recall C149 · run credential search and recall C149 · the owner's bm25 C149                                                                                                                                                                                                                                                                                                                                                                                                                             | -        |
+| device routes that cite paths, amendment 5 (24)                             | runs list C150 · run C150 · children C150 · run stream C150 · run diff C150 · event stream C151 · sessions C152 · session C152 · approvals C153 · approval C153 · approval resolve C153 · notifications C154 · objectives C155 · objective C155 · memory status facets C156 · skill C157 · skill notes C157 · skill resource C157 · connectors C158 · connector data C158 · routines C159 · routine history C159 · routines silent C159 · every other device GET C159                                                     | -        |
+| a lookup that is missing fails closed, amendment 5 (2)                      | approval of a run that is gone C153 · notification of a run that is gone C154                                                                                                                                                                                                                                                                                                                                                                                                                                             | -        |
 | run credential read routes (6)                                              | search C120 · recall C120 · maps C120 · journal C120 · facts C120 · recall/stats C120                                                                                                                                                                                                                                                                                                                                                                                                                                     | -        |
 | prompt parts that name folders (2)                                          | context map C121 · routers C121                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | -        |
 | ways a run is created (11)                                                  | `POST /api/runs` C125 · `POST /api/skills/:slug/run` C125 · context `readDirs` C125 · retry C131 · children C131 · sessions continue C131 · routines run-now C131 · scheduler C131 · objectives C131 · dashboard question C131 · launch after approval C130                                                                                                                                                                                                                                                               | -        |

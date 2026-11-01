@@ -59,7 +59,7 @@ function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: s
   }
 }
 import { httpError, principalName, requireAdapter, requireProvider, startedByOf } from "./common.js";
-import { accessView, settingsForDevice, type AccessView } from "../access.js";
+import { accessView, redactorFor, settingsForDevice, type AccessView } from "../access.js";
 import { requireContext } from "./contexts.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -624,11 +624,16 @@ export function registerSystemRoutes(
     return { days: q.days, samples, daily: dailyPoints(samples) };
   });
 
-  bind(app, "approvals.list", async () => ctx.approvals.list("pending"));
+  // A device is told of no approval of a run in, or that would start in, a folder hidden from devices (amendment 5).
+  bind(app, "approvals.list", async (_input, req) => {
+    const device = redactorFor(ctx, req.principal);
+    return ctx.approvals.list("pending").filter((a) => !device?.hiddenApproval(a));
+  });
   /** One approval by id, any status (the permission tool polls this). */
   bind(app, "approvals.get", async ({ params: { id } }, req) => {
     const approval = ctx.approvals.get(id);
-    if (!approval) throw httpError(404, "Approval not found");
+    if (!approval || redactorFor(ctx, req.principal)?.hiddenApproval(approval))
+      throw httpError(404, "Approval not found");
     if (req.brokerRunId && approval.payload.runId !== req.brokerRunId)
       throw httpError(403, "This approval belongs to another run", "forbidden");
     return approval;
@@ -679,6 +684,12 @@ export function registerSystemRoutes(
     return approval;
   });
   bind(app, "approvals.resolve", async ({ params: { id }, body: { decision, answers } }, req) => {
+    // A device decides no approval it is never told of (amendment 5): it is not there for it.
+    const device = redactorFor(ctx, req.principal);
+    if (device) {
+      const approval = ctx.approvals.get(id);
+      if (!approval || device.hiddenApproval(approval)) throw httpError(404, "Approval not found");
+    }
     if (req.brokerRunId) {
       // The broker only gives up on its own prompt (timeout); approving is the owner's.
       const approval = ctx.approvals.get(id);

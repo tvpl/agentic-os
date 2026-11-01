@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { RunEvent, Settings } from "@mordomo/core";
 import {
   NotRegularFileError,
@@ -12,7 +12,7 @@ import {
   statWorkspacePath,
 } from "@mordomo/core/internal";
 import { currentRunFrameVersion, type RunFrameType } from "@mordomo/contracts";
-import { accessView } from "../access.js";
+import { accessView, redactorFor } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { grantedRoots, httpError, startedByOf } from "./common.js";
@@ -30,17 +30,28 @@ function framed<T extends { type: RunFrameType }>(frame: T): T & { v: number } {
 }
 
 export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
-  bind(app, "runs.list", async ({ query: q }, _req, reply) => {
+  bind(app, "runs.list", async ({ query: q }, req, reply) => {
     // Body stays a plain array (other views depend on it); the total for pagination travels in a header.
     reply.header("x-total-count", String(ctx.runs.count(q)));
+    // A device is told of no run that ran in, or was handed, a folder hidden from devices (amendment 5).
+    const device = redactorFor(ctx, req.principal);
     // Complete requests may contain private context and are needed only on the
     // detail/retry path. Keep list payloads compact and summary-only.
-    return ctx.runs.list(q).map(({ request: _request, ...run }) => run);
+    return ctx.runs
+      .list(q)
+      .filter((run) => !device?.hiddenRun(run.id))
+      .map(({ request: _request, ...run }) => run);
   });
 
-  bind(app, "runs.get", async ({ params: { id } }) => {
+  /** `404` for a run a device is never told of, as for one that is not there (amendment 5). */
+  const visibleRun = (id: string, req: FastifyRequest) => {
     const run = ctx.runs.get(id);
-    if (!run) throw httpError(404, "Run not found");
+    if (!run || redactorFor(ctx, req.principal)?.hiddenRun(id)) throw httpError(404, "Run not found");
+    return run;
+  };
+
+  bind(app, "runs.get", async ({ params: { id } }, req) => {
+    const run = visibleRun(id, req);
     return { run, events: ctx.runs.eventsFor(id).map((e) => e.event) };
   });
 
@@ -99,9 +110,12 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   );
 
   /** The children of a run (a squad), newest first. */
-  bind(app, "runs.children.list", async ({ params: { id } }) => {
-    if (!ctx.runs.get(id)) throw httpError(404, "Run not found");
-    return ctx.runs.list({ parentRunId: id, limit: 50 }).filter((r) => r.id !== id);
+  bind(app, "runs.children.list", async ({ params: { id } }, req) => {
+    visibleRun(id, req);
+    const device = redactorFor(ctx, req.principal);
+    return ctx.runs
+      .list({ parentRunId: id, limit: 50 })
+      .filter((r) => r.id !== id && !device?.hiddenRun(r.id));
   });
 
   /**
@@ -112,8 +126,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
    * same rules as `/api/memory/preview`.
    */
   bind(app, "runs.diff", async ({ params: { id }, query: { file } }, req) => {
-    const run = ctx.runs.get(id);
-    if (!run) throw httpError(404, "Run not found");
+    const run = visibleRun(id, req);
     const cwd = run.cwd ?? ctx.paths.home;
     const target = path.isAbsolute(file) ? file : path.join(cwd, file);
     const roots = [...grantedRoots(ctx), ctx.paths.artifacts];
@@ -145,9 +158,16 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
    * `Last-Event-ID` resumes after the last frame the client saw.
    */
   bind(app, "runs.stream", async ({ params: { id } }, req, reply) => {
-    if (!ctx.runs.get(id)) throw httpError(404, "Run not found");
-
-    const ch = openSse(req, reply);
+    visibleRun(id, req);
+    // A device's frames have hidden paths written as `(pasta oculta)` (amendment 5): the stream bypasses the hooks.
+    const device = redactorFor(ctx, req.principal);
+    const sse = openSse(req, reply);
+    const ch: typeof sse = device
+      ? Object.assign(Object.create(sse) as typeof sse, {
+          send: (frame: Parameters<typeof sse.send>[0]) =>
+            sse.send({ ...frame, data: device.value(frame.data) }),
+        })
+      : sse;
     let lastId = lastEventId(req) ?? 0;
     let finished = false;
     // Live events that arrive while the catch-up replay is still running are

@@ -61,6 +61,8 @@ export interface HygieneOptions {
   now?: number;
   /** Today's policy over stored rows (`MemoryIndexer.rowFilter`): links count only between files it allows. */
   allow?: (row: { root: string; rel: string }) => boolean;
+  /** Which router pointers the caller may be told of (`checkRouters`'s `allow`, cerebro-memoria-confiavel G29). */
+  allowPath?: (absolute: string) => boolean;
 }
 
 const DAY = 86_400_000;
@@ -111,7 +113,7 @@ export function memoryHygiene(
   }
 
   // 2. Dangling router pointers (reuses the router checker).
-  const issues = checkRouters(db, paths, settings);
+  const issues = checkRouters(db, paths, settings, opts.allowPath);
   counts["dangling-link"] = issues.length;
   for (const issue of issues.slice(0, perKind)) {
     items.push({ kind: "dangling-link", id: issue.file, name: path.basename(issue.file), detail: issue.problem, action: "open" });

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   ConnectorSchema,
   fetchConnectorData,
@@ -6,6 +6,7 @@ import {
   runAudit,
   setupChecklist,
 } from "@mordomo/core/internal";
+import { redactorFor } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
@@ -14,7 +15,14 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
   // One cache per service, the one the dashboards read through too (cerebro-paineis, amendment 10).
   const cache = ctx.connectorCache;
 
-  bind(app, "connectors.list", async () => ctx.connectors.list());
+  // A connector whose entry point lies in a folder hidden from devices is not there for a device (amendment 5).
+  const hiddenConnector = (req: FastifyRequest, connector: { entryPoint?: string | null }) => {
+    const device = redactorFor(ctx, req.principal);
+    return Boolean(device && connector.entryPoint && device.hiddenPath(connector.entryPoint));
+  };
+  bind(app, "connectors.list", async (_input, req) =>
+    ctx.connectors.list().filter((c) => !hiddenConnector(req, c)),
+  );
 
   bind(app, "connectors.audit", async () =>
     runAudit(ctx.connectors, undefined, homeConfigFilesOf(ctx.providers.manifests())),
@@ -25,9 +33,9 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
    * mail, … Never writes; the client refuses any tool outside the connector's
    * declared read mapping. `?refresh=1` bypasses the 5-minute TTL cache.
    */
-  bind(app, "connectors.data", async ({ params: { id }, query: { refresh } }) => {
+  bind(app, "connectors.data", async ({ params: { id }, query: { refresh } }, req) => {
     const connector = ctx.connectors.get(id);
-    if (!connector) throw httpError(404, "Connector not found");
+    if (!connector || hiddenConnector(req, connector)) throw httpError(404, "Connector not found");
     const settings = ctx.settings();
     const data = await cache.read(
       id,

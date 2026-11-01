@@ -57,7 +57,7 @@ import {
   parseNaturezaList,
   type ReadScope,
 } from "@mordomo/core/internal";
-import { accessView, type AccessView } from "../access.js";
+import { accessView, rankScored, type AccessView } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
@@ -166,9 +166,15 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     disposeJournalHooks();
   });
 
-  bind(app, "memory.status", async ({ query: q }) => {
+  bind(app, "memory.status", async ({ query: q }, req) => {
     // A work context counts the facets over its own files; the rest of the answer is the index's (cerebro-contextos AC 14).
-    const within = contextFilter(ctx, q.context);
+    // A device counts none of a folder hidden from it (cerebro-memoria-confiavel, amendment 5).
+    const view = accessView(ctx, req.principal);
+    const context = contextFilter(ctx, q.context, view.settings);
+    const policy = view.audience === "devices" ? view.rowFilter() : null;
+    const within = policy
+      ? (row: { root: string; rel: string }) => policy(row) && (!context || context(row))
+      : context;
     const last = ctx.indexer.lastIndex();
     const facets = listFacets(ctx.db, within);
     return { lastIndex: last, facets, indexing: ctx.indexHost.status(), semantic: ctx.semantic.status() };
@@ -194,7 +200,12 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       ? (row: Row) => policy(row) && readable(reach.scope, path.join(row.root, row.rel))
       : policy;
     const allow = within ? (row: Row) => scoped(row) && within(row) : scoped;
-    return ctx.semantic.search({ ...filters, ...natureFilters(q), query: q.q, allow }, mode ?? "auto");
+    const hits = await ctx.semantic.search(
+      { ...filters, ...natureFilters(q), query: q.q, allow },
+      mode ?? "auto",
+    );
+    // Anyone but the owner is given the score of a hit's place in the list, never the bm25 of the whole index (amendment 4).
+    return view.audience === null ? hits : rankScored(hits);
   });
 
   bind(app, "memory.graph", async ({ query: q }, req) => {
@@ -401,7 +412,14 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       ...natureFilters(q),
     });
     if (q.record !== false) recordRecall(ctx.db, result);
-    return result;
+    // Anyone but the owner is given scores by place in each list (amendment 4).
+    return view.audience === null
+      ? result
+      : {
+          ...result,
+          answerContext: rankScored(result.answerContext),
+          candidates: rankScored(result.candidates),
+        };
   });
 
   bind(app, "memory.recall.stats", async ({ query: { limit } }, req) => {
@@ -461,7 +479,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
         // Same verdict as GET /api/routines/silent, so both views agree.
         silent: ctx.scheduler.silent(q.silentRoutineDays ?? 30),
       },
-      { ...q, allow: view.rowFilter() },
+      { ...q, allow: view.rowFilter(), allowPath: (target) => view.allowsPath(target) },
     );
   });
 

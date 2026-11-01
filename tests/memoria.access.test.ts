@@ -85,13 +85,16 @@ function stable(body: unknown): unknown {
 }
 
 /**
- * C113 as built (stopped, owner question G28): the full-text `score` of a hit is SQLite FTS5's bm25, worked out over
- * every row of the index, so the twin's (whose index has no row of the excluded folder) differs in the last digits
- * from a device's (whose index has them, left out when read). The hits, their order and every other field are
- * compared by value; the score is compared by the order it gives, not by its value.
+ * The twin's answer as anyone but the owner is given it (plan amendment 4): the search's and the recall's scores are `1 /
+ * position` in the list returned; every other field, and every other route, as the owner's.
  */
-function withoutScore(body: unknown): unknown {
-  return JSON.parse(JSON.stringify(stable(body)), (key, value) => (key === "score" ? undefined : value));
+function asNonOwner(url: string, body: Json): Json {
+  const ranked = (list: Json[]) => list.map((item, i) => ({ ...item, score: 1 / (i + 1) }));
+  if (url.startsWith("/api/memory/search")) return ranked(body as unknown as Json[]) as unknown as Json;
+  if (url.startsWith("/api/memory/recall?")) {
+    return { ...body, answerContext: ranked(body.answerContext), candidates: ranked(body.candidates) };
+  }
+  return body;
 }
 
 const idOf = (w: MemoriaWorld, file: string): number =>
@@ -305,7 +308,7 @@ describe("C113 the index readers a device calls, against the twin", () => {
       const res = await w.call("GET", url, undefined, device);
       expect(res.status, `${url} ${JSON.stringify(res.body)}`).toBe(200);
       expect(pathsIn(res.body), url).not.toContain(secret);
-      seen[url] = withoutScore(res.body);
+      seen[url] = stable(res.body);
     }
     // the owner, before the twin, does see the hidden note on each path (the case is not empty)
     const ownerRecall = await w.call("GET", "/api/memory/recall?q=orcamento%20trimestre&record=false");
@@ -316,7 +319,7 @@ describe("C113 the index readers a device calls, against the twin", () => {
     for (const url of urls) {
       const res = await w.call("GET", url);
       expect(res.status, url).toBe(200);
-      expect(seen[url], url).toEqual(withoutScore(res.body));
+      expect(seen[url], url).toEqual(stable(asNonOwner(url, res.body)));
     }
   });
 });

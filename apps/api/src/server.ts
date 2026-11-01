@@ -60,6 +60,7 @@ import { isApiRequest, isApiRoutePath, rewriteApiUrl, successorHeaders } from ".
 import { SlidingWindow } from "./rateLimit.js";
 import { registerOpenApiRoute } from "./openapi.js";
 import { installResponseCheck, responsesValidated } from "./contract.js";
+import { redactorFor } from "./access.js";
 import { principalName, type Principal } from "./routes/common.js";
 import { ticketKey } from "./tickets.js";
 import { ignoredBindMessage, listenPlan } from "./transport.js";
@@ -626,6 +627,15 @@ export async function buildServer(
 
   app.addHook("onClose", async () => {
     closeAllSse(app);
+  });
+
+  // What a paired device is told (cerebro-memoria-confiavel, amendment 5): every JSON answer leaves out the items that live
+  // in a folder hidden from devices, and writes a hidden path in free text as `(pasta oculta)`. Before the contract
+  // check, so the answer checked is the one sent.
+  app.addHook("preSerialization", async (req, _reply, payload) => {
+    if (req.principal?.kind !== "device" || payload === null || typeof payload !== "object") return payload;
+    if (Buffer.isBuffer(payload)) return payload;
+    return redactorFor(ctx, req.principal)!.value(payload);
   });
 
   // Development and tests: a response that departs from its route's entry is a 500 that names the paths.

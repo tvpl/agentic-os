@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { OsEvent, Settings } from "@mordomo/core";
 import { currentEventVersion } from "@mordomo/contracts/events";
-import { accessView, settingsForDevice } from "../access.js";
+import { accessView, redactorFor, settingsForDevice } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { ticketKey } from "../tickets.js";
@@ -68,10 +68,18 @@ export function registerEventRoutes(app: FastifyInstance, ctx: AppContext): void
         },
       } as OsEvent;
     };
+    // A device is told of no event of a hidden run, notification or approval, and every hidden path in the others is
+    // written as `(pasta oculta)` (cerebro-memoria-confiavel, amendment 5).
     const push = (e: OsEvent) => {
       if (e.id <= seen) return; // already sent (replay/live overlap)
       seen = e.id;
-      ch.send({ id: e.id, event: e.type, data: told(e) });
+      if (!device) {
+        ch.send({ id: e.id, event: e.type, data: e });
+        return;
+      }
+      const redactor = redactorFor(ctx, req.principal)!;
+      if (redactor.hiddenEvent(e)) return;
+      ch.send({ id: e.id, event: e.type, data: redactor.value(told(e)) });
     };
     // Subscribe before replaying so nothing emitted in between is lost.
     ch.onClose(ctx.events.subscribe(push));

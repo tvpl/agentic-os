@@ -134,3 +134,145 @@ export function settingsForDevice(view: AccessView, settings: Settings): Omit<Se
       .filter((c) => c.paths.length > 0),
   };
 }
+
+// ---- batch B1b: what a device is told of beyond the files themselves (plan amendments 4 and 5) ---------------------
+
+/**
+ * The scores of a list as a caller that is not the owner sees them (cerebro-memoria-confiavel, amendment 4): `1 /
+ * position` in the list returned. The full-text score (FTS5's bm25) is worked out over every row of the index, hidden
+ * ones included, so it would change with a hidden folder and let a caller infer what it holds.
+ */
+export function rankScored<T extends { score: number }>(list: readonly T[]): T[] {
+  return list.map((item, i) => ({ ...item, score: 1 / (i + 1) }));
+}
+
+/** What a hidden path is written as in free text a device reads (amendment 5). */
+export const HIDDEN_PATH_TEXT = "(pasta oculta)";
+
+/** The keys whose value names the place an item lives in: an item whose such value is hidden is no item for a device. */
+const PLACE_KEYS = ["path", "sourcePath", "cwd", "workingDir"] as const;
+
+/** An absolute path inside free text: from a `/` not inside a word, up to a space or a delimiter. */
+const PATH_IN_TEXT = /(?<![\w/.~%-])\/[^\s"'`<>()[\]{},;|]+/g;
+
+export interface DeviceRedactor {
+  /** Nothing is hidden from devices but `artifacts/exports/` (no entry gives devices `hide`). */
+  readonly restricts: boolean;
+  /** Whether an absolute path is one a device is never told of. */
+  hiddenPath(absolute: string): boolean;
+  /** `text` with every hidden path in it written as `(pasta oculta)`, and a link to a hidden file as a whole. */
+  text(text: string): string;
+  /**
+   * `value`, deep: a list element whose place (`path`, `sourcePath`, `cwd`, `workingDir`), or that is a string naming a
+   * hidden path, is left out; every other string has its hidden paths written as `(pasta oculta)`.
+   */
+  value<T>(value: T): T;
+  /** Whether a run is one a device is never told of: it ran in a hidden folder, or was handed one; a run that is not there counts as hidden while devices have hidden folders (fail closed, L-061). */
+  hiddenRun(runId: string | null | undefined): boolean;
+  /** Whether an approval is one a device is never told of: its run is hidden, or the run it would start is in a hidden folder. */
+  hiddenApproval(approval: { payload?: unknown } | null | undefined): boolean;
+  /** Whether a notification is one a device is never told of: its run or its approval is hidden, or its link points at a hidden file. */
+  hiddenNotification(n: { runId?: string | null; approvalId?: string | null; href?: string | null }): boolean;
+  /** Whether an event of the stream is one a device is never told of (the run, notification or approval it is about). */
+  hiddenEvent(event: { type: string; payload?: unknown }): boolean;
+}
+
+export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedactor {
+  const settings = ctx.settings();
+  const restricts = view.access.restricts("devices");
+  // With a list that could not be read every path is hidden from devices; free text is judged inside the places a file
+  // of the owner can be (the home, the indexed folders), so `/api/…` or `/brain/…` stay as they are.
+  const everywhere = view.access.entries.some((e) => e.all && e.devices === "hide");
+  const places = [ctx.paths.home, ...settings.indexedFolders.map((f) => f.path)].flatMap((p) => [
+    path.resolve(p),
+    realpathLenient(p),
+  ]);
+  const hiddenPath = (absolute: string): boolean => {
+    if (!path.isAbsolute(absolute)) return false;
+    if (everywhere && !places.some((p) => isInside(p, absolute))) return false;
+    return view.hidden(absolute);
+  };
+  const text = (input: string): string => {
+    if (targetsHidden(input, hiddenPath)) return HIDDEN_PATH_TEXT;
+    return input.replace(PATH_IN_TEXT, (token) => {
+      const bare = token.replace(/[.:]+$/, "");
+      return hiddenPath(bare) ? HIDDEN_PATH_TEXT + token.slice(bare.length) : token;
+    });
+  };
+  const placeHidden = (item: unknown): boolean => {
+    if (typeof item === "string") return path.isAbsolute(item) && hiddenPath(item);
+    if (item === null || typeof item !== "object" || Array.isArray(item)) return false;
+    const o = item as Record<string, unknown>;
+    return PLACE_KEYS.some((k) => typeof o[k] === "string" && hiddenPath(o[k] as string));
+  };
+  const value = <T>(input: T): T => {
+    const walk = (node: unknown): unknown => {
+      if (typeof node === "string") return text(node);
+      if (Array.isArray(node)) return node.filter((item) => !placeHidden(item)).map(walk);
+      if (node !== null && typeof node === "object") {
+        return Object.fromEntries(
+          Object.entries(node as Record<string, unknown>).map(([k, v]) => [k, walk(v)]),
+        );
+      }
+      return node;
+    };
+    return walk(input) as T;
+  };
+  const runHidden = new Map<string, boolean>();
+  const hiddenRun = (runId: string | null | undefined): boolean => {
+    if (!runId) return false;
+    const known = runHidden.get(runId);
+    if (known !== undefined) return known;
+    const run = ctx.runs.get(runId);
+    let hidden: boolean;
+    if (!run) hidden = restricts;
+    else {
+      const inputs = run.request?.kind === "skill" ? run.request.inputs : {};
+      hidden =
+        (run.cwd !== null && hiddenPath(run.cwd)) ||
+        Object.values(inputs).some(
+          (v) => typeof v === "string" && path.isAbsolute(v.trim()) && hiddenPath(v.trim()),
+        );
+    }
+    runHidden.set(runId, hidden);
+    return hidden;
+  };
+  const hiddenApproval = (approval: { payload?: unknown } | null | undefined): boolean => {
+    const payload = (approval?.payload ?? {}) as { runId?: unknown; input?: { cwd?: unknown } };
+    if (typeof payload.runId === "string" && hiddenRun(payload.runId)) return true;
+    return typeof payload.input?.cwd === "string" && hiddenPath(payload.input.cwd);
+  };
+  const hiddenNotification = (n: {
+    runId?: string | null;
+    approvalId?: string | null;
+    href?: string | null;
+  }): boolean => {
+    if (n.runId && hiddenRun(n.runId)) return true;
+    if (n.approvalId) {
+      const approval = ctx.approvals.get(n.approvalId);
+      if (approval ? hiddenApproval(approval) : restricts) return true;
+    }
+    return typeof n.href === "string" && targetsHidden(n.href, hiddenPath);
+  };
+  const hiddenEvent = (event: { type: string; payload?: unknown }): boolean => {
+    const p = (event.payload ?? {}) as Record<string, unknown>;
+    // An index pass names its own pass as `runId`, not a run of an agent.
+    if (!event.type.startsWith("index.") && typeof p.runId === "string" && hiddenRun(p.runId)) return true;
+    if (event.type.startsWith("notification.") && typeof p.id === "string" && "title" in p) {
+      return hiddenNotification(
+        p as { runId?: string | null; approvalId?: string | null; href?: string | null },
+      );
+    }
+    if (event.type.startsWith("approval.") && typeof p.id === "string") {
+      const approval = ctx.approvals.get(p.id);
+      return approval ? hiddenApproval(approval) : restricts;
+    }
+    return false;
+  };
+  return { restricts, hiddenPath, text, value, hiddenRun, hiddenApproval, hiddenNotification, hiddenEvent };
+}
+
+/** The redactor of a paired device's request, or null for any other caller. */
+export function redactorFor(ctx: AppContext, principal: Principal | null | undefined): DeviceRedactor | null {
+  return principal?.kind === "device" ? deviceRedactor(ctx, accessView(ctx, principal)) : null;
+}
