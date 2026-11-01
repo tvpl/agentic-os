@@ -610,12 +610,12 @@ describe("C82 the seven routes and the agent's writes in docs/security.md", () =
       const expected = Object.values(EXPECTED_ROUTE_SCOPES).filter((s) => s === scope).length;
       expect([declared, listed], scope).toEqual([expected, expected]);
     }
-    // four reads and three writes on top of the feature's base
+    // four reads and three writes on top of the feature's base (and part B's export and import, C138: + 2)
     const base = atBase("docs/security.md");
     const count = (scope: string, page: string) => Number(/\((\d+)\)/.exec(rowOf(scope, page))?.[1]);
     expect([count("content", security), count("owner", security)]).toEqual([
       count("content", base) + 4,
-      count("owner", base) + 3,
+      count("owner", base) + 3 + 2,
     ]);
 
     // Door 9 and the assumption on the MCP's mark, each said once in the prose.

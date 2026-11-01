@@ -59,6 +59,9 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "GET /api/memory/proposals/:id": "content",
   "POST /api/memory/proposals": "owner",
   "POST /api/memory/proposals/:id/decide": "owner",
+  // cerebro-memoria-confiavel, doors 14 and 15: exporting and importing a folder is the owner's alone
+  "POST /api/memory/export": "owner",
+  "POST /api/memory/import": "owner",
   "GET /api/memory/graph": "content",
   "GET /api/memory/hygiene": "content",
   "POST /api/memory/index": "owner",

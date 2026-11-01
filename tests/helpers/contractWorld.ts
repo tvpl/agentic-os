@@ -931,6 +931,23 @@ export const SCENARIOS: Record<string, Scenario> = {
       });
     },
   },
+  // cerebro-memoria-confiavel, doors 14 and 15: a folder of memory/ exported, a folder of the workspace imported.
+  [key("POST", "/api/memory/export")]: {
+    run: (w) => {
+      const dir = path.join(w.ctx.paths.memory, "notes", "cenario-export");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "a.md"), "# A\n");
+      return w.call("POST", "/api/memory/export", { folder: dir });
+    },
+  },
+  [key("POST", "/api/memory/import")]: {
+    run: (w) => {
+      const dir = path.join(w.workspace, "to-import-notes");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "b.md"), "# B\n");
+      return w.call("POST", "/api/memory/import", { sourceDir: dir, folder: `importada-${uuid()}` });
+    },
+  },
   [key("POST", "/api/pair/start")]: { run: (w) => w.call("POST", "/api/pair/start", { name: "phone 2" }) },
   [key("POST", "/api/pair/claim")]: {
     run: async (w) => {

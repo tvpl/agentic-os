@@ -1675,6 +1675,66 @@ export const memoryRoutes = {
       ),
     ],
   }),
+  "memory.export": route({
+    method: "POST",
+    path: "/api/memory/export",
+    summary:
+      "Copy a folder the owner reads (under memory/ or an indexed folder) to artifacts/exports/<name>-YYYY-MM-DD-HHMM/ with mordomo-export.json, the path, sha256 and size of each file (.specs/features/cerebro-memoria-confiavel, door 14)",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({ folder: z.string().min(1).max(4096).refine(isAbsolutePath, "an absolute path") }),
+    responses: { 200: z.object({ path: z.string(), files: z.number(), bytes: z.number() }) },
+    errors: [
+      err(
+        403,
+        "forbidden_path",
+        "The folder is outside what the owner reads, or holds the home's config/ or logs/",
+      ),
+      notFound("The folder"),
+      err(409, "exists", "The 99 export folders of this name and minute are taken; nothing was copied"),
+      err(
+        413,
+        "folder_too_large",
+        "More than 2 000 files, 500 folders, 64 MiB, 12 levels, or a file of 8 MiB; nothing is left",
+      ),
+    ],
+  }),
+  "memory.import": route({
+    method: "POST",
+    path: "/api/memory/import",
+    summary:
+      "Copy a folder the owner reads, outside memory/, into a new memory/notes/<folder>/, each copied note with an import version (door 15)",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      sourceDir: z.string().min(1).max(4096).refine(isAbsolutePath, "an absolute path"),
+      /** The new folder's name, by the slug rule; absent: the source's own name. */
+      folder: z.string().min(1).max(200).optional(),
+    }),
+    responses: {
+      200: z.object({
+        folder: z.string(),
+        files: z.number(),
+        bytes: z.number(),
+        /** What was left out, relative to the source: links, secret files, what the filter refuses. */
+        skipped: z.array(z.string()),
+      }),
+    },
+    errors: [
+      err(
+        403,
+        "forbidden_path",
+        "The source is outside what the owner reads, or holds the home's config/ or logs/",
+      ),
+      notFound("The source folder"),
+      err(409, "exists", "memory/notes/<folder>/ already exists; nothing was copied"),
+      err(
+        413,
+        "folder_too_large",
+        "More than 2 000 files, 500 folders, 64 MiB, 12 levels, or a file of 8 MiB; nothing is left",
+      ),
+    ],
+  }),
   "memory.query": route({
     method: "GET",
     path: "/api/memory/query",

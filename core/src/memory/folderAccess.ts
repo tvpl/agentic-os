@@ -153,7 +153,7 @@ export function resolveFolderAccess(env: FolderAccessEnv): FolderAccess {
 }
 
 /** The folder a device is never served, whatever the levels say (G11): where the exports land (door 14). */
-export function exportsDir(paths: MordomoPaths): string {
+export function exportsDir(paths: Pick<MordomoPaths, "artifacts">): string {
   return path.join(paths.artifacts, "exports");
 }
 

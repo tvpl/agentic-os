@@ -16,6 +16,8 @@ import {
   recordFileVersion,
   restoreVersion,
   decideProposal,
+  exportFolder,
+  importFolder,
   listProposals,
   planNewNote,
   readProposal,
@@ -608,6 +610,16 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     const decided = decideProposal(historyEnv(), id, body);
     for (const w of decided.written) reindex(path.join(ctx.paths.memory, ...w.path.split("/")));
     return decided;
+  });
+
+  // ---- export and import a folder (.specs/features/cerebro-memoria-confiavel, doors 14 and 15) ----
+
+  bind(app, "memory.export", async ({ body: { folder } }) => exportFolder(historyEnv(), folder));
+
+  bind(app, "memory.import", async ({ body }) => {
+    const { written, ...done } = importFolder(historyEnv(), body);
+    ctx.indexer.requestIndexPaths(written).catch(() => undefined);
+    return done;
   });
 
   /** Dataview-style query over inline `key:: value` fields: `where=key`, `key:value` or `key:~substring`. */

@@ -110,6 +110,9 @@ const NOT_A_FILE_ROUTES: ReadonlySet<string> = new Set([
   "POST /api/connectors",
   // cerebro-faxina-guiada, door 4: the undo reads the manifest it is given through the safe reader (strict).
   "POST /api/memory/cleanup/undo",
+  // cerebro-memoria-confiavel, doors 14 and 15: the export and the import copy a folder through the safe reader.
+  "POST /api/memory/export",
+  "POST /api/memory/import",
   "POST /api/memory/journal/append",
   "POST /api/memory/routers",
   "POST /api/routines",

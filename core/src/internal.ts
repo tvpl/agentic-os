@@ -144,6 +144,7 @@ export { reviewsDue } from "./memory/reviews.js";
 export { decideReview } from "./memory/reviewDecisions.js";
 export { getVersion, listVersions, recordFileVersion, recordMove, restoreVersion } from "./memory/history.js";
 export { accessSettings, exportsDir, resolveFolderAccess, type FolderAccess } from "./memory/folderAccess.js";
+export { exportFolder, importFolder } from "./memory/transfer.js";
 export {
   ProposalValidationError,
   decideProposal,

@@ -1294,6 +1294,45 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ['        "memory-history",', "      ]);"],
       head: ['        "memory-history",', '        "memory-proposals",', "      ]);"],
     },
+    // cerebro-memoria-confiavel, batch B2, added POST /api/memory/export and POST /api/memory/import (owner). Each
+    // amends the head of batch A2's amendment above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel B2: the export and the import under /api",
+      base: ["    expect(routes).toHaveLength(160);"],
+      head: ["    expect(routes).toHaveLength(162);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel B2: owners and scoped routes, with the export and the import",
+      base: ["    expect([owners, scoped]).toEqual([84, 76]);"],
+      head: ["    expect([owners, scoped]).toEqual([86, 76]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel B2: the registered routes, with the export and the import",
+      base: ["    expect(Object.keys(registered)).toHaveLength(160);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(162);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel B2: the routes of each scope, with the export and the import",
+      times: 2,
+      base: ["toEqual({ owner: 84, monitor: 33, content: 36, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 86, monitor: 33, content: 36, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel B2: the routes after the pairing passes, with the export and the import",
+      base: ["    expect(apiRoutes()).toHaveLength(160);"],
+      head: ["    expect(apiRoutes()).toHaveLength(162);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-memoria-confiavel B2: the operations of the route document, with the export and the import",
+      base: ["    expect(operations).toBe(162);"],
+      head: ["    expect(operations).toBe(164);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

@@ -297,3 +297,31 @@ describe("C75 the sentinel's local day", () => {
     expect(await fired(NOW)).toEqual([]);
   });
 });
+
+describe("C132 the export folder's local minute", () => {
+  it("C132 at 23:30 local of 2026-10-31 (02:30 of 11-01 in UTC) notes/projetos exports to artifacts/exports/projetos-2026-10-31-2330, and again that minute to …-2330-2", async () => {
+    expect(process.env.TZ).toBe("America/Sao_Paulo");
+    expect(new Date(NOW).toISOString().slice(0, 16)).toBe("2026-11-01T02:30");
+    const folder = path.join(w.memory, "notes", "projetos");
+    w.put(path.join(folder, "plano.md"), "# Plano\n");
+    let window: [number, number] = [0, 0];
+    const exportAt = (when: number) =>
+      at(when, async () => {
+        const from = Date.now();
+        const res = await w.call("POST", "/api/memory/export", { folder });
+        window = [from, Date.now()];
+        return res;
+      });
+    const out = path.join(fs.realpathSync(w.home), "artifacts", "exports", "projetos-2026-10-31-2330");
+    const first = await exportAt(NOW);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(first.body).toEqual({ path: out, files: 1, bytes: 8 });
+    const manifest = JSON.parse(fs.readFileSync(path.join(out, "mordomo-export.json"), "utf8")) as Json;
+    expect(manifest.exportedAt).toBeGreaterThanOrEqual(window[0]);
+    expect(manifest.exportedAt).toBeLessThanOrEqual(window[1]);
+    expect(new Date(manifest.exportedAt as number).getMinutes()).toBe(30);
+    const second = await exportAt(NOW + 25_000);
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    expect(second.body.path).toBe(`${out}-2`);
+  });
+});

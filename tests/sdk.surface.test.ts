@@ -184,6 +184,9 @@ describe("S5 the surface is a closed list", () => {
         // a finished cleanup scan, worked out again over a device's view (C115)
         "scanCleanupScope",
         "storedRowFilter",
+        // cerebro-memoria-confiavel batch B2: export and import a folder (doors 14 and 15)
+        "exportFolder",
+        "importFolder",
       ].sort(),
     );
   });

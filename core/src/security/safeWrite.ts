@@ -566,6 +566,14 @@ export const DEFAULT_COPY_LIMITS: CopyLimits = {
   maxDepth: 12,
 };
 
+/** What a copy tells its caller (an export's manifest, an import's versions and its list of what stayed behind). */
+export interface CopyReport {
+  /** Each file copied: its path relative to the source, `/`-separated, and the bytes written. */
+  copied?: (rel: string, bytes: Uint8Array) => void;
+  /** Gains the path, relative to the source, of each entry left behind (a link, a secret, what the filter refuses). */
+  skipped?: string[];
+}
+
 /** The folder holds the home's `config/` or `logs/` (it is the home, or a folder above it). */
 /**
  * Copy a folder the scope grants (an import source, a downloaded bundle) into
@@ -587,8 +595,10 @@ export function copyTreeWithoutLinks(
   targetScope: ReadScope,
   target: string,
   limits: CopyLimits = DEFAULT_COPY_LIMITS,
+  report: CopyReport = {},
 ): { files: number; bytes: number } {
   const root = resolveReadable(sourceScope, source).real;
+  const relOf = (full: string) => path.relative(root, full).split(path.sep).join("/");
   assertHoldsNoPrivateFolder(sourceScope, root);
   const realTarget = realpathLenient(path.resolve(target));
   let files = 0;
@@ -599,7 +609,10 @@ export function copyTreeWithoutLinks(
   const copyDir = (dir: string, into: string, depth: number): void => {
     if (depth > limits.maxDepth) throw tooBig(`more than ${limits.maxDepth} levels deep`);
     fs.mkdirSync(into, { recursive: true });
-    for (const entry of listWorkspaceDir(sourceScope, dir)) {
+    const left: string[] = [];
+    const entries = listWorkspaceDir(sourceScope, dir, left);
+    for (const full of left) report.skipped?.push(relOf(full));
+    for (const entry of entries) {
       const to = path.join(into, entry.name);
       // The target is not part of what is copied (it may lie inside the source).
       if (entry.path === realTarget) continue;
@@ -616,7 +629,9 @@ export function copyTreeWithoutLinks(
           throw tooBig(`${entry.name} is larger than ${limits.maxFileBytes} bytes`);
         bytes += file.stat.size;
         if (bytes > limits.maxTotalBytes) throw tooBig(`more than ${limits.maxTotalBytes} bytes`);
-        writeWorkspaceFile(targetScope, to, file.readBytes(limits.maxFileBytes).bytes, { mode: "create" });
+        const read = file.readBytes(limits.maxFileBytes).bytes;
+        writeWorkspaceFile(targetScope, to, read, { mode: "create" });
+        report.copied?.(relOf(entry.path), read);
       } finally {
         file.close();
       }

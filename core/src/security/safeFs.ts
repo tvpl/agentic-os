@@ -465,21 +465,32 @@ export interface WorkspaceEntry {
  * second name for a file under the home's `config/` or `logs/`. Never follows
  * a link.
  */
-export function listWorkspaceDir(scope: ReadScope, candidate: string): WorkspaceEntry[] {
+export function listWorkspaceDir(scope: ReadScope, candidate: string, skipped?: string[]): WorkspaceEntry[] {
   const verdict = resolveReadable(scope, candidate);
   const out: WorkspaceEntry[] = [];
   for (const entry of fs.readdirSync(verdict.real, { withFileTypes: true })) {
-    if (entry.isSymbolicLink() || (!entry.isFile() && !entry.isDirectory())) continue;
     const full = path.join(verdict.real, entry.name);
-    if (scope.filter.reasonToSkip(path.relative(verdict.root, full), full)) continue;
+    // `skipped` hears the real path of each entry left out (a folder copied, cerebro-memoria-confiavel door 15).
+    const leave = (): void => void skipped?.push(full);
+    if (entry.isSymbolicLink() || (!entry.isFile() && !entry.isDirectory())) {
+      leave();
+      continue;
+    }
+    if (scope.filter.reasonToSkip(path.relative(verdict.root, full), full)) {
+      leave();
+      continue;
+    }
     let stat: fs.Stats;
     try {
       stat = fs.lstatSync(full);
     } catch {
       continue; // removed in between
     }
-    if (stat.isSymbolicLink()) continue;
-    if (sharesInodeWithPrivateFile(scope, stat)) continue; // a second name for a private file is not listed either
+    // A link put there in between, or a second name for a private file, is not listed either.
+    if (stat.isSymbolicLink() || sharesInodeWithPrivateFile(scope, stat)) {
+      leave();
+      continue;
+    }
     out.push({
       name: entry.name,
       path: full,
