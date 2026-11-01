@@ -256,9 +256,9 @@ describe("C7 migration 25", () => {
       [24, "cleanup"],
     ]);
     // cerebro-paineis added migration 26 (the tasks of a note, the dashboards' snapshots and series) after this one,
-    // and 27 (the reminder kind of the inbox), and cerebro-memoria-confiavel 28, 29, 30 and 31 (facts, the history of
+    // and 27 (the reminder kind of the inbox), and cerebro-memoria-confiavel 28 to 32 (facts, the history of
     // memory/, the review inbox, the search indexes of the audiences).
-    expect(MIGRATIONS.at(-1)!.version).toBe(31);
+    expect(MIGRATIONS.at(-1)!.version).toBe(32);
   });
 
   it("C7 a database migrated from 24 keeps its files, note_links and cleanup_decisions rows byte for byte", () => {
@@ -298,8 +298,8 @@ describe("C7 migration 25", () => {
 
       const { db, migration } = openDb(paths);
       try {
-        // migrations 26 and 27 (cerebro-paineis) and 28 to 31 (cerebro-memoria-confiavel) run in the same pass
-        expect(migration).toMatchObject({ fromVersion: 24, toVersion: 31 });
+        // migrations 26 and 27 (cerebro-paineis) and 28 to 32 (cerebro-memoria-confiavel) run in the same pass
+        expect(migration).toMatchObject({ fromVersion: 24, toVersion: 32 });
         expect(snapshot(db)).toEqual(before);
         expect(columns(db, "note_passages")).toEqual(NOTE_PASSAGES);
         expect(columns(db, "review_state")).toEqual(REVIEW_STATE);

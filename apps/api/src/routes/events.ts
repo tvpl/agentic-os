@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { OsEvent, Settings } from "@mordomo/core";
 import { currentEventVersion } from "@mordomo/contracts/events";
-import { accessView, redactorFor, settingsForDevice } from "../access.js";
+import { accessView, redactorFor, settingsForDevice, zeroCounts } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { ticketKey } from "../tickets.js";
@@ -79,7 +79,10 @@ export function registerEventRoutes(app: FastifyInstance, ctx: AppContext): void
       }
       const redactor = redactorFor(ctx, req.principal)!;
       if (redactor.hiddenEvent(e)) return;
-      ch.send({ id: e.id, event: e.type, data: redactor.value(told(e)) });
+      // The counts of an index pass are over every file: none to a device that has a folder hidden from it.
+      const counted =
+        redactor.hides && e.type.startsWith("index.") ? { ...e, payload: zeroCounts(e.payload) } : told(e);
+      ch.send({ id: e.id, event: e.type, data: redactor.value(counted) });
     };
     // Subscribe before replaying so nothing emitted in between is lost.
     ch.onClose(ctx.events.subscribe(push));

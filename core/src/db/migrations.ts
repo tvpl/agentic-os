@@ -761,4 +761,24 @@ CREATE VIRTUAL TABLE IF NOT EXISTS files_fts_devices USING fts5(
 );
 `,
   },
+  {
+    version: 32,
+    name: "audience-related-edges",
+    // cerebro-memoria-confiavel, door 20: the "related by content" edges a paired device reads. `file_related` is TF-IDF over
+    // the whole corpus (the weight of a word and the cut of the words that are everywhere come from every file), so a
+    // device's percentage and shared words would depend on files it may not see. This table has the shape of
+    // `file_related` and holds the edges worked out over the files the devices may see; created EMPTY, filled by a pass
+    // when the `meta` row `rel.devices` does not name the view the table is for (`core/src/memory/audienceIndex.ts`).
+    sql: `
+CREATE TABLE IF NOT EXISTS file_related_devices (
+  src_id INTEGER NOT NULL,
+  dst_id INTEGER NOT NULL,
+  score REAL NOT NULL,
+  terms TEXT NOT NULL DEFAULT '[]',
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (src_id, dst_id)
+);
+CREATE INDEX IF NOT EXISTS idx_file_related_devices_dst ON file_related_devices(dst_id);
+`,
+  },
 ];

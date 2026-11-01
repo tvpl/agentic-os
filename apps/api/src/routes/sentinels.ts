@@ -5,6 +5,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { SENTINEL_IDS } from "@mordomo/core/internal";
+import { redactorFor } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 
@@ -19,7 +20,9 @@ export interface SentinelStatusRow {
 }
 
 export function registerSentinelRoutes(app: FastifyInstance, ctx: AppContext): void {
-  bind(app, "sentinels.list", async () => {
+  bind(app, "sentinels.list", async (_input, req) => {
+    // A device is not told the name of a folder hidden from it, which the title of the fs sentinel carries.
+    const device = redactorFor(ctx, req.principal);
     const settings = ctx.settings();
     const cfg = settings.sentinels as Record<string, Record<string, unknown> & { enabled?: boolean }>;
     const recent = ctx.notifications.list({ limit: 300 });
@@ -38,7 +41,7 @@ export function registerSentinelRoutes(app: FastifyInstance, ctx: AppContext): v
         enabled: conf.enabled !== false,
         config: conf,
         lastFiredAt: last?.ts ?? null,
-        lastTitle: last?.title ?? null,
+        lastTitle: last ? (device ? device.titleOf(last) : last.title) : null,
         watched: id === "fsWatch" ? ctx.sentinels.watchedFolders() : [],
       };
     });

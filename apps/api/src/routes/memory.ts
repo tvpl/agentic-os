@@ -13,6 +13,7 @@ import {
   factSourcePolicy,
   getVersion,
   listVersions,
+  visibleHistoryPaths,
   recordFileVersion,
   restoreVersion,
   decideProposal,
@@ -59,7 +60,7 @@ import {
   parseNaturezaList,
   type ReadScope,
 } from "@mordomo/core/internal";
-import { accessView, rankScored, type AccessView } from "../access.js";
+import { accessView, rankScored, zeroCounts, type AccessView } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
@@ -179,7 +180,16 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       : context;
     const last = ctx.indexer.lastIndex();
     const facets = listFacets(ctx.db, within);
-    return { lastIndex: last, facets, indexing: ctx.indexHost.status(), semantic: ctx.semantic.status() };
+    // The counts of a pass are over every file, hidden ones included: a device with a hidden folder is given none
+    // (round 2 finding 8), nor the progress of a pass that is running.
+    const redact = view.audience === "devices" && view.access.hides("devices");
+    const indexing = ctx.indexHost.status();
+    return {
+      lastIndex: last && redact ? { ...last, stats: zeroCounts(last.stats) } : last,
+      facets,
+      indexing: redact ? { ...indexing, scanned: 0, total: indexing.total === null ? null : 0 } : indexing,
+      semantic: ctx.semantic.status(),
+    };
   });
 
   bind(app, "memory.index", async () => {
@@ -212,6 +222,10 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     return view.audience === null ? hits : rankScored(hits);
   });
 
+  /** The edges a device reads are worked out over the files it may see, not over the whole corpus (door 20). */
+  const relatedTableOf = (req: FastifyRequest) =>
+    req.principal?.kind === "device" ? ctx.indexer.relatedTable("devices") : ("file_related" as const);
+
   bind(app, "memory.graph", async ({ query: q }, req) => {
     const within = contextFilter(ctx, q.context);
     return buildGraph(ctx.db, {
@@ -224,12 +238,19 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       // file in a folder hidden from the caller (cerebro-memoria-confiavel, door 12).
       allow: accessView(ctx, req.principal).rowFilter(),
       ...(within ? { within } : {}),
+      relatedTable: relatedTableOf(req),
     });
   });
 
   bind(app, "memory.related", async ({ query: { id, context } }, req) => {
     const within = contextFilter(ctx, context);
-    const related = relatedFiles(ctx.db, id, accessView(ctx, req.principal).rowFilter(), within);
+    const related = relatedFiles(
+      ctx.db,
+      id,
+      accessView(ctx, req.principal).rowFilter(),
+      within,
+      relatedTableOf(req),
+    );
     if (!related) throw httpError(404, "File not found", "not_found");
     return related;
   });
@@ -529,11 +550,15 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   // ---- the history of memory/ (.specs/features/cerebro-memoria-confiavel, doors 4 and 10) ----
 
-  /** A path of the history (relative to memory/) the caller may see: none in a folder hidden from it (door 12). */
+  /**
+   * A path of the history (relative to memory/) the caller may see: none in a folder hidden from it (door 12), and none
+   * of a note that went on to one (round 2 finding 6, plan amendment 11): history is keyed by path, so a note moved
+   * into a hidden folder leaves its earlier versions under the path it came from.
+   */
   const historyAllow = (view: AccessView) =>
     view.audience === null
       ? undefined
-      : (rel: string) => !view.hidden(path.join(ctx.paths.memory, ...rel.split("/")));
+      : visibleHistoryPaths(ctx.db, (rel) => view.hidden(path.join(ctx.paths.memory, ...rel.split("/"))));
 
   bind(app, "memory.history.list", async ({ query: q }, req) => ({
     versions: listVersions(historyEnv(), {

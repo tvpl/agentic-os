@@ -28,6 +28,13 @@ import { storedRowFilter } from "./indexer.js";
 
 export type Audience = FolderAudience;
 export type FtsTable = "files_fts" | "files_fts_agents" | "files_fts_devices";
+/**
+ * The table of "related by content" edges an audience reads (door 20): the owner's `file_related`, or, for the devices
+ * when a folder is hidden from them, the one worked out over the files they may see. A run's credential has no route
+ * that reads edges, so the agents have no table of their own.
+ */
+export type RelatedTable = "file_related" | "file_related_devices";
+export const RELATED_DEVICES_TABLE = "file_related_devices";
 
 /** The table each audience reads when it has one of its own. */
 export const AUDIENCE_TABLES: Readonly<Record<Audience, Exclude<FtsTable, "files_fts">>> = {
@@ -64,11 +71,30 @@ export function audienceSpec(env: Omit<AudienceEnv, "db">, audience: Audience): 
   return JSON.stringify({ home: env.homeDir, excludes: view.excludes });
 }
 
-const readSpec = (db: Db, audience: Audience): string | null =>
+const relMetaKey = "rel.devices";
+
+export const readSpec = (db: Db, audience: Audience): string | null =>
   (db.prepare("SELECT value FROM meta WHERE key = ?").get(metaKey(audience)) as { value: string } | undefined)?.value ?? null;
 
+/** What the devices' related edges were last worked out for (the spec of their index at the time), or null. */
+export const readRelatedSpec = (db: Db): string | null =>
+  (db.prepare("SELECT value FROM meta WHERE key = ?").get(relMetaKey) as { value: string } | undefined)?.value ?? null;
+
+export function writeRelatedSpec(db: Db, spec: string | null): void {
+  if (spec === null) db.prepare("DELETE FROM meta WHERE key = ?").run(relMetaKey);
+  else
+    db.prepare("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
+      relMetaKey,
+      spec,
+    );
+}
+
+/** The related table `audience` reads, given the full-text table it was answered. */
+export const relatedTableFor = (audience: Audience, fts: FtsTable): RelatedTable =>
+  audience === "devices" && fts !== "files_fts" ? RELATED_DEVICES_TABLE : "file_related";
+
 /** The test a stored spec makes of a row: true when the audience may see the file. */
-function allowOf(spec: string, platform: NodeJS.Platform | undefined): (row: { root: string; rel: string }) => boolean {
+export function allowOf(spec: string, platform: NodeJS.Platform | undefined): (row: { root: string; rel: string }) => boolean {
   const { home, excludes } = JSON.parse(spec) as { home: string; excludes: string[] };
   return storedRowFilter(excludes, { homeDir: home, ...(platform ? { platform } : {}) });
 }
@@ -94,6 +120,11 @@ export function ensureAudienceIndex(env: AudienceEnv, audience: Audience): FtsTa
           );
           const rows = env.db.prepare("SELECT id, root, rel FROM files").all() as Array<{ id: number; root: string; rel: string }>;
           for (const row of rows) if (allow(row)) insert.run(row.id);
+        }
+        // The edges worked out for the old view are of the old view: emptied, and worked out again by the next pass.
+        if (audience === "devices") {
+          env.db.prepare(`DELETE FROM ${RELATED_DEVICES_TABLE}`).run();
+          writeRelatedSpec(env.db, null);
         }
         env.db.prepare("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
           metaKey(audience),
@@ -129,6 +160,9 @@ export class AudienceMirror {
       this.db.prepare(`DELETE FROM ${table} WHERE rowid = ?`).run(id);
       if (allow(row)) {
         this.db.prepare(`INSERT INTO ${table} (rowid, name, rel, content) VALUES (?, ?, ?, ?)`).run(id, name, row.rel, content);
+      } else if (audience === "devices") {
+        // a file that left the view (moved into a hidden folder) takes its edges with it
+        this.db.prepare(`DELETE FROM ${RELATED_DEVICES_TABLE} WHERE src_id = ? OR dst_id = ?`).run(id, id);
       }
     }
   }
@@ -136,6 +170,7 @@ export class AudienceMirror {
   remove(id: number): void {
     for (const audience of this.allow.keys()) {
       this.db.prepare(`DELETE FROM ${AUDIENCE_TABLES[audience]} WHERE rowid = ?`).run(id);
+      if (audience === "devices") this.db.prepare(`DELETE FROM ${RELATED_DEVICES_TABLE} WHERE src_id = ? OR dst_id = ?`).run(id, id);
     }
   }
 }

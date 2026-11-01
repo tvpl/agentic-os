@@ -1,3 +1,4 @@
+import type { RelatedTable } from "./audienceIndex.js";
 import path from "node:path";
 import type { Db } from "../db/db.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
@@ -55,6 +56,8 @@ export function buildGraph(
      * edge joins two of them. The links still resolve as they do for the whole index (`allow`).
      */
     within?: (row: { root: string; rel: string }) => boolean;
+    /** The table of related edges to read (door 20 of cerebro-memoria-confiavel): the owner's `file_related` by default. */
+    relatedTable?: RelatedTable;
   } = {},
 ): GraphData {
   const allow = opts.allow ?? (() => true);
@@ -127,7 +130,7 @@ export function buildGraph(
   // top-3 per file. Off by default in the canvas legend; always computed so
   // the count shows, unless the caller opts out (`related: false`).
   if (opts.related !== false) {
-    for (const r of storedOrComputedRelated(db, files)) {
+    for (const r of storedOrComputedRelated(db, files, opts.relatedTable)) {
       edges.push({
         source: r.source,
         target: r.target,
@@ -168,8 +171,10 @@ export function buildGraph(
 function storedOrComputedRelated(
   db: Db,
   files: ReadonlyArray<{ id: number; mtime: number }>,
+  /** One of two table names (`RelatedTable`), never text from a caller. */
+  table: RelatedTable = "file_related",
 ): Array<{ source: number; target: number; score: number; terms: string[] }> {
-  const total = (db.prepare("SELECT COUNT(*) c FROM file_related").get() as { c: number }).c;
+  const total = (db.prepare(`SELECT COUNT(*) c FROM ${table}`).get() as { c: number }).c;
   if (total === 0) return relatedEdges(db, files);
   const ids = files.map((f) => f.id);
   const out: Array<{ source: number; target: number; score: number; terms: string[] }> = [];
@@ -177,7 +182,7 @@ function storedOrComputedRelated(
     const chunk = ids.slice(i, i + 400);
     const marks = chunk.map(() => "?").join(",");
     const rows = db
-      .prepare(`SELECT src_id, dst_id, score, terms FROM file_related WHERE src_id IN (${marks}) AND dst_id IN (${marks})`)
+      .prepare(`SELECT src_id, dst_id, score, terms FROM ${table} WHERE src_id IN (${marks}) AND dst_id IN (${marks})`)
       .all(...chunk, ...chunk) as Array<{ src_id: number; dst_id: number; score: number; terms: string }>;
     for (const r of rows) {
       let terms: string[] = [];
@@ -202,6 +207,8 @@ export function relatedFiles(
   allow: (row: { root: string; rel: string }) => boolean = () => true,
   /** The files of a work context: the file and every one listed must be one of them (the links resolve by `allow`). */
   within: (row: { root: string; rel: string }) => boolean = () => true,
+  /** The table of related edges to read (door 20 of cerebro-memoria-confiavel): the owner's `file_related` by default. */
+  table: RelatedTable = "file_related",
 ): Array<{ file: FileRow; why: string }> | null {
   const byId = db.prepare("SELECT * FROM files WHERE id = ?");
   const fileOf = (id: number): FileRow | null => {
@@ -226,7 +233,7 @@ export function relatedFiles(
   const related = db
     .prepare(
       `SELECT CASE WHEN src_id = ? THEN dst_id ELSE src_id END AS other, score, terms
-       FROM file_related WHERE src_id = ? OR dst_id = ? ORDER BY score DESC LIMIT 10`,
+       FROM ${table} WHERE src_id = ? OR dst_id = ? ORDER BY score DESC LIMIT 10`,
     )
     .all(fileId, fileId, fileId) as Array<{ other: number; score: number; terms: string }>;
   for (const r of related) {

@@ -36,7 +36,9 @@ export function registerCleanupRoutes(app: FastifyInstance, ctx: AppContext): vo
     // The caller's view of the settings: no folder, count or group from a folder hidden from it (door 12).
     const seen = { paths: ctx.paths, settings: accessView(ctx, req.principal).settings };
     const scope = resolveCleanupScope(seen, { context: query.context, dir: query.dir });
-    return cleanupInventory(ctx.db, seen, scope);
+    return cleanupInventory(ctx.db, seen, scope, {
+      relatedTable: req.principal?.kind === "device" ? ctx.indexer.relatedTable("devices") : "file_related",
+    });
   });
 
   /** Start a scan (AC 7, AC 15): `202` with its id; the progress goes on the bus as `cleanup.*`. */
