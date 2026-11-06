@@ -259,3 +259,146 @@ describe("C179 per provider", () => {
     );
   });
 });
+
+// ---- C180: the history of a note that left its path -----------------------------------------------------------------------
+
+describe("C180 the history of a path whose note left", () => {
+  it("C180 while a folder is hidden from devices, a device reads no version of a path that predates a removal, whatever became of the note; the new note at the path, and the restore, are read; with nothing hidden all is read", async () => {
+    const { w, fin } = await seeded("mordomo-round3-c180-");
+    const inbox = path.join(w.memory, "notes", "inbox");
+    const areas = path.join(w.memory, "areas", "financeiro");
+    const vault = w.indexedRoot("c180-cofre");
+    fs.mkdirSync(areas, { recursive: true });
+    const rel = (file: string) => path.relative(w.memory, file).split(path.sep).join("/");
+    const note = (name: string, text: string) => w.put(path.join(inbox, name), `# ${name}\n\n${text}\n`);
+
+    // five visible notes with two versions each (the file as the pass found it, then as it was edited), and a sixth that stays
+    const stays = note("fica.md", "TEXTO-FICA original");
+    const names = ["versionada", "areas", "cofre", "editada", "apagada"];
+    const files = Object.fromEntries(
+      names.map((n) => [n, note(`${n}.md`, `TEXTO-${n.toUpperCase()} sigiloso original`)]),
+    );
+    await w.index();
+    for (const file of [stays, ...Object.values(files)]) {
+      fs.writeFileSync(file, fs.readFileSync(file, "utf8") + "segunda versão\n");
+    }
+    await w.index();
+
+    const owner = (await w.call("GET", "/api/memory/history?limit=100")).body.versions as Json[];
+    const idsOf = (file: string) =>
+      owner.filter((v) => v.path === rel(file) && v.size !== null).map((v) => v.id as number);
+    for (const file of [stays, ...Object.values(files)])
+      expect(idsOf(file).length, rel(file)).toBeGreaterThanOrEqual(2);
+
+    const device = w.device(["content"]);
+    const readsId = async (id: number, as: "device" | "owner" = "device") =>
+      (await w.call("GET", `/api/memory/history/${id}`, undefined, as === "device" ? device : undefined))
+        .status;
+
+    await setAccess(w, [
+      { path: fin, agents: "write", devices: "hide" },
+      { path: areas, agents: "write", devices: "hide" },
+      { path: vault, agents: "write", devices: "hide" },
+    ]);
+    // the moves: into a hidden versioned folder, into a hidden folder under memory/ that is not versioned, into a hidden
+    // indexed folder outside memory/, one edited on the way, and one deleted
+    fs.renameSync(files.versionada!, path.join(fin, "versionada.md"));
+    fs.renameSync(files.areas!, path.join(areas, "areas.md"));
+    fs.renameSync(files.cofre!, path.join(vault, "cofre.md"));
+    fs.writeFileSync(
+      path.join(vault, "editada.md"),
+      fs.readFileSync(files.editada!, "utf8") + "editada ao mudar\n",
+    );
+    fs.rmSync(files.editada!);
+    fs.rmSync(files.apagada!);
+    // before the pass that records any of it: the files are not there, and a device is told of none of their versions
+    for (const name of names)
+      for (const id of idsOf(files[name]!)) expect(await readsId(id), `${name} before the pass`).toBe(404);
+    await w.index();
+
+    const missing = await w.call("GET", "/api/memory/history/99999", undefined, device);
+    for (const name of names) {
+      for (const id of idsOf(files[name]!)) {
+        const res = await w.call("GET", `/api/memory/history/${id}`, undefined, device);
+        expect(code(res), `${name} ${id}`).toEqual([404, "not_found"]);
+        expect(res.body.error.message.replace(String(id), "N")).toBe(
+          missing.body.error.message.replace("99999", "N"),
+        );
+        expect(await readsId(id, "owner"), `the owner reads ${name} ${id}`).toBe(200);
+      }
+    }
+    const listed = (await w.call("GET", "/api/memory/history?limit=100", undefined, device)).body
+      .versions as Json[];
+    expect(JSON.stringify(listed)).not.toMatch(/SIGILOSO|versionada|areas\.md|cofre|editada|apagada/i);
+    for (const name of names)
+      expect(
+        (
+          await w.call(
+            "GET",
+            `/api/memory/history?path=${encodeURIComponent(rel(files[name]!))}`,
+            undefined,
+            device,
+          )
+        ).body.versions,
+        name,
+      ).toEqual([]);
+    // a note that did not move keeps every version
+    for (const id of idsOf(stays)) expect(await readsId(id), "the note that stayed").toBe(200);
+
+    // a new note at the old path: its versions are read, the moved note's still are not
+    const again = note("areas.md", "TEXTO-NOVA nota no mesmo nome");
+    await w.index();
+    const after = (
+      await w.call("GET", `/api/memory/history?path=${encodeURIComponent(rel(again))}`, undefined, device)
+    ).body.versions as Json[];
+    expect(after.length).toBeGreaterThanOrEqual(1);
+    for (const v of after) {
+      const res = await w.call("GET", `/api/memory/history/${v.id}`, undefined, device);
+      if (v.size !== null) expect(res.body.content, `version ${v.id}`).not.toMatch(/SIGILOSO/);
+    }
+    for (const id of idsOf(files.areas!))
+      expect(await readsId(id), "the moved note's version, the old path used again").toBe(404);
+
+    // the new note is removed in its turn: its versions are the second removal's, hidden as well
+    fs.rmSync(again);
+    await w.index();
+    for (const v of after.filter((x) => x.size !== null))
+      expect(await readsId(v.id as number), `the second note's version ${v.id}`).toBe(404);
+    // and a third one at the same name: its versions are read, the second's still are not
+    const third = note("areas.md", "TEXTO-TERCEIRA nota no mesmo nome");
+    await w.index();
+    for (const v of after.filter((x) => x.size !== null))
+      expect(await readsId(v.id as number), `the second note's version ${v.id}, a third at the name`).toBe(
+        404,
+      );
+    const thirdList = (
+      await w.call("GET", `/api/memory/history?path=${encodeURIComponent(rel(third))}`, undefined, device)
+    ).body.versions as Json[];
+    expect(
+      thirdList.some((v) => v.size !== null && !after.some((x) => x.id === v.id)),
+      "the third note's version is read",
+    ).toBe(true);
+
+    // the owner restores the deleted note: the restore is a version after the removal and is read; the older ones are not
+    const gone = idsOf(files.apagada!).at(0)!;
+    const restored = await w.call("POST", "/api/memory/history/restore", { id: gone });
+    expect(restored.status, JSON.stringify(restored.body)).toBe(200);
+    await w.index();
+    const back = (
+      await w.call(
+        "GET",
+        `/api/memory/history?path=${encodeURIComponent(rel(files.apagada!))}`,
+        undefined,
+        device,
+      )
+    ).body.versions as Json[];
+    expect(back.length).toBeGreaterThanOrEqual(1);
+    for (const id of idsOf(files.apagada!))
+      expect(await readsId(id), "the version from before the removal").toBe(404);
+
+    // nothing hidden any more: all of it is read again
+    await setAccess(w, []);
+    for (const name of names)
+      for (const id of idsOf(files[name]!)) expect(await readsId(id), `${name} shown`).toBe(200);
+  });
+});

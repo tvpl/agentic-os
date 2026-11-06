@@ -260,7 +260,7 @@ describe("C173 the semantic search a hidden folder does not shorten", () => {
 // ---- C174: the history of a note that moved ---------------------------------------------------------------------------
 
 describe("C174 the history of a note moved into a hidden folder", () => {
-  it("C174 a device is told of no version of a note that went on to a hidden folder, under either path; moves out and between visible folders, and a copy, keep theirs", async () => {
+  it("C174 a device is told of no version of a note that went on to a hidden folder, under either path; a copy keeps the original's, a move out its new path's", async () => {
     const w = await world("mordomo-round2-c174-");
     const fin = path.join(w.memory, "notes", "fin");
     const inbox = path.join(w.memory, "notes", "inbox");
@@ -337,14 +337,16 @@ describe("C174 the history of a note moved into a hidden folder", () => {
       );
       expect((await w.call("GET", `/api/memory/history/${id}`)).status, `owner ${id}`).toBe(200);
     }
-    // a note that moved between two visible folders keeps its versions under both paths
-    expect(listedPaths.has(rel(mover))).toBe(true);
+    // round 3 finding 2 (plan amendment 16): the rule no longer follows the note. A note that moved between two visible
+    // folders keeps its versions under the new path only; the old path's, up to the removal, are hidden while a folder is
+    // hidden (this was visible under both paths in round 2, and is named in checks.md as the cost of the sound rule)
+    expect(listedPaths.has(rel(mover))).toBe(false);
     expect(listedPaths.has(rel(path.join(outra, "mover.md")))).toBe(true);
     // a copy into the hidden folder does not take the original's versions with it: the original is still there
     expect(listedPaths.has(rel(copia))).toBe(true);
     expect(listedPaths.has(rel(path.join(fin, "copia-oculta.md")))).toBe(false);
-    // a deleted note is not a moved one: a hidden note with its bytes that began earlier does not take its versions
-    expect(listedPaths.has(rel(velha))).toBe(true);
+    // a deleted note has no history for a device either (it may have gone anywhere)
+    expect(listedPaths.has(rel(velha))).toBe(false);
     // a note that left the hidden folder: its new path's versions are visible, the old path's are not
     expect(listedPaths.has(rel(path.join(outra, "sai.md")))).toBe(true);
     expect(listedPaths.has(rel(sai))).toBe(false);

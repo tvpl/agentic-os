@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
@@ -551,14 +552,21 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   // ---- the history of memory/ (.specs/features/cerebro-memoria-confiavel, doors 4 and 10) ----
 
   /**
-   * A path of the history (relative to memory/) the caller may see: none in a folder hidden from it (door 12), and none
-   * of a note that went on to one (round 2 finding 6, plan amendment 11): history is keyed by path, so a note moved
-   * into a hidden folder leaves its earlier versions under the path it came from.
+   * A version of the history (a path relative to memory/, an id) the caller may see: none in a folder hidden from it
+   * (door 12), and, while a folder is hidden from it, none that predates a removal of its path (round 3 finding 2, plan
+   * amendment 16): history is keyed by path, so a note moved into a hidden folder leaves its versions under the path it
+   * came from, and where it went is not always known.
    */
   const historyAllow = (view: AccessView) =>
     view.audience === null
       ? undefined
-      : visibleHistoryPaths(ctx.db, (rel) => view.hidden(path.join(ctx.paths.memory, ...rel.split("/"))));
+      : visibleHistoryPaths(
+          ctx.db,
+          (rel) => view.hidden(path.join(ctx.paths.memory, ...rel.split("/"))),
+          view.access.hides(view.audience)
+            ? { exists: (rel) => fs.existsSync(path.join(ctx.paths.memory, ...rel.split("/"))) }
+            : undefined,
+        );
 
   bind(app, "memory.history.list", async ({ query: q }, req) => ({
     versions: listVersions(historyEnv(), {
@@ -571,7 +579,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   bind(app, "memory.history.get", async ({ params: { id } }, req) => {
     const version = getVersion(historyEnv(), id);
     const allow = historyAllow(accessView(ctx, req.principal));
-    if (allow && !allow(version.path))
+    if (allow && !allow(version.path, version.id))
       throw httpError(404, `No version of memory/ with bytes has the id ${id}.`, "not_found");
     return version;
   });

@@ -180,76 +180,49 @@ export function versionedPaths(db: Db): Set<string> {
 
 
 /**
- * Which paths of the history a caller may be told of (cerebro-memoria-confiavel, plan amendment 11, round 2 finding 6): a
- * path the caller may see, unless a note whose versions it holds went on to a path the caller may not see. History is
- * keyed by path, so a move leaves the old path's versions behind with the bytes the note had; they are the note's, and
- * a note that now sits in a hidden folder has no versions in a visible one.
+ * Which versions of the history a caller may be told of (cerebro-memoria-confiavel, plan amendments 11 and 16, round 2
+ * finding 6 and round 3 finding 2): a version of a path the caller may see, and, while a folder is hidden from the
+ * caller (`strict`), only one the path's note has not left behind.
  *
- * A path P has gone on to Q when P's newest version is a `removed` one and the bytes of its last version with bytes
- * are the bytes of the first version of Q, recorded after that version: a note carried over unchanged (a move by this system, an
- * edit outside it that renamed the file). Followed as far as it goes; a path is hidden when it is, or when any path it
- * went on to is. A note that was edited while it moved is not followed (the bytes are the link).
+ * History is keyed by path, so a note that moves leaves the versions it had under the path it came from. Where it went
+ * is not in the history when the destination is not versioned (`memory/areas/`, an indexed vault outside `memory/`), and
+ * is not known when an edit outside the system renamed it, so no rule that follows the note is sound. The rule that is:
+ * a version that predates a removal of its path, or is the removal, is the note's that was removed, not a visible note's that is there, and
+ * is hidden from a caller while a folder is hidden from it, until the owner restores it (the restore is a version after
+ * the removal, and is visible). A path whose file is not there now but whose removal is not recorded yet (a pass that
+ * has not run) counts as removed. The versions from the removal on are the path's new note's and follow the path.
+ * Without `strict` only the path's own level decides.
  */
 export function visibleHistoryPaths(
   db: Db,
   hidden: (rel: string) => boolean,
-): (rel: string) => boolean {
-  const first = new Map<string, { id: number; sha: string | null }>();
-  const newest = new Map<string, { id: number; sha: string | null }>();
-  const live = new Map<string, { id: number; sha: string }>();
-  for (const v of db
-    .prepare(
-      `SELECT v.path, v.id, v.sha256 FROM memory_versions v
-         JOIN (SELECT path, MIN(id) m FROM memory_versions GROUP BY path) f ON v.id = f.m`,
-    )
-    .all() as Array<{ path: string; id: number; sha256: string | null }>)
-    first.set(v.path, { id: v.id, sha: v.sha256 });
-  for (const v of db
-    .prepare(
-      `SELECT v.path, v.id, v.sha256 FROM memory_versions v
-         JOIN (SELECT path, MAX(id) m FROM memory_versions GROUP BY path) f ON v.id = f.m`,
-    )
-    .all() as Array<{ path: string; id: number; sha256: string | null }>)
-    newest.set(v.path, { id: v.id, sha: v.sha256 });
-  for (const v of db
-    .prepare(
-      `SELECT v.path, v.id, v.sha256 FROM memory_versions v
-         JOIN (SELECT path, MAX(id) m FROM memory_versions WHERE sha256 IS NOT NULL GROUP BY path) f ON v.id = f.m`,
-    )
-    .all() as Array<{ path: string; id: number; sha256: string }>)
-    live.set(v.path, { id: v.id, sha: v.sha256 });
-  // The paths that begin with each set of bytes.
-  const startsWith = new Map<string, string[]>();
-  for (const [p, f] of first) {
-    if (f.sha === null) continue;
-    const list = startsWith.get(f.sha) ?? [];
-    list.push(p);
-    startsWith.set(f.sha, list);
+  strict?: { exists: (rel: string) => boolean },
+): (rel: string, versionId: number) => boolean {
+  const removed = new Map<string, number>();
+  const newest = new Map<string, number>();
+  if (strict) {
+    for (const v of db
+      .prepare("SELECT path, MAX(id) id FROM memory_versions WHERE sha256 IS NULL GROUP BY path")
+      .all() as Array<{ path: string; id: number }>)
+      removed.set(v.path, v.id);
+    for (const v of db.prepare("SELECT path, MAX(id) id FROM memory_versions GROUP BY path").all() as Array<{
+      path: string;
+      id: number;
+    }>)
+      newest.set(v.path, v.id);
   }
-  const known = new Map<string, boolean>();
-  const visible = (rel: string, trail: ReadonlySet<string>): boolean => {
-    const memo = known.get(rel);
-    if (memo !== undefined) return memo;
-    if (hidden(rel)) {
-      known.set(rel, false);
-      return false;
+  const pending = new Map<string, boolean>();
+  return (rel, versionId) => {
+    if (hidden(rel)) return false;
+    if (!strict) return true;
+    // no file now, and the newest version is no removal: the note left and the pass that records it has not run
+    let gone = pending.get(rel);
+    if (gone === undefined) {
+      gone = !strict.exists(rel) && removed.get(rel) !== newest.get(rel);
+      pending.set(rel, gone);
     }
-    const end = newest.get(rel);
-    const last = live.get(rel);
-    let ok = true;
-    if (end && end.sha === null && last !== undefined) {
-      for (const next of startsWith.get(last.sha) ?? []) {
-        // the other path begins after this note's last version (a pass records where a file arrived before it records
-        // where it left, so "after the removal" would miss a move)
-        if (next === rel || trail.has(next) || (first.get(next)?.id ?? 0) <= last.id) continue;
-        if (!visible(next, new Set([...trail, rel]))) {
-          ok = false;
-          break;
-        }
-      }
-    }
-    known.set(rel, ok);
-    return ok;
+    if (gone) return false;
+    const last = removed.get(rel);
+    return last === undefined || versionId > last;
   };
-  return (rel) => visible(rel, new Set());
 }

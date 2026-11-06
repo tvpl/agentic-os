@@ -119,8 +119,8 @@ export function listVersions(
   q: {
     path?: string | undefined;
     limit?: number | undefined;
-    /** Which paths (relative to memory/) the caller may see (cerebro-memoria-confiavel, door 12); all without it. */
-    allow?: ((rel: string) => boolean) | undefined;
+    /** Which versions (a path relative to memory/, an id) the caller may see (cerebro-memoria-confiavel, door 12); all without it. */
+    allow?: ((rel: string, versionId: number) => boolean) | undefined;
   },
 ): VersionView[] {
   const limit = Math.min(Math.max(q.limit ?? HISTORY_LIST_LIMIT, 1), HISTORY_LIST_LIMIT);
@@ -133,7 +133,7 @@ export function listVersions(
   for (const row of statement.iterate(...(q.path !== undefined ? [q.path] : [])) as IterableIterator<
     Omit<VersionView, "exists">
   >) {
-    if (q.allow && !q.allow(row.path)) continue;
+    if (q.allow && !q.allow(row.path, row.id)) continue;
     rows.push(row);
     if (rows.length >= limit) break;
   }

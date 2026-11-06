@@ -405,10 +405,16 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   shared; until the pass that builds it has run a device is told of no edge, never of the owner's. With embeddings on,
   the vector list is read deeper until it holds 50 files the caller may see (or the vectors end) before it is fused with
   the words list, so a hidden folder shortens neither the list nor changes `via`. A device's index also leaves out the
-  export copies under an indexed root that holds `artifacts/exports/`. The history of a path a note went on from to a
-  hidden one (moved, with the same bytes, then removed from the first) is not listed or readable by a device, under
-  either path; a note that changed bytes on its way is not followed (the system records no note identifier), and a
-  copy leaves the original its versions. A device with a hidden folder is given no count of the index pass
+  export copies under an indexed root that holds `artifacts/exports/`. The history is keyed by path, so a note
+  that moves leaves its versions under the path it came from, and where it went is not always known (an unversioned
+  folder, a vault outside `memory/`, a rename made outside the system). While a folder is hidden from devices, a device
+  is therefore told of no version of a path that predates a removal of that path (the removal itself included), nor of
+  any version of a path whose file is gone and whose removal the index has not recorded yet, whatever became of the
+  note; the versions from the last removal on (a new note at the name, a restore by the owner) are read like any
+  others, and the owner reads all. The cost: a device cannot read the older versions of a note that was moved, renamed
+  or deleted while a folder is hidden from devices, even one that moved between two visible folders (its new path's
+  versions are read), until the owner restores it; with nothing hidden from devices nothing changes (plan amendment
+  16). A device with a hidden folder is given no count of the index pass
   (`lastIndex.stats`, the progress of a pass, the `index.*` events, the inbox row "Index finished" are zero or absent),
   and a row or event about a hidden folder (an `fsWatch` sentinel's, `messageParams.folder`) does not exist for it:
   dropped, not renamed, since a renamed row would still say that files changed, how many and when. Changing
