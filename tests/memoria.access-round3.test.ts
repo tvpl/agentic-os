@@ -552,3 +552,152 @@ describe("C181 the devices' related edges and a change of the access between the
     expect(meta("rel.devices")).toBeNull();
   });
 });
+
+// ---- C182: the two counts over every file ---------------------------------------------------------------------------------
+
+describe("C182 the counts a device is given of the index", () => {
+  it("C182 the doctor prints no 'files scanned' for a device with a hidden folder and the status counts the vectors of the files it sees; the owner's grow with the hidden notes", async () => {
+    const { w, fin, outra } = await seeded("mordomo-round3-c182-");
+    w.update((s) => {
+      s.memory.embeddings = {
+        ...s.memory.embeddings,
+        enabled: true,
+        provider: "hash",
+      } as typeof s.memory.embeddings;
+    });
+    w.put(path.join(outra, "v2.md"), "# V2\n\noutra nota visível com texto bastante\n");
+    await w.index();
+    await setAccess(w, [{ path: fin, agents: "write", devices: "hide" }]);
+    await w.index();
+    const device = w.device(["monitor", "content"]);
+    const vectors = async (headers?: Record<string, string>) =>
+      (await w.call("GET", "/api/memory/status", undefined, headers)).body.semantic.vectors as number;
+    const doctor = async (headers?: Record<string, string>) =>
+      ((await w.call("GET", "/api/doctor?audit=0", undefined, headers)).body.checks as Json[]).find(
+        (c) => c.id === "memory-index",
+      )!.detail as string;
+    const seen = { device: await vectors(device), owner: await vectors() };
+    expect(seen.device, "only the vectors of the visible notes").toBe(2);
+    expect(seen.owner).toBe(3);
+    expect(await doctor(device)).not.toMatch(/scanned|files/);
+    expect(await doctor()).toMatch(/\d+ files scanned/);
+    for (let i = 0; i < 7; i++)
+      w.put(path.join(fin, `extra-${i}.md`), `# Extra ${i}\n\nnota escondida ${i} com texto bastante\n`);
+    await w.index();
+    expect(await vectors(device)).toBe(seen.device);
+    expect(await vectors()).toBe(seen.owner + 7);
+    // nothing hidden: the counts are the whole index's
+    await setAccess(w, []);
+    expect(await vectors(device)).toBe(seen.owner + 7);
+    expect(await doctor(device)).toMatch(/\d+ files scanned/);
+  });
+});
+
+// ---- C183: a change of the access starts an index pass --------------------------------------------------------------------
+
+const idle = async (w: RunWorld) => {
+  while (w.ctx.indexer.isIndexing()) await new Promise((resolve) => setTimeout(resolve, 5));
+};
+
+describe("C183 a change of folderAccess starts an index pass", () => {
+  it("C183 a PUT that changes folderAccess builds the devices' edges with no other pass; one that does not change it starts none", async () => {
+    const { w, fin } = await seeded("mordomo-round3-c183-");
+    const outra = path.join(w.memory, "notes", "outra");
+    w.put(path.join(outra, "a.md"), "# A\n\nestrela galaxia nebulosa cometa orbita lunar\n");
+    w.put(path.join(outra, "b.md"), "# B\n\nestrela galaxia nebulosa cometa orbita solar\n");
+    for (let i = 0; i < 6; i++)
+      w.put(path.join(outra, `cheio-${i}.md`), `# Cheio ${i}\n\n${"palavra ".repeat(20)} unico${i}x\n`);
+    await w.index();
+    const finished: unknown[] = [];
+    const off = w.ctx.events.subscribe((e: { type: string }) => {
+      if (e.type === "index.finished") finished.push(e);
+    });
+    const meta = (key: string) =>
+      (w.ctx.db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined)
+        ?.value ?? null;
+    const edges = () =>
+      (w.ctx.db.prepare("SELECT COUNT(*) c FROM file_related_devices").get() as { c: number }).c;
+
+    // a change of the levels: the pass starts by itself and builds the table named for the new view
+    expect(
+      (
+        await w.call("PUT", "/api/settings", {
+          folderAccess: [{ path: fin, agents: "write", devices: "hide" }],
+        })
+      ).status,
+    ).toBe(200);
+    await idle(w);
+    expect(finished.length, "one pass for the change").toBe(1);
+    expect(meta("rel.devices"), "the edges are named for the view").not.toBeNull();
+    expect(meta("rel.devices")).toBe(meta("fts.devices"));
+    expect(edges()).toBeGreaterThan(0);
+
+    // the same levels again, and another setting: no pass
+    expect(
+      (
+        await w.call("PUT", "/api/settings", {
+          folderAccess: [{ path: fin, agents: "write", devices: "hide" }],
+        })
+      ).status,
+    ).toBe(200);
+    expect((await w.call("PUT", "/api/settings", { language: "pt-BR" })).status).toBeLessThan(300);
+    await idle(w);
+    expect(finished.length, "no pass for what did not change the levels").toBe(1);
+
+    // shown again: a pass, and the copy is emptied
+    expect((await w.call("PUT", "/api/settings", { folderAccess: [] })).status).toBe(200);
+    await idle(w);
+    expect(finished.length).toBe(2);
+    expect(meta("rel.devices")).toBeNull();
+    expect(edges()).toBe(0);
+    off();
+  });
+});
+
+// ---- C184: the cleanup inventory's groups ---------------------------------------------------------------------------------
+
+describe("C184 the groups of the cleanup inventory a device is given", () => {
+  it("C184 a device's inventory groups notes by the edges of its own view: the twin's, and not the owner's whole-corpus edges", async () => {
+    const { w, fin } = await seeded("mordomo-round3-c184-");
+    const outra = path.join(w.memory, "notes", "outra");
+    // two notes that share three words that the hidden notes hold too: over the whole corpus those weigh nothing and the
+    // pair is not joined; without the hidden notes it is
+    w.put(
+      path.join(outra, "a.md"),
+      "# A\n\nzeta planeta orbita zeta planeta orbita zeta planeta orbita aaa1 aaa2 aaa3\n",
+    );
+    w.put(
+      path.join(outra, "b.md"),
+      "# B\n\nzeta planeta orbita zeta planeta orbita zeta planeta orbita bbb1 bbb2 bbb3\n",
+    );
+    for (let i = 0; i < 6; i++)
+      w.put(path.join(outra, `cheio-${i}.md`), `# Cheio ${i}\n\n${"palavra ".repeat(20)} unico${i}x\n`);
+    for (let i = 0; i < 40; i++)
+      w.put(
+        path.join(fin, `h${i}.md`),
+        `# H${i}\n\nplaneta orbita zeta ruido${i}a ruido${i}b ruido${i}c ruido${i}d ruido${i}e\n`,
+      );
+    await w.index();
+    const url = `/api/memory/cleanup/inventory?dir=${encodeURIComponent(outra)}`;
+    const groups = (body: Json) =>
+      (body.clusters as Json[]).filter((c) => c.kind === "related").map((c) => [c.count, c.terms]);
+    const whole = groups((await w.call("GET", url)).body);
+    await setAccess(w, [{ path: fin, agents: "write", devices: "hide" }]);
+    await w.index();
+    const device = w.device(["content"]);
+    const seen = groups((await w.call("GET", url, undefined, device)).body);
+    // the twin: the owner with the folder excluded and the edges worked out from nothing
+    await setAccess(w, []);
+    w.update((s) => {
+      s.excludes = [...s.excludes, "fin"];
+    });
+    await w.index();
+    w.ctx.indexer.refreshRelated(
+      new Set((w.ctx.db.prepare("SELECT id FROM files").all() as Array<{ id: number }>).map((r) => r.id)),
+    );
+    const twin = groups((await w.call("GET", url)).body);
+    expect(twin.length, "without the hidden notes the pair is a group").toBeGreaterThan(0);
+    expect(whole, "over the whole corpus it is not").not.toEqual(twin);
+    expect(seen).toEqual(twin);
+  });
+});
