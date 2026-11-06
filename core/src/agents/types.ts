@@ -82,7 +82,8 @@ export interface AgentRun {
    */
   protectedDirs?: string[];
   /**
-   * Folders inside the working folder or `readDirs` that are hidden from agents (cerebro-memoria-confiavel, door 13):
+   * Folders inside the working folder or `readDirs` that are hidden from agents, or, for a run a paired device asked for,
+   * from devices (cerebro-memoria-confiavel, door 13, plan amendment 12):
    * the Claude adapter denies its read, search and edit tools there in every mode. A run on a provider that cannot keep
    * its reads in the working folder is refused before it gets here (`409 folder_hide_unsupported`).
    */

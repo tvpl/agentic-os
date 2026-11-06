@@ -700,7 +700,8 @@ export class RunManager {
       ...(this.platform ? { platform: this.platform } : {}),
     };
     const access = resolveFolderAccess(env);
-    if (!access.restricts("agents") && !access.restricts("devices"))
+    // a device's run is judged even with no level set: the exports and the guard's folder are never served to it
+    if (!access.restricts("agents") && !access.restricts("devices") && !isDeviceActor(input.startedBy))
       return { hiddenDirs: [], readOnlyDirs: [] };
     return checkRunFolders(
       env,

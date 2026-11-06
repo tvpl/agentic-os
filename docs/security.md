@@ -371,7 +371,15 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   computed once for every caller: a device gets it without the items whose `path` or `sourcePath` is hidden and without
   the highlights that point at one, but the numbers (counts, totals, KPIs) stay as they were computed. A run a device
   asks for in a folder hidden from devices is `404 not_found`; one that would write in a folder `read` for devices is
-  `403 folder_read_only`. Beyond the files, every answer a device reads leaves out what exists only through a hidden
+  `403 folder_read_only`. A run a device asks for whose working folder (or a folder it is handed) **holds** a folder
+  hidden from devices, or `artifacts/exports/`, or the guard's folder, is not refused but is launched with the same
+  deny rules the agents' hidden folders get (`Read`, `Grep`, `Glob`, `Edit` and `Write` under each, in every mode): the
+  agent reads everything under its folder without asking, and the device reads what the agent prints (plan amendment
+  12). A folder handed to a device's run that is itself hidden from devices, or the exports, is `404 not_found` and
+  names nothing. A device only starts a provider whose reads stay in the working folder, which is the one the deny
+  rules exist for (Codex and Cursor: `403 device_provider_refused`, and `409 folder_hide_unsupported` where a manifest
+  changes between the request and the launch). The rules are what is proven (the launch arguments); the fake CLI reads
+  no file, and the rule syntax is not exercised against the installed CLI here. Beyond the files, every answer a device reads leaves out what exists only through a hidden
   path, and writes a hidden path in free text as `(pasta oculta)` (plan amendment 5): the runs that ran in, or were
   handed, a hidden folder (absent from `GET /api/runs` and a run's children, `404 not_found` for the run, its stream,
   its children and its diff), their conversations, approvals (which a device can neither read nor resolve) and
@@ -433,9 +441,10 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   binds the runs MordomoOS starts and the credential it gives them, not a program the owner configures with the token.
   A name is hidden whole only where it is written as a path: a bare folder name in a sentence (`fin`) is not a
   citation and stays; the tail of a hidden path stops at the first space, so the part of a file name after a space
-  below a hidden folder may stay. The output of a run that was handed a folder hidden from devices only (a memory skill
-  reads `memory/` whole) can quote it, and a device reads that output; hiding from devices is enforced where a file is
-  served or indexed, not by following what an agent copies.
+  below a hidden folder may stay. The output of a run the owner (or a routine) started that was handed a folder hidden from
+  devices only (a memory skill reads `memory/` whole) can quote it, and a device reads that output; a run a device
+  started is denied the folder (above). Hiding from devices is enforced where a file is served or indexed, and for a
+  device's own runs by the deny rules, not by following what an agent copies.
 
 
 ## The guard of MEMORY.md

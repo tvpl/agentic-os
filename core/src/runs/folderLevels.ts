@@ -1,4 +1,11 @@
-import { resolveFolderAccess, type FolderAccess, type FolderAccessEnv } from "../memory/folderAccess.js";
+import path from "node:path";
+import { realpathLenient } from "../security/paths.js";
+import {
+  deniedDirs,
+  resolveFolderAccess,
+  type FolderAccess,
+  type FolderAccessEnv,
+} from "../memory/folderAccess.js";
 
 /**
  * What the access of folders (.specs/features/cerebro-memoria-confiavel, door 12 and 13) decides about a run: checked
@@ -13,6 +20,11 @@ import { resolveFolderAccess, type FolderAccess, type FolderAccessEnv } from "..
  *   the working folder (`readConfinement` other than `workdir`, a manifest that says nothing included):
  *   `409 folder_hide_unsupported` (AC 98); on one that keeps them there, the held folders are denied to its tools (AC
  *   97, `AgentRun.hiddenDirs`);
+ * - the same for a run a paired device asks for, with the folders hidden from devices that lie inside its working folder
+ *   or a handed folder, and the folders no device is ever served (`artifacts/exports/`, the guard's folder): a device
+ *   reads through the agent whatever the agent reads under its folder, so the folder that holds a hidden one is no
+ *   more open to it than the hidden one (plan amendment 12, round 3 finding 1). A folder handed to a device's run that
+ *   is itself hidden from devices is refused `404 not_found`, as a working folder is;
  * - a write run whose working folder or handed folders hold a folder `read` for agents: those folders are kept
  *   read-only (`AgentRun.protectedDirs`, AC 100); a provider that cannot protect a folder fails at launch with
  *   `409 folder_protection_unsupported` (`assertProtectsDirs`).
@@ -52,8 +64,12 @@ export class FolderHideUnsupportedError extends Error {
 export class FolderHiddenFromDeviceError extends Error {
   readonly statusCode = 404;
   readonly code = "not_found";
-  constructor(folder: string) {
-    super(`No folder a run may start in is ${folder}.`);
+  constructor(folder: string | null) {
+    super(
+      folder === null
+        ? "No folder this run may be handed is there."
+        : `No folder a run may start in is ${folder}.`,
+    );
     this.name = "FolderHiddenFromDeviceError";
   }
 }
@@ -81,7 +97,10 @@ export interface RunFolderPlan {
 }
 
 export interface RunFolderVerdict {
-  /** The folders hidden from agents inside the working folder or a handed folder: denied to the tools (door 13). */
+  /**
+   * The folders hidden from agents inside the working folder or a handed folder, and, for a run a device asked for, the
+   * ones hidden from devices (and the ones no device is served) inside them: denied to the tools (door 13).
+   */
   hiddenDirs: string[];
   /** The folders `read` for agents inside them, for a write run: kept read-only. */
   readOnlyDirs: string[];
@@ -93,12 +112,24 @@ export function checkRunFolders(
   plan: RunFolderPlan,
   access: FolderAccess = resolveFolderAccess(env),
 ): RunFolderVerdict {
-  // No level other than `write` anywhere: nothing to refuse or deny, exactly as before the access of folders existed.
-  if (!access.restricts("agents") && !access.restricts("devices"))
+  const dirs = [plan.cwd, ...plan.readDirs];
+  const denied = plan.device ? deniedDirs(env.paths, "devices") : [];
+  // No level other than `write` anywhere, and no folder a device is never served inside a device's run: nothing to
+  // refuse or deny, exactly as before the access of folders existed.
+  if (
+    !access.restricts("agents") &&
+    !access.restricts("devices") &&
+    !denied.some((d) => dirs.some((dir) => touches(d, dir)))
+  )
     return { hiddenDirs: [], readOnlyDirs: [] };
   if (plan.device) {
     const level = access.level(plan.cwd, "devices");
-    if (level === "hide") throw new FolderHiddenFromDeviceError(plan.cwd);
+    if (level === "hide" || denied.some((d) => isUnder(d, plan.cwd)))
+      throw new FolderHiddenFromDeviceError(plan.cwd);
+    for (const dir of plan.readDirs) {
+      if (access.level(dir, "devices") === "hide" || denied.some((d) => isUnder(d, dir)))
+        throw new FolderHiddenFromDeviceError(null);
+    }
     if (level === "read" && plan.mode === "write") {
       throw new FolderReadOnlyError(
         `A paired device may only read in ${plan.cwd}, so it cannot ask for a run that writes there. Ask for a read-only run, or change the folder's access in Settings › Memory.`,
@@ -118,15 +149,40 @@ export function checkRunFolders(
       `Agents may only read in ${plan.cwd}, so a run that writes cannot start there. Start a read-only run, or change the folder's access in Settings › Memory.`,
     );
   }
-  const dirs = [plan.cwd, ...plan.readDirs];
-  const hiddenDirs = [...new Set(dirs.flatMap((dir) => access.inside(dir, "agents", "hide")))];
+  const hiddenDirs = [
+    ...new Set([
+      ...dirs.flatMap((dir) => access.inside(dir, "agents", "hide")),
+      ...(plan.device
+        ? dirs.flatMap((dir) => [
+            ...access.inside(dir, "devices", "hide"),
+            ...denied.filter((d) => isUnder(dir, d) && !isUnder(d, dir)).map((d) => realpathLenient(d)),
+          ])
+        : []),
+    ]),
+  ];
   const provider = hiddenDirs.length > 0 ? plan.provider() : null;
   if (provider && provider.readConfinement !== "workdir") {
     throw new FolderHideUnsupportedError(
-      `${provider.name} reads everything the user can read, and the run's folder holds a folder hidden from agents (${hiddenDirs[0]}): hiding it would be false. Choose a provider that keeps reads in the working folder (Claude Code), or start the run elsewhere.`,
+      `${provider.name} reads everything the user can read, and the run's folder holds a folder hidden from ${plan.device ? "the device that asked" : "agents"} (${hiddenDirs[0]}): hiding it would be false. Choose a provider that keeps reads in the working folder (Claude Code), or start the run elsewhere.`,
     );
   }
   const readOnlyDirs =
     plan.mode === "write" ? [...new Set(dirs.flatMap((dir) => access.inside(dir, "agents", "read")))] : [];
   return { hiddenDirs, readOnlyDirs };
+}
+
+/** `inner` is `outer` or lies inside it (lexically or by real path). */
+function isUnder(outer: string, inner: string): boolean {
+  const within = (o: string, i: string) => {
+    const rel = path.relative(o, i);
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  };
+  return (
+    within(path.resolve(outer), path.resolve(inner)) || within(realpathLenient(outer), realpathLenient(inner))
+  );
+}
+
+/** One of the two holds the other (a denied folder inside a run's folder, or a run's folder inside a denied one). */
+function touches(denied: string, dir: string): boolean {
+  return isUnder(denied, dir) || isUnder(dir, denied);
 }
