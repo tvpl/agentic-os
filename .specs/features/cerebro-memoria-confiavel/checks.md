@@ -1798,6 +1798,60 @@ Proof: `npm run build:server && npm run build -w apps/command-centre && MORDOMO_
   changed filter, the empty-focus return, the visibility filter of the pass; the mirror's two deletes. An equivalent
   mutant found: the `path.isAbsolute` guard in `aboutHidden` repeated the one `hiddenPath` has, and was removed
 
+## Correções da rodada 3 (parte 3)
+
+The screen's half of round 3 finding 6 (the route's half is C178, "Correções da rodada 3 (parte 1)"): the detail of a
+proposal came with `effects` and the tab did not draw them. Closed in `ac266ee` (the drawing, C186-C191, and design.md's
+"Emenda 1" with the checks in `e23d931`) and `96c0fef` (C192 in a browser and the weight entry). No approved check was
+edited: C186-C192 are new, and the one mock the new field touched (C106's consolidation, which now answers `effects: []`
+as the contract does) is a data shape, not an assertion.
+
+- **What is drawn.** Under the text of each fact op, in the same cell (the op row keeps its five cells), one list item per
+  effect of the detail's `effects`, an icon and a text, never the colour alone, 13px: a close as `CalendarDays` and
+  "Encerra o fato <sujeito> · <predicado> · <valor> em <dia local de at>.", a retraction as `Undo2` and "Retrata o fato …
+  como nunca verdadeiro. Não tem volta." (it is `retracted_at`, with no way back), a refusal as `AlertTriangle` and "Será
+  recusado: … Aceitar dá o erro 409 fact_overlap.", an identical fact as `Check` and "Já existe um fato idêntico. Nada
+  muda.", a fact that cannot be asserted as `AlertTriangle` and "Não pode ser registrado: <motivo>". The order is the
+  route's `closes`, then the refusal, then the identical fact, then the error. The tones are the existing ones and no
+  token was added: `--danger` for a retraction, `--warn` for a refusal and an error, `--text-dim` for the rest. The
+  effect of a consolidation's op is found by `op` (never by position), and a `fact` proposal's by `op: null`. A fact op
+  whose entry has nothing to say (a new fact of another key) and every other kind of proposal draw no list at all.
+- **Settled mid-build, inside design.md.** (a) the five texts are not in design.md's "Texto" table, so they are a numbered
+  amendment, "Emenda 1", placed before "Texto" so that C104 and C145 keep reading its 65 rows by number; C190 reads the
+  amendment's own table; (b) the fact is named `<sujeito> · <predicado> · <valor>` with the new fact's subject and
+  predicate (the keys are the same) and the existing fact's value, so the line names one fact, not a bare value; (c) the
+  date is the local day of `at`, `DD/MM/AAAA`, as the title of a consolidation is dated (one helper now serves both), and
+  C186 pins `TZ=America/Sao_Paulo` where the local and the UTC day differ (L-053); a retraction carries no date, its `at`
+  being "now"; (d) the lines are plain list items and not a live region: the decision's refusal (`role="alert"`) is what
+  is announced, once, and C189 counts the detail's live regions with and without effects; (e) a fact the route says would
+  be refused keeps its checkbox and its "Aceitar": the screen foretells, the decision decides; (f) `error` is drawn with
+  the route's own message, which is English, as the other refusals the screen shows are; (g) the gallery's entry (C108)
+  was not extended: 116 B of JS were left under C147's cap, and the tones' contrast is proven in a real browser in both
+  themes and shells by C192
+- **Owner question G40 stays open, and no modal is built.** Safe default (built): show the effect and ask nothing more;
+  C187 asserts that "Aceitar selecionadas" sends the decision at once and no dialog opens. Alternative: a confirmation
+  `Modal` naming the facts the acceptance closes or retracts, one more click on the path of an owner who has just read it
+- **Weight (C147).** The build of `96c0fef`: 590 595 B JS gzip (+16 268 B over `cerebro-paineis`, **116 B under C147's
+  16 384 B**; the part 2 build was 590 065 B, so the drawing costs 530 B) and 81 852 B CSS gzip (+1 649 B, 1 423 B under its
+  3 072 B); JS raw 1 807 410 B, CSS raw 372 457 B. The `cerebro-memoria-confiavel` entry of `scripts/bundle-baseline.json`
+  is re-measured in place (its reason says 15.9 KB and 1.6 KB). Two icons reuse chunks the build already splits
+  (`CalendarDays`, `Undo2`), the sheet is 33 lines, and the five texts are 5 keys in two languages. The next change to the
+  agent tab that adds JS does not fit under the cap and stops there
+- **Gates.** On the tree of `96c0fef`: `npm run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check`
+  exit 0, `npx vitest run` at the root is green (190 files, 2 818 tests passed, 1 skipped), `npm run test -w
+apps/command-centre` is green (189 files, 1 669 tests), each `Proof:` line of C186-C192 passes run alone (C186 4 tests,
+  C187 6, C188 3, C189 2, C190 3, C191 2, C192 4 in the browser), C88-C96, C104, C105, C145 and the three proofs of C147
+  still pass run alone, `memoria.spec.ts`, `a11y.spec.ts`, `gallery.spec.ts`, `gallery-contrast.spec.ts` and
+  `reviews.spec.ts` run together pass (109 tests), and `validate_checks.py` and `validate_plan.py` exit 0
+- **Re-injected, each failing the check named.** The close dated now instead of `at` (C186); the UTC day instead of the
+  local one (C186); a retraction drawn as a close (C186, C187, C191); the effect taken by position (C188); a `fact`
+  proposal matched by `op === i` (C186, C187, C188, C189, C191); the refusal not drawn (C187, C189, C191); the identical
+  fact not drawn (C187, C188, C191); the error not drawn (C187, C191); the identical fact drawn before the refusal
+  (C187, C191); the list made a `role="status"` region (C189, and C192 in the browser); "Aceitar" asking a second question
+  once a close is foretold (C187); a refused fact's checkbox disabled (C187); the retraction in the `--warn` tone (C191,
+  and C192 in the browser); a placeholder renamed in one language, a key no longer spelled by the source and a text that
+  drifts from design.md (C190)
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None

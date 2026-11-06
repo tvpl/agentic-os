@@ -98,7 +98,8 @@ reutiliza o manifesto da faxina: ele move arquivos e não guarda conteúdo.
     sobrevive ao dono apagar a notificação; o gravador de notificações (exists) cria a linha do inbox.
 12. Interface -> `ReviewsScreen` (exists) ganha a aba "Do agente"; `NotePanel` (exists) ganha a seção "Histórico"; o diálogo
     "Histórico da memória" e o diálogo de restauração são novos (new, no door - placement per conventions); a origem de
-    uma operação e de um fato e o "Ver histórico" abrem a vista de notas (`NotesView`, exists) em `?open=<caminho>&line=<n>`.
+    uma operação e de um fato e o "Ver histórico" abrem a vista de notas (`NotesView`, exists) em `?open=<caminho>&line=<n>`; o detalhe de uma proposta
+    de fatos desenha `effects` abaixo de cada operação de fato (Landing 21, `design.md` "Emenda 1").
 
 **Parte B**
 
