@@ -20,6 +20,7 @@ import {
   workspaceLinkTarget,
   writeWorkspaceFile,
 } from "../security/safeWrite.js";
+import { GUARD_DIR, guardDir } from "./folderAccess.js";
 import { historyMaxBytes, newestVersion, recordVersion } from "./historyStore.js";
 import { MEMORY_FILE, storeProposal } from "./proposals.js";
 
@@ -66,8 +67,6 @@ interface StartState {
 export const GUARD_READ_LIMIT = 4 * 1024 * 1024;
 /** The most bytes of an oversized file a `memory_edit` proposal holds (the rest stays in the file set aside). */
 export const GUARD_PROPOSAL_PREFIX = 256 * 1024;
-/** Where the guard sets aside what a run left at the name, in the home and outside every folder a run is handed. */
-export const GUARD_DIR = "guard";
 
 /** What a run left at the name: nothing, a regular file read whole, or something the guard does not put back in place. */
 type Left =
@@ -107,7 +106,7 @@ export class MemoryGuard {
 
   /** The folder of the set-asides (judged by its own scope: it is no part of `memory/`). */
   private guardScope(): ReadScope {
-    return readScope({ homeDir: this.deps.paths.home, roots: [path.join(this.deps.paths.home, GUARD_DIR)] });
+    return readScope({ homeDir: this.deps.paths.home, roots: [guardDir(this.deps.paths)] });
   }
 
   private read(): Buffer | null {
@@ -232,9 +231,17 @@ export class MemoryGuard {
    * safe writer refuses a `to` that exists, `EEXIST`, and the next name is tried). Answers the path from the home.
    */
   private takeBack(runId: string, start: Buffer | null): string {
-    const dir = path.join(this.deps.paths.home, GUARD_DIR);
-    for (let n = 1; n <= 99; n++) {
-      const name = `guard-${runId}${n === 1 ? "" : `-${n}`}-${MEMORY_FILE}`;
+    const dir = guardDir(this.deps.paths);
+    // `guard-<runId>`, `-2` ... `-99` are names the owner can find; after them the names are made of random digits, so a
+    // run that can write the home (a provider with no sandbox) cannot fill them beforehand and make the guard give up
+    // (round 3, finding 7): the restore of the owner's bytes never waits on a free readable name. A name that exists is
+    // never overwritten (`EEXIST`, and the next is tried).
+    const names: string[] = [];
+    for (let n = 1; n <= 99; n++) names.push(`guard-${runId}${n === 1 ? "" : `-${n}`}-${MEMORY_FILE}`);
+    for (let i = 0; i < 8; i++) {
+      names.push(`guard-${runId}-x${crypto.randomBytes(6).toString("hex")}-${MEMORY_FILE}`);
+    }
+    for (const [i, name] of names.entries()) {
       try {
         setAsideAndWrite(this.scope(), this.file, path.join(dir, name), start, this.guardScope());
         return `${GUARD_DIR}/${name}`;
@@ -242,7 +249,7 @@ export class MemoryGuard {
         // only a name that is taken moves on to the next; the run's entry is still at the name when it was
         const taken =
           (err as NodeJS.ErrnoException).code === "EEXIST" && workspaceEntryKind(this.scope(), this.file) !== "none";
-        if (!taken || n === 99) throw err;
+        if (!taken || i === names.length - 1) throw err;
       }
     }
     throw new Error("unreachable");

@@ -3,7 +3,7 @@ import path from "node:path";
 import type { FolderAudience } from "@mordomo/contracts";
 import type { MordomoPaths } from "../paths.js";
 import { realpathLenient } from "../security/paths.js";
-import { exportsDir, type FolderAccess } from "./folderAccess.js";
+import { deniedDirs, type FolderAccess } from "./folderAccess.js";
 
 /** What a hidden folder is written as in free text a device or an agent reads (plan amendment 5). */
 export const HIDDEN_PATH_TEXT = "(pasta oculta)";
@@ -38,7 +38,10 @@ export function citationRedactor(
 ): CitationRedactor {
   const spellings = new Set<string>();
   const hidden = access.entries.filter((e) => !e.all && e[audience] === "hide").flatMap((e) => e.spellings);
-  const exported = audience === "devices" ? [exportsDir(paths), path.join(realpathLenient(paths.artifacts), "exports")] : [];
+  const exported = [
+    ...deniedDirs(paths, audience),
+    ...(audience === "devices" ? [path.join(realpathLenient(paths.artifacts), "exports")] : []),
+  ];
   for (const abs of [...hidden, ...exported]) {
     const relTo = (base: string): string | null => {
       for (const b of new Set([path.resolve(base), realpathLenient(base)])) {

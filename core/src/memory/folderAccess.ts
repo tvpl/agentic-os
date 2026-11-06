@@ -31,7 +31,7 @@ import {
 export type { FolderAudience, FolderLevel };
 
 export interface FolderAccessEnv {
-  paths: Pick<MordomoPaths, "artifacts">;
+  paths: Pick<MordomoPaths, "artifacts" | "home">;
   settings: Settings;
   /** Platform whose file-name rules apply (tests only); defaults to this process's. */
   platform?: NodeJS.Platform;
@@ -169,6 +169,23 @@ export function exportsDir(paths: Pick<MordomoPaths, "artifacts">): string {
   return path.join(paths.artifacts, "exports");
 }
 
+/** Where the guard of `MEMORY.md` sets aside what a run left at its name, in the home (plan amendments 9 and 13). */
+export const GUARD_DIR = "guard";
+
+/** The guard's folder: no one but the owner reads it, and no one but the owner asks to work in it. */
+export function guardDir(paths: Pick<MordomoPaths, "home">): string {
+  return path.join(paths.home, GUARD_DIR);
+}
+
+/**
+ * The folders `audience` is never served, whatever the levels say: for a device the exports (G11) and the guard's
+ * folder, for an agent the guard's folder. Each by its name and by its real path.
+ */
+export function deniedDirs(paths: Pick<MordomoPaths, "home" | "artifacts">, audience: FolderAudience): string[] {
+  const dirs = audience === "devices" ? [exportsDir(paths), guardDir(paths)] : [guardDir(paths)];
+  return [...new Set(dirs.flatMap((d) => [d, realpathLenient(d)]))];
+}
+
 /**
  * The settings as a read on behalf of `audience` sees them: an access mark added to `excludes` (every read scope and
  * stored-row filter made from them refuses what is hidden), and the indexed folders and the context paths that are
@@ -176,7 +193,7 @@ export function exportsDir(paths: Pick<MordomoPaths, "artifacts">): string {
  */
 export function accessSettings(env: FolderAccessEnv, audience: FolderAudience, access = resolveFolderAccess(env)): Settings {
   const { settings, paths } = env;
-  const deny = audience === "devices" ? [...new Set([exportsDir(paths), realpathLenient(exportsDir(paths))])] : [];
+  const deny = deniedDirs(paths, audience);
   if (!access.restricts(audience) && deny.length === 0) return settings;
   const visible = (p: string) => access.level(p, audience) !== "hide";
   const contexts = settings.contexts

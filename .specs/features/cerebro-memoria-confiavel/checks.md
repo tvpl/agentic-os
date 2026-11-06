@@ -1513,6 +1513,38 @@ Proof: `npx vitest run tests/memoria.access-round2.test.ts -t "C177 "`
   dropped, not renamed `(pasta oculta)`. Safe default: dropped. Alternative: keep the row with the name replaced, which
   still tells a device how many files changed and when
 
+## Correções da rodada 3 (parte 1)
+
+What round 3 of the verification found in the guard, the proposals' trust and the proposal review (findings 5, 6, 7 and
+the survivors F2 and F3 of finding 8), fixed in the commits that carry each entry. The owner chose to fix these in code
+and to run a short fourth verification over them (plan amendment 12).
+
+- **Finding 7, the guard's folder was no closed folder (plan amendment 13).** (a) A `content` device read what a run
+  left in `<home>/guard/` through `preview` and `note` (`200`), where `artifacts/exports/` is `404`. `deniedDirs` now
+  lists the folders no audience is served whatever the levels say (devices: the exports and `guard/`; agents: `guard/`)
+  and every place that denied the exports (the access view of the routes, the read scopes of `accessSettings`, the
+  free-text redaction, the audience index's spec) takes the list. (b) `cwd = <home>/guard` was accepted for the owner
+  and for a `run` device: the run manager refuses it for a device at the request (`assertFolderAccess`), at `create`
+  and at the launch (`403 forbidden_path`), and accepts the owner's and what the owner set up (`startedBy` null). (c) A
+  run that can write the home filled the 99 names and the guard gave up (observed: 5 MiB of `- INJECTED` at `MEMORY.md`
+  after `run.finished`). Design chosen: after `-99` the guard tries names made of twelve random hex digits. The
+  alternatives were a timestamp or a counter beyond 99 (both guessable, so both can be filled beforehand) and the run's
+  own folder (a folder the run owns, the very dependence finding 1 of round 2 removed); an unguessable name cannot be
+  filled and, with `EEXIST`, never overwrites an earlier set-aside. (d) `docs/security.md` has the paragraph "The guard
+  of MEMORY.md" (the folder, the link rule, the closed reads, the inbox row, the limits, and that backups do not copy
+  `guard/`). **C69 extended**: a device with every scope gets `404` from `preview` and `note` of a file in `guard/`
+  exactly as for one in `artifacts/exports/`, the owner reads it; a device with `run` scope is `403 forbidden_path` for
+  `guard/` and for a folder in it and no run is made, the owner's is accepted; the run manager refuses at each of its
+  three gates; 98 names taken put the run's entry at `-99`; all 99 taken leave the owner's bytes at the name, the 99
+  untouched, the entry under a random name the proposal names (also for a link); `deniedDirs` and the filters of both
+  views at their own layer. Re-injected: `-99` to `-98` fails 1 case (F2); no random names fails 2; `guard/` not denied
+  to devices fails 1 route case and both layer cases, not denied to agents fails both layer cases; the refusal removed
+  at the request, at `create` or at the launch fails 1 case each
+- **F3, the re-check of the name after the read.** The guard reads the file only after `lstat` found a plain file; a
+  link planted between the two is read through. **C69 extended**: with the first look seeing a plain file and a link to a
+  note hidden from agents and devices taking the name before the read, the proposal holds the link's target and none of
+  the text, and the entry is set aside as a link. Re-injected: without the re-check the case fails
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None
@@ -1640,6 +1672,9 @@ blocks the build.
 | search table of a device with exports under a root, round 2 (2)             | its own table C175 · the owner's when no root holds the exports C175                                                                                                                                                                                                                                                                                                                                                                                                                                                      | -        |
 | counts of an index pass a device is given, round 2 (4)                      | `lastIndex.stats` C176 · pass in course C176 · `index.*` events C176 · the "Index finished" row C176                                                                                                                                                                                                                                                                                                                                                                                                                      | -        |
 | rows about a hidden indexed folder, round 2 (4)                             | inbox C177 · sentinels `recent` and `lastTitle` C177 · event stream C177 · every route a device may call C159                                                                                                                                                                                                                                                                                                                                                                                                             | -        |
+| folders no audience is served, round 3 (3)                                  | devices: exports and `guard/` C69 · agents: `guard/` C69 · neither by a `folderAccess` entry C69                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| guard/ as a working folder, round 3 (4)                                     | the request C69 · `create` C69 · the launch C69 · the owner and a routine accepted C69                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| guard set-aside names, round 3 (4)                                          | `guard-<runId>` and `-2` C69 · `-99` the last readable C69 · all 99 taken, random C69 · an earlier set-aside never overwritten C69                                                                                                                                                                                                                                                                                                                                                                                        |
 
 - Claims naming a status code, route or response shape: C7, C11-C15, C29-C36, C40-C47, C53, C59-C68, C80-C83,
   checks C109-C120, C122-C123, C125, C127-C128, C131-C138 and C172-C177 - each has a proof that crosses the HTTP boundary; the decision tables among them

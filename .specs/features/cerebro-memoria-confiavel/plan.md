@@ -605,6 +605,18 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
     seguem recusados com `409 folder_hide_unsupported`. Isso estreita o acesso e não o amplia. Os demais consertos estão em
     "Correções da rodada 3" do `checks.md`.
 
+13. **A pasta da guarda é só do dono, e a guarda não espera um nome livre (rodada 3 da verificação, achado 7, e os
+    mutantes F2 e F3; correção de construção, sem pergunta).** A emenda 9 dizia que `<home>/guard/` não é pasta de nenhuma
+    execução; faltava fazê-lo valer. Para um dispositivo e para uma credencial de execução, `guard/` passa a ser negada em
+    toda rota de leitura como `artifacts/exports/` já é para dispositivos (`deniedDirs`, G11: `404`, fora do índice, fora
+    das citações); só o dono, ou o que o dono montou (uma rotina, a CLI), inicia uma execução cuja pasta de trabalho está em
+    `guard/` (`403 forbidden_path` para um dispositivo, no pedido, no `create` e no lançamento). Uma execução que escreve no
+    home inteiro (um provedor sem sandbox, o Cursor com `--force`) podia ocupar os 99 nomes `guard-<runId>[-n]` e desligar a
+    guarda; depois do `-99` os nomes passam a ter doze dígitos hexadecimais aleatórios (`guard-<runId>-x<12 hex>-…`), que
+    uma execução não adivinha, e um nome que existe nunca é sobrescrito. O parágrafo "The guard of MEMORY.md" de
+    `docs/security.md` descreve a pasta e seus limites. Uma execução com shell sem confinamento que troca a própria pasta
+    `guard/` por um arquivo segue fora do que uma pasta pode limitar (escrito em "Limits").
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).

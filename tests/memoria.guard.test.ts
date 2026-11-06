@@ -531,3 +531,178 @@ describe("C69 the guard never follows a link at MEMORY.md (round 2, finding 2)",
     expect(payload.linkTarget).toBe(planted);
   });
 });
+
+// ---- verification round 3, finding 7 and the survivors F2 and F3 (part 1) ---------------------------------------------
+
+describe("C69 the guard's folder is the owner's alone (round 3, finding 7)", () => {
+  const SECRET = "O-QUE-A-EXECUCAO-DEIXOU-7c1e";
+
+  it("C69 a device holding every scope gets 404 from preview and note of what lies in guard/, as it does for artifacts/exports/; the owner reads it", async () => {
+    const aside = w.put(path.join(w.home, "guard", "guard-r-1-MEMORY.md"), `${SECRET}\n`);
+    const exported = w.put(path.join(w.home, "artifacts", "exports", "x", "a.md"), `${SECRET}\n`);
+    const device = w.device(["content", "monitor", "run", "approve"]);
+    const ask = async (route: "preview" | "note", file: string) =>
+      w.call("GET", `/api/memory/${route}?p=${encodeURIComponent(file)}`, undefined, device);
+    for (const route of ["preview", "note"] as const) {
+      const guarded = await ask(route, aside);
+      const control = await ask(route, exported);
+      expect([guarded.status, guarded.body?.error?.code], route).toEqual([
+        control.status,
+        control.body?.error?.code,
+      ]);
+      expect(guarded.status, route).toBe(404);
+      expect(JSON.stringify(guarded.body)).not.toContain(SECRET);
+    }
+    const owner = await w.call("GET", `/api/memory/preview?p=${encodeURIComponent(aside)}`);
+    expect(owner.status).toBe(200);
+    expect(JSON.stringify(owner.body)).toContain(SECRET);
+  });
+
+  it("C69 only the owner starts a run whose working folder is guard/ or a folder in it: a device with run scope is 403 forbidden_path and no run is made", async () => {
+    fs.mkdirSync(path.join(w.home, "guard", "dentro"), { recursive: true });
+    const device = w.device(["run", "monitor"]);
+    const runs = () => (w.ctx.db.prepare("SELECT COUNT(*) c FROM runs").get() as { c: number }).c;
+    const before = runs();
+    for (const cwd of [path.join(w.home, "guard"), path.join(w.home, "guard", "dentro")]) {
+      const res = await w.call("POST", "/api/runs", { prompt: "olhe", mode: "read_only", cwd }, device);
+      expect([res.status, res.body.error?.code], cwd).toEqual([403, "forbidden_path"]);
+    }
+    expect(runs()).toBe(before);
+    const owner = await w.call("POST", "/api/runs", {
+      prompt: "dono",
+      mode: "read_only",
+      cwd: path.join(w.home, "guard"),
+    });
+    expect([200, 202], JSON.stringify(owner.body)).toContain(owner.status);
+    expect(runs()).toBe(before + 1);
+    // the owner's run in guard/ is let finish, so the next case finds the world quiet
+    await w.ctx.execution.wait(owner.body.runId);
+  });
+});
+
+describe("C69 the run manager refuses guard/ as a device's working folder at each of its three gates (round 3, finding 7)", () => {
+  const input = (startedBy: string | null) => ({
+    origin: "manual" as const,
+    provider: "claude" as const,
+    prompt: "olhe",
+    cwd: path.join(w.home, "guard"),
+    model: null,
+    effort: "default" as const,
+    mode: "read_only" as const,
+    timeoutMs: 60_000,
+    profile: "read_only" as const,
+    startedBy,
+  });
+
+  it("C69 create() itself refuses a device's run (not only the route's check before it), and accepts the owner's and a routine's", () => {
+    expect(() => w.ctx.runs.create(input("device:d1"))).toThrow(
+      /Only the owner may start a run in the guard/,
+    );
+    expect(w.ctx.runs.create(input("owner")).cwd).toBe(path.join(w.home, "guard"));
+    expect(w.ctx.runs.create(input(null)).cwd).toBe(path.join(w.home, "guard"));
+  });
+
+  it("C69 assertFolderAccess refuses it before anything is made, and the launch refuses a stored run whose asker is a device", async () => {
+    expect(() =>
+      w.ctx.runs.assertFolderAccess({
+        cwd: path.join(w.home, "guard"),
+        mode: "read_only",
+        provider: "claude",
+        startedBy: "device:d1",
+      }),
+    ).toThrow(/Only the owner may start a run in the guard/);
+    const record = w.ctx.runs.create(input("owner"));
+    w.ctx.db.prepare("UPDATE runs SET started_by = 'device:d1' WHERE id = ?").run(record.id);
+    const ended = await w.ctx.runs.execute(record.id, "olhe", "read_only");
+    expect(ended.status).toBe("failed");
+    expect(ended.error ?? "").toMatch(/Only the owner may start a run in the guard/);
+  });
+});
+
+describe("C69 the guard restores the owner's bytes whatever names are taken (round 3, finding 7 and F2)", () => {
+  const big = `${START}${"x".repeat(4 * 1024 * 1024 + 10)}\n`;
+  const fill = (runId: string, count: number) => {
+    fs.mkdirSync(path.join(w.home, "guard"), { recursive: true });
+    for (let n = 1; n <= count; n++) fs.writeFileSync(asideOf(runId, n), `- ANTIGO ${n}\n`);
+  };
+
+  it("C69 98 names are taken: the run's entry goes to the 99th name, -99 (the bound is 99, not 98), the 98 as they were", async () => {
+    w.during((run) => {
+      fill(run.runId, 98);
+      fs.writeFileSync(memoryFile(), big);
+    });
+    const run = await w.prompt("write");
+    expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+    expect(fs.statSync(asideOf(run.id, 99)).size).toBe(Buffer.byteLength(big));
+    for (const n of [1, 2, 50, 98])
+      expect(fs.readFileSync(asideOf(run.id, n), "utf8")).toBe(`- ANTIGO ${n}\n`);
+    expect(payloadOf(edits()[0]!).aside).toBe(`guard/guard-${run.id}-99-MEMORY.md`);
+  });
+
+  it("C69 all 99 names are taken (a run that can write the home filled them): the owner's bytes are still at the name, the run's entry is at a name made of random digits, the 99 untouched, the proposal names it", async () => {
+    w.during((run) => {
+      fill(run.runId, 99);
+      fs.writeFileSync(memoryFile(), big);
+    });
+    const run = await w.prompt("write");
+    expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+    expect(fs.readFileSync(memoryFile(), "utf8")).not.toContain("x".repeat(100));
+    for (const n of [1, 2, 99]) expect(fs.readFileSync(asideOf(run.id, n), "utf8")).toBe(`- ANTIGO ${n}\n`);
+    const aside = payloadOf(edits()[0]!).aside as string;
+    expect(aside).toMatch(new RegExp(`^guard/guard-${run.id}-x[0-9a-f]{12}-MEMORY\\.md$`));
+    expect(fs.statSync(path.join(w.home, aside)).size).toBe(Buffer.byteLength(big));
+    expect(guardRows()[0]!.tone).toBe("warn");
+  });
+
+  it("C69 a link replacing MEMORY.md with all 99 names taken is put back too", async () => {
+    const planted = path.join(w.memory, "notes", "plantado-cheio.md");
+    w.during((run) => {
+      fill(run.runId, 99);
+      fs.mkdirSync(path.dirname(planted), { recursive: true });
+      fs.writeFileSync(planted, "- INJECTED\n");
+      fs.rmSync(memoryFile());
+      fs.symlinkSync(planted, memoryFile());
+    });
+    const run = await w.prompt("write");
+    expect(fs.lstatSync(memoryFile()).isFile()).toBe(true);
+    expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+    const aside = payloadOf(edits()[0]!).aside as string;
+    expect(fs.lstatSync(path.join(w.home, aside)).isSymbolicLink()).toBe(true);
+    expect(aside).not.toBe(`guard/guard-${run.id}-MEMORY.md`);
+  });
+});
+
+describe("C69 a link planted between the guard's read and its write-back (round 3, F3)", () => {
+  it("C69 the guard read the file, a link took the name, and the bytes it read through it are not kept: the proposal holds the link's target and none of the text", async () => {
+    const hidden = w.put(path.join(w.memory, "notes", "fin", "segredo-swap.md"), "SEGREDO-DO-SWAP-31ab\n");
+    const guard = w.ctx.memoryGuard as unknown as { read(): Buffer | null };
+    const real = guard.read.bind(w.ctx.memoryGuard);
+    let swapped = false;
+    const spy = vi.spyOn(guard, "read").mockImplementation(() => {
+      // the first look found a plain file; before this read reaches the disk a link takes the name
+      if (
+        !swapped &&
+        fs.lstatSync(memoryFile()).isFile() &&
+        fs.readFileSync(memoryFile(), "utf8") !== START
+      ) {
+        swapped = true;
+        fs.rmSync(memoryFile());
+        fs.symlinkSync(hidden, memoryFile());
+      }
+      return real();
+    });
+    try {
+      w.during(append("- Da execução"));
+      const run = await w.prompt("write");
+      expect(swapped).toBe(true);
+      expect(fs.lstatSync(memoryFile()).isFile()).toBe(true);
+      expect(fs.readFileSync(memoryFile(), "utf8")).toBe(START);
+      const payload = payloadOf(edits()[0]!);
+      expect(payload).toMatchObject({ content: "", linkTarget: hidden });
+      expect(JSON.stringify(edits())).not.toContain("SEGREDO-DO-SWAP");
+      expect(fs.lstatSync(asideOf(run.id)).isSymbolicLink()).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

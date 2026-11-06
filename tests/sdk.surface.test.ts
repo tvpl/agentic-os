@@ -172,6 +172,9 @@ describe("S5 the surface is a closed list", () => {
         "decideProposal",
         "listProposals",
         "planNewNote",
+        // cerebro-memoria-confiavel, round 3 part 1: the folders no audience is served (the guard's, the exports)
+        "deniedDirs",
+        "guardDir",
         "readProposal",
         "storeProposal",
         // cerebro-memoria-confiavel, batch B1: the access of folders the routes read every request through (door 12),

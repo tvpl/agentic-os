@@ -3,7 +3,7 @@ import type { FolderAudience } from "@mordomo/contracts";
 import type { Db } from "../db/db.js";
 import type { Settings } from "../config/schema.js";
 import { isInside, realpathLenient } from "../security/paths.js";
-import { accessSettings, exportsDir, resolveFolderAccess } from "./folderAccess.js";
+import { accessSettings, deniedDirs, resolveFolderAccess } from "./folderAccess.js";
 import { storedRowFilter } from "./indexer.js";
 
 /**
@@ -57,15 +57,14 @@ export interface AudienceEnv {
 
 /** What the table of `audience` must be built for now: `shared` when it hides nothing from it, else its view's excludes. */
 export function audienceSpec(env: Omit<AudienceEnv, "db">, audience: Audience): string {
-  const paths = { artifacts: path.join(env.homeDir, "artifacts") };
+  const paths = { artifacts: path.join(env.homeDir, "artifacts"), home: env.homeDir };
   const base = { paths, settings: env.settings, ...(env.platform ? { platform: env.platform } : {}) };
   const access = resolveFolderAccess(base);
   // A device is never served `artifacts/exports/` whatever the levels say: it matters to the index only when a root
   // holds that folder (the home itself indexed).
-  const exports = exportsDir(paths);
-  const holdsExports =
-    audience === "devices" &&
-    env.roots.some((root) => isInside(realpathLenient(root), realpathLenient(exports)) || isInside(realpathLenient(exports), realpathLenient(root)));
+  const holdsExports = deniedDirs(paths, audience).some((dir) =>
+    env.roots.some((root) => isInside(realpathLenient(root), dir) || isInside(dir, realpathLenient(root))),
+  );
   if (!access.hides(audience) && !holdsExports) return SHARED;
   const view = accessSettings(base, audience, access);
   return JSON.stringify({ home: env.homeDir, excludes: view.excludes });

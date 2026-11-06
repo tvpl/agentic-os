@@ -3,7 +3,7 @@ import {
   HIDDEN_PATH_TEXT,
   accessSettings,
   citationRedactor,
-  exportsDir,
+  deniedDirs,
   grantedReadScope,
   inspectPath,
   isInside,
@@ -58,8 +58,7 @@ export function accessView(ctx: AppContext, principal: Principal | null | undefi
   const access = resolveFolderAccess(env);
   const audience = audienceOf(principal);
   const settings = audience === null ? base : accessSettings(env, audience, access);
-  const denied =
-    audience === "devices" ? [exportsDir(ctx.paths), realpathLenient(exportsDir(ctx.paths))] : [];
+  const denied = audience === null ? [] : deniedDirs(ctx.paths, audience);
   return {
     audience,
     access,

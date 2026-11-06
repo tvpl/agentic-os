@@ -23,7 +23,7 @@ import {
 } from "../security/safeFs.js";
 import { contextNotesDir, contextOkPaths } from "../memory/contexts.js";
 import { checkRunFolders, folderLevelFailureCode, type RunFolderVerdict } from "./folderLevels.js";
-import { resolveFolderAccess } from "../memory/folderAccess.js";
+import { guardDir, resolveFolderAccess } from "../memory/folderAccess.js";
 import {
   askedFolder,
   assertProtectsDirs,
@@ -728,7 +728,20 @@ export class RunManager {
    */
   assertFolderAccess(input: RunFolderInput): void {
     const cwd = this.resolveCwd(input.cwd);
+    this.refuseGuardCwd(cwd, input.startedBy);
     this.folderVerdict(input, cwd, () => this.askedReadDirs(input, cwd));
+  }
+
+  /**
+   * The guard's folder (`<home>/guard/`, plan amendment 13) holds what runs left at `MEMORY.md`, which may be anything
+   * a run wrote: only the owner (or what the owner set up: a routine, the CLI, `startedBy` null) may start a run in it,
+   * never a paired device, which would then read it through the agent.
+   */
+  private refuseGuardCwd(cwd: string, startedBy: string | null | undefined): void {
+    if (startedBy === null || startedBy === undefined || startedBy === "owner") return;
+    if (isInside(realpathLenient(guardDir(this.paths)), cwd)) {
+      throw new PathAccessError(cwd, `Only the owner may start a run in the guard's folder: ${cwd}`);
+    }
   }
 
   // -------------------------------------------------------------- create --
@@ -736,6 +749,7 @@ export class RunManager {
   create(input: CreateRunInput): RunRecord {
     this.assertMayStart(input.startedBy, input.provider);
     const cwd = this.resolveCwd(input.cwd);
+    this.refuseGuardCwd(cwd, input.startedBy);
     if (input.folderCheck !== "launch") this.folderVerdict(input, cwd, () => this.askedReadDirs(input, cwd));
     const settings = this.getSettings();
     const maxQueued = settings.limits.maxConcurrentRuns * QUEUE_DEPTH_FACTOR;
@@ -933,6 +947,7 @@ export class RunManager {
       // Checked again here: the stored folder may have become private or been revoked since create(). A run handed a
       // folder of the user starts in <home>/workspace, never in that folder (cerebro-organizar, door 9).
       const cwd = handedFolder ? this.defaultCwd() : this.resolveCwd(record.cwd);
+      this.refuseGuardCwd(cwd, record.startedBy);
       const context = this.contextDirs(record, cwd);
       const readDirs = [...new Set([...(skillContext.readDirs ?? []), ...context.dirs])];
       // The access of folders, read again now (cerebro-memoria-confiavel, AC 101): a refusal fails the run with its code

@@ -437,6 +437,37 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   reads `memory/` whole) can quote it, and a device reads that output; hiding from devices is enforced where a file is
   served or indexed, not by following what an agent copies.
 
+
+## The guard of MEMORY.md
+
+`memory/MEMORY.md` is what every agent session loads first, so a run that may write must not be able to leave its own
+text there (`.specs/features/cerebro-memoria-confiavel`, door 8, plan amendments 8, 9 and 13). At `run.started` of a write
+run the guard keeps the file's bytes; at `run.finished`, when the file changed and the owner saved none in between, it
+puts the owner's bytes back and stores what the run left as a `memory_edit` proposal for the owner to accept or reject.
+
+- **Nothing the run can shape is on the guard's way.** What the run left at the name and a plain put-back cannot take
+  (a file past the guard's 4 MiB read, a link, a folder) is set aside whole in `<home>/guard/`, under
+  `guard-<runId>-MEMORY.md` and then `-2` ... `-99`, and after those under a name made of twelve random hex digits, so a
+  run that can write the whole home (a provider with no sandbox, Cursor with `--force`) cannot fill the names beforehand
+  and make the guard give up. A name that exists is never overwritten. `guard/` is no folder a run is handed (not its
+  working folder, nor `memory/`, nor its artifacts); backups do not copy it (the set-asides are what the owner rejected,
+  not the owner's memory) and nothing bounds it, so the owner deletes what it holds when it is no longer wanted.
+- **A link at the name is never followed.** The guard finds it by `lstat`, sets it aside as a link, and the proposal
+  holds the link's target as written (`linkTarget`) and no content, so a link to a note hidden from agents and devices
+  hands no byte of it to the proposal. A proposal that names a target hidden from an audience is hidden from it, and
+  accepting one is refused (`400 validation`).
+- **`guard/` is the owner's alone.** A paired device is served nothing in it (`404`, as for `artifacts/exports/`: the
+  folder is outside every device's and every run credential's reads, whatever the levels of `folderAccess` say), and
+  only the owner (or what the owner set up: a routine, the CLI) may start a run whose working folder is in it: a
+  device's request is `403 forbidden_path` when it is asked for and again when the run launches.
+- **Told, not logged.** When the guard sets something aside, or a step of it fails, the owner gets an inbox row
+  (`memory.guard`), `danger` when the owner's bytes could not be put back.
+- **Limits.** The guard's start states live in the service's memory: a service killed during a write run loses them (a
+  graceful stop still emits `run.finished`). It guards the file at the root of `memory/`, not the other notes (a run
+  that writes those leaves an `external` version on the next index pass) and not the journal. A program the owner
+  runs with the owner's token, or a run with an unconfined shell that can replace `<home>/guard/` itself, is outside
+  what a folder can bound.
+
 ## Notes and the index worker
 
 - **Writing a note is the owner's.** `POST /api/memory/notes` and `PUT /api/memory/notes` are `owner` routes
