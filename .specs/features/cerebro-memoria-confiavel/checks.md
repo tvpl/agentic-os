@@ -1670,6 +1670,61 @@ only the changed file again; emptied and un-named when the devices read the owne
 what the audience sees, takes the edges of a row that left the view, and of a removed file, out)
 Proof: `npx vitest run tests/memoria.access-layer.test.ts -t "C185 "`
 
+**C186** - (added with Landing 21, round 3 finding 6, the screen's half of C178) On "Do agente", under the text of a `fact`
+proposal's one op row and inside the same cell (the row keeps its five cells), the detail draws one line per entry of
+`closes` in the order the route gave, each a list item holding an icon and a text: `CalendarDays` and "Encerra o fato
+Cliente X · status · ativo em 31/10/2026." for `action: "close"` (the fact is `<subject> · <predicate> · <the closed fact's
+object>`, the date is the local day of `at`: under `TZ=America/Sao_Paulo`, pinned and asserted, `at` 2026-11-01T02:30:00Z
+reads 31/10/2026 and never 01/11/2026), `Undo2` and "Retrata o fato Cliente X · status · prospect como nunca verdadeiro.
+Não tem volta." for `action: "retract"`, which carries no date; a list of exactly one line is drawn too; in en the same
+two read "Closes the fact … on 31/10/2026." and "Retracts the fact … as never true. This cannot be undone." (design.md
+"Emenda 1"; the mock answers each proposal's own detail by its id and fails on any other, L-051, L-053, L-050, L-046)
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C186 "`
+
+**C187** - The same list draws, one case each, `refuses` as `AlertTriangle` and "Será recusado: o fato Cliente X · status ·
+ativo já vale em todo esse período. Aceitar dá o erro 409 fact_overlap.", `unchanged` (not null) as `Check` and "Já existe
+um fato idêntico. Nada muda.", and `error` as `AlertTriangle` and "Não pode ser registrado: <the route's reason>"; with
+every kind at once the order is the closes and retracts as given, then the refusal, then the identical fact, then the
+error; a fact the route says would be refused keeps its checkbox enabled, and "Aceitar selecionadas (1)" sends `{ action:
+"accept", ops: [0] }` at once with no dialog opening, since the screen asks nothing more (owner question G40, safe default;
+no modal is built) (L-046, L-045)
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C187 "`
+
+**C188** - An entry of `effects` is drawn under the op whose index it names and under no other: a consolidation with ops
+`add`, `fact`, an invalid `fact`, `fact`, `fact` and entries for `op` 1, 3 and 4 draws a list under rows 1 and 3 only (row 4's
+entry holds no close, refusal, identical fact or error, so it draws no list at all, and the invalid op and the `add` have
+none); a `memory_edit`, a `note_create`, a `note_save` and a consolidation with no fact op, each with `effects: []`, draw
+no list; and choosing another proposal replaces the lines with that proposal's own, the detail asked for it once
+(L-046, L-051)
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C188 "`
+
+**C189** - The effects are plain text, not a live region: neither the list nor an item of it has a `role` of `status` or
+`alert` or an `aria-live`, and the detail holds as many live regions with the effects of every kind as with none; a
+decision that answers `409 fact_overlap` is said once, by the detail's one `role="alert"` with the route's message, which is
+not inside the list, the effect that foretold it staying one plain line beside it and the decision sent once (the screen's
+`role="status"` lines are the tab's own, and the effects add none)
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C189 "`
+
+**C190** - The five keys of design.md's "Emenda 1" table (`effects.close`, `effects.retract`, `effects.refuses`,
+`effects.unchanged`, `effects.error`) are keys of `en` and `ptBR` in `locales/brain.ts` with the table's text, read from
+design.md itself; both locales hold the same keys and each text the same placeholders; each key is spelled by the
+production source; and the amendment sits before "Texto", whose 65 rows are still 65 (C104, C145 read them by number)
+Proof: `npm run test -w apps/command-centre -- src/brain/memoriaCopy.test.ts -t "C190 "`
+
+**C191** - The effect lines use the existing tones and no new token: `.ag-effect` is 13px (`--fs-3`) in `--text-dim`, a
+retraction is `--danger`, a refusal and an error are `--warn`, every `var()` the rules use is a token `theme.css` defines
+(`--danger`, `--fs-3`, `--s-2`, `--text-dim`, `--warn`) and `agent.css` defines none; each of the five kinds renders an
+`aria-hidden` icon and a text of its own (design-system binding: the state is never the colour alone)
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C191 "`
+
+**C192** - In the light and the dark theme and in the moldura and the Núcleo, on a real browser, a consolidation whose first
+fact op has a close, a retraction, a refusal, an identical fact and an error shows those five lines under that op's text in
+that order, one under the other, each an icon and a text at 13px or more, the retraction drawn in the computed colour of
+`--danger`, the refusal and the error in that of `--warn` and the close in that of `--text-dim`; the second fact op, with
+nothing to say, has no list; the list holds no `role`, no `aria-live` and no focusable control; and axe at WCAG A/AA reports
+no `serious` or `critical` violation (design-system binding)
+Proof: `npm run build:server && npm run build -w apps/command-centre && MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts memoria.spec.ts -g "C192 "`
+
 - **Finding 1 (security): a device with `run` scope reads a folder hidden from devices (C179, plan amendment 12).** The
   check `checkRunFolders` judged a device's run by its working folder alone and built the deny rules from the agents'
   levels alone, so a read-only run at `memory/notes`, `memory/` or `artifacts/` was accepted and the agent read the hidden
@@ -1883,26 +1938,32 @@ blocks the build.
 | claim a cited line must support, round 3 (7)                                  | add `equals` C52 · supersede `equals` C52 · close_loop `equals` C52 · fact `inOrder` of a consolidation C52 · fact `inOrder` of a proposal C52 · a fragment refused C52 · the empty claim C52                                                                                                                                                                                                                                                                                                                             |
 | effects of accepting a fact, round 3 (6)                                      | a retraction C178 · a close C178 · a refusal C178 · an identical fact C178 · a consolidation's op index C178 · the other kinds, none C178                                                                                                                                                                                                                                                                                                                                                                                 |
 | who reads the facts an effect names, round 3 (2)                              | the owner: all C178 · a device: the ones `GET /api/memory/facts` shows C178                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| effects drawn on the screen, round 3 (5)                                      | close C186 · retract C186 · refuses C187 · unchanged C187 · error C187                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| arrangement of the effects, round 3 (4)                                       | under the op's text, in its cell C186 · the order of the five kinds C187 · by the op's index C188 · one proposal's own, not another's C188                                                                                                                                                                                                                                                                                                                                                                                |
+| proposals with no effects, round 3 (4)                                        | `memory_edit` C188 · `note_create` C188 · `note_save` C188 · a consolidation with no fact op C188                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| effects copy keys, round 3 (5)                                                | `effects.close` C190 · `effects.retract` C190 · `effects.refuses` C190 · `effects.unchanged` C190 · `effects.error` C190                                                                                                                                                                                                                                                                                                                                                                                                  |
+| shells and themes for axe, effects, round 3 (4)                               | moldura light C192 · moldura dark C192 · Núcleo light C192 · Núcleo dark C192                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| tones of the effects, round 3 (3)                                             | `--danger` retract C191 C192 · `--warn` refuses and error C191 C192 · `--text-dim` close, identical C191 C192                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 - Claims naming a status code, route or response shape: C7, C11-C15, C29-C36, C40-C47, C53, C59-C68, C80-C83,
   checks C109-C120, C122-C123, C125, C127-C128, C131-C138, C172-C177 and C179-C184 - each has a proof that crosses the HTTP boundary; the decision tables among them
   (C1, C8-C11, C17, C20, C25, C28, C51, C52, C59, C110, C111, C126) are also proven at their own layer
-- Claims about the screens: C87-C105, C139-C145, C165-C171 in rendered components; C106-C108, C146, C165, C167 also in a
+- Claims about the screens: C87-C105, C139-C145, C165-C171, C186-C191 in rendered components; C106-C108, C146, C165, C167, C192 also in a
   real browser, both shells where the claim names them
 - No other check claims more than the single case its proof exercises
 
 ## Binding sources
 
-| Source                                                                                                          | Checked by                                       |
-| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `cerebro-memoria-confiavel/design.md` (the tab, the fold, the dialogs, the modals, the marks, the widget, copy) | C87-C104, C139-C145, C165-C171                   |
-| `design-system/design.md` (12px floor, 13px prose, tokens, state never by colour alone, axe, the gallery)       | C87, C91, C105, C106, C108, C146, C167-C169      |
-| `primitivas/design.md` (`Tabs`, `Menu`, `Modal`, `Tooltip`, native `<select>`)                                  | C88, C94, C97, C99, C102, C139, C141, C143, C144 |
-| `comandos-atalhos/design.md` (`global` command, `j`/`k`/`Enter` only, no bare key decides, allowlist)           | C96, C102                                        |
-| `cerebro-natureza/design.md` (list left, detail right, 150 ms exit, focus to next, empty/loading/error)         | C89, C95, C105, C165, C169                       |
-| `cerebro-vista-notas/design.md` (fourth fold after "Nesta nota", the menus, the `Lock` place)                   | C97, C102, C139, C141                            |
-| `cerebro-v2/design.md` (conflict text and band of the editor, the note reloads "Salvo")                         | C100, C170, C171                                 |
-| `limpeza-legado/design.md` (one Markdown renderer; the diff in mono, never rendered)                            | C90, C99                                         |
+| Source                                                                                                          | Checked by                                              |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `cerebro-memoria-confiavel/design.md` (the tab, the fold, the dialogs, the modals, the marks, the widget, copy) | C87-C104, C139-C145, C165-C171, C186-C190               |
+| `design-system/design.md` (12px floor, 13px prose, tokens, state never by colour alone, axe, the gallery)       | C87, C91, C105, C106, C108, C146, C167-C169, C191, C192 |
+| `primitivas/design.md` (`Tabs`, `Menu`, `Modal`, `Tooltip`, native `<select>`)                                  | C88, C94, C97, C99, C102, C139, C141, C143, C144        |
+| `comandos-atalhos/design.md` (`global` command, `j`/`k`/`Enter` only, no bare key decides, allowlist)           | C96, C102                                               |
+| `cerebro-natureza/design.md` (list left, detail right, 150 ms exit, focus to next, empty/loading/error)         | C89, C95, C105, C165, C169                              |
+| `cerebro-vista-notas/design.md` (fourth fold after "Nesta nota", the menus, the `Lock` place)                   | C97, C102, C139, C141                                   |
+| `cerebro-v2/design.md` (conflict text and band of the editor, the note reloads "Salvo")                         | C100, C170, C171                                        |
+| `limpeza-legado/design.md` (one Markdown renderer; the diff in mono, never rendered)                            | C90, C99                                                |
 
 ## Test policy
 

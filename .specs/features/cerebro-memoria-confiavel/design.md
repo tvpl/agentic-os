@@ -136,6 +136,36 @@ caminho, "Agentes: <nível>", "Dispositivos: <nível>", "Permissões…" e "Remo
 Cada fato ganha, abaixo do texto, uma linha 12px com o selo de confiança, o autor e, quando há, a origem como link
 ("journal/2026-09-03.md:12"). Um fato retratado como errado não aparece na lista padrão.
 
+## Emenda 1 - o que aceitar um fato faz (rodada 3 da verificação, achado 6; Landing 21; plan, emenda 15)
+
+O detalhe de uma proposta traz `effects` (`FactEffect`, `contracts/src/api/memory.ts`), calculado só leitura pelo planejador
+de que a decisão parte. A aba "Do agente" o desenha **abaixo do texto de cada operação de fato** (a operação do índice
+`op` numa consolidação, a única operação de uma proposta `fact`): uma lista de linhas de 13px, cada uma com ícone e texto
+(o estado nunca só pela cor), na ordem em que a rota entrega — o que fecha ou retrata, o que recusaria, o idêntico, o erro.
+Uma operação sem nada a dizer (um fato novo de outra chave) não ganha lista. O que não é fato (`memory_edit`, `note_create`,
+`note_save`, uma consolidação sem fato) não tem `effects`.
+
+| Efeito (`FactEffect`)                    | Ícone (lucide)  | Tom (token existente) |
+| ---------------------------------------- | --------------- | --------------------- |
+| `closes[].action = "close"`              | `CalendarDays`  | `--text-dim`          |
+| `closes[].action = "retract"`            | `Undo2`         | `--danger`            |
+| `refuses` (aceitar é `409 fact_overlap`) | `AlertTriangle` | `--warn`              |
+| `unchanged` (um fato idêntico existe)    | `Check`         | `--text-dim`          |
+| `error` (o fato não pode ser afirmado)   | `AlertTriangle` | `--warn`              |
+
+A data de um fechamento é o dia local de `at` (`DD/MM/AAAA`). O fato é nomeado `<sujeito> · <predicado> · <valor>`, com o
+sujeito e o predicado do fato novo (as chaves são as mesmas) e o valor do fato que existe. Nenhuma linha é região viva
+(`role="status"`, `role="alert"`): o que se anuncia é a recusa da decisão, uma vez. A caixa de seleção da operação e o
+"Aceitar" ficam como estão e a tela não pede confirmação (pergunta G40; o padrão é mostrar o efeito e não perguntar mais).
+
+| Chave               | pt-BR                                                                                          | en                                                                                                            |
+| ------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `effects.close`     | Encerra o fato {fact} em {at}.                                                                 | Closes the fact {fact} on {at}.                                                                               |
+| `effects.retract`   | Retrata o fato {fact} como nunca verdadeiro. Não tem volta.                                    | Retracts the fact {fact} as never true. This cannot be undone.                                                |
+| `effects.refuses`   | Será recusado: o fato {fact} já vale em todo esse período. Aceitar dá o erro 409 fact_overlap. | Will be refused: the fact {fact} already holds over this whole period. Accepting fails with 409 fact_overlap. |
+| `effects.unchanged` | Já existe um fato idêntico. Nada muda.                                                         | An identical fact already exists. Nothing changes.                                                            |
+| `effects.error`     | Não pode ser registrado: {reason}                                                              | Cannot be recorded: {reason}                                                                                  |
+
 ## Texto (as duas línguas; as chaves entram em `locales/brain.ts`, `en` e `ptBR` com as mesmas chaves)
 
 | Chave                                                   | pt-BR                                                                                                                                             | en                                                                                                                                    |
