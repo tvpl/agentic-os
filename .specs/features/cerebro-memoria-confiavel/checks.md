@@ -2639,3 +2639,11 @@ Status of round 3 of the verification, part 2 (C179-C185, findings 1, 2, 3, 4 an
   the way, a second note with the same bytes); a note identifier (a migration and a rename rule outside the system); a
   refusal in place of the deny rules for a run whose folder holds a hidden one (the owner chose the deny rules); a timer in
   the race test (the generator is stepped by hand)
+- **Boundary (round 3, part 2):** `1d2fb02` (finding 1, C179), `606e72d` (finding 2, C180), `cc3a4e4` (finding 3, C181),
+  `df8292e` (finding 4), `08a90e9` (C182 to C184), `7db3288` (C185) and `36df8cf` (these entries, plan amendment 16),
+  `docs/security.md` with the code of each. On the tree after them: `npm run build`, `npm run typecheck`, `npm run lint`
+  and `npm run bundle:check` exit 0 (JS gzip 590 065 B, as before), `npx vitest run` at the root is green (190 files, 2818
+  tests passed, 1 skipped), `npm run test -w apps/command-centre` is green (188 files, 1649 tests), `security-reads` and
+  `sdk.instances` pass in full (86 tests), each `Proof:` line of C113, C119, C120, C126, C127, C131, C159, C172 to C177 and
+  C179 to C185 passes run alone; `validate_checks.py` and `validate_plan.py` exit 0 (their one warning each is the older C147
+  selector and the plan's open-questions line). No pin of another feature moved and no allowlist changed
