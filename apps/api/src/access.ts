@@ -176,12 +176,6 @@ export function zeroCounts<T>(value: T): T {
 export interface DeviceRedactor {
   /** Some folder is hidden from the devices (an entry gives them `hide`): the counts over every file are not theirs. */
   readonly hides: boolean;
-  /**
-   * The title of a notification or a sentinel's event with the folder it is about, when that folder is hidden, written
-   * `(pasta oculta)`: a title such as `3 files changed in <the folder's name>` names it by its name alone, which is no
-   * path (round 2 finding 8). The folder is the one `messageParams.folder` carries.
-   */
-  titleOf(item: { title: string; messageParams?: Record<string, unknown> | null }): string;
   /** Nothing is hidden from devices but `artifacts/exports/` (no entry gives devices `hide`). */
   readonly restricts: boolean;
   /** Whether an absolute path is one a device is never told of. */
@@ -204,7 +198,13 @@ export interface DeviceRedactor {
    */
   hiddenArtifact(absolute: string): boolean;
   /** Whether a notification is one a device is never told of: its run or its approval is hidden, or its link points at a hidden file. */
-  hiddenNotification(n: { runId?: string | null; approvalId?: string | null; href?: string | null }): boolean;
+  hiddenNotification(n: {
+    kind?: string;
+    runId?: string | null;
+    approvalId?: string | null;
+    href?: string | null;
+    messageParams?: Record<string, unknown> | null;
+  }): boolean;
   /** Whether an event of the stream is one a device is never told of (the run, notification or approval it is about). */
   hiddenEvent(event: { type: string; payload?: unknown }): boolean;
 }
@@ -253,38 +253,23 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
     const o = item as Record<string, unknown>;
     return PLACE_KEYS.some((k) => typeof o[k] === "string" && hiddenPath(o[k] as string));
   };
-  /** The name of the folder an item is about when that folder is hidden (`messageParams.folder`), else null. */
-  const hiddenSubject = (item: unknown): string | null => {
-    if (item === null || typeof item !== "object") return null;
+  /**
+   * Whether an item is about a folder hidden from the devices (`messageParams.folder`, as the fs sentinel's notification
+   * and event carry it): its title names the folder by its name alone, which is no path, and says how many files
+   * changed in it. An item that exists only through a hidden folder is no item for a device (round 2 finding 8).
+   */
+  const aboutHidden = (item: unknown): boolean => {
+    if (item === null || typeof item !== "object") return false;
     const folder = ((item as { messageParams?: { folder?: unknown } | null }).messageParams ?? {}).folder;
-    if (typeof folder !== "string" || !path.isAbsolute(folder) || !hiddenPath(folder)) return null;
-    return path.basename(folder) || null;
+    return typeof folder === "string" && path.isAbsolute(folder) && hiddenPath(folder);
   };
-  const titleWithout = (title: string, name: string | null): string =>
-    name === null
-      ? title
-      : title.replace(
-          new RegExp(
-            `(?<![\\w/.~-])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`,
-            process.platform === "darwin" || process.platform === "win32" ? "gi" : "g",
-          ),
-          HIDDEN_PATH_TEXT,
-        );
-  const titleOf = (item: { title: string; messageParams?: Record<string, unknown> | null }): string =>
-    titleWithout(text(item.title), hiddenSubject(item));
   const value = <T>(input: T): T => {
     const walk = (node: unknown): unknown => {
       if (typeof node === "string") return text(node);
       if (Array.isArray(node)) return node.filter((item) => !placeHidden(item)).map(walk);
       if (node !== null && typeof node === "object") {
-        const subject = hiddenSubject(node);
         return Object.fromEntries(
-          Object.entries(node as Record<string, unknown>).map(([k, v]) => [
-            k,
-            k === "title" && typeof v === "string" && subject !== null
-              ? titleWithout(text(v), subject)
-              : walk(v),
-          ]),
+          Object.entries(node as Record<string, unknown>).map(([k, v]) => [k, walk(v)]),
         );
       }
       return node;
@@ -316,10 +301,15 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
     return typeof payload.input?.cwd === "string" && hiddenPath(payload.input.cwd);
   };
   const hiddenNotification = (n: {
+    kind?: string;
     runId?: string | null;
     approvalId?: string | null;
     href?: string | null;
+    messageParams?: Record<string, unknown> | null;
   }): boolean => {
+    // The row that says an index pass ended counts every file, the hidden ones included.
+    if (n.kind === "index" && view.access.hides("devices")) return true;
+    if (aboutHidden(n)) return true;
     if (n.runId && hiddenRun(n.runId)) return true;
     if (n.approvalId) {
       const approval = ctx.approvals.get(n.approvalId);
@@ -332,10 +322,9 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
     // An index pass names its own pass as `runId`, not a run of an agent.
     if (!event.type.startsWith("index.") && typeof p.runId === "string" && hiddenRun(p.runId)) return true;
     if (event.type.startsWith("notification.") && typeof p.id === "string" && "title" in p) {
-      return hiddenNotification(
-        p as { runId?: string | null; approvalId?: string | null; href?: string | null },
-      );
+      return hiddenNotification(p as Parameters<typeof hiddenNotification>[0]);
     }
+    if (event.type === "sentinel.fired" && aboutHidden(p)) return true;
     if (event.type.startsWith("approval.") && typeof p.id === "string") {
       const approval = ctx.approvals.get(p.id);
       return approval ? hiddenApproval(approval) : restricts;
@@ -357,7 +346,6 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
   };
   return {
     hides: view.access.hides("devices"),
-    titleOf,
     restricts,
     hiddenPath,
     text,

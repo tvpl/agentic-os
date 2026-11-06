@@ -62,6 +62,9 @@ async function seeded(
 const setAccess = async (w: MemoriaWorld, folderAccess: Json[]) => {
   const res = await w.call("PUT", "/api/settings", { folderAccess });
   expect(res.status, JSON.stringify(res.body)).toBe(200);
+  // A change of the access starts a pass that builds what the devices read (their related edges, door 20); the proofs
+  // read after it has ended.
+  await w.index();
 };
 
 /** The twin of a world where `fin` is hidden: no access of folders, `fin` excluded, the index passed again. */
@@ -71,6 +74,10 @@ async function twin(w: MemoriaWorld): Promise<void> {
     s.excludes = [...s.excludes, "fin"];
   });
   await w.index();
+  // The twin's "related by content" edges are worked out from nothing (round 2 finding 3): the pass above relates only
+  // what changed, with the weights of a corpus that held the hidden notes, so it is not the world without them.
+  const ids = (w.ctx.db.prepare("SELECT id FROM files").all() as Array<{ id: number }>).map((r) => r.id);
+  w.ctx.indexer.refreshRelated(new Set(ids));
   const left = w.ctx.db
     .prepare("SELECT COUNT(*) c FROM files WHERE path LIKE ?")
     .get(`%${path.sep}fin${path.sep}%`) as {

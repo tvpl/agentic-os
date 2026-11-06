@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { API } from "../contracts/src/api/index.js";
 import { code, runWorld, type Json, type RunWorld } from "./helpers/memoriaWorld.js";
 import { stream, ticket } from "./helpers/sse.js";
+import { fsWatchPayload } from "../core/src/sentinels/fsWatch.js";
 
 /**
  * .specs/features/cerebro-memoria-confiavel, batch B1b (plan amendments 4 and 5): the scores anyone but the owner is
@@ -506,7 +507,20 @@ describe("C159 every GET route a device may call", () => {
     }
     const visibleId = (w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(visible) as { id: number })
       .id;
-    await hideFromDevices(w, fin);
+    // An indexed folder hidden from the devices that the fs sentinel has spoken about (round 2 finding 8): its name and
+    // the counts of the passes are not a path, and the sweep looks for them in every answer as it looks for a path.
+    const cofre = w.indexedRoot("c159-cofre");
+    await w.index();
+    w.ctx.events.emit("sentinel.fired", fsWatchPayload(cofre, 7));
+    const cofreName = path.basename(cofre);
+    const res = await w.call("PUT", "/api/settings", {
+      folderAccess: [
+        { path: fin, agents: "write", devices: "hide" },
+        { path: cofre, agents: "write", devices: "hide" },
+      ],
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    await w.index();
 
     const enc = encodeURIComponent;
     const urls: Record<string, string> = {
@@ -593,7 +607,17 @@ describe("C159 every GET route a device may call", () => {
       const res = await w.app.inject({ method: "GET", url: urls[id]!, headers: device });
       expect(res.statusCode, `${id} ${res.body.slice(0, 300)}`).toBeLessThan(500);
       expect(res.body.includes(fin), `${id} answers the hidden folder`).toBe(false);
+      expect(res.body.includes(cofreName), `${id} names the hidden indexed folder`).toBe(false);
     }
+    // no count over every file: the status of the memory has the counts of the pass at zero, the stats of a pass that
+    // ends are not sent, and a number of a hidden folder's own (the 7 files that changed in it) is in no row
+    const status = (
+      await w.app.inject({ method: "GET", url: urls["memory.status"]!, headers: device })
+    ).json() as Json;
+    expect(Object.values(status.lastIndex.stats as Record<string, number>).every((n) => n === 0)).toBe(true);
+    expect(JSON.stringify((await w.call("GET", "/api/notifications", undefined, device)).body)).not.toMatch(
+      /7 files|scanned/,
+    );
     // routines in a hidden folder are not there for a device; the owner's are
     const routines = await w.call("GET", "/api/routines", undefined, device);
     expect(routines.body.map((r: Json) => r.id)).not.toContain("rotina-escondida");
