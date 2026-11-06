@@ -583,7 +583,7 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
     Cada regra só estreita (nada amplia o que um dispositivo ou uma credencial alcança): (a) as arestas "relacionado" e a
     "Similar content" do grafo de um dispositivo vêm só dos arquivos que ele vê (Landing 20; achado 3); (b) a lista de
     vetores é lida até ter 50 arquivos que o chamador pode ver, ou até acabarem os vetores, antes de os dois rankings serem
-    fundidos, então o resultado e o `via` são os do mundo sem a pasta oculta (achado 4); (c) um dispositivo só vê as
+    fundidos, então o resultado e o `via` são os do mundo sem a pasta oculta (achado 4); (c) [substituída pela emenda 16 (b)] um dispositivo só vê as
     versões do histórico de um caminho que ele vê e que não seguiu para um caminho que ele não vê: um caminho P seguiu
     para Q quando a última versão com bytes de P tem os bytes da primeira versão de Q, gravada depois dela, e P terminou
     em `removed`, o caso de uma nota carregada sem mudar (uma mudança de lugar pelo sistema, um arquivo renomeado fora
@@ -636,6 +636,26 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
     calculado só leitura pelo planejador de que `decide` parte (Landing 21), com o `validFrom` do fato e, por fato, os que
     seriam fechados ou retratados (id, valor), o que recusaria (`fact_overlap`) e o idêntico que o torna um no-op. A tela
     desenha `effects` no diff: um construtor seguinte lê o campo `effects` (nome e forma no checks.md, C178).
+
+16. **O acesso do dispositivo depois da rodada 3 (parte 2; correção de construção, com duas perguntas).** Cada regra só
+    estreita. (a) Emenda 12 construída: numa execução que um dispositivo pede, as pastas escondidas de dispositivos que
+    ficam dentro da pasta de trabalho ou de uma pasta entregue, e também `artifacts/exports/` e `guard/` (as pastas que
+    nenhum dispositivo recebe), entram nas regras de bloqueio da porta 13; uma pasta entregue que está escondida, ou nos
+    exports, é `404 not_found` sem dizer o nome; a execução de um dispositivo é julgada mesmo sem nenhum nível definido.
+    (b) **Substitui a emenda 11 (c):** enquanto há pasta escondida de dispositivos, um dispositivo não recebe versão de
+    histórico de um caminho que seja anterior a uma remoção desse caminho (a própria remoção inclusa), nem de um caminho
+    cujo arquivo sumiu e cuja remoção o índice ainda não registrou; as versões a partir da última remoção (nota nova com o
+    mesmo nome, restauração do dono) seguem o caminho. Nenhuma regra que siga a nota é segura sem um identificador de
+    nota, que o sistema não grava. Custo: o dispositivo não lê versões antigas de nota movida, renomeada ou apagada, nem a
+    que passou entre duas pastas visíveis, enquanto houver pasta escondida. (c) As arestas do dispositivo são nomeadas
+    pela visão para a qual foram calculadas: uma passada que leu o acesso antes da mudança não escreve depois dela, e
+    arestas nomeadas para outra visão são esvaziadas na leitura. (d) O relatório do doutor e a contagem de vetores de um
+    dispositivo com pasta escondida contam e nomeiam só o que ele vê; a existência e a hora de uma passada continuam
+    dadas (residual escrito). Perguntas ao dono: (G41) um dispositivo deve poder ler versões antigas de uma nota que
+    passou entre duas pastas visíveis? Padrão: não (escondidas); alternativa: gravar um identificador de nota, o que pede
+    migração e uma regra para a renomeação feita fora do sistema. (G42) um dispositivo com pasta escondida deve ficar sem a
+    hora da última passada? Padrão: continua dada; alternativa: omitir `lastIndex.at` e a hora do doutor, ao preço de a
+    tela do celular não mostrar quando o índice rodou
 
 ## Sources
 
