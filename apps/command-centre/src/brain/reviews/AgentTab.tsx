@@ -8,7 +8,7 @@
  * item is its button's own click.
  */
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { AlertTriangle, Check, Inbox, Sparkles, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, Inbox, Sparkles, Undo2, X, type LucideIcon } from "lucide-react";
 import type { ApiCallResult } from "@mordomo/contracts";
 import { ApiError } from "../../api";
 import { apiCall } from "../../apiCall";
@@ -28,6 +28,7 @@ export type ProposalList = ApiCallResult<"GET /api/memory/proposals">;
 export type ProposalItem = ProposalList["items"][number];
 export type ProposalDetail = ApiCallResult<"GET /api/memory/proposals/:id">;
 export type OpView = ProposalDetail["ops"][number];
+export type FactEffect = ProposalDetail["effects"][number];
 export type PendingQuery = ReturnType<typeof usePendingProposals>;
 
 const NOTICE_MS = 8_000;
@@ -40,17 +41,15 @@ export function usePendingProposals() {
   });
 }
 
+/** A local day as `31/10/2026`. */
+const dayText = (at: number, locale: string) =>
+  new Date(at).toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
+
 /** Line 1 of an item: the title by kind (design.md "Lista"). */
 export function proposalTitle(t: T, p: ProposalItem, locale: string): string {
   switch (p.kind) {
     case "consolidation":
-      return t("proposals.title.consolidation", {
-        day: new Date(p.createdAt).toLocaleDateString(locale, {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        }),
-      });
+      return t("proposals.title.consolidation", { day: dayText(p.createdAt, locale) });
     case "memory_edit":
       return t("proposals.title.memoryEdit", { author: authorText(t, p.author) });
     case "fact": {
@@ -96,17 +95,52 @@ export function AgentListItem(p: {
   );
 }
 
+/**
+ * What accepting a fact does to the facts that exist (cerebro-memoria-confiavel, design.md "Emenda 1", Landing 21), one
+ * line each, an icon and a text (never the colour alone), in this order: the facts it closes or retracts as the route
+ * lists them, the fact it would be refused for, the identical fact that makes it a no-op, and why it cannot be asserted.
+ * Drawn as the list's own text, not as a live region: the decision's refusal is what is announced.
+ */
+export function Effects({ effect }: { effect: FactEffect }) {
+  const t = useT();
+  const locale = useLocale();
+  const named = (object: string) => `${effect.subject} · ${effect.predicate} · ${object}`;
+  const lines: Array<[kind: string, Icon: LucideIcon, text: string]> = effect.closes.map((c) =>
+    c.action === "close"
+      ? ["close", CalendarDays, t("effects.close", { fact: named(c.object), at: dayText(c.at, locale) })]
+      : ["retract", Undo2, t("effects.retract", { fact: named(c.object) })],
+  );
+  if (effect.refuses)
+    lines.push(["refuses", AlertTriangle, t("effects.refuses", { fact: named(effect.refuses.object) })]);
+  if (effect.unchanged !== null) lines.push(["unchanged", Check, t("effects.unchanged")]);
+  if (effect.error) lines.push(["error", AlertTriangle, t("effects.error", { reason: effect.error })]);
+  if (lines.length === 0) return null;
+  return (
+    <ul className="ag-effects">
+      {lines.map(([kind, Icon, text], i) => (
+        <li key={i} className="ag-effect" data-effect={kind}>
+          <Icon aria-hidden />
+          <span>{text}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** One op, left to right: the checkbox, the section, the text (and why it cannot be applied), the source, the trust. */
 export function OpRow({
   op,
   ticked,
   onTick,
   memoryRoot,
+  effect,
 }: {
   op: OpView;
   ticked: boolean;
   onTick: (on: boolean) => void;
   memoryRoot: string | null;
+  /** What accepting this fact op does (`effects` of the detail, the entry of this op). */
+  effect?: FactEffect | undefined;
 }) {
   const t = useT();
   const source = op.source?.replace(/#.*$/, "") ?? null;
@@ -134,6 +168,7 @@ export function OpRow({
       <span className="ag-text">
         <span>{op.text}</span>
         {op.state !== "valid" && <OpState state={op.state} reason={op.reason} />}
+        {effect && <Effects effect={effect} />}
       </span>
       {abs ? (
         <a className="ag-source" href={notesHref(abs, op.line)}>
@@ -255,6 +290,7 @@ export function AgentDetail({
                 key={i}
                 op={op}
                 memoryRoot={memoryRoot}
+                effect={detail.effects.find((e) => e.op === (detail.kind === "fact" ? null : i))}
                 ticked={ticked.has(i)}
                 onTick={(on) =>
                   setTicked((cur) => {

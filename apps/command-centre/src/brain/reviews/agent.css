@@ -58,6 +58,39 @@
   overflow-wrap: anywhere;
 }
 
+.ag-effects {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ag-effect {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  color: var(--text-dim);
+  font-size: var(--fs-3);
+}
+
+.ag-effect svg {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  flex: none;
+}
+
+.ag-effect[data-effect="retract"] {
+  color: var(--danger);
+}
+
+.ag-effect[data-effect="refuses"],
+.ag-effect[data-effect="error"] {
+  color: var(--warn);
+}
+
 .ag-source {
   font-family: var(--font-mono);
   font-size: var(--fs-2);

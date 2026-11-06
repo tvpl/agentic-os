@@ -225,10 +225,43 @@ export function pending(items: ProposalRow[], total = items.length): void {
   proposals.list = { items, total };
 }
 
-/** The detail of `p`: its ops, its diff and the `baseVersion` it read. */
+/** What accepting one fact does (`FactEffect` of the contract): nothing, until the test says so. */
+export type Effect = {
+  op: number | null;
+  subject: string;
+  predicate: string;
+  object: string;
+  validFrom: number;
+  validTo: number | null;
+  unchanged: number | null;
+  closes: Array<{
+    id: number;
+    object: string;
+    validFrom: number;
+    validTo: number | null;
+    action: "close" | "retract";
+    at: number;
+  }>;
+  refuses: { id: number; object: string; validFrom: number; validTo: number | null } | null;
+  error?: string;
+};
+export const effect = (over: Partial<Effect> = {}): Effect => ({
+  op: null,
+  subject: "Cliente X",
+  predicate: "status",
+  object: "inadimplente",
+  validFrom: Date.UTC(2026, 5, 1, 15),
+  validTo: null,
+  unchanged: null,
+  closes: [],
+  refuses: null,
+  ...over,
+});
+
+/** The detail of `p`: its ops, its diff, the `baseVersion` it read and the `effects` of its facts (none unless given). */
 export function detailOf(
   p: ProposalRow,
-  over: { ops?: Op[]; diff?: string; baseVersion?: string | null } = {},
+  over: { ops?: Op[]; diff?: string; baseVersion?: string | null; effects?: Effect[] } = {},
 ) {
   const answer = {
     ...p,
@@ -238,6 +271,7 @@ export function detailOf(
     ops: over.ops ?? [],
     diff: over.diff ?? "",
     baseVersion: over.baseVersion === undefined ? "sha256:mem1" : over.baseVersion,
+    effects: over.effects ?? [],
   };
   proposals.details.set(p.id, answer);
   net.writes.set(`POST /api/memory/proposals/${p.id}/decide`, (b) => proposals.decide(p.id, b));

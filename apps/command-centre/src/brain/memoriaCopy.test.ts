@@ -189,6 +189,68 @@ describe("C145 the part-B copy of design.md in both locales", () => {
   );
 });
 
+/**
+ * key → [pt-BR, en] for the table of "Emenda 1" of design.md (what accepting a fact does, round 3 finding 6): read from
+ * the section before "Texto", so rows 1-65 of "Texto" (C104, C145) keep their numbers.
+ */
+function amendment1(): Array<[string, string, string]> {
+  const section = DESIGN.slice(DESIGN.indexOf("## Emenda 1"), DESIGN.indexOf("## Texto"));
+  return section
+    .split("\n")
+    .filter((l) => /^\|\s*`effects\./.test(l))
+    .map(cells)
+    .map(([key, pt, en]) => [key!.replace(/`/g, ""), pt!, en!]);
+}
+
+describe("C190 the copy of design.md's Emenda 1 in both locales", () => {
+  it("C190 the amendment's table gives the 5 keys effects.close, .retract, .refuses, .unchanged and .error, each in en and ptBR with its text", () => {
+    const keys = amendment1();
+    expect(keys.map(([k]) => k)).toEqual([
+      "effects.close",
+      "effects.retract",
+      "effects.refuses",
+      "effects.unchanged",
+      "effects.error",
+    ]);
+    // the amendment sits before "Texto": the 65 rows of that table are still 65
+    expect(DESIGN.indexOf("## Emenda 1")).toBeLessThan(DESIGN.indexOf("## Texto"));
+    expect(
+      DESIGN.slice(DESIGN.indexOf("## Texto"))
+        .split("\n")
+        .filter((l) => /^\|\s*`/.test(l)),
+    ).toHaveLength(65);
+    for (const [key, pt, en] of keys) {
+      expect((brain.ptBR as Record<string, string>)[key], `${key} (pt-BR)`).toBe(pt);
+      expect((brain.en as Record<string, string>)[key], `${key} (en)`).toBe(en);
+    }
+  });
+
+  it("C190 en and ptBR hold the same keys, and the placeholders of each text are the same in both", () => {
+    expect(Object.keys(brain.ptBR).sort()).toEqual(Object.keys(brain.en).sort());
+    for (const [key] of amendment1()) {
+      const holes = (t: string) => [...t.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+      expect(holes((brain.ptBR as Record<string, string>)[key]!), key).toEqual(
+        holes((brain.en as Record<string, string>)[key]!),
+      );
+    }
+  });
+
+  it(
+    "C190 every one of the 5 is spelled by the production source (no unused key)",
+    { timeout: 60_000 },
+    () => {
+      const tree = loadTree();
+      const defines = (file: string) => file === "i18n.ts" || file.startsWith("locales/");
+      const spelled = spelledIn(tree, productionFiles(tree), defines);
+      expect(
+        amendment1()
+          .filter(([k]) => !spelled.words.has(k))
+          .map(([k]) => k),
+      ).toEqual([]);
+    },
+  );
+});
+
 const SHEETS = ["memoria.css", "memoriaDiff.css", "reviews/agent.css", "notes/history.css"].map((f) => ({
   file: f,
   path: join(__dirname, f),
