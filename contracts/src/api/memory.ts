@@ -540,6 +540,39 @@ export const ProposalOpViewSchema = z.object({
   reason: z.string().optional(),
 });
 
+/**
+ * What accepting one fact of a proposal does to the facts that exist (cerebro-memoria-confiavel, Landing 21): worked out
+ * by the planner `decide` asserts with, written nowhere. `closes` are the facts accepting closes (`valid_to` becomes `at`)
+ * or retracts as never true (`retracted_at` becomes `at`); `refuses` the fact over the whole interval (accepting is `409
+ * fact_overlap`); `unchanged` an identical open fact (nothing is written).
+ */
+export const FactEffectSchema = z.object({
+  /** The index of the `fact` op in a consolidation; null for a `fact` proposal. */
+  op: z.number().nullable(),
+  subject: z.string(),
+  predicate: z.string(),
+  object: z.string(),
+  validFrom: z.number(),
+  validTo: z.number().nullable(),
+  unchanged: z.number().nullable(),
+  closes: z.array(
+    z.object({
+      id: z.number(),
+      object: z.string(),
+      validFrom: z.number(),
+      validTo: z.number().nullable(),
+      action: z.enum(["close", "retract"]),
+      at: z.number(),
+    }),
+  ),
+  refuses: z
+    .object({ id: z.number(), object: z.string(), validFrom: z.number(), validTo: z.number().nullable() })
+    .nullable(),
+  /** Why the fact cannot be asserted at all (a refusal of the fact itself). */
+  error: z.string().optional(),
+});
+export type FactEffect = z.infer<typeof FactEffectSchema>;
+
 const ProposalBodySchema = z
   .discriminatedUnion("kind", [
     z.object({
@@ -1611,6 +1644,8 @@ export const memoryRoutes = {
     responses: {
       200: ProposalSchema.extend({
         ops: z.array(ProposalOpViewSchema),
+        /** What accepting each fact of the proposal does to the facts that exist (empty for the other kinds). */
+        effects: z.array(FactEffectSchema),
         diff: z.string(),
         /** The version of the file the diff starts from (MEMORY.md, or the note), or null when there is none. */
         baseVersion: NoteVersionSchema.nullable(),

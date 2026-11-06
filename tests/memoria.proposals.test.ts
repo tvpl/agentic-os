@@ -1205,3 +1205,193 @@ describe("C148 the payload and the result a proposal stores", () => {
     expect((await read(create.body.proposal.id)).body.result).toBeNull();
   });
 });
+
+describe("C178 the detail of a proposal shows what accepting its facts does (round 3, finding 6)", () => {
+  const JAN = Date.UTC(2026, 0, 1);
+  const JUN = Date.UTC(2026, 5, 1);
+  const post = async (body: Json) =>
+    (await w.call("POST", "/api/memory/proposals", { kind: "fact", ...body })).body.proposal.id as string;
+  const effects = async (id: string) => (await read(id)).body.effects as Json[];
+  const rows = () => w.ctx.db.prepare("SELECT * FROM facts ORDER BY id").all();
+
+  it("C178 a fact that begins before the owner's open fact retracts it: effects name its id and value, the action retract, and the fact's validFrom; accepting does exactly that", async () => {
+    const mine = await w.call("POST", "/api/memory/facts", {
+      subject: "Cliente X C178a",
+      predicate: "status",
+      object: "ativo",
+      validFrom: JUN,
+    });
+    expect(mine.status).toBe(201);
+    const id = await post({
+      subject: "cliente x c178a",
+      predicate: "STATUS",
+      object: "inadimplente",
+      validFrom: JAN,
+    });
+    const before = rows();
+    const shown = await effects(id);
+    expect(rows()).toEqual(before);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toMatchObject({
+      op: null,
+      subject: "cliente x c178a",
+      object: "inadimplente",
+      validFrom: JAN,
+      validTo: null,
+      unchanged: null,
+      refuses: null,
+    });
+    expect(shown[0]!.closes).toEqual([
+      {
+        id: mine.body.fact.id,
+        object: "ativo",
+        validFrom: JUN,
+        validTo: null,
+        action: "retract",
+        at: expect.any(Number),
+      },
+    ]);
+    const done = await decide(id, { action: "accept" });
+    expect(done.status).toBe(200);
+    const after = (
+      await w.call(
+        "GET",
+        `/api/memory/facts?subject=cliente%20x%20c178a&includeRetracted=true&includeExpired=true`,
+      )
+    ).body.facts as Json[];
+    expect(after.find((f) => f.id === mine.body.fact.id)!.retractedAt).not.toBeNull();
+  });
+
+  it("C178 a fact that begins after the owner's open fact closes it at its own validFrom; one closed inside it is refused (fact_overlap), and accepting says the same", async () => {
+    const mine = await w.call("POST", "/api/memory/facts", {
+      subject: "Cliente X C178b",
+      predicate: "status",
+      object: "ativo",
+      validFrom: JAN,
+    });
+    const closing = await post({
+      subject: "Cliente X C178b",
+      predicate: "status",
+      object: "inativo",
+      validFrom: JUN,
+    });
+    const [close] = await effects(closing);
+    expect(close!.closes).toEqual([
+      { id: mine.body.fact.id, object: "ativo", validFrom: JAN, validTo: null, action: "close", at: JUN },
+    ]);
+    expect(close!.refuses).toBeNull();
+    const inside = await post({
+      subject: "Cliente X C178b",
+      predicate: "status",
+      object: "pausado",
+      validFrom: Date.UTC(2026, 2, 1),
+      validTo: Date.UTC(2026, 3, 1),
+    });
+    const [refused] = await effects(inside);
+    expect(refused!.closes).toEqual([]);
+    expect(refused!.refuses).toEqual({
+      id: mine.body.fact.id,
+      object: "ativo",
+      validFrom: JAN,
+      validTo: null,
+    });
+    expect(code(await decide(inside, { action: "accept" }))).toEqual([409, "fact_overlap"]);
+  });
+
+  it("C178 an identical open fact is unchanged (its id) and closes nothing; a fact of other keys has no effect on any fact", async () => {
+    const mine = await w.call("POST", "/api/memory/facts", {
+      subject: "Cliente X C178c",
+      predicate: "status",
+      object: "ativo",
+      validFrom: JAN,
+    });
+    const same = await post({
+      subject: "cliente x c178c",
+      predicate: "status",
+      object: "ativo",
+      validFrom: JUN,
+    });
+    expect(await effects(same)).toMatchObject([{ unchanged: mine.body.fact.id, closes: [], refuses: null }]);
+    const other = await post({
+      subject: "Outro C178c",
+      predicate: "status",
+      object: "ativo",
+      validFrom: JUN,
+    });
+    expect(await effects(other)).toMatchObject([{ unchanged: null, closes: [], refuses: null }]);
+  });
+
+  it("C178 a consolidation lists one effect per valid fact op, by its index, and none for an invalid op or for the other kinds; reading writes nothing", async () => {
+    w.put(memoryFile(), BASE);
+    const mine = await w.call("POST", "/api/memory/facts", {
+      subject: "Turmas C178d",
+      predicate: "tamanho",
+      object: "15",
+      validFrom: JAN,
+    });
+    const p = consolidation([
+      add("Turmas de 20 alunos", 4),
+      {
+        op: "fact",
+        subject: "Turmas C178d",
+        predicate: "tamanho",
+        object: "20",
+        validFrom: JUN,
+        source: journalRel,
+        line: 4,
+      },
+      { op: "fact", subject: "Fora", predicate: "p", object: "o", source: "notes/nao-existe.md", line: 1 },
+    ]);
+    const before = rows();
+    const shown = await effects(p.id);
+    expect(rows()).toEqual(before);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toMatchObject({ op: 1, object: "20", validFrom: JUN });
+    expect(shown[0]!.closes).toMatchObject([
+      { id: mine.body.fact.id, object: "15", action: "close", at: JUN },
+    ]);
+    const note = await w.call("POST", "/api/memory/proposals", {
+      kind: "note_create",
+      title: "Nota C178",
+      content: "x",
+    });
+    expect(await effects(note.body.proposal.id)).toEqual([]);
+    expect(await effects(consolidation([add("só uma linha", 4)]).id)).toEqual([]);
+  });
+
+  it("C178 a device reads the effects of a proposal only as it reads the facts: a fact whose source it may not see is left out", async () => {
+    const hidden = w.put(path.join(w.memory, "notes", "fin", "fato-c178.md"), "- Fato escondido\n");
+    const mine = await w.call("POST", "/api/memory/facts", {
+      subject: "Escondido C178e",
+      predicate: "status",
+      object: "segredo-do-dono",
+      validFrom: JAN,
+      sourcePath: hidden,
+    });
+    expect(mine.status, JSON.stringify(mine.body)).toBe(201);
+    const id = await post({
+      subject: "Escondido C178e",
+      predicate: "status",
+      object: "novo",
+      validFrom: JUN,
+    });
+    const saved = await w.call("PUT", "/api/settings", {
+      folderAccess: [{ path: path.join(w.memory, "notes", "fin"), agents: "hide", devices: "hide" }],
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    try {
+      const owner = (await w.call("GET", `/api/memory/proposals/${id}`)).body;
+      expect(JSON.stringify(owner.effects)).toContain("segredo-do-dono");
+      const device = await w.call("GET", `/api/memory/proposals/${id}`, undefined, w.device(["content"]));
+      expect(device.status).toBe(200);
+      expect(JSON.stringify(device.body)).not.toContain("segredo-do-dono");
+      expect((device.body.effects as Json[])[0]).toMatchObject({
+        closes: [],
+        refuses: null,
+        unchanged: null,
+      });
+    } finally {
+      await w.call("PUT", "/api/settings", { folderAccess: [] });
+    }
+  });
+});

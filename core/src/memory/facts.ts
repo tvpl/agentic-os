@@ -222,14 +222,39 @@ function getFact(db: Db, id: number): Fact | null {
   return row ? fromRow(row) : null;
 }
 
-export function assertFact(db: Db, input: AssertFactInput): AssertFactResult {
+/** What asserting a fact would do, worked out and not done (door 2): the facts it closes or retracts, or the one it refuses over. */
+export interface FactPlan {
+  subject: string;
+  predicate: string;
+  object: string;
+  subjectKey: string;
+  predicateKey: string;
+  validFrom: number;
+  validTo: number | null;
+  sourcePath: string | null;
+  sourceLine: number | null;
+  sourceRunId: string | null;
+  proposalId: string | null;
+  author: FactAuthor;
+  now: number;
+  /** An open, unretracted fact with the same keys and object: asserting writes nothing. */
+  same: Fact | null;
+  /** The facts of the same keys and another object, and what asserting does to each. */
+  steps: Array<{ f: Fact; action: OverlapAction }>;
+}
+
+/**
+ * Work out, without writing, what `assertFact` does with `input` (cerebro-memoria-confiavel, door 2): the validation of
+ * every field, the fact it would find unchanged, and what the overlap rule makes of each fact of the same keys. The
+ * proposals' review shows it (`effects`) and `assertFact` applies it, so the two cannot differ.
+ */
+export function planFact(db: Db, input: AssertFactInput, at: number = Date.now()): FactPlan {
   const subject = norm(input.subject, "subject");
   const predicate = norm(input.predicate, "predicate");
   const object = norm(input.object, "object");
   const subjectKey = keyOf(subject, "subject");
   const predicateKey = keyOf(predicate, "predicate");
-  const now = Date.now();
-  const validFrom = input.validFrom ?? now;
+  const validFrom = input.validFrom ?? at;
   const validTo = input.validTo ?? null;
   if (validTo !== null && validTo <= validFrom) {
     throw new FactValidationError("validTo: must be after validFrom");
@@ -244,29 +269,49 @@ export function assertFact(db: Db, input: AssertFactInput): AssertFactResult {
   const proposalId = input.proposalId ?? null;
   if (provenanceRefusal({ sourcePath, sourceRunId, proposalId, author })) throw new FactProvenanceError();
   const objectCompared = objectKey(object);
+  const sameKeys = (
+    db
+      .prepare(`${SELECT} WHERE f.subject_key = ? AND f.predicate_key = ? AND f.retracted_at IS NULL ORDER BY f.id`)
+      .all(subjectKey, predicateKey) as Array<Record<string, unknown>>
+  ).map(fromRow);
+  const same = sameKeys.find((f) => f.validTo === null && objectKey(f.object) === objectCompared) ?? null;
+  const steps = sameKeys
+    .filter((f) => objectKey(f.object) !== objectCompared)
+    .map((f) => ({ f, action: overlapAction(f, validFrom, validTo) }));
+  return {
+    subject,
+    predicate,
+    object,
+    subjectKey,
+    predicateKey,
+    validFrom,
+    validTo,
+    sourcePath,
+    sourceLine,
+    sourceRunId,
+    proposalId,
+    author,
+    now: at,
+    same,
+    steps,
+  };
+}
 
+export function assertFact(db: Db, input: AssertFactInput): AssertFactResult {
   const tx = db.transaction((): AssertFactResult => {
-    const sameKeys = (
-      db
-        .prepare(`${SELECT} WHERE f.subject_key = ? AND f.predicate_key = ? AND f.retracted_at IS NULL ORDER BY f.id`)
-        .all(subjectKey, predicateKey) as Array<Record<string, unknown>>
-    ).map(fromRow);
-    const same = sameKeys.find((f) => f.validTo === null && objectKey(f.object) === objectCompared);
-    if (same) return { fact: same, invalidated: [], unchanged: true };
-
-    const others = sameKeys.filter((f) => objectKey(f.object) !== objectCompared);
-    const plan = others.map((f) => ({ f, action: overlapAction(f, validFrom, validTo) }));
-    const refused = plan.find((p) => p.action === "refuse");
+    const plan = planFact(db, input);
+    if (plan.same) return { fact: plan.same, invalidated: [], unchanged: true };
+    const refused = plan.steps.find((p) => p.action === "refuse");
     if (refused) throw new FactOverlapError(refused.f);
 
     const invalidated: Fact[] = [];
-    for (const { f, action } of plan) {
+    for (const { f, action } of plan.steps) {
       if (action === "close") {
-        db.prepare("UPDATE facts SET valid_to = ? WHERE id = ?").run(validFrom, f.id);
-        invalidated.push({ ...f, validTo: validFrom });
+        db.prepare("UPDATE facts SET valid_to = ? WHERE id = ?").run(plan.validFrom, f.id);
+        invalidated.push({ ...f, validTo: plan.validFrom });
       } else if (action === "retract") {
-        db.prepare("UPDATE facts SET retracted_at = ? WHERE id = ?").run(now, f.id);
-        invalidated.push({ ...f, retractedAt: now });
+        db.prepare("UPDATE facts SET retracted_at = ? WHERE id = ?").run(plan.now, f.id);
+        invalidated.push({ ...f, retractedAt: plan.now });
       }
     }
     const info = db
@@ -276,20 +321,20 @@ export function assertFact(db: Db, input: AssertFactInput): AssertFactResult {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`,
       )
       .run(
-        subject,
-        predicate,
-        object,
-        validFrom,
-        validTo,
-        sourceRunId,
-        sourcePath,
-        now,
-        subjectKey,
-        predicateKey,
-        sourceLine,
-        author,
-        input.trust ?? trustOf(author),
-        proposalId,
+        plan.subject,
+        plan.predicate,
+        plan.object,
+        plan.validFrom,
+        plan.validTo,
+        plan.sourceRunId,
+        plan.sourcePath,
+        plan.now,
+        plan.subjectKey,
+        plan.predicateKey,
+        plan.sourceLine,
+        plan.author,
+        input.trust ?? trustOf(plan.author),
+        plan.proposalId,
       );
     return { fact: getFact(db, Number(info.lastInsertRowid))!, invalidated, unchanged: false };
   });

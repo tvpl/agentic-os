@@ -601,8 +601,15 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   );
 
   bind(app, "memory.proposals.get", async ({ params: { id } }, req) => {
-    const proposal = readProposal(historyEnv(), id);
-    const allow = proposalAllow(accessView(ctx, req.principal));
+    const view = accessView(ctx, req.principal);
+    // The facts the effects name are shown to a caller as `GET /api/memory/facts` shows them (AC 20, door 12).
+    const proposal = readProposal(
+      historyEnv(),
+      id,
+      undefined,
+      view.audience === null ? undefined : factSourcePolicy({ settings: view.settings, paths: ctx.paths }),
+    );
+    const allow = proposalAllow(view);
     if (allow && !allow(proposal)) throw httpError(404, `No proposal has the id ${id}.`, "not_found");
     return proposal;
   });

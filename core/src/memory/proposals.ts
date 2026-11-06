@@ -18,7 +18,7 @@ import {
   type CreatedFile,
 } from "../security/safeWrite.js";
 import { unifiedDiff } from "../sync/diff.js";
-import { assertFact, type Fact, type FactTrust } from "./facts.js";
+import { assertFact, planFact, type AssertFactInput, type Fact, type FactTrust } from "./facts.js";
 import { recordFileVersion } from "./history.js";
 import { localDateString } from "./journal.js";
 import { createNote, newNoteText, planNewNote, saveNote, versionOf, type NoteContext } from "./notes.js";
@@ -748,8 +748,153 @@ function factOpView(env: Pick<ProposalEnv, "paths" | "settings">, payload: Recor
   };
 }
 
+/** The fact a `fact` proposal would assert, as `decide` asserts it (and `effects` plans it). */
+function factInputOfProposal(record: ProposalRecord, trust: FactTrust): AssertFactInput {
+  const p = record.payload;
+  return {
+    subject: String(p.subject),
+    predicate: String(p.predicate),
+    object: String(p.object),
+    ...(typeof p.validFrom === "number" ? { validFrom: p.validFrom } : {}),
+    ...(typeof p.validTo === "number" ? { validTo: p.validTo } : {}),
+    sourcePath: typeof p.sourcePath === "string" ? p.sourcePath : null,
+    sourceLine: typeof p.sourceLine === "number" ? p.sourceLine : null,
+    sourceRunId: typeof p.sourceRunId === "string" ? p.sourceRunId : record.runId,
+    author: record.author as "mcp",
+    trust,
+    proposalId: record.id,
+  };
+}
+
+/** The fact a consolidation's `fact` op would assert, as `decide` asserts it (and `effects` plans it). */
+function factInputOfOp(
+  env: Pick<ProposalEnv, "paths">,
+  record: ProposalRecord,
+  op: Extract<ProposalOp, { op: "fact" }>,
+  trust: FactTrust,
+): AssertFactInput {
+  const { rel } = splitSource(op.source);
+  return {
+    subject: op.subject,
+    predicate: op.predicate,
+    object: op.object,
+    ...(op.validFrom !== undefined ? { validFrom: op.validFrom } : {}),
+    ...(op.validTo !== undefined ? { validTo: op.validTo } : {}),
+    sourcePath: path.join(env.paths.memory, ...path.posix.normalize(rel).split("/")),
+    sourceLine: op.line ?? null,
+    sourceRunId: record.runId,
+    author: record.author as "mcp",
+    trust,
+    proposalId: record.id,
+  };
+}
+
+/** What accepting one fact would do to the facts that exist (cerebro-memoria-confiavel, door 21, round 3 finding 6). */
+export interface FactEffect {
+  /** The index of the `fact` op in a consolidation; null for a `fact` proposal. */
+  op: number | null;
+  subject: string;
+  predicate: string;
+  object: string;
+  validFrom: number;
+  validTo: number | null;
+  /** An identical open fact exists (its id): accepting writes nothing. */
+  unchanged: number | null;
+  /** The facts accepting closes (`valid_to` becomes `at`) or retracts as never true (`retracted_at` becomes `at`). */
+  closes: Array<{
+    id: number;
+    object: string;
+    validFrom: number;
+    validTo: number | null;
+    action: "close" | "retract";
+    at: number;
+  }>;
+  /** The fact that holds over the whole new interval: accepting is `409 fact_overlap` and writes nothing. */
+  refuses: { id: number; object: string; validFrom: number; validTo: number | null } | null;
+  /** Why the fact cannot be asserted at all (a refusal of the fact itself, not of an overlap). */
+  error?: string;
+}
+
+/**
+ * What accepting each fact of a proposal does, worked out by the planner `decide` asserts with and written nowhere. A fact
+ * that fails `allowFact` (a caller that may not see it) is left out of `closes`, `refuses` and `unchanged`.
+ */
+export function factEffects(
+  env: ProposalEnv,
+  record: ProposalRecord,
+  views: readonly OpView[],
+  now: number,
+  allowFact: (fact: Fact) => boolean = () => true,
+): FactEffect[] {
+  const plan = (op: number | null, input: AssertFactInput): FactEffect => {
+    try {
+      const planned = planFact(env.db, input, now);
+      const seen = (f: Fact) => {
+        try {
+          return allowFact(f);
+        } catch {
+          return false;
+        }
+      };
+      const refused = planned.steps.find((st) => st.action === "refuse");
+      return {
+        op,
+        subject: planned.subject,
+        predicate: planned.predicate,
+        object: planned.object,
+        validFrom: planned.validFrom,
+        validTo: planned.validTo,
+        unchanged: planned.same && seen(planned.same) ? planned.same.id : null,
+        closes: planned.steps.flatMap(({ f, action }) =>
+          (action === "close" || action === "retract") && seen(f)
+            ? [
+                {
+                  id: f.id,
+                  object: f.object,
+                  validFrom: f.validFrom,
+                  validTo: f.validTo,
+                  action,
+                  at: action === "close" ? planned.validFrom : planned.now,
+                },
+              ]
+            : [],
+        ),
+        refuses:
+          refused && seen(refused.f)
+            ? { id: refused.f.id, object: refused.f.object, validFrom: refused.f.validFrom, validTo: refused.f.validTo }
+            : null,
+      };
+    } catch (err) {
+      return {
+        op,
+        subject: String(input.subject),
+        predicate: String(input.predicate),
+        object: String(input.object),
+        validFrom: input.validFrom ?? now,
+        validTo: input.validTo ?? null,
+        unchanged: null,
+        closes: [],
+        refuses: null,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  };
+  if (record.kind === "fact") return [plan(null, factInputOfProposal(record, views[0]?.trust ?? "inferido"))];
+  if (record.kind !== "consolidation") return [];
+  const ops = opsOf(record);
+  return views.flatMap((v, index) => {
+    const op = ops[index];
+    return op && op.op === "fact" && v.state === "valid" ? [plan(index, factInputOfOp(env, record, op, v.trust))] : [];
+  });
+}
+
 /** A proposal with its ops reviewed, the diff accepting it writes, and the version of the file it starts from. */
-export function readProposal(env: ProposalEnv, id: string, now: Date = new Date(Date.now())) {
+export function readProposal(
+  env: ProposalEnv,
+  id: string,
+  now: Date = new Date(Date.now()),
+  allowFact?: (fact: Fact) => boolean,
+) {
   const record = getProposal(env.db, id);
   if (!record) throw new ProposalNotFoundError(id);
   const p = record.payload;
@@ -758,14 +903,26 @@ export function readProposal(env: ProposalEnv, id: string, now: Date = new Date(
     const currentText = current === null ? null : current.toString("utf8");
     const baseVersion = current === null ? null : versionOf(current);
     if (record.kind === "memory_edit") {
-      return { ...record, ops: [], diff: unifiedDiff(currentText ?? "", String(p.content ?? "")), baseVersion };
+      return {
+        ...record,
+        ops: [],
+        diff: unifiedDiff(currentText ?? "", String(p.content ?? "")),
+        baseVersion,
+        effects: [] as FactEffect[],
+      };
     }
     const ops = opsOf(record);
     const views = evaluateOps(env, ops, currentText);
     const valid = views.flatMap((v, index) => (v.state === "valid" ? [{ index, op: ops[index]! }] : []));
     const applied = applyOps(currentText, valid, localDateString(now));
     const result = valid.some(({ op }) => op.op !== "fact") ? applied.memory : (currentText ?? "");
-    return { ...record, ops: views, diff: unifiedDiff(currentText ?? "", result), baseVersion };
+    return {
+      ...record,
+      ops: views,
+      diff: unifiedDiff(currentText ?? "", result),
+      baseVersion,
+      effects: factEffects(env, record, views, now.getTime(), allowFact),
+    };
   }
   if (record.kind === "note_save") {
     const before = readNoteText(env, String(p.path));
@@ -774,14 +931,22 @@ export function readProposal(env: ProposalEnv, id: string, now: Date = new Date(
       ops: [],
       diff: unifiedDiff(before ?? "", String(p.content ?? "")),
       baseVersion: typeof p.baseVersion === "string" ? p.baseVersion : null,
+      effects: [] as FactEffect[],
     };
   }
   if (record.kind === "note_create") {
     const title = String(p.title ?? "").trim();
     const text = newNoteText(p as { title: string; content?: string; frontMatter?: boolean; tags?: string[] }, title, now);
-    return { ...record, ops: [], diff: unifiedDiff("", text), baseVersion: null };
+    return { ...record, ops: [], diff: unifiedDiff("", text), baseVersion: null, effects: [] as FactEffect[] };
   }
-  return { ...record, ops: [factOpView(env, p)], diff: "", baseVersion: null };
+  const views = [factOpView(env, p)];
+  return {
+    ...record,
+    ops: views,
+    diff: "",
+    baseVersion: null,
+    effects: factEffects(env, record, views, now.getTime(), allowFact),
+  };
 }
 
 // ---- deciding (door 10, AC 63 to 70) ------------------------------------------------------------------------------
@@ -906,19 +1071,7 @@ export function decideProposal(
   if (record.kind === "fact") {
     const view = factOpView(env, p);
     const facts = env.db.transaction(() => {
-      const asserted = assertFact(env.db, {
-        subject: String(p.subject),
-        predicate: String(p.predicate),
-        object: String(p.object),
-        ...(typeof p.validFrom === "number" ? { validFrom: p.validFrom } : {}),
-        ...(typeof p.validTo === "number" ? { validTo: p.validTo } : {}),
-        sourcePath: typeof p.sourcePath === "string" ? p.sourcePath : null,
-        sourceLine: typeof p.sourceLine === "number" ? p.sourceLine : null,
-        sourceRunId: typeof p.sourceRunId === "string" ? p.sourceRunId : record.runId,
-        author: author as "mcp",
-        trust: view.trust,
-        proposalId: id,
-      });
+      const asserted = assertFact(env.db, factInputOfProposal(record, view.trust));
       writeDecision(env.db, id, "accepted", at, { action: "accept", facts: [asserted.fact.id] });
       return [asserted.fact];
     })();
@@ -1015,22 +1168,7 @@ export function decideProposal(
     const facts: Fact[] = [];
     for (const index of applied.facts) {
       const op = ops[index] as Extract<ProposalOp, { op: "fact" }>;
-      const { rel } = splitSource(op.source);
-      facts.push(
-        assertFact(env.db, {
-          subject: op.subject,
-          predicate: op.predicate,
-          object: op.object,
-          ...(op.validFrom !== undefined ? { validFrom: op.validFrom } : {}),
-          ...(op.validTo !== undefined ? { validTo: op.validTo } : {}),
-          sourcePath: path.join(env.paths.memory, ...path.posix.normalize(rel).split("/")),
-          sourceLine: op.line ?? null,
-          sourceRunId: record.runId,
-          author: author as "mcp",
-          trust: views[index]!.trust,
-          proposalId: id,
-        }).fact,
-      );
+      facts.push(assertFact(env.db, factInputOfOp(env, record, op, views[index]!.trust)).fact);
     }
     const undo = writeAll(env, writes);
     return thenOrUndo(undo, () => {

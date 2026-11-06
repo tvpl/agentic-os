@@ -1469,6 +1469,20 @@ hidden keeps its name for the device, and the owner reads both. The row is dropp
 `(pasta oculta)` row would still say that something changed, how many files and when) (finding 8)
 Proof: `npx vitest run tests/memoria.access-round2.test.ts -t "C177 "`
 
+**C178** - (added with Landing 21, round 3 finding 6) `GET /api/memory/proposals/:id` answers `effects`, read only (the
+rows of `facts` are equal before and after): for a `fact` proposal one entry, for a consolidation one entry per valid `fact`
+op with its `op` index (none for an invalid op, an empty list for the other kinds). An entry is `{ op, subject, predicate,
+object, validFrom, validTo, unchanged, closes, refuses }` (`error` when the fact itself cannot be asserted): `closes` lists
+by `id`, `object`, `validFrom`, `validTo`, `action` and `at` each fact accepting closes (`action: "close"`, `at` the new
+fact's `validFrom`) or retracts as never true (`action: "retract"`, `at` now), `refuses` the fact that holds over the whole
+new interval (accepting is `409 fact_overlap`), `unchanged` the id of an identical open fact. An MCP proposal of `cliente x
+· STATUS · inadimplente` from `validFrom` January over the owner's open `Cliente X · status · ativo` from June names that
+fact with `retract`, and accepting retracts it; one from June closes it at June; one closed inside it refuses; an identical
+one is unchanged; another key has no effect. A caller that is not the owner sees only the facts `GET /api/memory/facts`
+would show it (a fact whose source is in a folder hidden from it is left out, its value in no answer). The field is
+`effects` and each entry is the `FactEffect` of `contracts/src/api/memory.ts`, for the screen to draw in the diff (finding 6)
+Proof: `npx vitest run tests/memoria.proposals.test.ts -t "C178 "`
+
 - **Finding 3 (C113 strengthened, C172; Landing 20, migration 32).** TF-IDF over the whole corpus let a hidden note change
   which terms a visible pair shared (the verifier's 58 % `estrela, galaxia` against 85 % `zeta, planeta, orbita`). The
   edges of an audience that hides nothing from itself are the owner's; for a device with a hidden folder they are worked
@@ -1562,6 +1576,21 @@ and to run a short fourth verification over them (plan amendment 12).
   empty part carried fails 1. Owner question (G39, widened): an op that paraphrases, summarises or cuts a line of the
   owner's is born unticked; should it be born ticked as "Escrito por você"? Safe default: no, only the whole line.
   Alternative: judge "in meaning", which the system cannot do without a model, and which is exactly what an agent forges
+- **Finding 6, the review showed nothing of what accepting a fact does (Landing 21, plan amendment 15, C178).**
+  Accepting an MCP proposal of `cliente x · STATUS · inadimplente` with `validFrom: 1000` retracted the owner's open
+  `Cliente X · status · ativo` ("nunca foi verdade", with no way back) while the detail showed one op, no date and no effect.
+  Door 2 works as written and is kept. `assertFact` now starts from `planFact` (the validation, the identical fact and
+  what the overlap rule makes of each fact of the same keys, computed and not written) and `readProposal` returns
+  `effects`, one `FactEffect` per fact worked out by that same planner, so the review and the decision cannot differ. The
+  contract and the OpenAPI document carry `FactEffectSchema` in the `GET /api/memory/proposals/:id` answer (`effects`,
+  empty for the other kinds). Each fact is planned against the facts as they are now, not after the earlier ops of the same
+  decision (a limit written in the Landing row). **C178** is the check; the screen's drawing of `effects` in the diff is the
+  next builder's, and the field it reads is `effects` (`closes`, `refuses`, `unchanged`, `validFrom`). One-way door: the field
+  is contract surface (Landing 21; alternatives rejected there). Owner question (G40): should accepting a fact that retracts or
+  closes the owner's fact ask for a second confirmation on the screen? Safe default: show the effect and ask nothing more.
+  Alternative: a confirmation modal naming the facts. Re-injected: retractions left out of `closes`, `at` of a close taken
+  as now, the refusal not listed, the identical fact not listed, an invalid fact op planned, the op index off by one,
+  the facts a device may not see left in, and the fact proposal given no effects each fail a C178 case
 
 ## Gaps found by this derivation
 
@@ -1694,6 +1723,8 @@ blocks the build.
 | guard/ as a working folder, round 3 (4)                                     | the request C69 · `create` C69 · the launch C69 · the owner and a routine accepted C69                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | guard set-aside names, round 3 (4)                                          | `guard-<runId>` and `-2` C69 · `-99` the last readable C69 · all 99 taken, random C69 · an earlier set-aside never overwritten C69                                                                                                                                                                                                                                                                                                                                                                                        |
 | claim a cited line must support, round 3 (7)                                | add `equals` C52 · supersede `equals` C52 · close_loop `equals` C52 · fact `inOrder` of a consolidation C52 · fact `inOrder` of a proposal C52 · a fragment refused C52 · the empty claim C52                                                                                                                                                                                                                                                                                                                             |
+| effects of accepting a fact, round 3 (6)                                    | a retraction C178 · a close C178 · a refusal C178 · an identical fact C178 · a consolidation's op index C178 · the other kinds, none C178                                                                                                                                                                                                                                                                                                                                                                                 |
+| who reads the facts an effect names, round 3 (2)                            | the owner: all C178 · a device: the ones `GET /api/memory/facts` shows C178                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 - Claims naming a status code, route or response shape: C7, C11-C15, C29-C36, C40-C47, C53, C59-C68, C80-C83,
   checks C109-C120, C122-C123, C125, C127-C128, C131-C138 and C172-C177 - each has a proof that crosses the HTTP boundary; the decision tables among them
