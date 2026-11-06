@@ -597,6 +597,14 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
     nota que o sistema não grava, e a de (d) é manter a linha e trocar o nome por `(pasta oculta)`, o que ainda diz
     quantos arquivos mudaram e quando
 
+12. **Rodada 3 da verificação: fechar a segurança antes de fechar a feature (respondida pelo dono em 06/11/2026).** A rodada 3
+    (FAIL) achou furos reais de acesso, e o dono escolheu consertar o código e fazer uma quarta verificação curta só sobre
+    eles, em vez de fechar com testes depois. Sobre "esconder de dispositivos" numa execução que um dispositivo inicia: as
+    regras de bloqueio do Claude (door 13) passam a valer também para as pastas escondidas **de dispositivos** que ficam dentro
+    da pasta de trabalho da execução pedida por um dispositivo, e não só para as escondidas dos agentes; Codex e Cursor
+    seguem recusados com `409 folder_hide_unsupported`. Isso estreita o acesso e não o amplia. Os demais consertos estão em
+    "Correções da rodada 3" do `checks.md`.
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).
