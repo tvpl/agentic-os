@@ -2345,3 +2345,37 @@ disposed` of the spec's own route interceptor (`notes-view.spec.ts:30`), and pas
   second `role="status"` carrying the failure's message (it would say it twice); the editor's `ConflictBanner` component
   for the restore (its text and two buttons name actions a restore does not have); exemptions in `MICROCOPY` for the
   hints (the design-system's rule is the one to follow)
+
+Status of round 2 of the verification, part B (C172-C177, findings 3, 4, 6, 7 and 8; F13 and F15):
+
+- C113 and C159: **still closed, extended** (the verifier's related-edges fixture with a from-scratch twin; the sweep with
+  a hidden indexed root, an `fsWatch` row and a zero-stats assertion). C172 to C177: closed, every proof green in
+  `tests/memoria.access-round2.test.ts`
+- **Boundary (part B):** `4293755` (the vector list), `cabf2fc` (the edges, the history rule, the counts; migration 32),
+  `7c20a33` (C172 to C177 and the extended C113 and C159), `5e90e41` (the case that kills the lineage mutant), `bfa5eaa`
+  (these entries, plan amendment 11 and Landing 20, `docs/security.md`, whose "shorter list" limit is gone) and the
+  commit that adds `visibleHistoryPaths` to the pin of the barrel. On the tree after them: `npm run build`, `npm run
+typecheck`, `npm run lint` and `npm run bundle:check` exit 0 (JS gzip 590 065 B, as before this part), `npx vitest run`
+  at the root is green (188 files, 2788 tests passed, 1 skipped), `npm run test -w apps/command-centre` is green (188
+  files, 1649 tests), `security-reads` and `sdk.instances` pass in full (86 tests), each `Proof:` line of C113, C114,
+  C116, C120, C124, C150, C154, C159, C172 to C177 and the migrations C39 and C79 passes run alone; `validate_checks.py`
+  and `validate_plan.py` exit 0 (their one warning each is the older C147 selector and the plan's open-questions line)
+- **Faults injected and caught** (each by the checks named, on the tree restored after): the owner's table read for a
+  device: C113, C172; the devices' edges worked out over every file: C113, C172; the table not emptied when the view is
+  rebuilt: C172; the vector read cut at one depth: C173; the read list not filtered to admitted files: C173; the history
+  chain not followed: C174; the lineage test removed: C174 (it survived until the deleted-twin case was added); the
+  device's table not made for a root holding the exports: C175; the status counts not zeroed: C176 and C159; the
+  `index.*` events not zeroed: C176; the "Index finished" rows kept: C176 and C159; the `fsWatch` row not dropped:
+  C177 and C159; the `sentinel.fired` event not dropped: C177; `/api/sentinels` `recent` unfiltered: C177. One surviving
+  mutant is named, not proven: the `else` branch of `AudienceMirror.upsert` (defensive, see C172's entry)
+- **Pinned tests of other features edited, all additive:** the migration chain moved to 32 in `tests/contexts.runs.test.ts`
+  (cerebro-contextos C25), `tests/data.migration.test.ts` (C56), `tests/natureza.layer.test.ts` (C7),
+  `tests/paineis.layer.test.ts` (C19, C98), `tests/device-scopes.test.ts` (C22) with its chained amendments in
+  `tests/sdk.api-thin.test.ts` (C29), this feature's `tests/memoria.migration.test.ts` (C39, C79), and the barrel in
+  `tests/sdk.surface.test.ts` (C38: `visibleHistoryPaths`). C113's twin in `tests/memoria.access.test.ts` and C159 in
+  `tests/memoria.access-paths.test.ts` were extended, not retargeted
+- **Settled mid-build:** nothing by the owner. Builder decisions are written under "Correções da rodada 2 (parte B)" and
+  in plan amendment 11; the two owner questions are (c) not following a note that changed bytes on its way into a hidden
+  folder (safe default: as built) and (d) dropping a row about a hidden folder instead of renaming it (safe default: dropped)
+- **Abandoned:** edges worked out at each request (17 s at 5 000 dense documents); a corrected score over the owner's
+  table; renaming the row of a hidden folder `(pasta oculta)`; a note identifier to follow a changed note
