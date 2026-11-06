@@ -294,6 +294,15 @@ describe("C174 the history of a note moved into a hidden folder", () => {
     fs.renameSync(sai, path.join(outra, "sai.md"));
     fs.renameSync(plano, path.join(fin, "plano.md"));
     await w.index();
+    // a note deleted after a hidden one with the same bytes was already there: it went nowhere, so it keeps its versions
+    // (the hidden note began before the deletion, not after the note's last version)
+    const gemea = w.put(path.join(fin, "gemea.md"), "# Gêmea\n\nconteúdo igual nas duas pastas\n");
+    await w.index();
+    const velha = w.put(path.join(inbox, "velha.md"), "# Gêmea\n\nconteúdo igual nas duas pastas\n");
+    await w.index();
+    fs.rmSync(velha);
+    await w.index();
+    expect(gemea).toBeTruthy();
 
     const rel = (file: string) => path.relative(w.memory, file).split(path.sep).join("/");
     const owner = await w.call("GET", "/api/memory/history");
@@ -334,6 +343,8 @@ describe("C174 the history of a note moved into a hidden folder", () => {
     // a copy into the hidden folder does not take the original's versions with it: the original is still there
     expect(listedPaths.has(rel(copia))).toBe(true);
     expect(listedPaths.has(rel(path.join(fin, "copia-oculta.md")))).toBe(false);
+    // a deleted note is not a moved one: a hidden note with its bytes that began earlier does not take its versions
+    expect(listedPaths.has(rel(velha))).toBe(true);
     // a note that left the hidden folder: its new path's versions are visible, the old path's are not
     expect(listedPaths.has(rel(path.join(outra, "sai.md")))).toBe(true);
     expect(listedPaths.has(rel(sai))).toBe(false);
