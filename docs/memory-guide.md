@@ -172,8 +172,8 @@ nothing itself:
 
 The proposal waits in **Revisões › Do agente** (`/brain/reviews?tab=agent`). Each operation shows its source as a link,
 and a trust badge MordomoOS computes from where the source line is — *Escrito por você* (a line you wrote in the journal
-or a note), *Saída de ferramenta* (a line under the journal's `## Runs`), *Inferido pelo agente* (anything else, and any op whose text the line it cites does not carry
-word for word); only the first starts ticked. Accepting writes the ticked operations to `MEMORY.md` through the guarded writer, each new line
+or a note), *Saída de ferramenta* (a line under the journal's `## Runs`), *Inferido pelo agente* (anything else, and any op whose text is not the whole text of the line it cites,
+or whose fact's subject, predicate and object the line does not hold in order); only the first starts ticked. Accepting writes the ticked operations to `MEMORY.md` through the guarded writer, each new line
 as `- <text> (fonte:: <source>:<line>) (autor:: agente) (em:: <day>)`, records a version of the history and asserts the
 accepted facts with their source and the proposal's id. `MEMORY.md` stays under **200 lines and 25 000 bytes** (what
 Claude Code loads of it): a result above that is refused unless it is smaller than the file is now. A newer

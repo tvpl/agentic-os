@@ -1544,6 +1544,24 @@ and to run a short fourth verification over them (plan amendment 12).
   link planted between the two is read through. **C69 extended**: with the first look seeing a plain file and a link to a
   note hidden from agents and devices taking the name before the read, the proposal holds the link's target and none of
   the text, and the entry is set aside as a link. Re-injected: without the re-check the case fails
+- **Finding 5 (C52), half closed in round 2: a fragment of the line was a quotation (plan amendment 14).** `carries`
+  asked for the claim as whole words anywhere in the line, and a fact claimed only its object: `add "aprovado"` citing
+  "não foi aprovado pelo conselho" came out `usuario` and ticked, and the fact `Conselho · aprovou_fusao_com_Zeta · sim`
+  citing "Reunião: sim, seguimos adiante" was accepted with `trust: usuario`. The cited line must now **be** the claim:
+  after the list marker, the task box and the `HH:MM` stamp are left out, an `add`'s or `supersede`'s `text` and a
+  `close_loop`'s loop equal the rest of the line (`carries`), and a fact's subject, predicate and object are all in the
+  line as whole words, in that order, none serving twice (`carriesInOrder`); else `inferido`, for `ferramenta` too and for
+  a `fact` proposal that cites a line. **C52 extended and one of its own-layer assertions corrected**: the round 2 layer
+  case that asserted a prefix of the line and `"20"` alone are carried (`tests/memoria.layer.test.ts`) now asserts they
+  are not; the route cases cite lines whose whole text the op quotes and add the two observed cases (the fragment `add`,
+  the object-only fact, accepted with the `inferido` it was shown with) and a fact that does hold its three parts in order
+  (`usuario`); C61's fact was `Turma C61 · tamanho · 20` over "Turmas de 20 alunos" and is now `Turmas · de · 20`, the three
+  words of the line (the claim of C61, that the provenance reaches the stored row, is unchanged). Re-injected: the claim by
+  containment again fails 5 cases; the fact by its object alone fails 1 (consolidation) and 1 (fact proposal); the parts
+  in any order fails 1; `close_loop` with no claim fails 1; no boundary before a part and none after fail 1 each; an
+  empty part carried fails 1. Owner question (G39, widened): an op that paraphrases, summarises or cuts a line of the
+  owner's is born unticked; should it be born ticked as "Escrito por você"? Safe default: no, only the whole line.
+  Alternative: judge "in meaning", which the system cannot do without a model, and which is exactly what an agent forges
 
 ## Gaps found by this derivation
 
@@ -1675,6 +1693,7 @@ blocks the build.
 | folders no audience is served, round 3 (3)                                  | devices: exports and `guard/` C69 · agents: `guard/` C69 · neither by a `folderAccess` entry C69                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | guard/ as a working folder, round 3 (4)                                     | the request C69 · `create` C69 · the launch C69 · the owner and a routine accepted C69                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | guard set-aside names, round 3 (4)                                          | `guard-<runId>` and `-2` C69 · `-99` the last readable C69 · all 99 taken, random C69 · an earlier set-aside never overwritten C69                                                                                                                                                                                                                                                                                                                                                                                        |
+| claim a cited line must support, round 3 (7)                                | add `equals` C52 · supersede `equals` C52 · close_loop `equals` C52 · fact `inOrder` of a consolidation C52 · fact `inOrder` of a proposal C52 · a fragment refused C52 · the empty claim C52                                                                                                                                                                                                                                                                                                                             |
 
 - Claims naming a status code, route or response shape: C7, C11-C15, C29-C36, C40-C47, C53, C59-C68, C80-C83,
   checks C109-C120, C122-C123, C125, C127-C128, C131-C138 and C172-C177 - each has a proof that crosses the HTTP boundary; the decision tables among them

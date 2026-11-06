@@ -338,38 +338,63 @@ export function loopText(line: string): string {
 }
 
 /**
- * Whether a cited line carries `claim` verbatim (round 2, finding 5): the claim, white space collapsed, is in the line
- * as whole words (no letter or digit touches it on either side). An empty claim is carried by no line.
+ * Whether a cited line **is** `claim` (round 3, finding 5, plan amendment 14): the line, with its list marker, task box and
+ * `HH:MM` stamp left out and white space collapsed, equals the claim. A fragment of a line is no quotation of it
+ * ("aprovado" of "não foi aprovado pelo conselho"). An empty claim is no line.
  */
 export function carries(line: string, claim: string): boolean {
   const wanted = claim.replace(/\s+/g, " ").trim();
-  if (wanted === "") return false;
-  const edge = (c: string) => /[\p{L}\p{N}]/u.test(c);
-  const before = edge(wanted[0]!) ? "(?<![\\p{L}\\p{N}])" : "";
-  const after = edge(wanted[wanted.length - 1]!) ? "(?![\\p{L}\\p{N}])" : "";
-  const escaped = wanted.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`${before}${escaped}${after}`, "u").test(quotable(line));
+  return wanted !== "" && wanted === quotable(line);
 }
+
+/**
+ * Whether a cited line carries each of `parts` as whole words, one after the other and in that order (a fact's subject,
+ * predicate and object): no letter or digit touches a part on either side, and each begins where the one before ended or
+ * later. An empty part is carried by no line.
+ */
+export function carriesInOrder(line: string, parts: readonly string[]): boolean {
+  const text = quotable(line);
+  const edge = (c: string) => /[\p{L}\p{N}]/u.test(c);
+  let from = 0;
+  for (const part of parts) {
+    const wanted = part.replace(/\s+/g, " ").trim();
+    if (wanted === "") return false;
+    const before = edge(wanted[0]!) ? "(?<![\\p{L}\\p{N}])" : "";
+    const after = edge(wanted[wanted.length - 1]!) ? "(?![\\p{L}\\p{N}])" : "";
+    const escaped = wanted.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const found = new RegExp(`${before}${escaped}${after}`, "u").exec(text.slice(from));
+    if (!found) return false;
+    from += found.index + found[0].length;
+  }
+  return true;
+}
+
+/** What an op says that its cited line must support: the whole text it writes, or the three parts of its fact. */
+export type TrustClaim = { equals: string } | { inOrder: readonly string[] };
 
 /**
  * The trust of an op from its source line (AC 56), never from what the agent wrote: a line of `MEMORY.md` itself, no
  * line, or a line that ends `(autor:: agente)` is `inferido`; a line under the journal's `## Runs` is `ferramenta`; any
- * other line of the journal or of a note is `usuario`. When the op says what it claims (`claim`: the text it would write,
- * the object of a fact), the cited line must carry every claim verbatim (`carries`); a line that does not support what
- * the op says is no origin for it, and the op is `inferido`: an agent's pointer at any line of the owner's does not make
- * its own text the owner's (round 2, finding 5).
+ * other line of the journal or of a note is `usuario`. When the op says what it claims (`claim`), the cited line must
+ * support it, or the op is `inferido`: an agent's pointer at a line of the owner's does not make its own text the
+ * owner's. The text an op writes must be the line (`equals`); a fact's subject, predicate and object must all be in the
+ * line, in that order (`inOrder`) (round 2 finding 5, then round 3 finding 5: a fragment is no quotation).
  */
 export function opTrust(src: {
   path: string;
   line?: number | null | undefined;
   text?: string | null | undefined;
   section?: string | null | undefined;
-  claim?: readonly string[] | undefined;
+  claim?: TrustClaim | undefined;
 }): FactTrust {
   if (!src.line || src.text === null || src.text === undefined) return "inferido";
   if (src.path === MEMORY_FILE) return "inferido";
   if (AGENT_MARK.test(src.text)) return "inferido";
-  if (src.claim !== undefined && !src.claim.every((c) => carries(src.text!, c))) return "inferido";
+  if (src.claim !== undefined) {
+    const supported =
+      "equals" in src.claim ? carries(src.text, src.claim.equals) : carriesInOrder(src.text, src.claim.inOrder);
+    if (!supported) return "inferido";
+  }
   const journal = src.path.split("/")[0] === "journal";
   if (journal && src.section === "Runs") return "ferramenta";
   return "usuario";
@@ -444,11 +469,11 @@ function checkSource(
   return { ok: true, rel: normal, text: lines[line - 1]!, section: sectionAt(lines, line - 1) };
 }
 
-/** What an op says that its cited line must carry: the text it writes, the loop it closes, the object of its fact. */
-function claimOf(op: ProposalOp): string[] | undefined {
-  if (op.op === "add" || op.op === "supersede") return [op.text];
-  if (op.op === "close_loop") return [loopText(op.old)];
-  if (op.op === "fact") return [op.object];
+/** What an op says that its cited line must support: the text it writes, the loop it closes, its fact. */
+function claimOf(op: ProposalOp): TrustClaim | undefined {
+  if (op.op === "add" || op.op === "supersede") return { equals: op.text };
+  if (op.op === "close_loop") return { equals: loopText(op.old) };
+  if (op.op === "fact") return { inOrder: [op.subject, op.predicate, op.object] };
   return undefined;
 }
 
@@ -708,7 +733,7 @@ function factOpView(env: Pick<ProposalEnv, "paths" | "settings">, payload: Recor
           line,
           text: verdict.text,
           section: verdict.section,
-          claim: [String(payload.object)],
+          claim: { inOrder: [String(payload.subject), String(payload.predicate), String(payload.object)] },
         });
     }
   }

@@ -617,6 +617,18 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
     `docs/security.md` descreve a pasta e seus limites. Uma execução com shell sem confinamento que troca a própria pasta
     `guard/` por um arquivo segue fora do que uma pasta pode limitar (escrito em "Limits").
 
+14. **A linha citada tem de ser a afirmação (rodada 3 da verificação, achado 5; estreita a emenda 10; correção de
+    construção com pergunta).** A emenda 10 exigia que a linha citada carregasse o texto da operação como palavras
+    inteiras, e um fragmento bastava: `aprovado` citando "não foi aprovado pelo conselho" nascia `usuario` e marcado, e um
+    fato `Conselho · aprovou_fusao_com_Zeta · sim` citando "Reunião: sim, seguimos adiante" também, porque só o objeto era
+    conferido. Agora, depois de tirar da linha o marcador de lista, a caixa de tarefa e o `HH:MM`, o texto de um `add` ou
+    `supersede` (e o laço de um `close_loop`) tem de ser **igual** ao resto da linha, e o sujeito, o predicado e o objeto de
+    um fato têm de estar na linha, como palavras inteiras, **nessa ordem**; senão a confiança é `inferido`, o que vale
+    também para uma proposta `fact` que cita uma linha. O AC 56 e o C52 valem como escritos para a linha; o que muda é o que a
+    operação precisa citar. Pergunta ao dono (G39 ampliada): uma operação que parafraseia, resume ou recorta uma linha sua
+    deve nascer marcada como "Escrito por você"? Padrão: não, só a citação inteira. Alternativa: marcar quando a linha
+    sustenta o texto "em sentido" (exige um modelo, e é o que a rodada 3 mostrou ser forjável).
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).

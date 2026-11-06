@@ -25,6 +25,7 @@ import {
   MEMORY_MAX_LINES,
   applyOps,
   carries,
+  carriesInOrder,
   evaluateOps,
   loopText,
   opTrust,
@@ -419,19 +420,18 @@ describe("C52 the trust rule", () => {
   });
 });
 
-describe("C52 the claim of an op must be carried by the line it cites (round 2, finding 5)", () => {
+describe("C52 the cited line must be the claim of an op (round 2 finding 5, narrowed in round 3)", () => {
   const line = "- 09:30 Turmas de 20 alunos, de segunda a sexta";
   const src = { path: "journal/2026-10-30.md", line: 4, text: line, section: "Decisions" };
 
-  it("carries: the claim is in the line as whole words, after the marker, the task box and the HH:MM stamp, white space collapsed", () => {
+  it("carries: the claim is the line's whole text after the marker, the task box and the HH:MM stamp, white space collapsed; a fragment is not", () => {
     for (const [what, claim, want] of [
-      ["the words", "Turmas de 20 alunos", true],
-      ["the whole line's text", "Turmas de 20 alunos, de segunda a sexta", true],
-      ["white space collapsed", "Turmas  de   20\talunos", true],
-      ["a number as a word", "20", true],
-      ["the stamp is not part of the text", "09:30 Turmas", false],
-      ["a number inside another", "2", false],
-      ["a word cut in the middle", "urmas de 20", false],
+      ["the whole text", "Turmas de 20 alunos, de segunda a sexta", true],
+      ["white space collapsed", "Turmas  de   20\talunos, de segunda a sexta", true],
+      ["the words, a prefix of the line", "Turmas de 20 alunos", false],
+      ["a number as a word, a fragment", "20", false],
+      ["a word of the line", "alunos", false],
+      ["the stamp is not part of the text", "09:30 Turmas de 20 alunos, de segunda a sexta", false],
       ["something the line does not say", "Decidido pelo dono", false],
       ["the empty claim", "   ", false],
       ["a longer text that contains the line", "Turmas de 20 alunos, de segunda a sexta e sábado", false],
@@ -439,23 +439,48 @@ describe("C52 the claim of an op must be carried by the line it cites (round 2, 
       expect(carries(line, claim), what).toBe(want);
     }
     expect(carries("- [ ] Lançar a turma", "Lançar a turma")).toBe(true);
-    expect(carries("1. (rascunho) pronto", "(rascunho)")).toBe(true);
+    expect(carries("1. (rascunho) pronto", "(rascunho) pronto")).toBe(true);
+    expect(carries("- não foi aprovado pelo conselho", "aprovado")).toBe(false);
+    expect(carries("- não foi aprovado pelo conselho", "Aprovado")).toBe(false);
   });
 
-  it("opTrust: an owner's line is usuario for a claim it carries and inferido for one it does not; with no claim, as before", () => {
-    expect(opTrust({ ...src, claim: ["Turmas de 20 alunos"] })).toBe("usuario");
-    expect(opTrust({ ...src, claim: ["Turmas de 20 alunos", "20"] })).toBe("usuario");
-    expect(opTrust({ ...src, claim: ["Decidido pelo dono"] })).toBe("inferido");
-    expect(opTrust({ ...src, claim: ["Turmas de 20 alunos", "Decidido pelo dono"] })).toBe("inferido");
+  it("carriesInOrder: the parts are whole words of the line, one after the other and in that order", () => {
+    const fact = "- Cliente X status ativo desde março";
+    for (const [what, parts, want] of [
+      ["subject, predicate, object in order", ["Cliente X", "status", "ativo"], true],
+      ["a part that is a sentence of the line", ["Cliente X", "status", "ativo desde março"], true],
+      ["the object alone is not the fact", ["Conselho", "aprovou_fusao_com_Zeta", "ativo"], false],
+      ["the object out of order", ["ativo", "status", "Cliente X"], false],
+      ["the same word cannot serve twice", ["Cliente X", "Cliente X", "ativo"], false],
+      ["a part that ends a word", ["Cliente", "status", "tivo"], false],
+      ["a part that begins a word", ["Cliente", "status", "at"], false],
+      ["a part the line does not say", ["Cliente X", "prefere", "ativo"], false],
+      ["an empty part", ["Cliente X", "", "ativo"], false],
+    ] as const) {
+      expect(carriesInOrder(fact, parts), what).toBe(want);
+    }
+    expect(
+      carriesInOrder("- Reunião: sim, seguimos adiante", ["Conselho", "aprovou_fusao_com_Zeta", "sim"]),
+    ).toBe(false);
+  });
+
+  it("opTrust: an owner's line is usuario for the claim that is the line and inferido for a fragment or another text; with no claim, as before", () => {
+    const whole = "Turmas de 20 alunos, de segunda a sexta";
+    expect(opTrust({ ...src, claim: { equals: whole } })).toBe("usuario");
+    expect(opTrust({ ...src, claim: { equals: "Turmas de 20 alunos" } })).toBe("inferido");
+    expect(opTrust({ ...src, claim: { equals: "Decidido pelo dono" } })).toBe("inferido");
+    expect(opTrust({ ...src, claim: { inOrder: ["Turmas", "de", "20"] } })).toBe("usuario");
+    expect(opTrust({ ...src, claim: { inOrder: ["Conselho", "aprovou", "20"] } })).toBe("inferido");
     expect(opTrust({ ...src })).toBe("usuario");
   });
 
-  it("opTrust: a line under ## Runs is ferramenta only for a claim it carries; an agent's line is inferido whatever it carries", () => {
+  it("opTrust: a line under ## Runs is ferramenta only for the claim that is the line; an agent's line is inferido whatever it holds", () => {
     const run = { path: "journal/2026-10-30.md", line: 9, text: "- run r-1 → done in 3s", section: "Runs" };
-    expect(opTrust({ ...run, claim: ["run r-1 → done"] })).toBe("ferramenta");
-    expect(opTrust({ ...run, claim: ["tudo certo"] })).toBe("inferido");
+    expect(opTrust({ ...run, claim: { equals: "run r-1 → done in 3s" } })).toBe("ferramenta");
+    expect(opTrust({ ...run, claim: { equals: "run r-1 → done" } })).toBe("inferido");
+    expect(opTrust({ ...run, claim: { equals: "tudo certo" } })).toBe("inferido");
     const agent = { ...src, text: "- Turmas de 20 alunos (autor:: agente)" };
-    expect(opTrust({ ...agent, claim: ["Turmas de 20 alunos"] })).toBe("inferido");
+    expect(opTrust({ ...agent, claim: { equals: "Turmas de 20 alunos (autor:: agente)" } })).toBe("inferido");
   });
 
   it("loopText: the loop a MEMORY.md line names, its marker, its (key:: value) tail and its closing left out", () => {

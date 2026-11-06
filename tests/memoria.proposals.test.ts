@@ -522,7 +522,7 @@ describe("C52 the trust of an op, on the route", () => {
       { op: "close_loop", old: "- Lançar a turma de março", on: "2026-10-30", ...cited },
       { op: "fact", subject: "dono", predicate: "aprovou", object: "tudo", ...cited },
       { op: "supersede", old: "- Turmas de 15", text: "Turmas de 20 alunos", ...cited },
-      { op: "fact", subject: "turma", predicate: "tamanho", object: "20", ...cited },
+      { op: "fact", subject: "Turmas", predicate: "de", object: "20", ...cited },
       // a loop the cited line names, in the words of MEMORY.md (its tail left out)
       { op: "close_loop", old: LOOP, on: "2026-10-30", ...cited },
       { op: "add", section: "Decisions", text: "Turmas de 20 alunos (fonte:: x)", ...cited },
@@ -542,7 +542,50 @@ describe("C52 the trust of an op, on the route", () => {
     expect(ops.map((o) => o.state)).toEqual(Array(9).fill("valid"));
   });
 
-  it("C52 a run's fact proposal citing a line of the owner's with an object the line does not carry is inferido, and one that carries it is usuario", async () => {
+  it('C52 a fragment of an owner\'s line is no quotation: an add of "aprovado" citing "não foi aprovado pelo conselho" and a fact whose object alone is in the line are inferido, ticked by no one, and the stored fact keeps the trust it was accepted with', async () => {
+    w.put(memoryFile(), BASE);
+    w.put(
+      path.join(w.memory, "notes", "trust-r3.md"),
+      [
+        "# Conselho",
+        "",
+        "- O contrato com Pedro não foi aprovado pelo conselho",
+        "- Reunião: sim, seguimos adiante",
+        "- Cliente X status ativo",
+      ].join("\n") + "\n",
+    );
+    const src = "notes/trust-r3.md";
+    const p = consolidation([
+      { op: "add", section: "Decisions", text: "aprovado", source: src, line: 3 },
+      {
+        op: "add",
+        section: "Decisions",
+        text: "O contrato com Pedro não foi aprovado pelo conselho",
+        source: src,
+        line: 3,
+      },
+      {
+        op: "fact",
+        subject: "Conselho",
+        predicate: "aprovou_fusao_com_Zeta",
+        object: "sim",
+        source: src,
+        line: 4,
+      },
+      { op: "fact", subject: "Cliente X", predicate: "status", object: "ativo", source: src, line: 5 },
+      { op: "fact", subject: "Cliente X", predicate: "status", object: "ativo", source: src, line: 4 },
+    ]);
+    const ops = (await read(p.id)).body.ops as Json[];
+    expect(ops.map((o) => o.trust)).toEqual(["inferido", "usuario", "inferido", "usuario", "inferido"]);
+    expect(ops.map((o) => o.state)).toEqual(Array(5).fill("valid"));
+    // the fact the object alone supported is accepted with the trust the review showed
+    const done = await accept(p.id, { ops: [2] });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    const stored = (await w.call("GET", "/api/memory/facts?subject=conselho")).body.facts as Json[];
+    expect(stored.map((f) => [f.object, f.trust])).toEqual([["sim", "inferido"]]);
+  });
+
+  it("C52 a run's fact proposal citing a line of the owner's is inferido unless the line carries its subject, predicate and object in order", async () => {
     const make = (object: string) =>
       storeProposal(
         w.ctx.db,
@@ -563,7 +606,8 @@ describe("C52 the trust of an op, on the route", () => {
     const trustOf = async (id: string) => ((await read(id)).body.ops as Json[])[0]!.trust;
     expect(await trustOf(make("1 milhão").id)).toBe("inferido");
     expect(await trustOf(make("2").id)).toBe("inferido");
-    expect(await trustOf(make("20").id)).toBe("usuario");
+    // the object alone is no fact: "turma" and "tamanho" are not in the line "Turmas de 20 alunos"
+    expect(await trustOf(make("20").id)).toBe("inferido");
   });
 });
 
@@ -733,13 +777,13 @@ describe("C60 accepting some or all", () => {
 describe("C61 an accepted fact op keeps its provenance", () => {
   it("C61 the fact reads back with sourcePath, sourceLine 4, author run:<runId>, the op's trust and proposalId, and is in the answer's facts", async () => {
     const p = consolidation([
-      { op: "fact", subject: "Turma C61", predicate: "tamanho", object: "20", source: journalRel, line: 4 },
+      { op: "fact", subject: "Turmas", predicate: "de", object: "20", source: journalRel, line: 4 },
     ]);
     const trust = ((await read(p.id)).body.ops as Json[])[0]!.trust;
     expect(trust).toBe("usuario");
     const done = await accept(p.id);
     expect(done.status, JSON.stringify(done.body)).toBe(200);
-    const listed = await w.call("GET", "/api/memory/facts?subject=turma%20c61");
+    const listed = await w.call("GET", "/api/memory/facts?subject=turmas");
     const fact = (listed.body.facts as Json[])[0]!;
     expect(fact).toMatchObject({
       sourcePath: path.join(w.memory, "journal", `${DAY}.md`),
