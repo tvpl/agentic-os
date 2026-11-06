@@ -189,7 +189,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       lastIndex: last && redact ? { ...last, stats: zeroCounts(last.stats) } : last,
       facets,
       indexing: redact ? { ...indexing, scanned: 0, total: indexing.total === null ? null : 0 } : indexing,
-      semantic: ctx.semantic.status(),
+      semantic: ctx.semantic.status(redact && policy ? policy : undefined),
     };
   });
 

@@ -447,6 +447,14 @@ describe("C158 the connectors a device reads", () => {
 describe("C159 every GET route a device may call", () => {
   it("C159 none answers a hidden path; routines in a hidden folder are not there; a route the table gains fails this test", async () => {
     const { w, fin, outra, secret, visible } = await seeded("mordomo-paths-c159-");
+    // embeddings on (the `hash` provider): the status counts vectors, which the differential probe below watches
+    w.update((s) => {
+      s.memory.embeddings = {
+        ...s.memory.embeddings,
+        enabled: true,
+        provider: "hash",
+      } as typeof s.memory.embeddings;
+    });
     // the hidden folder cited everywhere a device can read
     const visibleRun = await ownerRun(w, outra, `compare ${secret}`);
     const session = w.ctx.runs.get(visibleRun)!.sessionId!;
@@ -609,6 +617,80 @@ describe("C159 every GET route a device may call", () => {
       expect(res.body.includes(fin), `${id} answers the hidden folder`).toBe(false);
       expect(res.body.includes(cofreName), `${id} names the hidden indexed folder`).toBe(false);
     }
+    // A differential probe (round 3 finding 4): the hidden folders gain notes, and no answer a device is given changes. The
+    // clocks are scrubbed (a pass has a time, an event has an id: their existence is what the docs name), and the answer to
+    // the owner is told to change, so the probe is not blind.
+    const clocks = new Set([
+      "generatedAt",
+      "checkedAt",
+      "uptimeMs",
+      "at",
+      "lastEventId",
+      "now",
+      "ts",
+      "updatedAt",
+      "finishedAt",
+      "durationMs",
+      "ms",
+      "elapsedMs",
+    ]);
+    // a proposal's effects are dated by the moment the detail is read
+    const proposalClocks = new Set([...clocks, "validFrom"]);
+    const scrub = (value: unknown, clock: ReadonlySet<string> = clocks): unknown =>
+      Array.isArray(value)
+        ? value.map((v) => scrub(v, clock))
+        : value && typeof value === "object"
+          ? Object.fromEntries(
+              Object.entries(value as Record<string, unknown>)
+                .filter(([k]) => !clock.has(k))
+                .map(([k, v]) => [k, scrub(v, clock)]),
+            )
+          : value;
+    const snapshot = async (headers?: Record<string, string>) => {
+      const out: Record<string, string> = {};
+      for (const id of deviceGets) {
+        if (elsewhere.has(id) || id === "openapi.get") continue;
+        const res = await w.app.inject({ method: "GET", url: urls[id]!, headers: headers ?? {} });
+        let body: unknown = res.body;
+        try {
+          body = scrub(JSON.parse(res.body), id === "memory.proposals.get" ? proposalClocks : clocks);
+        } catch {
+          // not JSON: compared as it is
+        }
+        out[id] = `${res.statusCode} ${JSON.stringify(body)}`.replace(/\d{4}-\d\d-\d\dT[\d:.]+Z/g, "<time>");
+      }
+      return out;
+    };
+    const before = await snapshot(device);
+    const ownerBefore = await snapshot({ "x-mordomo-token": w.ctx.token() });
+    for (let i = 0; i < 25; i++)
+      w.put(
+        path.join(fin, `extra-${i}.md`),
+        `# Extra ${i}\n\nnota escondida número ${i} com texto bastante\n`,
+      );
+    w.put(path.join(cofre, "extra.md"), "# Cofre\n\numa nota do cofre escondido\n");
+    await w.index();
+    const after = await snapshot(device);
+    const changed = Object.keys(before).filter((id) => after[id] !== before[id]);
+    expect(changed).toEqual([]);
+    const ownerAfter = await snapshot({ "x-mordomo-token": w.ctx.token() });
+    expect(
+      Object.keys(ownerAfter).filter((id) => ownerAfter[id] !== ownerBefore[id]).length,
+      "the owner's answers do change",
+    ).toBeGreaterThan(0);
+    // the report counts the indexed folders the device sees, and names none it does not (a hidden one that is gone too)
+    const doctorOf = async (headers: Record<string, string>) =>
+      ((await w.call("GET", "/api/doctor?audit=0", undefined, headers)).body.checks as Json[]).find(
+        (c) => c.id === "memory-folders",
+      )!;
+    expect(await doctorOf(device)).toMatchObject({
+      status: "warn",
+      detail: expect.stringMatching(/No folders selected/),
+    });
+    expect((await doctorOf({ "x-mordomo-token": w.ctx.token() })).detail).toMatch(/1 folder\(s\) indexed/);
+    fs.rmSync(cofre, { recursive: true });
+    expect(JSON.stringify(await doctorOf(device))).not.toContain(cofreName);
+    expect(JSON.stringify(await doctorOf({ "x-mordomo-token": w.ctx.token() }))).toContain(cofreName);
     // no count over every file: the status of the memory has the counts of the pass at zero, the stats of a pass that
     // ends are not sent, and a number of a hidden folder's own (the 7 files that changed in it) is in no row
     const status = (

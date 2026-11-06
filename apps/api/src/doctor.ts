@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { SpawnPolicy } from "@mordomo/core";
 import { checkRouters, type ProviderId } from "@mordomo/core/internal";
+import type { AccessView } from "./access.js";
 import type { AppContext } from "./context.js";
 import { ignoredBindMessage, isLoopbackBind, listenPlan } from "./transport.js";
 
@@ -23,6 +24,11 @@ export interface DoctorReport {
 export interface DoctorOptions {
   /** Run `npm audit` against the MordomoOS home (20 s budget). Default true. */
   npmAudit?: boolean;
+  /**
+   * What the caller sees (a paired device with a folder hidden from it): the report counts no file and names no
+   * folder it may not see (round 3 finding 4), so the indexed folders are those it sees and the pass's file count is left out.
+   */
+  view?: AccessView;
 }
 
 /**
@@ -114,7 +120,9 @@ export async function npmAuditCheck(home: string, timeoutMs = 20_000): Promise<D
 
 export async function runDoctor(ctx: AppContext, opts: DoctorOptions = {}): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
-  const settings = ctx.settings();
+  const settings = opts.view && opts.view.audience !== null ? opts.view.settings : ctx.settings();
+  // The counts of a pass are over every file, hidden ones included (round 2 finding 8, round 3 finding 4).
+  const hideCounts = opts.view?.audience === "devices" && opts.view.access.hides("devices");
 
   const [major] = process.versions.node.split(".");
   checks.push({
@@ -192,7 +200,7 @@ export async function runDoctor(ctx: AppContext, opts: DoctorOptions = {}): Prom
     label: "Memory index",
     status: last ? "ok" : "warn",
     detail: last
-      ? `${new Date(last.at).toISOString()} — ${last.stats.scanned} files scanned`
+      ? `${new Date(last.at).toISOString()}${hideCounts ? "" : ` — ${last.stats.scanned} files scanned`}`
       : "Never indexed. Run: mordomo index",
   });
 

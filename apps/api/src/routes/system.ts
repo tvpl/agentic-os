@@ -627,7 +627,10 @@ export function registerSystemRoutes(
 
   bind(app, "doctor.get", async ({ query: { audit } }, req) => {
     // The HUD of a paired phone asks for the report too; `npm audit` (a network call, 20 s) is for the owner at the desk.
-    return runDoctor(ctx, { npmAudit: audit !== "0" && req.principal?.kind !== "device" });
+    return runDoctor(ctx, {
+      npmAudit: audit !== "0" && req.principal?.kind !== "device",
+      view: accessView(ctx, req.principal),
+    });
   });
 
   /** Hourly samples of the last N days plus their daily fold (Settings › Trends). */

@@ -77,14 +77,15 @@ export class SemanticSearch {
     return choice.state === "ready" ? choice.provider : null;
   }
 
-  status(): SemanticStatus {
+  /** `allow`: the vectors counted are those of the files a caller may see (a device with a hidden folder). */
+  status(allow?: (row: { root: string; rel: string }) => boolean): SemanticStatus {
     const config = this.getSettings().memory.embeddings;
     const choice = chooseProvider(config);
     return {
       enabled: config.enabled,
       provider: choice.state === "ready" ? choice.provider.id : null,
       backend: choice.state === "ready" ? this.vectors.backend() : null,
-      vectors: choice.state === "ready" ? countVectors(this.db) : 0,
+      vectors: choice.state === "ready" ? countVectors(this.db, allow) : 0,
       blocked: choice.state === "blocked" ? choice.reason : null,
       error: this.queryError ?? storedSemanticError(this.db)?.message ?? null,
     };
