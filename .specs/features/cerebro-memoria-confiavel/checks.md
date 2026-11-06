@@ -1416,6 +1416,103 @@ fixed in the commits that carry each entry.
   question (G39): an op that paraphrases a line of the owner's is born unticked; should it be born ticked as "Escrito por
   você"? Safe default: no, only a quotation. Alternative: judge "in meaning", which the system cannot do without a model
 
+## Correções da rodada 2 (parte B)
+
+What round 2 of the verification found in what a paired device is told that depends on files it may not see (findings 3,
+4, 6, 7 and 8; F13 and F15), fixed in the commits that carry each entry (`4293755`, `cabf2fc`, `7c20a33`). The rules are
+plan amendment 11 and Landing 20. Nothing approved is weakened; C113 and C159 only gain cases, and C172 to C177 are new.
+
+**C172** - The related edges a device is given (`GET /api/memory/related`, the graph's "Similar content") are worked out
+over the files its folder levels let it see, and never over the owner's corpus. With nothing hidden from devices a device
+reads the owner's table (`file_related`) and `file_related_devices` is empty. With a folder hidden from devices it reads
+`file_related_devices`, which holds only edges whose two ends are visible files; while the pass that builds it is owed
+(`meta` `rel.devices` does not name the view) it is told of no edge at all and never of the owner's; a hidden note added
+changes none of its edges; a visible note moved into the hidden folder takes its edges with it and, moved back, gets them
+again; when the folder is shown again the device reads the owner's table and the copy is emptied. The edges are
+`file_related_devices(src_id, dst_id, score, terms, updated_at)` (migration 32; Landing 20; finding 3)
+Proof: `npx vitest run tests/memoria.access-round2.test.ts -t "C172 "`
+
+**C173** - With embeddings on, a `content` device's `GET /api/memory/search` in `mode=semantic` and `mode=auto` over a home
+where 60 hidden notes are nearer to the question than the 4 visible ones answers, by value, what the twin (the same home
+with the folder excluded, the index passed again) answers: 4 hits, not 1, and the same `via` on each. The vector list is
+read at growing depths (50, 200, 800 …) until it holds 50 files the caller may see or the vectors run out, so the cut at
+depth 50 no longer comes before the hidden files are taken out (finding 4, F13; the "shorter list" limit of
+`docs/security.md` is gone)
+Proof: `npx vitest run tests/memoria.access-round2.test.ts -t "C173 "`
+
+**C174** - The rule for a note moved into a hidden folder (plan amendment 11 (c)): a path P went on to a path Q when P's
+last version with bytes has the bytes of Q's first version, recorded after it, and P ends as `removed`; the chain is
+followed to its end. A `content` device is told of no version of P or of Q when any path of the chain is hidden from it:
+`GET /api/memory/history` lists neither, `?path=` of P is empty, and `GET /api/memory/history/:id` of each of P's versions
+answers `404 not_found` with the message of an id that does not exist. The look-alikes are served as before: a note
+moved between two visible folders keeps its versions under both paths; a copy into the hidden folder leaves the original
+(still there) its versions; a note that left the hidden folder has its new path's versions visible and the old path's
+hidden. The owner reads every one of them (finding 6, L-055: a move is another way a file arrives)
+Proof: `npx vitest run tests/memoria.access-round2.test.ts -t "C174 "`
+
+**C175** - F15: with a device's roots holding `artifacts/exports/` (the home itself an indexed root), the device's index is
+its own table (`files_fts_devices`) and holds no export copy of a file: the order of the hits it is given is the twin's.
+With no root holding the exports the device's index is the owner's `files_fts` and there is no copy (finding 7)
+Proof: `npx vitest run tests/memoria.access-round2.test.ts -t "C175 "`
+
+**C176** - A `content` or `monitor` device with a folder hidden from devices reads no count of the index pass: in
+`GET /api/memory/status` `lastIndex.stats` is zero and the progress of a pass in course (`indexing.scanned`, `total`) is
+zero; the `index.*` events of `GET /api/events/stream` carry zeroes; the inbox row "Index finished" (`kind: "index"`, which
+says how many files the pass read) is no row for it. With nothing hidden from devices the counts are the owner's, as
+before; the owner always reads them (finding 8)
+Proof: `npx vitest run tests/memoria.access-round2.test.ts -t "C176 "`
+
+**C177** - A `sentinel.fired` row of the `fsWatch` sentinel about an indexed folder hidden from devices is no row for a
+device: it is in none of `GET /api/notifications`, `GET /api/sentinels` (`recent`, `lastTitle`) and the event stream,
+whichever route reads it, and the folder's name appears in no answer the device is given; the same row about a folder not
+hidden keeps its name for the device, and the owner reads both. The row is dropped and its title is not rewritten (a
+`(pasta oculta)` row would still say that something changed, how many files and when) (finding 8)
+Proof: `npx vitest run tests/memoria.access-round2.test.ts -t "C177 "`
+
+- **Finding 3 (C113 strengthened, C172; Landing 20, migration 32).** TF-IDF over the whole corpus let a hidden note change
+  which terms a visible pair shared (the verifier's 58 % `estrela, galaxia` against 85 % `zeta, planeta, orbita`). The
+  edges of an audience that hides nothing from itself are the owner's; for a device with a hidden folder they are worked
+  out over its visible files, in `file_related_devices`, by the pass step `refreshDevicesRelatedSteps` after the index
+  pass, kept per file by the `AudienceMirror` inside the pass's write transactions and rebuilt when the settings change.
+  Alternatives rejected (Landing 20): working the edges out at each request (0.5 s at 1 000 documents and 17 s at 5 000,
+  dense; 0.15 s and 1.9 s sparse), and a corrected score over the owner's table (the cut at df >= 0.6 n and the weights
+  change with the corpus, so no correction exists). The cost, measured as in Landing 19: one pass of the step per change
+  of the settings or of a visible file, nothing at a request. **C113 extended**: the second test under its title has the
+  verifier's fixture (`sharedVocabulary`: five shared words, three of them held by 40 hidden notes more) and the twin's
+  edges are worked out from nothing (the index passed again and `refreshRelated` over every id), where the old twin kept
+  the edges the hidden notes had shaped. Re-injected: the owner's table read for a device (`relatedTableOf`) fails C113
+  and C172; the devices' table built over every file instead of the visible ones fails C113 and C172; the table not
+  emptied when the view is rebuilt fails C172. Named, not proven: the `else` branch of `AudienceMirror.upsert` that
+  deletes the edges of a file whose own row changes to a place the audience may not see survives removal. It is
+  defensive: a file keeps its id only at the same absolute path, so its visibility changes only with the settings, whose
+  change rebuilds the table, and a file that moves is a `remove` (proved, C172)
+- **Finding 4 (C173, F13).** `SemanticSearch` read `vectors.rank` at depth 50 and took the hidden files out afterwards. It
+  now reads at 50, 200, 800 … until 50 admitted files or the end of the vectors; the files the caller may not see are
+  taken out before the two lists are fused (the policy is applied in JS, since the vector rank filters in SQL only).
+  Re-injected: the loop reduced to one read at depth 50 fails C173 (1 hit against the twin's 4); the read list taken
+  as it is, with no filter to the admitted files, fails C173
+- **Finding 6 (C174; amendment 11 (c)).** `visibleHistoryPaths` (`core/src/memory/historyStore.ts`) is the one rule the
+  list, the detail and the restore of a device read. Re-injected: the chain not followed (the rule off) fails C174; the lineage
+  test `first(Q).id > live(P).id` removed survived at first, and C174 gained the case that kills it: a note deleted after
+  a hidden note with the same bytes began keeps its versions (it went nowhere); with the case it fails C174
+- **Finding 7 (C175, F15).** `audienceSpec` returns the owner's index only when no folder is hidden from the audience and
+  no device root holds `artifacts/exports/`. Re-injected: `holdsExports` ignored (the device's table not made for a root holding the
+  exports) fails C175
+- **Finding 8 (C176, C177; C159 extended).** `lastIndex.stats`, the progress of a pass, the `index.*` events and the inbox
+  row of the pass are cut for a device with a hidden folder; a row about a hidden folder is dropped (`hiddenNotification`,
+  `hiddenEvent` and the filter of `/api/sentinels`); a `folderAccess` change starts a pass (`system.ts`), so the first
+  answer after a change is not the last pass's. **C159 extended**: the home gains a hidden indexed root (`c159-cofre`), an
+  `fsWatch` row about it, a check that its name is in no answer of any route a device may call, the zero stats, and the
+  notifications regex. Re-injected: the counts not zeroed in the status (`redact` false) fails
+  C176, and `lastIndex.stats` left as it is fails C159; the sentinel row not dropped by `hiddenNotification` fails C177 and
+  C159; the `sentinel.fired` event not dropped from the stream fails C177; `kind: "index"` rows kept fails C176 and C159;
+  the stream's `index.*` payload not zeroed fails C176; `recent` unfiltered in `/api/sentinels` fails C177
+- **Owner questions (plan amendment 11).** (c) A note whose bytes changed on the way into a hidden folder is not followed
+  (the system records no note identifier): its old path's versions stay readable by a device. Safe default: as built.
+  Alternative: follow it too, which needs a note id the system does not write. (d) A row about a hidden folder is
+  dropped, not renamed `(pasta oculta)`. Safe default: dropped. Alternative: keep the row with the name replaced, which
+  still tells a device how many files changed and when
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None
@@ -1537,9 +1634,15 @@ blocks the build.
 | sizes of the permissions modal's text, round 1 (2)                          | the six hints 13px C168 · "Herdado de" 12px C168                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | -        |
 | states of the agent tab announced, round 1 (4)                              | loading C169 · empty C169 · with items C169 · failed C169                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | -        |
 | a restore over the open editor, round 1 (2)                                 | reloads in `Salvo` C170 · conflict band C171                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | -        |
+| related edges of a device, round 2 (4)                                      | nothing hidden: the owner's table C172 · the pass owed: none C172 · built over the visible files only C113, C172 · a file leaving the view, and the folder shown again C172                                                                                                                                                                                                                                                                                                                                               | -        |
+| vector list read until 50 admitted files, round 2 (2)                       | `mode=semantic` C173 · `mode=auto` C173                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | -        |
+| history of a moved note, round 2 (5)                                        | moved into a hidden folder, old path and new path C174 · deleted next to a hidden twin C174 · moved between visible folders C174 · copy C174 · moved out C174                                                                                                                                                                                                                                                                                                                                                             | -        |
+| search table of a device with exports under a root, round 2 (2)             | its own table C175 · the owner's when no root holds the exports C175                                                                                                                                                                                                                                                                                                                                                                                                                                                      | -        |
+| counts of an index pass a device is given, round 2 (4)                      | `lastIndex.stats` C176 · pass in course C176 · `index.*` events C176 · the "Index finished" row C176                                                                                                                                                                                                                                                                                                                                                                                                                      | -        |
+| rows about a hidden indexed folder, round 2 (4)                             | inbox C177 · sentinels `recent` and `lastTitle` C177 · event stream C177 · every route a device may call C159                                                                                                                                                                                                                                                                                                                                                                                                             | -        |
 
 - Claims naming a status code, route or response shape: C7, C11-C15, C29-C36, C40-C47, C53, C59-C68, C80-C83,
-  checks C109-C120, C122-C123, C125, C127-C128 and C131-C138 - each has a proof that crosses the HTTP boundary; the decision tables among them
+  checks C109-C120, C122-C123, C125, C127-C128, C131-C138 and C172-C177 - each has a proof that crosses the HTTP boundary; the decision tables among them
   (C1, C8-C11, C17, C20, C25, C28, C51, C52, C59, C110, C111, C126) are also proven at their own layer
 - Claims about the screens: C87-C105, C139-C145, C165-C171 in rendered components; C106-C108, C146, C165, C167 also in a
   real browser, both shells where the claim names them

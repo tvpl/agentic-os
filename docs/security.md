@@ -390,7 +390,21 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   device, an artifact of a run it is told does not exist (hidden folder, or a run that is gone) is not listed and
   answers `404 not_found`, and, while a folder is hidden from devices, so does a run's `proposal.json`, which quotes the
   notes its ops are sourced in. Hidden folders in free text are matched by their configured spellings (absolute,
-  relative to the home and to `memory/`, `~/`), so a name with a space is written `(pasta oculta)` whole.
+  relative to the home and to `memory/`, `~/`), so a name with a space is written `(pasta oculta)` whole. What a device
+  is told about the index is worked out as the owner's view without the hidden folders (plan amendment 11): the
+  "related" edges and the graph's "Similar content" come from `file_related_devices` (migration 32), computed over the
+  files the device may see only, since TF-IDF over the whole corpus let a hidden note change which words a visible pair
+  shared; until the pass that builds it has run a device is told of no edge, never of the owner's. With embeddings on,
+  the vector list is read deeper until it holds 50 files the caller may see (or the vectors end) before it is fused with
+  the words list, so a hidden folder shortens neither the list nor changes `via`. A device's index also leaves out the
+  export copies under an indexed root that holds `artifacts/exports/`. The history of a path a note went on from to a
+  hidden one (moved, with the same bytes, then removed from the first) is not listed or readable by a device, under
+  either path; a note that changed bytes on its way is not followed (the system records no note identifier), and a
+  copy leaves the original its versions. A device with a hidden folder is given no count of the index pass
+  (`lastIndex.stats`, the progress of a pass, the `index.*` events, the inbox row "Index finished" are zero or absent),
+  and a row or event about a hidden folder (an `fsWatch` sentinel's, `messageParams.folder`) does not exist for it:
+  dropped, not renamed, since a renamed row would still say that files changed, how many and when. Changing
+  `folderAccess` starts an index pass.
 - **Agents.** A run's credential reads (search, recall, maps, journal, facts, the recall's statistics) leave out what is
   hidden from agents, and a run's credential appends to the journal only where agents may write (`403 folder_hidden`,
   `403 folder_read_only`). The context block and the routers in a run's prompt, and the routers and context maps the
@@ -421,8 +435,7 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   citation and stays; the tail of a hidden path stops at the first space, so the part of a file name after a space
   below a hidden folder may stay. The output of a run that was handed a folder hidden from devices only (a memory skill
   reads `memory/` whole) can quote it, and a device reads that output; hiding from devices is enforced where a file is
-  served or indexed, not by following what an agent copies. With embeddings on, the vector ranking is cut at its depth
-  before the files a caller may not see are taken out, so a semantic hit list can be shorter than the twin's.
+  served or indexed, not by following what an agent copies.
 
 ## Notes and the index worker
 
