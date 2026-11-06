@@ -260,7 +260,7 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
   const aboutHidden = (item: unknown): boolean => {
     if (item === null || typeof item !== "object") return false;
     const folder = ((item as { messageParams?: { folder?: unknown } | null }).messageParams ?? {}).folder;
-    return typeof folder === "string" && path.isAbsolute(folder) && hiddenPath(folder);
+    return typeof folder === "string" && hiddenPath(folder);
   };
   const value = <T>(input: T): T => {
     const walk = (node: unknown): unknown => {
