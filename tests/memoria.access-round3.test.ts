@@ -402,3 +402,153 @@ describe("C180 the history of a path whose note left", () => {
       for (const id of idsOf(files[name]!)) expect(await readsId(id), `${name} shown`).toBe(200);
   });
 });
+
+// ---- C181: a change of the access between the steps of the pass that builds the devices' edges ----------------------------
+
+type EdgeSteps = { refreshDevicesRelatedSteps(changed: ReadonlySet<number>): Generator<void, void> };
+
+describe("C181 the devices' related edges and a change of the access between the steps of the pass", () => {
+  it("C181 a pass that worked its edges out for the old view writes none of them after a device's read rebuilt the table for the new one, wherever the change falls; edges of another view found at a read are emptied", async () => {
+    const { w, fin } = await seeded("mordomo-round3-c181-");
+    const outra = path.join(w.memory, "notes", "outra");
+    const zz = path.join(w.memory, "notes", "zz");
+    const a = w.put(
+      path.join(outra, "a.md"),
+      "# A\n\nestrela galaxia nebulosa zeta planeta orbita zeta planeta orbita zeta planeta orbita\n",
+    );
+    const b = w.put(
+      path.join(outra, "b.md"),
+      "# B\n\nestrela galaxia cometa zeta planeta orbita zeta planeta orbita zeta planeta orbita\n",
+    );
+    w.put(path.join(zz, "z.md"), "# Z\n\numa nota qualquer de outra pasta\n");
+    for (let i = 0; i < 6; i++)
+      w.put(path.join(outra, `cheio-${i}.md`), `# Cheio ${i}\n\n${"palavra ".repeat(20)} unico${i}x\n`);
+    for (let i = 0; i < 40; i++)
+      w.put(
+        path.join(fin, `h${i}.md`),
+        `# H${i}\n\nplaneta orbita zeta ruido${i}a ruido${i}b ruido${i}c ruido${i}d ruido${i}e\n`,
+      );
+    await w.index();
+    const idOf = (file: string) =>
+      (w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(file) as { id: number }).id;
+    const finIds = new Set(
+      (w.ctx.db.prepare("SELECT id, path FROM files").all() as Array<{ id: number; path: string }>)
+        .filter((r) => r.path.startsWith(fin + path.sep))
+        .map((r) => r.id),
+    );
+    const device = w.device(["content"]);
+    const similar = async () =>
+      ((await w.call("GET", `/api/memory/related?id=${idOf(a)}`, undefined, device)).body as Json[]).find(
+        (r) => r.file.path === b,
+      )?.why as string | undefined;
+    const meta = (key: string) =>
+      (w.ctx.db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined)
+        ?.value ?? null;
+    const edges = () =>
+      w.ctx.db.prepare("SELECT src_id, dst_id FROM file_related_devices").all() as Array<{
+        src_id: number;
+        dst_id: number;
+      }>;
+    const steps = (w.ctx.indexer as unknown as EdgeSteps).refreshDevicesRelatedSteps.bind(w.ctx.indexer);
+
+    // the twin: the access as it will be, edges worked out from nothing
+    await setAccess(w, [{ path: fin, agents: "write", devices: "hide" }]);
+    await w.index();
+    const twin = await similar();
+    expect(twin, "the view without the hidden folder reads its three words").toMatch(/zeta|planeta|orbita/);
+
+    const cases = [1, 2, 3, 4].flatMap((n) =>
+      [false, true].flatMap((b) => [false, true].map((whole) => ({ stop: n, built: b, whole }))),
+    );
+    for (const { stop, built, whole } of cases) {
+      const label = `stop ${stop}, ${built ? "new pass ran" : "no new pass"}, ${whole ? "whole" : "incremental"}`;
+      // view A: another folder hidden, so the hidden folder's notes are in the edges; "whole": the table is not built yet
+      if (whole) {
+        w.update((s) => {
+          s.folderAccess = [{ path: zz, agents: "write", devices: "hide" }];
+        });
+        w.ctx.indexer.relatedTable("devices");
+      } else {
+        await setAccess(w, [{ path: zz, agents: "write", devices: "hide" }]);
+        await w.index();
+        expect(await similar(), `${label}: in view A the pair reads the words it shares there`).toMatch(
+          /estrela, galaxia/,
+        );
+      }
+      // a pass over the two changed notes, under view A, stopped after `stop` steps
+      const pass = steps(new Set([idOf(a), idOf(b)]));
+      for (let i = 0; i < stop; i++) pass.next();
+      // the access changes (no pass of its own: the settings are saved), and a device reads
+      w.update((s) => {
+        s.folderAccess = [{ path: fin, agents: "write", devices: "hide" }];
+      });
+      expect(w.ctx.indexer.relatedTable("devices")).toBe("file_related_devices");
+      // the new view's own pass may have run in between: what it wrote stays
+      if (built) await w.index();
+      const written = JSON.stringify(edges());
+      // the stopped pass goes on
+      for (let i = 0; i < 50 && !pass.next().done; i++);
+      if (built)
+        expect(JSON.stringify(edges()), `${label}: the new view's edges as its pass left them`).toBe(written);
+      const view = meta("fts.devices");
+      expect([null, view], `${label}: the edges are named for no other view than the index's`).toContain(
+        meta("rel.devices"),
+      );
+      for (const e of edges())
+        expect(finIds.has(e.src_id) || finIds.has(e.dst_id), `${label}: an edge of the hidden folder`).toBe(
+          false,
+        );
+      const read = await similar();
+      expect(read === undefined || read === twin, `${label}: ${read}`).toBe(true);
+      await w.index();
+      expect(await similar(), `${label}: after the pass`).toBe(twin);
+    }
+
+    // a pass that writes in several slices (500 rows each): stopped between two of them, the rest is not written
+    for (let i = 0; i < 700; i++) {
+      const g = i % 20;
+      w.put(
+        path.join(outra, "bulk", `n${i}.md`),
+        `# N${i}\n\ngrupo${g}a grupo${g}b grupo${g}c grupo${g}d grupo${g}e unico${i}a unico${i}b unico${i}c\n`,
+      );
+    }
+    await w.index();
+    w.update((s) => {
+      s.folderAccess = [{ path: zz, agents: "write", devices: "hide" }];
+    });
+    w.ctx.indexer.relatedTable("devices");
+    const many = steps(new Set());
+    for (let i = 0; i < 3; i++) many.next();
+    expect(edges().length, "the first slices of the old view are written").toBeGreaterThan(0);
+    w.update((s) => {
+      s.folderAccess = [{ path: fin, agents: "write", devices: "hide" }];
+    });
+    w.ctx.indexer.relatedTable("devices");
+    for (let i = 0; i < 20 && !many.next().done; i++);
+    expect(edges(), "the slices after the change are not written").toEqual([]);
+    expect(meta("rel.devices")).toBeNull();
+
+    // defence at the read: edges named for another view than the index's are emptied when a device is about to read them
+    await setAccess(w, [{ path: zz, agents: "write", devices: "hide" }]);
+    await w.index();
+    expect(edges().length).toBeGreaterThan(0);
+    w.update((s) => {
+      s.folderAccess = [{ path: fin, agents: "write", devices: "hide" }];
+    });
+    w.ctx.indexer.relatedTable("devices");
+    expect(edges()).toEqual([]);
+    w.ctx.db
+      .prepare(
+        "INSERT OR REPLACE INTO file_related_devices (src_id, dst_id, score, terms, updated_at) VALUES (?, ?, 0.9, '[\"estrela\"]', 1)",
+      )
+      .run(idOf(a), idOf(b));
+    w.ctx.db
+      .prepare(
+        "INSERT INTO meta(key, value) VALUES ('rel.devices', 'outra') ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run();
+    w.ctx.indexer.relatedTable("devices");
+    expect(edges()).toEqual([]);
+    expect(meta("rel.devices")).toBeNull();
+  });
+});

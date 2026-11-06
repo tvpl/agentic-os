@@ -402,7 +402,10 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   is told about the index is worked out as the owner's view without the hidden folders (plan amendment 11): the
   "related" edges and the graph's "Similar content" come from `file_related_devices` (migration 32), computed over the
   files the device may see only, since TF-IDF over the whole corpus let a hidden note change which words a visible pair
-  shared; until the pass that builds it has run a device is told of no edge, never of the owner's. With embeddings on,
+  shared; until the pass that builds it has run a device is read no edge from the table, never the owner's (the graph works its
+  edges out on the fly over the files the device may see). The table is named for the view it was worked out for: a
+  pass that read the access before it changed writes nothing after the change, and edges found named for another view
+  are emptied at the read (round 3 finding 3). With embeddings on,
   the vector list is read deeper until it holds 50 files the caller may see (or the vectors end) before it is fused with
   the words list, so a hidden folder shortens neither the list nor changes `via`. A device's index also leaves out the
   export copies under an indexed root that holds `artifacts/exports/`. The history is keyed by path, so a note

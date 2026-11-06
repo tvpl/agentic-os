@@ -88,6 +88,20 @@ export function writeRelatedSpec(db: Db, spec: string | null): void {
     );
 }
 
+/**
+ * Empty the devices' related edges when they were worked out for another view than the index of the devices is now
+ * for (a pass that read the access before it changed and wrote after): edges of the old view under the new one would tell
+ * a device of words only a folder it may no longer see holds. The next pass builds them whole (round 3 finding 3).
+ */
+export function dropStaleRelated(db: Db): void {
+  const done = readRelatedSpec(db);
+  if (done === null || done === readSpec(db, "devices")) return;
+  db.transaction(() => {
+    db.prepare(`DELETE FROM ${RELATED_DEVICES_TABLE}`).run();
+    writeRelatedSpec(db, null);
+  }).immediate();
+}
+
 /** The related table `audience` reads, given the full-text table it was answered. */
 export const relatedTableFor = (audience: Audience, fts: FtsTable): RelatedTable =>
   audience === "devices" && fts !== "files_fts" ? RELATED_DEVICES_TABLE : "file_related";

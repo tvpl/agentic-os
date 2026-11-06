@@ -17,6 +17,7 @@ import { embedPending } from "./vectors.js";
 import {
   AudienceMirror,
   RELATED_DEVICES_TABLE,
+  dropStaleRelated,
   allowOf,
   ensureAudienceIndex,
   readRelatedSpec,
@@ -950,7 +951,9 @@ export class MemoryIndexer {
 
   /** The table of related edges `audience` reads (door 20): the owner's, unless a folder is hidden from the devices. */
   relatedTable(audience: Audience): RelatedTable {
-    return relatedTableFor(audience, this.audienceTable(audience));
+    const table = relatedTableFor(audience, this.audienceTable(audience));
+    if (table === RELATED_DEVICES_TABLE) dropStaleRelated(this.db);
+    return table;
   }
 
   /**
@@ -985,7 +988,12 @@ export class MemoryIndexer {
     if (!whole && focus.size === 0) return;
     const edges = docs.length < 2 ? [] : relatedFromTerms(docs, { topK: 3, minSim: 0.18 }, focus.size >= docs.length ? undefined : focus);
     const now = Date.now();
+    // The access can change while this pass is between its steps (the edges above were worked out for `spec`), and a
+    // device's read then rebuilds the table for the new view: what is worked out for the old one must not be written
+    // after it (round 3 finding 3). Asked again each time the pass resumes, before it writes.
+    const stale = () => readSpec(this.db, "devices") !== spec;
     yield;
+    if (stale()) return;
     if (whole || focus.size >= docs.length) this.write(() => this.db.prepare(`DELETE FROM ${RELATED_DEVICES_TABLE}`).run());
     else {
       const ids = [...focus];
@@ -993,6 +1001,7 @@ export class MemoryIndexer {
       for (let i = 0; i < ids.length; i += RELATED_WRITE_ROWS) {
         this.write(() => ids.slice(i, i + RELATED_WRITE_ROWS).forEach((id) => del.run(id, id)));
         yield;
+        if (stale()) return;
       }
     }
     const ins = this.db.prepare(
@@ -1003,6 +1012,7 @@ export class MemoryIndexer {
         edges.slice(i, i + RELATED_WRITE_ROWS).forEach((e) => ins.run(e.source, e.target, e.score, JSON.stringify(e.terms), now)),
       );
       yield;
+      if (stale()) return;
     }
     this.write(() => writeRelatedSpec(this.db, spec));
   }
