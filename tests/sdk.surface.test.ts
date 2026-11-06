@@ -189,6 +189,8 @@ describe("S5 the surface is a closed list", () => {
         "CitationRedactor",
         "citationRedactor",
         "storedRowFilter",
+        // cerebro-memoria-confiavel, round 2 part B: the history paths a device may read (finding 6)
+        "visibleHistoryPaths",
         // cerebro-memoria-confiavel batch B2: export and import a folder (doors 14 and 15)
         "exportFolder",
         "importFolder",
