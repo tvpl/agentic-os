@@ -166,6 +166,7 @@ async function oneConsolidation(page: Page) {
         ],
         diff: "--- a/MEMORY.md\n+++ b/MEMORY.md\n@@ -1,2 +1,3 @@\n ## Decisions\n-- antiga\n+- nova\n+- outra\n",
         baseVersion: "sha256:e2e",
+        effects: [],
       },
     }),
   );
@@ -575,3 +576,117 @@ for (const theme of THEMES)
     const ctx = await computed("tr.mc-ctx", "backgroundColor", dialog);
     expect(ctx).toBe("rgba(0, 0, 0, 0)");
   });
+
+/* ---------------- C192: what accepting a fact does, drawn on Do agente ---------------- */
+
+const EFFECT_ID = "mp_00000000000000c7";
+const factOp = (text: string, over: Record<string, unknown> = {}) =>
+  op({ op: "fact", section: "Fact", text, source: null, line: null, trust: "usuario", ...over });
+const EFFECT = {
+  op: 0,
+  subject: "Cliente X",
+  predicate: "status",
+  object: "inadimplente",
+  validFrom: Date.parse("2026-06-01T15:00:00Z"),
+  validTo: null,
+  unchanged: 5,
+  closes: [
+    {
+      id: 7,
+      object: "ativo",
+      validFrom: 1,
+      validTo: null,
+      action: "close",
+      at: Date.parse("2026-06-01T15:00:00Z"),
+    },
+    { id: 8, object: "prospect", validFrom: 1, validTo: null, action: "retract", at: Date.now() },
+  ],
+  refuses: { id: 9, object: "suspenso", validFrom: 1, validTo: null },
+  error: "validTo: must be after validFrom",
+};
+
+/** The page's own routes answer one consolidation of two fact ops: the first with every kind of effect, the second with none. */
+async function consolidationWithEffects(page: Page) {
+  const item = { ...CONSOLIDATION, id: EFFECT_ID, opCount: 2, createdAt: Date.now() - 3_600_000 };
+  await page.route(/\/api\/v1\/memory\/proposals(\?.*)?$/, (route) =>
+    route.fulfill({ json: { items: [item], total: 1 } }),
+  );
+  await page.route(`**/api/v1/memory/proposals/${EFFECT_ID}`, (route) =>
+    route.fulfill({
+      json: {
+        ...item,
+        decidedAt: null,
+        payload: {},
+        result: null,
+        ops: [factOp("Cliente X · status · inadimplente"), factOp("Cliente Y · status · ativo")],
+        diff: "",
+        baseVersion: "sha256:e2e",
+        effects: [EFFECT],
+      },
+    }),
+  );
+}
+
+for (const theme of THEMES)
+  for (const shell of SHELLS)
+    test(`C192 the ${shell}, ${theme}: the effects of the fact op are drawn under it in the route's order, an icon and a text each, 13px, with the tones' own colours, no live region and no tab stop of their own, and no serious axe violation`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      await open(page, shell, theme, "/brain");
+      await consolidationWithEffects(page);
+      await page.evaluate(() => document.fonts.ready);
+      await page.goto("/#/brain/reviews?tab=agent");
+      const rows = page.locator(".rv .ag-detail .ag-op");
+      await expect(rows).toHaveCount(2);
+      const effects = rows.nth(0).locator(".ag-text > .ag-effects > .ag-effect");
+      await expect(effects).toHaveCount(5);
+      expect(await effects.evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.effect))).toEqual(
+        ["close", "retract", "refuses", "unchanged", "error"],
+      );
+      // the second fact op has nothing to say: no list at all
+      await expect(rows.nth(1).locator(".ag-effects")).toHaveCount(0);
+      // below the op's own text, one line under the other
+      const text = (await rows.nth(0).locator(".ag-text > span").first().boundingBox())!;
+      const boxes = await Promise.all([0, 1, 2, 3, 4].map((i) => effects.nth(i).boundingBox()));
+      expect(boxes[0]!.y).toBeGreaterThanOrEqual(text.y + text.height - 1);
+      for (let i = 1; i < 5; i++)
+        expect(boxes[i]!.y).toBeGreaterThanOrEqual(boxes[i - 1]!.y + boxes[i - 1]!.height - 1);
+      // an icon and a text each, the sentence at 13px or more
+      const drawn = await effects.evaluateAll((els) =>
+        els.map((el) => ({
+          icon: el.querySelector("svg") !== null,
+          text: (el.querySelector("span")?.textContent ?? "").trim().length,
+          px: parseFloat(getComputedStyle(el.querySelector("span")!).fontSize),
+        })),
+      );
+      for (const d of drawn) expect([d.icon, d.text > 10, d.px >= 13]).toEqual([true, true, true]);
+      expect(await effects.nth(0).textContent()).toMatch(
+        /Encerra o fato Cliente X · status · ativo em \d{2}\/\d{2}\/\d{4}\./,
+      );
+      // the computed colours are the tokens': danger for the retraction, warn for the refusal and the error
+      const resolved = (token: string) =>
+        page.evaluate((t) => {
+          const probe = document.createElement("div");
+          probe.style.color = `var(${t})`;
+          document.body.appendChild(probe);
+          const value = getComputedStyle(probe).color;
+          probe.remove();
+          return value;
+        }, token);
+      const colour = (i: number) => effects.nth(i).evaluate((el) => getComputedStyle(el).color);
+      expect(await colour(1)).toBe(await resolved("--danger"));
+      expect(await colour(2)).toBe(await resolved("--warn"));
+      expect(await colour(4)).toBe(await resolved("--warn"));
+      expect(await colour(0)).toBe(await resolved("--text-dim"));
+      // nothing announced twice, nothing more to tab through
+      const ul = rows.nth(0).locator(".ag-effects");
+      expect(
+        await ul.evaluate(
+          (el) =>
+            el.matches("[role], [aria-live]") ||
+            el.querySelector("[role], [aria-live], a, button, input") !== null,
+        ),
+      ).toBe(false);
+      expect(await serious(page)).toEqual([]);
+    });

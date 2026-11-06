@@ -98,11 +98,11 @@
     },
     {
       "feature": "cerebro-memoria-confiavel",
-      "reason": "trustworthy memory in the interface: the agent tab of Reviews, the note panel's History fold, the version and memory history dialogs and the facts widget's provenance line (part A), the folder menu and access marks of the notes tree, the Import folder item of the NOTAS menu, the permissions, export and import modals as one chunk of their own (FolderTools, also the restricted folders of Settings > Memory), and the strings in two languages; measured on the build of round 1 of its verification, part 3: 15.4 KB of JS gzip and 1.6 KB of CSS gzip above cerebro-paineis (C147)",
-      "jsRaw": 1805674,
-      "jsGzip": 590065,
-      "cssRaw": 372066,
-      "cssGzip": 81791
+      "reason": "trustworthy memory in the interface: the agent tab of Reviews, the note panel's History fold, the version and memory history dialogs and the facts widget's provenance line (part A), the folder menu and access marks of the notes tree, the Import folder item of the NOTAS menu, the permissions, export and import modals as one chunk of their own (FolderTools, also the restricted folders of Settings > Memory), and the strings in two languages; the fact effects the agent tab draws under a fact op (C186-C192); measured on the build of round 3, part 3: 15.9 KB of JS gzip and 1.6 KB of CSS gzip above cerebro-paineis (C147)",
+      "jsRaw": 1807410,
+      "jsGzip": 590595,
+      "cssRaw": 372457,
+      "cssGzip": 81852
     }
   ]
 }
