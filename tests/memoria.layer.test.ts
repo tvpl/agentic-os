@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openDb, type Db } from "../core/src/db/db.js";
 import { resolvePaths, ensureDirs } from "../core/src/paths.js";
 import {
+  type Fact,
   FactValidationError,
   assertFact,
   factKey,
@@ -21,11 +22,14 @@ import {
 } from "../core/src/memory/historyStore.js";
 import { SettingsSchema } from "../core/src/config/schema.js";
 import {
+  type OpView,
+  type ProposalRecord,
   MEMORY_MAX_BYTES,
   MEMORY_MAX_LINES,
   applyOps,
   carries,
   evaluateOps,
+  factEffects,
   loopText,
   opTrust,
   withinBudget,
@@ -1124,5 +1128,219 @@ describe("setAsideAndWrite, one asserted case per entry kind and refusal", () =>
     ).toThrow();
     expect(fs.readFileSync(at("memory", "F.md"), "utf8")).toBe("run F\n");
     expect(fs.readdirSync(at("elsewhere"))).toEqual([]);
+  });
+});
+
+// ---- what accepting a fact does (door 21, round 4 finding 4) ---------------------------------------------------------
+
+describe("C178 factEffects at its own layer: what accepting a fact does, worked out and written nowhere", () => {
+  const JAN = Date.UTC(2026, 0, 1);
+  const MAR = Date.UTC(2026, 2, 1);
+  const APR = Date.UTC(2026, 3, 1);
+  const MAY = Date.UTC(2026, 4, 1);
+  const JUN2 = Date.UTC(2026, 5, 1);
+  const JUL = Date.UTC(2026, 6, 1);
+  const NOW = Date.UTC(2026, 9, 31, 15, 0, 0);
+  let serial = 0;
+  const fresh = () => `Efeito ${++serial}`;
+  const owner = (subject: string, object: string, validFrom: number, validTo?: number) =>
+    assertFact(db, {
+      subject,
+      predicate: "status",
+      object,
+      validFrom,
+      ...(validTo ? { validTo } : {}),
+      author: "owner",
+    }).fact;
+  const factProposal = (payload: Json): ProposalRecord => ({
+    id: `p-c178-${++serial}`,
+    kind: "fact",
+    status: "pending",
+    author: "mcp",
+    runId: null,
+    createdAt: NOW,
+    decidedAt: null,
+    summary: "",
+    opCount: 1,
+    payload: { predicate: "status", sourcePath: "/x/notes/cliente.md", sourceLine: 1, ...payload },
+    result: null,
+  });
+  const view = (op: OpView["op"], state: OpView["state"] = "valid"): OpView => ({
+    op,
+    section: null,
+    text: "",
+    source: null,
+    line: null,
+    trust: "inferido",
+    state,
+  });
+  const effectsOf = (
+    record: ProposalRecord,
+    views: OpView[] = [view("fact")],
+    allowFact?: (f: Fact) => boolean,
+  ) => {
+    const { env, done } = opsHome();
+    try {
+      return factEffects({ ...(env as never), db }, record, views, NOW, allowFact);
+    } finally {
+      done();
+    }
+  };
+  const factRows = () => db.prepare("SELECT * FROM facts ORDER BY id").all();
+
+  it("C178 a fact that begins after the owner's open fact closes it at its own validFrom (action close, at validFrom)", () => {
+    const subject = fresh();
+    const mine = owner(subject, "ativo", JAN);
+    const before = factRows();
+    const [e] = effectsOf(factProposal({ subject, object: "inativo", validFrom: JUN2 }));
+    expect(e).toEqual({
+      op: null,
+      subject,
+      predicate: "status",
+      object: "inativo",
+      validFrom: JUN2,
+      validTo: null,
+      unchanged: null,
+      closes: [{ id: mine.id, object: "ativo", validFrom: JAN, validTo: null, action: "close", at: JUN2 }],
+      refuses: null,
+    });
+    expect(factRows()).toEqual(before);
+  });
+
+  it("C178 a fact that begins before the owner's later fact retracts it, at the moment the detail is read (action retract, at now)", () => {
+    const subject = fresh();
+    const mine = owner(subject, "ativo", JUN2);
+    const before = factRows();
+    const [e] = effectsOf(factProposal({ subject, object: "inadimplente", validFrom: JAN }));
+    expect(e!.closes).toEqual([
+      { id: mine.id, object: "ativo", validFrom: JUN2, validTo: null, action: "retract", at: NOW },
+    ]);
+    expect(e!.refuses).toBeNull();
+    expect(factRows()).toEqual(before);
+  });
+
+  it("C178 refuses, row 1: the owner's fact began before the new period and outlasts it (reason covers), and closes nothing", () => {
+    const subject = fresh();
+    const mine = owner(subject, "ativo", JAN);
+    const [e] = effectsOf(factProposal({ subject, object: "pausado", validFrom: MAR, validTo: APR }));
+    expect(e!.refuses).toEqual({
+      id: mine.id,
+      object: "ativo",
+      validFrom: JAN,
+      validTo: null,
+      reason: "covers",
+    });
+    expect(e!.closes).toEqual([]);
+    expect(e!.unchanged).toBeNull();
+    expect(e!.error).toBeUndefined();
+  });
+
+  it("C178 refuses, row 2: the owner's fact begins inside the new closed period (reason starts_inside), and closes nothing", () => {
+    const subject = fresh();
+    const mine = owner(subject, "ativo", MAY);
+    const [e] = effectsOf(factProposal({ subject, object: "pausado", validFrom: MAR, validTo: JUL }));
+    expect(e!.refuses).toEqual({
+      id: mine.id,
+      object: "ativo",
+      validFrom: MAY,
+      validTo: null,
+      reason: "starts_inside",
+    });
+    expect(e!.closes).toEqual([]);
+  });
+
+  it("C178 an open fact with the same keys and object is unchanged (its id): it closes nothing and refuses nothing", () => {
+    const subject = fresh();
+    const mine = owner(subject, "ativo", JAN);
+    const [e] = effectsOf(factProposal({ subject: subject.toUpperCase(), object: "ativo", validFrom: MAR }));
+    expect(e!.unchanged).toBe(mine.id);
+    expect(e!.closes).toEqual([]);
+    expect(e!.refuses).toBeNull();
+  });
+
+  it("C178 a fact the layer would refuse itself carries error and nothing else: no closes, no refuses, the validFrom it asked for", () => {
+    const subject = fresh();
+    owner(subject, "ativo", JAN);
+    const [e] = effectsOf(factProposal({ subject, object: "novo", validFrom: JUN2, validTo: MAR }));
+    expect(e).toEqual({
+      op: null,
+      subject,
+      predicate: "status",
+      object: "novo",
+      validFrom: JUN2,
+      validTo: MAR,
+      unchanged: null,
+      closes: [],
+      refuses: null,
+      error: "validTo: must be after validFrom",
+    });
+  });
+
+  it("C178 a consolidation gets one entry per valid fact op, each with the index of its op, and none for adds or invalid ones", () => {
+    const subject = fresh();
+    const mine = owner(subject, "ativo", JAN);
+    const src = { source: "notes/cliente.md", line: 3 } as const;
+    const record: ProposalRecord = {
+      ...factProposal({}),
+      kind: "consolidation",
+      payload: {
+        ops: [
+          { op: "add", section: "Decisions", text: "x", ...src },
+          { op: "fact", subject, predicate: "status", object: "inativo", validFrom: JUN2, ...src },
+          { op: "fact", subject, predicate: "status", object: "invalido", validFrom: JUN2, ...src },
+          {
+            op: "fact",
+            subject,
+            predicate: "status",
+            object: "pausado",
+            validFrom: MAR,
+            validTo: APR,
+            ...src,
+          },
+        ],
+      },
+    };
+    const entries = effectsOf(record, [view("add"), view("fact"), view("fact", "invalid"), view("fact")]);
+    expect(entries.map((e) => [e.op, e.object])).toEqual([
+      [1, "inativo"],
+      [3, "pausado"],
+    ]);
+    expect(entries[0]!.closes).toEqual([
+      { id: mine.id, object: "ativo", validFrom: JAN, validTo: null, action: "close", at: JUN2 },
+    ]);
+    expect(entries[1]!.refuses).toMatchObject({ id: mine.id, reason: "covers" });
+    expect(entries[1]!.closes).toEqual([]);
+  });
+
+  it("C178 a fact the caller may not see is left out of closes, refuses and unchanged; a filter that throws hides it too", () => {
+    const subject = fresh();
+    const mine = owner(subject, "ativo", JAN);
+    const fresher = factProposal({ subject, object: "inativo", validFrom: JUN2 });
+    const cover = factProposal({ subject, object: "pausado", validFrom: MAR, validTo: APR });
+    const same = factProposal({ subject, object: "ativo", validFrom: MAR });
+    const hide = () => false;
+    const boom = () => {
+      throw new Error("policy");
+    };
+    for (const allow of [hide, boom]) {
+      expect(effectsOf(fresher, [view("fact")], allow)[0]).toMatchObject({
+        closes: [],
+        refuses: null,
+        unchanged: null,
+      });
+      expect(effectsOf(cover, [view("fact")], allow)[0]).toMatchObject({ closes: [], refuses: null });
+      expect(effectsOf(same, [view("fact")], allow)[0]).toMatchObject({
+        closes: [],
+        refuses: null,
+        unchanged: null,
+      });
+    }
+    expect(effectsOf(fresher, [view("fact")], (f) => f.id === mine.id)[0]!.closes).toHaveLength(1);
+  });
+
+  it("C178 every kind that is neither a fact nor a consolidation has no effects", () => {
+    for (const kind of ["note_create", "note_save", "memory_edit"] as const) {
+      expect(effectsOf({ ...factProposal({}), kind, payload: { subject: "x" } }, [])).toEqual([]);
+    }
   });
 });
