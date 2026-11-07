@@ -658,6 +658,16 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
     hora da última passada? Padrão: continua dada; alternativa: omitir `lastIndex.at` e a hora do doutor, ao preço de a
     tela do celular não mostrar quando o índice rodou
 
+17. **Quarta verificação (curta) e fechamento da C7 por escalonamento (respondida pelo dono em 07/11/2026).** A quarta
+    verificação confirmou os consertos da rodada 3 e achou mais pontos. O dono escolheu consertar quatro e fechar sem quinta
+    verificação: (a) um fato proposto por um agente nunca nasce como "Escrito por você": seu `trust` é sempre `inferido`, e o
+    dono marca se quiser (isso estreita a regra da emenda 14 para fatos); (b) a checagem de "dentro de `exports/` ou
+    `guard/`" deixa de usar o prefixo `..` de texto e passa a comparar segmentos do caminho; (c) os deciders `factEffects` e
+    `dropStaleRelated` e as `deniedDirs` do C69 ganham prova na própria camada; (d) o texto de `effects.refuses` e a mensagem
+    do 409 passam a dizer que o fato existente cobre ou começa dentro do período. O caso de uma nota renomeada **fora do
+    sistema**, com um arquivo novo no nome antigo antes da passada do índice, que deixa um dispositivo ler as versões antigas,
+    fica como limite conhecido em `docs/security.md` (pediria um identificador de nota gravado na escrita).
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).
