@@ -668,6 +668,16 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
     sistema**, com um arquivo novo no nome antigo antes da passada do índice, que deixa um dispositivo ler as versões antigas,
     fica como limite conhecido em `docs/security.md` (pediria um identificador de nota gravado na escrita).
 
+18. **Um fato proposto por um agente nunca nasce "Escrito por você" (rodada 4 da verificação, achado 1; estreita as
+    emendas 10 e 14 para fatos; decisão do dono na emenda 17 (a)).** A emenda 14 exigia que o sujeito, o predicado e o objeto
+    de um fato fossem palavras inteiras da linha citada, na ordem, com qualquer coisa entre elas; isso deixava o fato
+    `contrato · foi · aprovado` citando "O contrato com Pedro não foi aprovado pelo conselho" nascer `usuario`, e a negação
+    se perdia. Agora o `trust` de um fato, seja uma operação `fact` de uma consolidação, seja uma proposta `fact`, é
+    **sempre `inferido`**, qualquer que seja a linha que cita, uma reprodução palavra por palavra dela inclusive; o dono
+    marca à mão o que quiser como seu. `add`, `supersede` e `close_loop` seguem a regra da linha inteira (emenda 14).
+    O AC 56 e o C52 valem como escritos para uma linha de operação de texto; para fatos, o valor passa a ser `inferido`. O
+    skill e o guia dizem o mesmo.
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).

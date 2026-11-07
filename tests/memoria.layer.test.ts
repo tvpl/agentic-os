@@ -25,7 +25,6 @@ import {
   MEMORY_MAX_LINES,
   applyOps,
   carries,
-  carriesInOrder,
   evaluateOps,
   loopText,
   opTrust,
@@ -402,6 +401,38 @@ describe("C52 the trust rule", () => {
       "inferido",
     );
   });
+  it("C52 a fact op is inferido whatever line it cites, a word-for-word restatement of the line included; an add that is the whole line is usuario (amendment 18)", () => {
+    const { env, done } = opsHome();
+    try {
+      const cited = { source: "journal/2026-10-30.md", line: 4 } as const;
+      const views = evaluateOps(
+        env as never,
+        [
+          { op: "add", section: "Decisions", text: "Turmas de 20", ...cited },
+          { op: "fact", subject: "Turmas", predicate: "de", object: "20", ...cited },
+          { op: "fact", subject: "turma", predicate: "tamanho", object: "20", ...cited },
+          {
+            op: "fact",
+            subject: "Turmas de 20",
+            predicate: "é",
+            object: "verdade",
+            source: "notes/cliente.md",
+            line: 5,
+          },
+        ],
+        null,
+      );
+      expect(views.map((v) => [v.op, v.trust, v.state])).toEqual([
+        ["add", "usuario", "valid"],
+        ["fact", "inferido", "valid"],
+        ["fact", "inferido", "valid"],
+        ["fact", "inferido", "valid"],
+      ]);
+    } finally {
+      done();
+    }
+  });
+
   it("C52 a trust the agent writes into the op is ignored (evaluateOps computes it from the line)", () => {
     const { env, done } = opsHome();
     try {
@@ -444,33 +475,11 @@ describe("C52 the cited line must be the claim of an op (round 2 finding 5, narr
     expect(carries("- não foi aprovado pelo conselho", "Aprovado")).toBe(false);
   });
 
-  it("carriesInOrder: the parts are whole words of the line, one after the other and in that order", () => {
-    const fact = "- Cliente X status ativo desde março";
-    for (const [what, parts, want] of [
-      ["subject, predicate, object in order", ["Cliente X", "status", "ativo"], true],
-      ["a part that is a sentence of the line", ["Cliente X", "status", "ativo desde março"], true],
-      ["the object alone is not the fact", ["Conselho", "aprovou_fusao_com_Zeta", "ativo"], false],
-      ["the object out of order", ["ativo", "status", "Cliente X"], false],
-      ["the same word cannot serve twice", ["Cliente X", "Cliente X", "ativo"], false],
-      ["a part that ends a word", ["Cliente", "status", "tivo"], false],
-      ["a part that begins a word", ["Cliente", "status", "at"], false],
-      ["a part the line does not say", ["Cliente X", "prefere", "ativo"], false],
-      ["an empty part", ["Cliente X", "", "ativo"], false],
-    ] as const) {
-      expect(carriesInOrder(fact, parts), what).toBe(want);
-    }
-    expect(
-      carriesInOrder("- Reunião: sim, seguimos adiante", ["Conselho", "aprovou_fusao_com_Zeta", "sim"]),
-    ).toBe(false);
-  });
-
   it("opTrust: an owner's line is usuario for the claim that is the line and inferido for a fragment or another text; with no claim, as before", () => {
     const whole = "Turmas de 20 alunos, de segunda a sexta";
     expect(opTrust({ ...src, claim: { equals: whole } })).toBe("usuario");
     expect(opTrust({ ...src, claim: { equals: "Turmas de 20 alunos" } })).toBe("inferido");
     expect(opTrust({ ...src, claim: { equals: "Decidido pelo dono" } })).toBe("inferido");
-    expect(opTrust({ ...src, claim: { inOrder: ["Turmas", "de", "20"] } })).toBe("usuario");
-    expect(opTrust({ ...src, claim: { inOrder: ["Conselho", "aprovou", "20"] } })).toBe("inferido");
     expect(opTrust({ ...src })).toBe("usuario");
   });
 

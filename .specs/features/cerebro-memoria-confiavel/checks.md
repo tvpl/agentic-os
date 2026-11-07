@@ -1852,6 +1852,35 @@ apps/command-centre` is green (189 files, 1 669 tests), each `Proof:` line of C1
   and C192 in the browser); a placeholder renamed in one language, a key no longer spelled by the source and a text that
   drifts from design.md (C190)
 
+## Correções da rodada 4
+
+What round 4 of the verification found in the trust of proposed facts, the proof of `factEffects`, the text of the
+`fact_overlap` refusal and the effects' documented limit (findings 1, 4, 5 core half and 6). The owner chose to fix these
+and to close by escalation, with no fifth verification (plan amendment 17).
+
+- **Finding 1 (C52): a fact an agent proposes is never born "Escrito por você" (plan amendment 18).** The ordered
+  containment of round 3 took scattered words for the fact: the consolidation `fact` op `contrato · foi · aprovado`
+  citing the owner's note line "O contrato com Pedro não foi aprovado pelo conselho" was `usuario`, was ticked, and the
+  stored fact kept `trust: usuario` while saying the opposite of the line; `[conselho, aprovou, fusão]` over "o conselho
+  NÃO aprovou a fusão" the same. Per the owner (amendment 17 (a)) the `trust` of a fact, in a consolidation's `fact` op and
+  in a `fact` proposal, is always `inferido`, whatever it cites and a word-for-word restatement of the line included;
+  `carriesInOrder` and its `inOrder` claim are gone from the code (the line is still cited and shown, and `add`,
+  `supersede` and `close_loop` keep the whole-line rule). **C52's claim for facts**: it was "`usuario` when the line carries
+  subject, predicate and object in order"; it is now "a fact is `inferido`". **Edited expectations** (named, the others
+  untouched): `tests/memoria.proposals.test.ts` C52 "an invented operation" expects the fact whose three words are in the
+  line `inferido` (was `usuario`); C52 "a fragment" expects the fact over "Cliente X status ativo" `inferido` (was `usuario`);
+  C52's fact-proposal case, retitled, no longer expects any fact `usuario`; C61 expects the review's trust and the stored
+  trust `inferido` (was `usuario`; its claim, that the provenance reaches the stored row, is unchanged);
+  `tests/memoria.layer.test.ts` loses its `carriesInOrder` table and the two `inOrder` lines of the `opTrust` case, with the
+  function they tested. **C52 extended**: the observed inverted case (the three facts over the two negative lines, review
+  and stored fact), a fact that restates the cited line word for word (consolidation and fact proposal, review and stored
+  fact), and a layer case that a fact op is `inferido` while the add that is the whole line is `usuario`. Re-injected:
+  ordered containment restored for consolidation facts fails 5 cases (the inverted case, the restatement at the layer, the
+  invented-op and fragment cases and C61); fact proposals born `usuario` fails 1; consolidation fact ops judged by their line
+  again fails 5. The skill and `docs/memory-guide.md` say it. Residual, written in round 3 and unchanged: a line an agent
+  itself puts in a note or the journal without the `(autor:: agente)` mark is "of the owner" to the rule for `add`,
+  `supersede` and `close_loop` (the guard covers `MEMORY.md` only)
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None
@@ -1989,7 +2018,7 @@ blocks the build.
 | folders no audience is served, round 3 (3)                                    | devices: exports and `guard/` C69 · agents: `guard/` C69 · neither by a `folderAccess` entry C69                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | guard/ as a working folder, round 3 (4)                                       | the request C69 · `create` C69 · the launch C69 · the owner and a routine accepted C69                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | guard set-aside names, round 3 (4)                                            | `guard-<runId>` and `-2` C69 · `-99` the last readable C69 · all 99 taken, random C69 · an earlier set-aside never overwritten C69                                                                                                                                                                                                                                                                                                                                                                                        |
-| claim a cited line must support, round 3 (7)                                  | add `equals` C52 · supersede `equals` C52 · close_loop `equals` C52 · fact `inOrder` of a consolidation C52 · fact `inOrder` of a proposal C52 · a fragment refused C52 · the empty claim C52                                                                                                                                                                                                                                                                                                                             |
+| claim a cited line must support, round 4 (6)                                  | add `equals` C52 · supersede `equals` C52 · close_loop `equals` C52 · a fact of a consolidation is `inferido`, restated or inverted C52 · a fact proposal is `inferido` C52 · a fragment or the empty claim refused C52                                                                                                                                                                                                                                                                                                   |
 | effects of accepting a fact, round 3 (6)                                      | a retraction C178 · a close C178 · a refusal C178 · an identical fact C178 · a consolidation's op index C178 · the other kinds, none C178                                                                                                                                                                                                                                                                                                                                                                                 |
 | who reads the facts an effect names, round 3 (2)                              | the owner: all C178 · a device: the ones `GET /api/memory/facts` shows C178                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | effects drawn on the screen, round 3 (5)                                      | close C186 · retract C186 · refuses C187 · unchanged C187 · error C187                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

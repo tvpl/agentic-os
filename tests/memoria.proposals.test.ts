@@ -511,7 +511,7 @@ describe("C52 the trust of an op, on the route", () => {
     expect(ops.map((o) => o.state)).toEqual(Array(7).fill("valid"));
   });
 
-  it("C52 an invented operation that cites a line of the owner's is inferido: an add and a supersede whose text the line does not carry, a close_loop of a loop it does not name, a fact whose object it does not carry; the ones that quote it are usuario", async () => {
+  it("C52 an invented operation that cites a line of the owner's is inferido: an add and a supersede whose text the line does not carry, a close_loop of a loop it does not name, a fact whose object it does not carry; the add, supersede and close_loop that are the whole line are usuario, a fact is not", async () => {
     const LOOP = "- Turmas de 20 alunos (fonte:: journal/2026-10-29.md:3) (autor:: agente) (em:: 2026-10-30)";
     w.put(memoryFile(), BASE.replace("- Turmas de 15\n", `- Turmas de 15\n${LOOP}\n`));
     const cited = { source: journalRel, line: 4 };
@@ -535,7 +535,8 @@ describe("C52 the trust of an op, on the route", () => {
       "inferido",
       "inferido",
       "usuario",
-      "usuario",
+      // the fact whose three words are in the line: never "Escrito por você" (round 4 finding 1, amendment 18)
+      "inferido",
       "usuario",
       "inferido",
     ]);
@@ -576,7 +577,7 @@ describe("C52 the trust of an op, on the route", () => {
       { op: "fact", subject: "Cliente X", predicate: "status", object: "ativo", source: src, line: 4 },
     ]);
     const ops = (await read(p.id)).body.ops as Json[];
-    expect(ops.map((o) => o.trust)).toEqual(["inferido", "usuario", "inferido", "usuario", "inferido"]);
+    expect(ops.map((o) => o.trust)).toEqual(["inferido", "usuario", "inferido", "inferido", "inferido"]);
     expect(ops.map((o) => o.state)).toEqual(Array(5).fill("valid"));
     // the fact the object alone supported is accepted with the trust the review showed
     const done = await accept(p.id, { ops: [2] });
@@ -585,7 +586,7 @@ describe("C52 the trust of an op, on the route", () => {
     expect(stored.map((f) => [f.object, f.trust])).toEqual([["sim", "inferido"]]);
   });
 
-  it("C52 a run's fact proposal citing a line of the owner's is inferido unless the line carries its subject, predicate and object in order", async () => {
+  it("C52 a fact proposal citing a line of the owner's is inferido, whatever the line says, and so is the fact it stores", async () => {
     const make = (object: string) =>
       storeProposal(
         w.ctx.db,
@@ -606,8 +607,55 @@ describe("C52 the trust of an op, on the route", () => {
     const trustOf = async (id: string) => ((await read(id)).body.ops as Json[])[0]!.trust;
     expect(await trustOf(make("1 milhão").id)).toBe("inferido");
     expect(await trustOf(make("2").id)).toBe("inferido");
-    // the object alone is no fact: "turma" and "tamanho" are not in the line "Turmas de 20 alunos"
     expect(await trustOf(make("20").id)).toBe("inferido");
+    // a fact that restates the cited line word for word: subject, predicate and object are the line, and it is still inferido
+    const restated = storeProposal(
+      w.ctx.db,
+      {
+        kind: "fact",
+        author: "mcp",
+        summary: "f",
+        payload: {
+          subject: "Turmas",
+          predicate: "de",
+          object: "20 alunos",
+          sourcePath: path.join(w.memory, journalRel),
+          sourceLine: 4,
+        },
+      },
+      { capped: false },
+    );
+    expect(await trustOf(restated.id)).toBe("inferido");
+    expect((await decide(restated.id, { action: "accept" })).status).toBe(200);
+    const stored = (await w.call("GET", "/api/memory/facts?subject=turmas")).body.facts as Json[];
+    expect(stored.find((f) => f.object === "20 alunos")).toMatchObject({ trust: "inferido", sourceLine: 4 });
+  });
+
+  it('C52 a fact whose words are scattered over a line that says the opposite is inferido and is stored inferido: the contract fact over "O contrato com Pedro não foi aprovado pelo conselho" (round 4 finding 1)', async () => {
+    w.put(memoryFile(), BASE);
+    const note = w.put(
+      path.join(w.memory, "notes", "contrato-r4.md"),
+      [
+        "# Contrato",
+        "",
+        "- O contrato com Pedro não foi aprovado pelo conselho",
+        "- Reunião: o conselho NÃO aprovou a fusão com a Zeta",
+      ].join("\n") + "\n",
+    );
+    expect(note).toContain("contrato-r4.md");
+    const src = "notes/contrato-r4.md";
+    const p = consolidation([
+      { op: "fact", subject: "contrato", predicate: "foi", object: "aprovado", source: src, line: 3 },
+      { op: "fact", subject: "Pedro", predicate: "foi", object: "aprovado", source: src, line: 3 },
+      { op: "fact", subject: "conselho", predicate: "aprovou", object: "fusão", source: src, line: 4 },
+    ]);
+    const ops = (await read(p.id)).body.ops as Json[];
+    expect(ops.map((o) => o.trust)).toEqual(["inferido", "inferido", "inferido"]);
+    expect(ops.map((o) => o.state)).toEqual(["valid", "valid", "valid"]);
+    const done = await accept(p.id, { ops: [0] });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    const stored = (await w.call("GET", "/api/memory/facts?subject=contrato")).body.facts as Json[];
+    expect(stored.map((f) => [f.object, f.trust, f.author])).toEqual([["aprovado", "inferido", p.author]]);
   });
 });
 
@@ -780,7 +828,9 @@ describe("C61 an accepted fact op keeps its provenance", () => {
       { op: "fact", subject: "Turmas", predicate: "de", object: "20", source: journalRel, line: 4 },
     ]);
     const trust = ((await read(p.id)).body.ops as Json[])[0]!.trust;
-    expect(trust).toBe("usuario");
+    // a fact an agent proposes is never "Escrito por você", even over the owner's line (amendment 18); the stored fact
+    // keeps the trust the review showed
+    expect(trust).toBe("inferido");
     const done = await accept(p.id);
     expect(done.status, JSON.stringify(done.body)).toBe(200);
     const listed = await w.call("GET", "/api/memory/facts?subject=turmas");
