@@ -2034,6 +2034,49 @@ Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.te
   C195; `ownIndex()` always false fails C195. The history's strict rule (C180) stays on `hides`: it concerns a path that
   left `memory/`, and the exports are no part of it
 
+## Correções da rodada 4 (parte 3)
+
+The screen's half of round 4 finding 5 (the core's half is "Correções da rodada 4", Landing 21, plan amendments 17 and 19):
+the text of `effects.refuses` said the existing fact "já vale em todo esse período", which is false when it begins inside a
+closed new period. Closed in `6b237bc` (design.md "Emenda 2", C196, C187 and C190 brought to the new text) and `78ac507`
+(the screen, the fixtures, the baseline entry).
+
+- **What changed.** `effects[].refuses` carries `reason` (`covers` or `starts_inside`). The one key `effects.refuses` is
+  replaced by two, `effects.refuses.covers` and `effects.refuses.startsInside`, and `AgentTab.tsx` picks one by the
+  reason, in one `t()` call. The icon (`AlertTriangle`), the tone (`--warn`, the `data-effect="refuses"` hook), the place
+  in the list and the order are those of C186-C191, unchanged. C196 is new (one case per reason and per language, by
+  value; the two texts differ and share the tail; two proposals with different reasons each show their own, the mock
+  answering by id). C187 quotes the new `covers` text, C190 reads both amendments (six keys) and asserts the old key is in
+  neither locale, and the fixtures (`testkit.tsx` `refusal()`, `effect()`'s type, C192's mock) carry `reason`.
+- **The final wording.** The texts of the first proposal (the A2 builder's) carried a parenthetical, and with it the
+  build was 148 B over C147's cap, so the work stopped; the owner then allowed shorter texts, saying that what was
+  approved was fixing the false text, not its sentences. Final:
+  - `effects.refuses.covers`, pt-BR: "Será recusado: o fato {fact} já cobre todo esse período. Aceitar dá o erro 409
+    fact_overlap."; en: "Will be refused: the fact {fact} already covers this whole period. Accepting fails with 409
+    fact_overlap."
+  - `effects.refuses.startsInside`, pt-BR: "Será recusado: o fato {fact} começa dentro desse período. Aceitar dá o erro 409
+    fact_overlap."; en: "Will be refused: the fact {fact} starts inside this period. Accepting fails with 409
+    fact_overlap."
+    Each is true of its row (`covers`: the existing fact began before the new period and lasts beyond it, so it covers the
+    whole of it; `starts_inside`: it begins inside it), they differ in the verb a person reads (covers / starts), and they
+    share the tail and the `{fact}` placeholder. The dropped parenthetical, "(começou antes dele e dura além dele)", is
+    what the owner's rule on the sentences allowed to cut; the old text is in neither locale
+- **Weight (C147).** The build of `78ac507`: 590 614 B JS gzip (+16 287 B over `cerebro-paineis`, **97 B under C147's
+  16 384 B**; 590 595 B before, so the change costs 19 B) and 81 852 B CSS gzip (unchanged, 1 423 B under its 3 072 B); JS
+  raw 1 807 747 B. The `cerebro-memoria-confiavel` entry of `scripts/bundle-baseline.json` is re-measured in place and its
+  reason says what changed; nothing else of C147 or the baseline was touched, and the cap is where it was. With the
+  longer texts the build was 590 870 B (159 B over) and, with the key chosen by one `t()` call, 590 859 B (148 B over)
+- **Gates.** On the tree of `78ac507`: `npm run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check`
+  exit 0, `npx vitest run` at the root is green (191 files, 2 835 tests passed, 1 skipped), `npm run test -w
+apps/command-centre` is green (189 files, 1 675 tests), each `Proof:` line of C186-C191 and C196 passes run alone (C186 4
+  tests, C187 6, C188 3, C189 2, C190 3, C191 2, C196 6) and so do C104, C105, C145 and the three proofs of C147, C192
+  passes in the browser (4), `memoria.spec.ts`, `a11y.spec.ts`, `gallery.spec.ts`, `gallery-contrast.spec.ts` and
+  `reviews.spec.ts` run together pass (109 tests), and `validate_checks.py` and `validate_plan.py` exit 0
+- **Re-injected, each failing the check named.** Both reasons drawn with the `covers` text (C190, C196); both with the
+  `startsInside` text (C187, C190, C196); the two reasons swapped (C187, C196); the reason compared to the wrong literal
+  (C187, C196); the two texts swapped in the pt-BR locale (C187, C190, C196); the old wording back in the en `covers` text
+  (C190, C196)
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None
