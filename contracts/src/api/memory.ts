@@ -566,7 +566,14 @@ export const FactEffectSchema = z.object({
     }),
   ),
   refuses: z
-    .object({ id: z.number(), object: z.string(), validFrom: z.number(), validTo: z.number().nullable() })
+    .object({
+      id: z.number(),
+      object: z.string(),
+      validFrom: z.number(),
+      validTo: z.number().nullable(),
+      /** `covers`: it began before the new period and lasts beyond it; `starts_inside`: it begins inside the new closed period. */
+      reason: z.enum(["covers", "starts_inside"]),
+    })
     .nullable(),
   /** Why the fact cannot be asserted at all (a refusal of the fact itself). */
   error: z.string().optional(),

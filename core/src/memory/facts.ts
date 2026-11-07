@@ -108,12 +108,38 @@ export class FactProvenanceError extends Error {
   }
 }
 
-/** `409 fact_overlap` (door 2): the new interval would split a fact of the same keys in two. Nothing is written. */
+/**
+ * Why `overlapAction` refuses (door 2): the existing fact `covers` the whole new period (it began before it and lasts
+ * beyond its end), or it `starts_inside` the new closed period (it began at or after the new start).
+ */
+export type OverlapRefusal = "covers" | "starts_inside";
+
+/** Which of the two refusing rows of `overlapAction` an existing fact falls under, for the new start `from`. */
+export function overlapRefusal(f: { validFrom: number }, from: number): OverlapRefusal {
+  return f.validFrom < from ? "covers" : "starts_inside";
+}
+
+/**
+ * `409 fact_overlap` (door 2): the new interval would split a fact of the same keys in two. Nothing is written. The
+ * message says which of the two refusals it is, because what clears each is not the same: a fact that covers the new
+ * period can be retracted or closed, one that starts inside it can only be retracted as wrong (closing it would not clear it) or
+ * the new fact can be given a period that ends before it starts.
+ */
 export class FactOverlapError extends Error {
   readonly statusCode = 409;
   readonly code = "fact_overlap";
-  constructor(readonly fact: Fact) {
-    super(`The fact ${fact.id} (${fact.object}) holds over the whole new interval; retract or close it first.`);
+  readonly reason: OverlapRefusal;
+  constructor(
+    readonly fact: Fact,
+    from: number,
+  ) {
+    const reason = overlapRefusal(fact, from);
+    super(
+      reason === "covers"
+        ? `The fact ${fact.id} (${fact.object}) already covers the whole new period (it began before it and lasts beyond it); retract or close it first.`
+        : `The fact ${fact.id} (${fact.object}) starts inside the new period; retract it as wrong first, or give the new fact a period that ends before it starts.`,
+    );
+    this.reason = reason;
     this.name = "FactOverlapError";
   }
 }
@@ -302,7 +328,7 @@ export function assertFact(db: Db, input: AssertFactInput): AssertFactResult {
     const plan = planFact(db, input);
     if (plan.same) return { fact: plan.same, invalidated: [], unchanged: true };
     const refused = plan.steps.find((p) => p.action === "refuse");
-    if (refused) throw new FactOverlapError(refused.f);
+    if (refused) throw new FactOverlapError(refused.f, plan.validFrom);
 
     const invalidated: Fact[] = [];
     for (const { f, action } of plan.steps) {

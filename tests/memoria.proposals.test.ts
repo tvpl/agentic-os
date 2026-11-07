@@ -1344,8 +1344,39 @@ describe("C178 the detail of a proposal shows what accepting its facts does (rou
       object: "ativo",
       validFrom: JAN,
       validTo: null,
+      reason: "covers",
     });
-    expect(code(await decide(inside, { action: "accept" }))).toEqual([409, "fact_overlap"]);
+    const covered = await decide(inside, { action: "accept" });
+    expect(code(covered)).toEqual([409, "fact_overlap"]);
+    expect(covered.body.error.message).toContain("already covers the whole new period");
+
+    // The other refusal: the owner's fact begins inside the closed new period, so it does not hold over all of it.
+    const late = await w.call("POST", "/api/memory/facts", {
+      subject: "Cliente X C178b2",
+      predicate: "status",
+      object: "ativo",
+      validFrom: Date.UTC(2026, 4, 1),
+    });
+    const startsInside = await post({
+      subject: "Cliente X C178b2",
+      predicate: "status",
+      object: "pausado",
+      validFrom: Date.UTC(2026, 2, 1),
+      validTo: Date.UTC(2026, 6, 1),
+    });
+    const [also] = await effects(startsInside);
+    expect(also!.closes).toEqual([]);
+    expect(also!.refuses).toEqual({
+      id: late.body.fact.id,
+      object: "ativo",
+      validFrom: Date.UTC(2026, 4, 1),
+      validTo: null,
+      reason: "starts_inside",
+    });
+    const refusedLate = await decide(startsInside, { action: "accept" });
+    expect(code(refusedLate)).toEqual([409, "fact_overlap"]);
+    expect(refusedLate.body.error.message).toContain("starts inside the new period");
+    expect(refusedLate.body.error.message).not.toContain("whole");
   });
 
   it("C178 an identical open fact is unchanged (its id) and closes nothing; a fact of other keys has no effect on any fact", async () => {

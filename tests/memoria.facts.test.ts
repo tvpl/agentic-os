@@ -262,6 +262,57 @@ describe("C11 a new closed fact strictly inside an old one is refused", () => {
     }
   });
 
+  it("C11 the refusal says which it is: a fact that covers the new period, or one that starts inside it", async () => {
+    at(NOW);
+    // Row 1: it began before T and lasts beyond U, so it holds over the whole new period.
+    const covering = fresh("Cobre");
+    const wide = await created({ subject: covering, predicate: "p", object: "velho", validFrom: T - DAY });
+    const coversRes = await assert({
+      subject: covering,
+      predicate: "p",
+      object: "novo",
+      validFrom: T,
+      validTo: U,
+    });
+    expect(code(coversRes)).toEqual([409, "fact_overlap"]);
+    expect(coversRes.body.error.message).toBe(
+      `The fact ${wide.id} (velho) already covers the whole new period (it began before it and lasts beyond it); retract or close it first.`,
+    );
+    // Row 2: it begins inside [T, U), so it does not hold over the whole period, and saying so would be false.
+    const starting = fresh("Comeca");
+    const late = await created({
+      subject: starting,
+      predicate: "p",
+      object: "velho",
+      validFrom: T + 5 * DAY,
+    });
+    const startsRes = await assert({
+      subject: starting,
+      predicate: "p",
+      object: "novo",
+      validFrom: T,
+      validTo: U,
+    });
+    expect(code(startsRes)).toEqual([409, "fact_overlap"]);
+    expect(startsRes.body.error.message).toBe(
+      `The fact ${late.id} (velho) starts inside the new period; retract it as wrong first, or give the new fact a period that ends before it starts.`,
+    );
+    expect(startsRes.body.error.message).not.toContain("whole");
+    // Closing the late fact is not the way out, as the message says; retracting it as wrong is.
+    expect((await w.call("POST", `/api/memory/facts/${late.id}/retract`, { reason: "ended" })).status).toBe(
+      200,
+    );
+    expect(
+      code(await assert({ subject: starting, predicate: "p", object: "novo", validFrom: T, validTo: U })),
+    ).toEqual([409, "fact_overlap"]);
+    expect((await w.call("POST", `/api/memory/facts/${late.id}/retract`, { reason: "wrong" })).status).toBe(
+      200,
+    );
+    expect(
+      (await assert({ subject: starting, predicate: "p", object: "novo", validFrom: T, validTo: U })).status,
+    ).toBe(201);
+  });
+
   it("C11 over one from before T that ends exactly at U: 201, and it is closed at T", async () => {
     at(NOW);
     const subject = fresh("Dentro");

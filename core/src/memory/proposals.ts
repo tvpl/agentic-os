@@ -18,7 +18,15 @@ import {
   type CreatedFile,
 } from "../security/safeWrite.js";
 import { unifiedDiff } from "../sync/diff.js";
-import { assertFact, planFact, type AssertFactInput, type Fact, type FactTrust } from "./facts.js";
+import {
+  assertFact,
+  overlapRefusal,
+  planFact,
+  type AssertFactInput,
+  type Fact,
+  type FactTrust,
+  type OverlapRefusal,
+} from "./facts.js";
 import { recordFileVersion } from "./history.js";
 import { localDateString } from "./journal.js";
 import { createNote, newNoteText, planNewNote, saveNote, versionOf, type NoteContext } from "./notes.js";
@@ -770,7 +778,14 @@ export interface FactEffect {
     at: number;
   }>;
   /** The fact that holds over the whole new interval: accepting is `409 fact_overlap` and writes nothing. */
-  refuses: { id: number; object: string; validFrom: number; validTo: number | null } | null;
+  refuses: {
+    id: number;
+    object: string;
+    validFrom: number;
+    validTo: number | null;
+    /** `covers`: it began before the new period and lasts beyond it; `starts_inside`: it begins inside the new closed period. */
+    reason: OverlapRefusal;
+  } | null;
   /** Why the fact cannot be asserted at all (a refusal of the fact itself, not of an overlap). */
   error?: string;
 }
@@ -821,7 +836,13 @@ export function factEffects(
         ),
         refuses:
           refused && seen(refused.f)
-            ? { id: refused.f.id, object: refused.f.object, validFrom: refused.f.validFrom, validTo: refused.f.validTo }
+            ? {
+                id: refused.f.id,
+                object: refused.f.object,
+                validFrom: refused.f.validFrom,
+                validTo: refused.f.validTo,
+                reason: overlapRefusal(refused.f, planned.validFrom),
+              }
             : null,
       };
     } catch (err) {
