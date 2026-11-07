@@ -703,6 +703,16 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
     (c) Uma nota renomeada **fora do sistema** para uma pasta escondida, com um arquivo novo no nome antigo antes da passada
     do índice, deixa o dispositivo ler as versões antigas: limite conhecido da emenda 17, escrito em `docs/security.md`.
 
+21. **Aceitar o que fecha ou retrata pede uma segunda confirmação, e o teto de peso da C7 sobe o mínimo (resposta do dono em
+    07/11/2026, pergunta G40, AD-047).** O padrão seguro da emenda 15 ("mostrar o efeito e não perguntar mais") foi trocado
+    pela alternativa: quando aceitar uma proposta de fatos fecharia ou retrataria um fato que existe (`effects[].closes` não
+    vazio, só das operações marcadas), a aba "Do agente" abre um `Modal` que nomeia esses fatos, com "Cancelar" (o foco
+    inicial) e "Aceitar"; o resto (recusa, fato idêntico, erro, nada) é aceito no ato (`design.md` "Emenda 3", C197-C203).
+    O modal é um chunk do próprio (`import()` a partir da aba, C147), mas pesa: o teto de C147, 16 KB de JS gzip acima de
+    `cerebro-paineis` (16 384 B), não comporta mais a feature, e o dono escolheu um teto novo por feature em vez de cortar o
+    que foi aprovado. O novo teto é o medido (17 108 B acima de `cerebro-paineis`, 591 435 B no total) arredondado para
+    cima a 256 B: **17 152 B**. O teto do CSS (3 KB) e o de qualquer outra feature não mudam.
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).

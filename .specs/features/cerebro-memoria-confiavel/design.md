@@ -156,7 +156,7 @@ Uma operação sem nada a dizer (um fato novo de outra chave) não ganha lista. 
 A data de um fechamento é o dia local de `at` (`DD/MM/AAAA`). O fato é nomeado `<sujeito> · <predicado> · <valor>`, com o
 sujeito e o predicado do fato novo (as chaves são as mesmas) e o valor do fato que existe. Nenhuma linha é região viva
 (`role="status"`, `role="alert"`): o que se anuncia é a recusa da decisão, uma vez. A caixa de seleção da operação e o
-"Aceitar" ficam como estão e a tela não pede confirmação (pergunta G40; o padrão é mostrar o efeito e não perguntar mais).
+"Aceitar" ficam como estão; a confirmação que o dono pediu para o que fecha ou retrata (pergunta G40, respondida) é a da Emenda 3.
 
 | Chave               | pt-BR                                                       | en                                                             |
 | ------------------- | ----------------------------------------------------------- | -------------------------------------------------------------- |
@@ -180,6 +180,26 @@ aposto "começou antes dele e dura além dele").
 | ------------------------------ | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `effects.refuses.covers`       | Será recusado: o fato {fact} já cobre todo esse período. Aceitar dá o erro 409 fact_overlap.  | Will be refused: the fact {fact} already covers this whole period. Accepting fails with 409 fact_overlap. |
 | `effects.refuses.startsInside` | Será recusado: o fato {fact} começa dentro desse período. Aceitar dá o erro 409 fact_overlap. | Will be refused: the fact {fact} starts inside this period. Accepting fails with 409 fact_overlap.        |
+
+## Emenda 3 - aceitar o que fecha ou retrata pede uma segunda confirmação (resposta do dono, G40, AD-047)
+
+Quando aceitar uma proposta (a única operação de uma proposta `fact`, as operações marcadas de uma consolidação) fecha
+(`closes[].action = "close"`) ou retrata (`"retract"`) um fato que existe, a aba "Do agente" não envia a decisão ao clicar
+em "Aceitar selecionadas": abre um `Modal` (480px, o mesmo da recusa) que **nomeia os fatos**. O corpo é a lista que o
+detalhe já desenha para esses efeitos (Emenda 1: "Encerra o fato … em <dia>." e "Retrata o fato … como nunca
+verdadeiro. Não tem volta."), só o que fecha ou retrata, uma lista por operação, na ordem das operações; a recusa, o fato
+idêntico e o erro ficam de fora (eles não pedem confirmação: a recusa já é dita pela linha e pelo erro da decisão). O
+rodapé tem "Cancelar" e depois "Aceitar" (`.btn.primary`). O foco vai para "Cancelar" (o botão seguro; o primitivo foca o
+primeiro controle que não é o X), Escape e o X cancelam, e o foco volta a "Aceitar selecionadas". "Cancelar" não envia nada
+e deixa a proposta, a seleção e as marcas como estavam; "Aceitar" envia uma só decisão, com as mesmas operações de antes.
+Uma proposta sem `closes` (só recusa, idêntico, erro, ou nada) é aceita no ato, sem modal. O diálogo é o do primitivo
+`Modal` (nomeado pelo título, sem região viva); o que se anuncia depois é a recusa da decisão, uma vez. O modal é um chunk
+do próprio (`lazy`): só se busca quando uma aceitação assim é pedida. Os botões reusam `common.cancel` e
+`proposals.acceptOne`; só o título é texto novo.
+
+| Chave                   | pt-BR                                  | en                                             |
+| ----------------------- | -------------------------------------- | ---------------------------------------------- |
+| `effects.confirm.title` | Aceitar vai mudar fatos que já existem | Accepting will change facts that already exist |
 
 ## Texto (as duas línguas; as chaves entram em `locales/brain.ts`, `en` e `ptBR` com as mesmas chaves)
 

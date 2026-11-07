@@ -965,7 +965,7 @@ Proof: `npm run build:server && npm run build -w apps/command-centre && MORDOMO_
 **C147** - The version dialog, the memory history dialog, the permissions modal and the export and import modals are
 reached from both entries (`main.tsx`, `gallery/main.tsx`) only by a dynamic `import()`; `scripts/bundle-baseline.json`
 gains a `cerebro-memoria-confiavel` entry after `cerebro-paineis` with a reason of more than 40 characters and the four
-numbers, at most 16 KB of JS gzip and 3 KB of CSS gzip above `cerebro-paineis` (574 327 B and 80 203 B); `bundle:check`
+numbers, at most 17 152 B of JS gzip (16 KB until the G40 confirmation raised it, plan amendment 21) and 3 KB of CSS gzip above `cerebro-paineis` (574 327 B and 80 203 B); `bundle:check`
 exits 0 on a fresh build
 Proof: `npx vitest run tests/memoria.contract.test.ts -t "C147 "`
 Proof: `npx vitest run tests/bundle-size.test.ts -t "C31 a build within 5% of the latest recorded one passes"`
@@ -1691,9 +1691,10 @@ Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.te
 "Será recusado: o fato Cliente X · status · ativo já cobre todo esse período. Aceitar dá o erro 409 fact_overlap.", `unchanged` (not null) as `Check` and "Já existe
 um fato idêntico. Nada muda.", and `error` as `AlertTriangle` and "Não pode ser registrado: <the route's reason>"; with
 every kind at once the order is the closes and retracts as given, then the refusal, then the identical fact, then the
-error; a fact the route says would be refused keeps its checkbox enabled, and "Aceitar selecionadas (1)" sends `{ action:
-"accept", ops: [0] }` at once with no dialog opening, since the screen asks nothing more (owner question G40, safe default;
-no modal is built) (L-046, L-045)
+error; a fact the route says would be refused keeps its checkbox enabled, and "Aceitar selecionadas (1)" over a fact whose
+effect closes or retracts nothing (a refusal, an identical fact, an error) sends `{ action: "accept", ops: [0] }` at once
+with no dialog opening; what closes or retracts asks first (C197; owner answer G40, AD-047, which replaced the safe default
+"ask nothing more") (L-046, L-045)
 Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C187 "`
 
 **C188** - An entry of `effects` is drawn under the op whose index it names and under no other: a consolidation with ops
@@ -1711,11 +1712,12 @@ not inside the list, the effect that foretold it staying one plain line beside i
 `role="status"` lines are the tab's own, and the effects add none)
 Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C189 "`
 
-**C190** - The six keys of design.md's "Emenda 1" and "Emenda 2" tables (`effects.close`, `effects.retract`,
-`effects.unchanged`, `effects.error`, `effects.refuses.covers`, `effects.refuses.startsInside`) are keys of `en` and `ptBR`
-in `locales/brain.ts` with the tables' text, read from design.md itself, and the old key `effects.refuses` is in neither;
-both locales hold the same keys and each text the same placeholders; each key is spelled by the production source; and
-both amendments sit before "Texto", whose 65 rows are still 65 (C104, C145 read them by number)
+**C190** - The seven keys of design.md's "Emenda 1", "Emenda 2" and "Emenda 3" tables (`effects.close`, `effects.retract`,
+`effects.unchanged`, `effects.error`, `effects.refuses.covers`, `effects.refuses.startsInside`, `effects.confirm.title`) are
+keys of `en` and `ptBR` in `locales/brain.ts` with the tables' text, read from design.md itself, and the old key
+`effects.refuses` is in neither; both locales hold the same keys and each text the same placeholders; each key is spelled
+by the production source; and the three amendments sit before "Texto", whose 65 rows are still 65 (C104, C145 read them by
+number)
 Proof: `npm run test -w apps/command-centre -- src/brain/memoriaCopy.test.ts -t "C190 "`
 
 **C191** - The effect lines use the existing tones and no new token: `.ag-effect` is 13px (`--fs-3`) in `--text-dim`, a
@@ -1988,6 +1990,53 @@ período", is true of neither row and is gone (C190). The owner chose to fix wha
 are shorter than the first proposal (no "começou antes dele e dura além dele") (L-051, L-052)
 Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C196 "`
 
+**C197** - (owner answer G40, AD-047) On "Do agente" accepting asks first, in a `Modal`, only when it would close or retract a
+fact: "Aceitar selecionadas" over a fact whose effect has a `closes` entry of action `close` or of action `retract` opens
+the Modal and sends nothing yet; over a refusal, an identical fact, a fact that cannot be asserted, a fact with nothing to
+say or no `effects` at all it sends `{ action: "accept", ops: [0] }` at once and no dialog opens; in a consolidation only
+the ticked ops count: with the op whose effect closes unticked the decision is sent at once with the other ops, ticked
+again it asks (the mock answers each proposal's own detail by its id; L-050, L-051, L-054)
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C197 "`
+
+**C198** - The Modal says, by value: titled "Aceitar vai mudar fatos que já existem" (en "Accepting will change facts that
+already exist"), then one list per ticked op that changes a fact, in the ops' order, holding only the lines of what it
+closes or retracts as the detail draws them ("Encerra o fato Cliente X · status · ativo em 31/10/2026." with the local day,
+under `TZ=America/Sao_Paulo` pinned and asserted, and "Retrata o fato Cliente X · status · prospect como nunca
+verdadeiro. Não tem volta."; en "Closes the fact … on 31/10/2026."), never the refusal, the identical fact or the error of
+the same effect, and at the foot "Cancelar" then "Aceitar" (`.btn`, then `.btn.primary`; en "Cancel", "Accept"), the title
+above the facts above the buttons (design.md "Emenda 3"; L-046, L-053)
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C198 "`
+
+**C199** - "Cancelar" and the X of the Modal send nothing and leave the proposal as it was: the Modal closes, no request is
+made, the detail, the one item of the list and the ticked ops (`[false, true, false]` after unticking the last) are the
+same, "Aceitar selecionadas (1)" still reads so, and asking again opens the Modal again (the cancel reached the screen's
+state)
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C199 "`
+
+**C200** - "Aceitar" in the Modal sends exactly one decision, `{ action: "accept", ops: [1, 2], baseVersion }` with the ticked
+ops and the version the detail showed, also when the button is double-clicked, and the Modal closes; a decision the route
+refuses with `409 fact_overlap` is said once by the detail's one `role="alert"` and the Modal is gone
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C200 "`
+
+**C201** - Focus and the keys: the Modal opens with focus on "Cancelar" (the safe button), Tab goes on to "Aceitar", Escape
+cancels with no request and gives focus back to "Aceitar selecionadas", which asked, Enter on the focused "Cancelar"
+cancels the same way, and after each of them asking again opens the Modal again
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C201 "`
+
+**C202** - The Modal announces nothing of its own twice: it is one `role="dialog"` named by its title, neither it nor its
+facts carry a `role` of `status` or `alert` or an `aria-live`, and the page holds as many live regions with the Modal open
+as closed
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C202 "`
+
+**C203** - In the light and the dark theme and in the moldura and the Núcleo, on a real browser, accepting a fact op whose
+effect closes and retracts opens a 480px Modal titled "Aceitar vai mudar fatos que já existem" with exactly the two lines
+of the close and the retraction (13px or more, the retraction in the computed colour of `--danger`) and not the refusal,
+the identical fact or the error that the same effect carries, focus on "Cancelar" then "Aceitar" by Tab; Escape and
+"Cancelar" send nothing and give focus back to "Aceitar selecionadas"; "Aceitar" sends exactly one `POST .../decide` with
+`{ action: "accept", ops: [0, 1], baseVersion }`; and axe at WCAG A/AA reports no `serious` or `critical` violation with the
+Modal open (design-system binding)
+Proof: `npm run build:server && npm run build -w apps/command-centre && MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts memoria.spec.ts -g "C203 "`
+
 - **Finding 2 (security): a folder named `..<x>` under the exports or `guard/` escaped the device-run check (C193).**
   `isUnder` in `folderLevels.ts` and `isInside` in `core/src/security/paths.ts` decided "inside" with
   `!rel.startsWith("..")`, so `..z` read as outside `artifacts/exports`; the guard's `refuseGuardCwd` and the run-visibility
@@ -2231,13 +2280,17 @@ blocks the build.
 | effects copy keys, round 3 and 4 (6)                                                     | `effects.close` C190 · `effects.retract` C190 · `effects.unchanged` C190 · `effects.error` C190 · `effects.refuses.covers` C190 C196 · `effects.refuses.startsInside` C190 C196                                                                                                                                                                                                                                                                                                                                           |
 | reasons of the refusal line, round 4 (2)                                                 | `covers` C196 · `starts_inside` C196                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | languages of the refusal line, round 4 (2)                                               | pt-BR C196 · en C196                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| accepts that ask, G40 (7)                                                                | a close asks C197 · a retraction asks C197 · only a ticked op's close asks C197 · a refusal opens none C197 · an identical fact opens none C197 · an error opens none C197 · no effects open none C197                                                                                                                                                                                                                                                                                                                    |
+| lines in the confirmation, G40 (4)                                                       | the close C198 · the retraction C198 · only these, per op, in the ops' order C198 · the title and the two buttons in order C198                                                                                                                                                                                                                                                                                                                                                                                           |
+| ways out of the confirmation, G40 (4)                                                    | Cancelar C199 C201 · the X C199 · Escape C201 · Aceitar sends one C200                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| shells and themes for axe, confirmation, G40 (4)                                         | moldura light C203 · moldura dark C203 · Núcleo light C203 · Núcleo dark C203                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | shells and themes for axe, effects, round 3 (4)                                          | moldura light C192 · moldura dark C192 · Núcleo light C192 · Núcleo dark C192                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | tones of the effects, round 3 (3)                                                        | `--danger` retract C191 C192 · `--warn` refuses and error C191 C192 · `--text-dim` close, identical C191 C192                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 - Claims naming a status code, route or response shape: C7, C11-C15, C29-C36, C40-C47, C53, C59-C68, C80-C83,
   checks C109-C120, C122-C123, C125, C127-C128, C131-C138, C172-C177, C179-C184 and C193-C195 - each has a proof that crosses the HTTP boundary; the decision tables among them
   (C1, C8-C11, C17, C20, C25, C28, C51, C52, C59, C110, C111, C126) are also proven at their own layer
-- Claims about the screens: C87-C105, C139-C145, C165-C171, C186-C191, C196 in rendered components; C106-C108, C146, C165, C167, C192 also in a
+- Claims about the screens: C87-C105, C139-C145, C165-C171, C186-C191, C196-C202 in rendered components; C106-C108, C146, C165, C167, C192, C203 also in a
   real browser, both shells where the claim names them
 - No other check claims more than the single case its proof exercises
 
