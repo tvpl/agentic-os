@@ -574,7 +574,7 @@ describe("C62 legal/PRIVACY.md and legal/network-policy.json", () => {
     return text.slice(from, to);
   };
 
-  it("C62 section 3 says a dashboard snapshot keeps, in the local database and its backups, the titles and subtitles of the connector items it shows, replaced at each refresh and deleted with the dashboard; the network policy and the table of 4.1 are equal to before", () => {
+  it("C62 section 3 says a dashboard snapshot keeps, in the local database and its backups, the titles and subtitles of the connector items it shows and each item's id, time, flag and link, replaced at each refresh and deleted with the dashboard; the network policy and the table of 4.1 are equal to before", () => {
     const privacy = fs.readFileSync(path.join(repoRoot, "legal", "PRIVACY.md"), "utf8");
     const three = section(privacy, "## 3. O que fica no seu computador", "## 4. O que sai do seu computador");
     // One sentence of section 3 says all of it.
@@ -590,6 +590,9 @@ describe("C62 legal/PRIVACY.md and legal/network-policy.json", () => {
         "conector",
         "substituídos a cada atualização",
         "apagados com o painel",
+        // After the owner's answer to question 18 (AD-047): the four other fields the stored item keeps, by name
+        "e também o id, a hora, a marca e o link de cada item",
+        ...["o id", "a hora", "a marca", "o link"],
       ].every((part) => s.includes(part)),
     );
     expect(said, sentences.join("\n")).toHaveLength(1);

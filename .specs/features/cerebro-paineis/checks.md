@@ -531,7 +531,9 @@ Proof: `npx vitest run tests/security-reads.test.ts -t "C61 "`
 Proof: `npx vitest run tests/sdk.instances.test.ts -t "C61 "`
 
 **C62** - `legal/PRIVACY.md` section 3 holds the sentence that a dashboard snapshot keeps, in the local database and its
-backups, the titles and subtitles of the connector items it shows, replaced at each refresh and deleted with the dashboard;
+backups, the titles and subtitles of the connector items it shows and, since the owner's answer to question 18 (AD-047),
+each item's id, its time, its flag and its link ("o id, a hora, a marca e o link de cada item"), replaced at each refresh
+and deleted with the dashboard;
 `legal/network-policy.json` and the destinations table of section 4.1 are equal by value to before (no new destination)
 (AC 58, question 1)
 Proof: `npx vitest run tests/paineis.contract.test.ts -t "C62 "`
@@ -1364,3 +1366,13 @@ typecheck`, `npm run lint` and `npm run bundle:check` exit 0, `npx vitest run` a
   "Ainda sem dados" while the read is still on its way
 - **For the owner (batch D):** no new one-way door. The fifteen words of (j) are copy the design's table and
   amendment 26 do not name; each is reversible, and their wording is the owner's to change
+
+## Correção depois do fechamento (privacidade)
+
+After the feature closed, the owner answered question 18 of C6b (STATE, AD-047): the dashboard snapshot keeps the
+connector item's fields, and `legal/PRIVACY.md` must say so fully. Section 3's sentence now names, besides the title and
+subtitle of each connector item, its id, its time, its flag and its link (the stored `id`, `ts`, `flagged` and `href`),
+still replaced at each refresh and deleted with the dashboard; nothing else of the file changed, its draft-version date
+included. C62's claim names the four fields, and its proof asserts the new phrase by value, with each of the four named.
+Re-injected by reverting the sentence to the titles and subtitles alone: C62 fails. C63 is unchanged (it already
+asserts the six stored keys). No product code changed.
