@@ -1687,8 +1687,8 @@ two read "Closes the fact … on 31/10/2026." and "Retracts the fact … as neve
 "Emenda 1"; the mock answers each proposal's own detail by its id and fails on any other, L-051, L-053, L-050, L-046)
 Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C186 "`
 
-**C187** - The same list draws, one case each, `refuses` as `AlertTriangle` and "Será recusado: o fato Cliente X · status ·
-ativo já vale em todo esse período. Aceitar dá o erro 409 fact_overlap.", `unchanged` (not null) as `Check` and "Já existe
+**C187** - The same list draws, one case each, `refuses` (with `reason: "covers"`; the other reason is C196) as `AlertTriangle` and
+"Será recusado: o fato Cliente X · status · ativo já cobre todo esse período. Aceitar dá o erro 409 fact_overlap.", `unchanged` (not null) as `Check` and "Já existe
 um fato idêntico. Nada muda.", and `error` as `AlertTriangle` and "Não pode ser registrado: <the route's reason>"; with
 every kind at once the order is the closes and retracts as given, then the refusal, then the identical fact, then the
 error; a fact the route says would be refused keeps its checkbox enabled, and "Aceitar selecionadas (1)" sends `{ action:
@@ -1711,10 +1711,11 @@ not inside the list, the effect that foretold it staying one plain line beside i
 `role="status"` lines are the tab's own, and the effects add none)
 Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C189 "`
 
-**C190** - The five keys of design.md's "Emenda 1" table (`effects.close`, `effects.retract`, `effects.refuses`,
-`effects.unchanged`, `effects.error`) are keys of `en` and `ptBR` in `locales/brain.ts` with the table's text, read from
-design.md itself; both locales hold the same keys and each text the same placeholders; each key is spelled by the
-production source; and the amendment sits before "Texto", whose 65 rows are still 65 (C104, C145 read them by number)
+**C190** - The six keys of design.md's "Emenda 1" and "Emenda 2" tables (`effects.close`, `effects.retract`,
+`effects.unchanged`, `effects.error`, `effects.refuses.covers`, `effects.refuses.startsInside`) are keys of `en` and `ptBR`
+in `locales/brain.ts` with the tables' text, read from design.md itself, and the old key `effects.refuses` is in neither;
+both locales hold the same keys and each text the same placeholders; each key is spelled by the production source; and
+both amendments sit before "Texto", whose 65 rows are still 65 (C104, C145 read them by number)
 Proof: `npm run test -w apps/command-centre -- src/brain/memoriaCopy.test.ts -t "C190 "`
 
 **C191** - The effect lines use the existing tones and no new token: `.ag-effect` is 13px (`--fs-3`) in `--text-dim`, a
@@ -1973,6 +1974,20 @@ none of the device's answers. With no root holding the exports the counts are th
 finding 7 (b); plan amendment 20)
 Proof: `npx vitest run tests/memoria.access-round4.test.ts -t "C195 "`
 
+**C196** - (round 4 finding 5, the screen's half of C11 and C178; plan amendments 17 and 19, design.md "Emenda 2") The refusal
+line of an effect follows the `reason` the route gave in `refuses`, one case per reason and per language, the text by
+value: `covers` reads "Será recusado: o fato Cliente X · status · ativo já cobre todo esse período. Aceitar dá o erro 409
+fact_overlap." (en "Will be refused: the fact Cliente X · status · ativo already covers this whole period. Accepting
+fails with 409 fact_overlap."), `starts_inside` reads "Será recusado: o fato Cliente X · status · ativo começa dentro
+desse período. Aceitar dá o erro 409 fact_overlap." (en "Will be refused: the fact … starts inside this period. Accepting
+fails with 409 fact_overlap."); each keeps `AlertTriangle`, the `data-effect="refuses"` hook of the `--warn` tone, and its
+place in the effects list under the op's text; the two texts differ (the first says it covers and never that it starts,
+the second the reverse) and share the tail; and with two proposals, one `covers` and one `starts_inside`, choosing the
+other replaces the line with its own (the mock answers each detail by its id). The old text, "já vale em todo esse
+período", is true of neither row and is gone (C190). The owner chose to fix what was false, not the sentences: the texts
+are shorter than the first proposal (no "começou antes dele e dura além dele") (L-051, L-052)
+Proof: `npm run test -w apps/command-centre -- src/brain/reviews/AgentEffects.test.tsx -t "C196 "`
+
 - **Finding 2 (security): a folder named `..<x>` under the exports or `guard/` escaped the device-run check (C193).**
   `isUnder` in `folderLevels.ts` and `isInside` in `core/src/security/paths.ts` decided "inside" with
   `!rel.startsWith("..")`, so `..z` read as outside `artifacts/exports`; the guard's `refuseGuardCwd` and the run-visibility
@@ -2170,14 +2185,16 @@ blocks the build.
 | effects drawn on the screen, round 3 (5)                                                 | close C186 · retract C186 · refuses C187 · unchanged C187 · error C187                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | arrangement of the effects, round 3 (4)                                                  | under the op's text, in its cell C186 · the order of the five kinds C187 · by the op's index C188 · one proposal's own, not another's C188                                                                                                                                                                                                                                                                                                                                                                                |
 | proposals with no effects, round 3 (4)                                                   | `memory_edit` C188 · `note_create` C188 · `note_save` C188 · a consolidation with no fact op C188                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| effects copy keys, round 3 (5)                                                           | `effects.close` C190 · `effects.retract` C190 · `effects.refuses` C190 · `effects.unchanged` C190 · `effects.error` C190                                                                                                                                                                                                                                                                                                                                                                                                  |
+| effects copy keys, round 3 and 4 (6)                                                     | `effects.close` C190 · `effects.retract` C190 · `effects.unchanged` C190 · `effects.error` C190 · `effects.refuses.covers` C190 C196 · `effects.refuses.startsInside` C190 C196                                                                                                                                                                                                                                                                                                                                           |
+| reasons of the refusal line, round 4 (2)                                                 | `covers` C196 · `starts_inside` C196                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| languages of the refusal line, round 4 (2)                                               | pt-BR C196 · en C196                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | shells and themes for axe, effects, round 3 (4)                                          | moldura light C192 · moldura dark C192 · Núcleo light C192 · Núcleo dark C192                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | tones of the effects, round 3 (3)                                                        | `--danger` retract C191 C192 · `--warn` refuses and error C191 C192 · `--text-dim` close, identical C191 C192                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 - Claims naming a status code, route or response shape: C7, C11-C15, C29-C36, C40-C47, C53, C59-C68, C80-C83,
   checks C109-C120, C122-C123, C125, C127-C128, C131-C138, C172-C177, C179-C184 and C193-C195 - each has a proof that crosses the HTTP boundary; the decision tables among them
   (C1, C8-C11, C17, C20, C25, C28, C51, C52, C59, C110, C111, C126) are also proven at their own layer
-- Claims about the screens: C87-C105, C139-C145, C165-C171, C186-C191 in rendered components; C106-C108, C146, C165, C167, C192 also in a
+- Claims about the screens: C87-C105, C139-C145, C165-C171, C186-C191, C196 in rendered components; C106-C108, C146, C165, C167, C192 also in a
   real browser, both shells where the claim names them
 - No other check claims more than the single case its proof exercises
 

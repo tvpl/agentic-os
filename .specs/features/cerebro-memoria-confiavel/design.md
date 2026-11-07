@@ -158,13 +158,28 @@ sujeito e o predicado do fato novo (as chaves são as mesmas) e o valor do fato 
 (`role="status"`, `role="alert"`): o que se anuncia é a recusa da decisão, uma vez. A caixa de seleção da operação e o
 "Aceitar" ficam como estão e a tela não pede confirmação (pergunta G40; o padrão é mostrar o efeito e não perguntar mais).
 
-| Chave               | pt-BR                                                                                          | en                                                                                                            |
-| ------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `effects.close`     | Encerra o fato {fact} em {at}.                                                                 | Closes the fact {fact} on {at}.                                                                               |
-| `effects.retract`   | Retrata o fato {fact} como nunca verdadeiro. Não tem volta.                                    | Retracts the fact {fact} as never true. This cannot be undone.                                                |
-| `effects.refuses`   | Será recusado: o fato {fact} já vale em todo esse período. Aceitar dá o erro 409 fact_overlap. | Will be refused: the fact {fact} already holds over this whole period. Accepting fails with 409 fact_overlap. |
-| `effects.unchanged` | Já existe um fato idêntico. Nada muda.                                                         | An identical fact already exists. Nothing changes.                                                            |
-| `effects.error`     | Não pode ser registrado: {reason}                                                              | Cannot be recorded: {reason}                                                                                  |
+| Chave               | pt-BR                                                       | en                                                             |
+| ------------------- | ----------------------------------------------------------- | -------------------------------------------------------------- |
+| `effects.close`     | Encerra o fato {fact} em {at}.                              | Closes the fact {fact} on {at}.                                |
+| `effects.retract`   | Retrata o fato {fact} como nunca verdadeiro. Não tem volta. | Retracts the fact {fact} as never true. This cannot be undone. |
+| `effects.unchanged` | Já existe um fato idêntico. Nada muda.                      | An identical fact already exists. Nothing changes.             |
+| `effects.error`     | Não pode ser registrado: {reason}                           | Cannot be recorded: {reason}                                   |
+
+## Emenda 2 - a recusa diz qual das duas é (rodada 4 da verificação, achado 5; Landing 21; plan, emendas 17 e 19)
+
+A linha da recusa ("Será recusado: …") dizia "já vale em todo esse período", o que é falso quando o fato que existe
+começa **dentro** de um período novo fechado (`overlapAction` recusa em duas linhas). `effects[].refuses` agora traz
+`reason` (`covers`: o fato que existe começou antes do período novo e dura além dele; `starts_inside`: ele começa dentro
+do período novo), e a tela escolhe o texto por ele. O ícone (`AlertTriangle`), o tom (`--warn`), o lugar e a ordem da linha
+são os da Emenda 1. A chave `effects.refuses` da Emenda 1 sai: as duas abaixo a substituem, com a cauda que as duas
+partilham ("Aceitar dá o erro 409 fact_overlap."). O texto antigo foi escrito pelo construtor da A2; o dono mandou
+corrigir o que era falso, não as frases, e por isso os textos abaixo são mais curtos que o que se propôs primeiro (sem o
+aposto "começou antes dele e dura além dele").
+
+| Chave                          | pt-BR                                                                                         | en                                                                                                        |
+| ------------------------------ | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `effects.refuses.covers`       | Será recusado: o fato {fact} já cobre todo esse período. Aceitar dá o erro 409 fact_overlap.  | Will be refused: the fact {fact} already covers this whole period. Accepting fails with 409 fact_overlap. |
+| `effects.refuses.startsInside` | Será recusado: o fato {fact} começa dentro desse período. Aceitar dá o erro 409 fact_overlap. | Will be refused: the fact {fact} starts inside this period. Accepting fails with 409 fact_overlap.        |
 
 ## Texto (as duas línguas; as chaves entram em `locales/brain.ts`, `en` e `ptBR` com as mesmas chaves)
 
