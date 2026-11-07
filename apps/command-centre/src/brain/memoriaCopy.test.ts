@@ -190,8 +190,9 @@ describe("C145 the part-B copy of design.md in both locales", () => {
 });
 
 /**
- * key → [pt-BR, en] for the table of "Emenda 1" of design.md (what accepting a fact does, round 3 finding 6): read from
- * the section before "Texto", so rows 1-65 of "Texto" (C104, C145) keep their numbers.
+ * key → [pt-BR, en] for the tables of "Emenda 1" of design.md (what accepting a fact does, round 3 finding 6) and
+ * "Emenda 2" (the two texts of its refusal, round 4 finding 5): read from the sections before "Texto", so rows 1-65 of
+ * "Texto" (C104, C145) keep their numbers.
  */
 function amendment1(): Array<[string, string, string]> {
   const section = DESIGN.slice(DESIGN.indexOf("## Emenda 1"), DESIGN.indexOf("## Texto"));
@@ -202,16 +203,19 @@ function amendment1(): Array<[string, string, string]> {
     .map(([key, pt, en]) => [key!.replace(/`/g, ""), pt!, en!]);
 }
 
-describe("C190 the copy of design.md's Emenda 1 in both locales", () => {
-  it("C190 the amendment's table gives the 5 keys effects.close, .retract, .refuses, .unchanged and .error, each in en and ptBR with its text", () => {
+describe("C190 the copy of design.md's Emenda 1 and Emenda 2 in both locales", () => {
+  it("C190 the amendments' tables give the 6 keys effects.close, .retract, .unchanged, .error (Emenda 1) and .refuses.covers, .refuses.startsInside (Emenda 2), each in en and ptBR with its text, and the old effects.refuses is gone", () => {
     const keys = amendment1();
     expect(keys.map(([k]) => k)).toEqual([
       "effects.close",
       "effects.retract",
-      "effects.refuses",
       "effects.unchanged",
       "effects.error",
+      "effects.refuses.covers",
+      "effects.refuses.startsInside",
     ]);
+    expect(Object.keys(brain.en)).not.toContain("effects.refuses");
+    expect(Object.keys(brain.ptBR)).not.toContain("effects.refuses");
     // the amendment sits before "Texto": the 65 rows of that table are still 65
     expect(DESIGN.indexOf("## Emenda 1")).toBeLessThan(DESIGN.indexOf("## Texto"));
     expect(
@@ -236,7 +240,7 @@ describe("C190 the copy of design.md's Emenda 1 in both locales", () => {
   });
 
   it(
-    "C190 every one of the 5 is spelled by the production source (no unused key)",
+    "C190 every one of the 6 is spelled by the production source (no unused key)",
     { timeout: 60_000 },
     () => {
       const tree = loadTree();

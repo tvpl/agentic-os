@@ -28,6 +28,7 @@ import {
   pending,
   proposal,
   proposals,
+  refusal,
   resetProposals,
   resetReviews,
   sent,
@@ -164,8 +165,8 @@ describe("C187 a refusal, an identical fact, a fact that cannot be asserted", ()
   const cases: Array<[string, Partial<ReturnType<typeof effect>>, string, string, string]> = [
     [
       "refuses",
-      { refuses: { id: 9, object: "ativo", validFrom: Date.UTC(2026, 0, 1), validTo: null } },
-      "Será recusado: o fato Cliente X · status · ativo já vale em todo esse período. Aceitar dá o erro 409 fact_overlap.",
+      { refuses: refusal("covers") },
+      "Será recusado: o fato Cliente X · status · ativo já cobre todo esse período. Aceitar dá o erro 409 fact_overlap.",
       "lucide-triangle-alert",
       "refuses",
     ],
@@ -190,7 +191,7 @@ describe("C187 a refusal, an identical fact, a fact that cannot be asserted", ()
     await factProposal([
       effect({
         closes: [retracting(), closing()],
-        refuses: { id: 9, object: "ativo", validFrom: Date.UTC(2026, 0, 1), validTo: null },
+        refuses: refusal(),
         unchanged: 5,
         error: "x",
       }),
@@ -215,7 +216,7 @@ describe("C187 a refusal, an identical fact, a fact that cannot be asserted", ()
   });
 
   it("C187 a fact the route says would be refused is still offered: its checkbox is not disabled", async () => {
-    await factProposal([effect({ refuses: { id: 9, object: "ativo", validFrom: 1, validTo: null } })]);
+    await factProposal([effect({ refuses: refusal() })]);
     expect((screen.getByRole("checkbox") as HTMLInputElement).disabled).toBe(false);
   });
 });
@@ -311,7 +312,7 @@ describe("C189 the effects are not a live region", () => {
   it("C189 no effect list or line carries a live role, and the detail has the same live regions with and without effects", async () => {
     const full = effect({
       closes: [closing(), retracting()],
-      refuses: { id: 9, object: "ativo", validFrom: 1, validTo: null },
+      refuses: refusal(),
       unchanged: 5,
       error: "x",
     });
@@ -328,9 +329,7 @@ describe("C189 the effects are not a live region", () => {
   });
 
   it("C189 a 409 fact_overlap on accepting is said once, by the detail's one alert; the effect that foretold it is plain text beside it", async () => {
-    const p = await factProposal([
-      effect({ refuses: { id: 9, object: "ativo", validFrom: 1, validTo: null } }),
-    ]);
+    const p = await factProposal([effect({ refuses: refusal() })]);
     proposals.decide = () =>
       Promise.reject(new NetError(409, "fact_overlap", "Um fato já vale em todo o período."));
     fireEvent.click(within(detailEl()).getByRole("button", { name: "Aceitar selecionadas (1)" }));
@@ -379,7 +378,7 @@ describe("C191 the effect lines use the existing tones and say it by icon and te
     await factProposal([
       effect({
         closes: [closing(), retracting()],
-        refuses: { id: 9, object: "ativo", validFrom: 1, validTo: null },
+        refuses: refusal(),
         unchanged: 5,
         error: "x",
       }),
@@ -391,5 +390,74 @@ describe("C191 the effect lines use the existing tones and say it by icon and te
       expect(li.querySelector("svg")!.getAttribute("aria-hidden")).toBe("true");
       expect(li.textContent!.trim().length, li.dataset.effect).toBeGreaterThan(10);
     }
+  });
+});
+
+/* ---------------- C196: the refusal says which of the two refusals the route found ---------------- */
+
+describe("C196 the refusal line follows the route's reason, one text per reason", () => {
+  const TEXTS = {
+    "pt-BR": {
+      covers:
+        "Será recusado: o fato Cliente X · status · ativo já cobre todo esse período. Aceitar dá o erro 409 fact_overlap.",
+      starts_inside:
+        "Será recusado: o fato Cliente X · status · ativo começa dentro desse período. Aceitar dá o erro 409 fact_overlap.",
+    },
+    en: {
+      covers:
+        "Will be refused: the fact Cliente X · status · ativo already covers this whole period. Accepting fails with 409 fact_overlap.",
+      starts_inside:
+        "Will be refused: the fact Cliente X · status · ativo starts inside this period. Accepting fails with 409 fact_overlap.",
+    },
+  } as const;
+  const refusalLine = () => document.querySelector<HTMLElement>('.ag-op .ag-effect[data-effect="refuses"]')!;
+
+  for (const lang of ["pt-BR", "en"] as const)
+    for (const reason of ["covers", "starts_inside"] as const)
+      it(`C196 ${lang}, reason ${reason}: the text by value, with the same icon, tone hook and place as before`, async () => {
+        const p = proposal({
+          kind: "fact",
+          author: "mcp",
+          runId: null,
+          summary: "Cliente X · status · pausado",
+        });
+        pending([p]);
+        detailOf(p, { ops: [FACT_OP], effects: [effect({ refuses: refusal(reason) })], baseVersion: null });
+        mountReviews({ lang, search: "?tab=agent" });
+        await waitFor(() => expect(refusalLine()).not.toBeNull());
+        expect(refusalLine().textContent).toBe(TEXTS[lang][reason]);
+        expect(refusalLine().querySelector("svg")!.getAttribute("class")).toContain("lucide-triangle-alert");
+        expect(refusalLine().parentElement!.className).toBe("ag-effects");
+        expect(refusalLine().closest(".ag-text")).not.toBeNull();
+      });
+
+  it("C196 the two texts differ by what each row says, and share the tail: covers never says it starts, startsInside never says it covers", () => {
+    for (const lang of ["pt-BR", "en"] as const) {
+      const { covers, starts_inside: inside } = TEXTS[lang];
+      expect(covers).not.toBe(inside);
+      const [word, other] = lang === "pt-BR" ? ["cobre", "começa"] : ["covers", "starts"];
+      expect(covers).toContain(word);
+      expect(covers).not.toContain(other);
+      expect(inside).toContain(other);
+      expect(inside).not.toContain(word);
+      for (const text of [covers, inside]) expect(text).toMatch(/409 fact_overlap\.$/);
+    }
+  });
+
+  it("C196 each proposal's refusal is its own: choosing the other replaces covers with startsInside (the mock answers by id, so a reason read from the wrong detail fails)", async () => {
+    const a = proposal({ kind: "fact", author: "mcp", runId: null, summary: "A · a · 1" });
+    const b = proposal({ kind: "fact", author: "mcp", runId: null, summary: "B · b · 2" });
+    pending([a, b]);
+    detailOf(a, { ops: [FACT_OP], effects: [effect({ refuses: refusal("covers") })], baseVersion: null });
+    detailOf(b, {
+      ops: [FACT_OP],
+      effects: [effect({ refuses: refusal("starts_inside") })],
+      baseVersion: null,
+    });
+    mountReviews({ search: "?tab=agent" });
+    await waitFor(() => expect(refusalLine()?.textContent).toBe(TEXTS["pt-BR"].covers));
+    fireEvent.click(document.querySelectorAll<HTMLButtonElement>(".rv-pick")[1]!);
+    await waitFor(() => expect(refusalLine()?.textContent).toBe(TEXTS["pt-BR"].starts_inside));
+    expect(document.querySelectorAll(".ag-effect")).toHaveLength(1);
   });
 });

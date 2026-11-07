@@ -601,7 +601,7 @@ const EFFECT = {
     },
     { id: 8, object: "prospect", validFrom: 1, validTo: null, action: "retract", at: Date.now() },
   ],
-  refuses: { id: 9, object: "suspenso", validFrom: 1, validTo: null },
+  refuses: { id: 9, object: "suspenso", validFrom: 1, validTo: null, reason: "covers" },
   error: "validTo: must be after validFrom",
 };
 

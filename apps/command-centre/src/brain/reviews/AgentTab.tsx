@@ -110,8 +110,15 @@ export function Effects({ effect }: { effect: FactEffect }) {
       ? ["close", CalendarDays, t("effects.close", { fact: named(c.object), at: dayText(c.at, locale) })]
       : ["retract", Undo2, t("effects.retract", { fact: named(c.object) })],
   );
+  // the same icon and tone for both reasons; the text says which row of the overlap rule refuses (Landing 21)
   if (effect.refuses)
-    lines.push(["refuses", AlertTriangle, t("effects.refuses", { fact: named(effect.refuses.object) })]);
+    lines.push([
+      "refuses",
+      AlertTriangle,
+      t(effect.refuses.reason === "covers" ? "effects.refuses.covers" : "effects.refuses.startsInside", {
+        fact: named(effect.refuses.object),
+      }),
+    ]);
   if (effect.unchanged !== null) lines.push(["unchanged", Check, t("effects.unchanged")]);
   if (effect.error) lines.push(["error", AlertTriangle, t("effects.error", { reason: effect.error })]);
   if (lines.length === 0) return null;

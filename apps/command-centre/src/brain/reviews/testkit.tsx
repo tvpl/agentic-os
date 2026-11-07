@@ -242,9 +242,24 @@ export type Effect = {
     action: "close" | "retract";
     at: number;
   }>;
-  refuses: { id: number; object: string; validFrom: number; validTo: number | null } | null;
+  refuses: {
+    id: number;
+    object: string;
+    validFrom: number;
+    validTo: number | null;
+    /** `covers`: the fact began before the new period and lasts beyond it; `starts_inside`: it begins inside it. */
+    reason: "covers" | "starts_inside";
+  } | null;
   error?: string;
 };
+/** The fact accepting is refused for (`refuses` of an effect), `ativo` over the whole period unless told otherwise. */
+export const refusal = (reason: "covers" | "starts_inside" = "covers", object = "ativo") => ({
+  id: 9,
+  object,
+  validFrom: Date.UTC(2026, 0, 1),
+  validTo: null,
+  reason,
+});
 export const effect = (over: Partial<Effect> = {}): Effect => ({
   op: null,
   subject: "Cliente X",

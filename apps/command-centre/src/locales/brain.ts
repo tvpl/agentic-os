@@ -488,8 +488,10 @@ export const en = {
   "import.forbidden": "MordomoOS does not read that folder. Add it as an indexed folder first.",
   "effects.close": "Closes the fact {fact} on {at}.",
   "effects.retract": "Retracts the fact {fact} as never true. This cannot be undone.",
-  "effects.refuses":
-    "Will be refused: the fact {fact} already holds over this whole period. Accepting fails with 409 fact_overlap.",
+  "effects.refuses.covers":
+    "Will be refused: the fact {fact} already covers this whole period. Accepting fails with 409 fact_overlap.",
+  "effects.refuses.startsInside":
+    "Will be refused: the fact {fact} starts inside this period. Accepting fails with 409 fact_overlap.",
   "effects.unchanged": "An identical fact already exists. Nothing changes.",
   "effects.error": "Cannot be recorded: {reason}",
 } as const;
@@ -980,8 +982,10 @@ export const ptBR = {
   "import.forbidden": "O MordomoOS não lê essa pasta. Adicione-a como pasta indexada antes.",
   "effects.close": "Encerra o fato {fact} em {at}.",
   "effects.retract": "Retrata o fato {fact} como nunca verdadeiro. Não tem volta.",
-  "effects.refuses":
-    "Será recusado: o fato {fact} já vale em todo esse período. Aceitar dá o erro 409 fact_overlap.",
+  "effects.refuses.covers":
+    "Será recusado: o fato {fact} já cobre todo esse período. Aceitar dá o erro 409 fact_overlap.",
+  "effects.refuses.startsInside":
+    "Será recusado: o fato {fact} começa dentro desse período. Aceitar dá o erro 409 fact_overlap.",
   "effects.unchanged": "Já existe um fato idêntico. Nada muda.",
   "effects.error": "Não pode ser registrado: {reason}",
 } satisfies Record<keyof typeof en, string>;
