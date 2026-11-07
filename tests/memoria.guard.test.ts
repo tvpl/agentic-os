@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import os from "node:os";
+import { SettingsSchema } from "../core/src/config/schema.js";
+import { accessSettings, deniedDirs, guardDir } from "../core/src/memory/folderAccess.js";
+import { makeWorkspaceFilter } from "../core/src/memory/excludes.js";
+import { resolvePaths } from "../core/src/paths.js";
 import { storeProposal } from "../core/src/memory/proposals.js";
 import { unifiedDiff } from "../core/src/sync/diff.js";
 import { runWorld, sha, type Json, type RunWorld } from "./helpers/memoriaWorld.js";
@@ -704,5 +709,46 @@ describe("C69 a link planted between the guard's read and its write-back (round 
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+// The folders no audience is served, at their own layer (moved from tests/memoria.layer.test.ts so that C69's proof reaches them, round 4)
+describe("C69 the folders no audience is served whatever the levels say (G11, round 3 finding 7)", () => {
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-denied-")));
+  const paths = resolvePaths(home);
+  afterAll(() => fs.rmSync(home, { recursive: true, force: true }));
+
+  it("C69 devices are never served artifacts/exports/ nor guard/; agents guard/ and not the exports; both by name", () => {
+    expect(guardDir(paths)).toBe(path.join(home, "guard"));
+    expect(deniedDirs(paths, "devices").sort()).toEqual([
+      path.join(home, "artifacts", "exports"),
+      path.join(home, "guard"),
+    ]);
+    expect(deniedDirs(paths, "agents")).toEqual([path.join(home, "guard")]);
+  });
+
+  it("C69 the workspace filter of each audience's view refuses a path in guard/, with no entry of folderAccess at all", () => {
+    for (const audience of ["devices", "agents"] as const) {
+      const view = accessSettings({ paths, settings: SettingsSchema.parse({}) }, audience);
+      const filter = makeWorkspaceFilter(view.excludes, { homeDir: home });
+      expect(
+        filter.isExcluded("guard/guard-r-MEMORY.md", path.join(home, "guard", "guard-r-MEMORY.md")),
+        audience,
+      ).toBe(true);
+      expect(filter.isExcluded("notes/a.md", path.join(home, "memory", "notes", "a.md")), audience).toBe(
+        false,
+      );
+    }
+    const devices = makeWorkspaceFilter(
+      accessSettings({ paths, settings: SettingsSchema.parse({}) }, "devices").excludes,
+      { homeDir: home },
+    );
+    const agents = makeWorkspaceFilter(
+      accessSettings({ paths, settings: SettingsSchema.parse({}) }, "agents").excludes,
+      { homeDir: home },
+    );
+    const exported = path.join(home, "artifacts", "exports", "x", "a.md");
+    expect(devices.isExcluded("artifacts/exports/x/a.md", exported)).toBe(true);
+    expect(agents.isExcluded("artifacts/exports/x/a.md", exported)).toBe(false);
   });
 });

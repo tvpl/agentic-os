@@ -37,12 +37,7 @@ import {
 import { ProposalFileSchema, type ProposalOp } from "@mordomo/contracts";
 import { readScope } from "../core/src/security/safeFs.js";
 import { setAsideAndWrite, workspaceEntryKind, workspaceLinkTarget } from "../core/src/security/safeWrite.js";
-import {
-  accessSettings,
-  deniedDirs,
-  guardDir,
-  resolveFolderAccess,
-} from "../core/src/memory/folderAccess.js";
+import { resolveFolderAccess } from "../core/src/memory/folderAccess.js";
 import { accessExclude, makeWorkspaceFilter } from "../core/src/memory/excludes.js";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import type { AgentRun } from "@mordomo/core";
@@ -677,46 +672,6 @@ describe("the folder-level resolver (door 12), one asserted case per row", () =>
     // a mark that cannot be read hides every path
     const broken = makeWorkspaceFilter(["\u0000folder-access:{not json"], { homeDir: root });
     expect(broken.isExcluded("notes/outra/b.md", path.join(memory, "notes", "outra", "b.md"))).toBe(true);
-  });
-});
-
-describe("the folders no audience is served whatever the levels say (G11, round 3 finding 7)", () => {
-  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-denied-")));
-  const paths = resolvePaths(home);
-  afterAll(() => fs.rmSync(home, { recursive: true, force: true }));
-
-  it("devices are never served artifacts/exports/ nor guard/; agents guard/ and not the exports; both by name", () => {
-    expect(guardDir(paths)).toBe(path.join(home, "guard"));
-    expect(deniedDirs(paths, "devices").sort()).toEqual([
-      path.join(home, "artifacts", "exports"),
-      path.join(home, "guard"),
-    ]);
-    expect(deniedDirs(paths, "agents")).toEqual([path.join(home, "guard")]);
-  });
-
-  it("the workspace filter of each audience's view refuses a path in guard/, with no entry of folderAccess at all", () => {
-    for (const audience of ["devices", "agents"] as const) {
-      const view = accessSettings({ paths, settings: SettingsSchema.parse({}) }, audience);
-      const filter = makeWorkspaceFilter(view.excludes, { homeDir: home });
-      expect(
-        filter.isExcluded("guard/guard-r-MEMORY.md", path.join(home, "guard", "guard-r-MEMORY.md")),
-        audience,
-      ).toBe(true);
-      expect(filter.isExcluded("notes/a.md", path.join(home, "memory", "notes", "a.md")), audience).toBe(
-        false,
-      );
-    }
-    const devices = makeWorkspaceFilter(
-      accessSettings({ paths, settings: SettingsSchema.parse({}) }, "devices").excludes,
-      { homeDir: home },
-    );
-    const agents = makeWorkspaceFilter(
-      accessSettings({ paths, settings: SettingsSchema.parse({}) }, "agents").excludes,
-      { homeDir: home },
-    );
-    const exported = path.join(home, "artifacts", "exports", "x", "a.md");
-    expect(devices.isExcluded("artifacts/exports/x/a.md", exported)).toBe(true);
-    expect(agents.isExcluded("artifacts/exports/x/a.md", exported)).toBe(false);
   });
 });
 

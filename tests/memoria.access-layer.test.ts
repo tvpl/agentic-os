@@ -5,14 +5,14 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { accessView, deviceRedactor, zeroCounts } from "../apps/api/src/access.js";
 import { openDb, type Db } from "../core/src/db/db.js";
 import { SettingsSchema } from "../core/src/config/schema.js";
-import { AudienceMirror, audienceSpec } from "../core/src/memory/audienceIndex.js";
+import { AudienceMirror, audienceSpec, dropStaleRelated } from "../core/src/memory/audienceIndex.js";
 import { visibleHistoryPaths } from "../core/src/memory/historyStore.js";
 import { ensureDirs, resolvePaths } from "../core/src/paths.js";
 import { memoriaWorld, type MemoriaWorld } from "./helpers/memoriaWorld.js";
 
 /**
  * .specs/features/cerebro-memoria-confiavel, round 3 part 2, Test policy row 1: the deciders of round 2 part B at their
- * own layer, one case per row, with no HTTP (C185). Their boundary proofs are C172 to C177 and C179 to C184.
+ * own layer, one case per row, with no HTTP (C185 and C194). Their boundary proofs are C172 to C177 and C179 to C184.
  */
 
 let home: string;
@@ -142,6 +142,68 @@ describe("C185 audienceSpec", () => {
     expect(audienceSpec(env([], [home]), "agents")).not.toBe("shared");
     // the same input gives the same spec
     expect(audienceSpec(env(hide, [memory]), "devices")).toBe(hiddenFromDevices);
+  });
+});
+
+// ---- dropStaleRelated ------------------------------------------------------------------------------------------------
+
+describe("C194 dropStaleRelated", () => {
+  const meta = (key: string) =>
+    (db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined)?.value ??
+    null;
+  const setMeta = (key: string, value: string | null) => {
+    if (value === null) db.prepare("DELETE FROM meta WHERE key = ?").run(key);
+    else
+      db.prepare(
+        "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(key, value);
+  };
+  const edges = () => (db.prepare("SELECT COUNT(*) c FROM file_related_devices").get() as { c: number }).c;
+  const fill = () => {
+    db.exec("DELETE FROM file_related_devices");
+    db.prepare(
+      "INSERT INTO file_related_devices (src_id, dst_id, score, terms, updated_at) VALUES (1, 2, 0.9, '[]', 1), (2, 1, 0.9, '[]', 1)",
+    ).run();
+  };
+
+  it("C194 edges named for the view of the devices' index are kept; named for another view, or when the index of the devices names none, they are emptied and un-named; edges named for no view are left; the other rows of meta are untouched", () => {
+    setMeta("fts.agents", "shared");
+    // named for this view: kept
+    setMeta("fts.devices", '{"view":"a"}');
+    setMeta("rel.devices", '{"view":"a"}');
+    fill();
+    dropStaleRelated(db);
+    expect(edges(), "named for this view").toBe(2);
+    expect(meta("rel.devices")).toBe('{"view":"a"}');
+    // named for another view: emptied, un-named
+    setMeta("fts.devices", '{"view":"b"}');
+    dropStaleRelated(db);
+    expect(edges(), "named for another view").toBe(0);
+    expect(meta("rel.devices")).toBeNull();
+    expect(meta("fts.devices"), "the index's own row is not touched").toBe('{"view":"b"}');
+    expect(meta("fts.agents")).toBe("shared");
+    // the index of the devices names no view (never asked, or reset): edges named for one are stale
+    setMeta("fts.devices", null);
+    setMeta("rel.devices", '{"view":"a"}');
+    fill();
+    dropStaleRelated(db);
+    expect(edges(), "the index names no view").toBe(0);
+    expect(meta("rel.devices")).toBeNull();
+    // edges named for no view are left for the pass (it builds the table whole): nothing to compare
+    setMeta("fts.devices", '{"view":"c"}');
+    setMeta("rel.devices", null);
+    fill();
+    dropStaleRelated(db);
+    expect(edges(), "named for no view").toBe(2);
+    expect(meta("rel.devices")).toBeNull();
+    // called twice: the same
+    setMeta("rel.devices", '{"view":"old"}');
+    dropStaleRelated(db);
+    dropStaleRelated(db);
+    expect(edges()).toBe(0);
+    db.exec("DELETE FROM file_related_devices");
+    setMeta("fts.devices", null);
+    setMeta("fts.agents", null);
   });
 });
 
