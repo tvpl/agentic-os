@@ -1,5 +1,5 @@
 import path from "node:path";
-import { realpathLenient } from "../security/paths.js";
+import { leavesBase, realpathLenient } from "../security/paths.js";
 import {
   deniedDirs,
   resolveFolderAccess,
@@ -175,7 +175,7 @@ export function checkRunFolders(
 function isUnder(outer: string, inner: string): boolean {
   const within = (o: string, i: string) => {
     const rel = path.relative(o, i);
-    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+    return rel === "" || (!leavesBase(rel) && !path.isAbsolute(rel));
   };
   return (
     within(path.resolve(outer), path.resolve(inner)) || within(realpathLenient(outer), realpathLenient(inner))

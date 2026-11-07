@@ -4,10 +4,18 @@ import { PathAccessError } from "../errors.js";
 
 export { PathAccessError };
 
+/**
+ * Whether a path relative to a base (`path.relative`) leaves it: its first segment is exactly `..`. A text prefix is not
+ * the test: `..z` is a folder named so, inside the base (round 4 finding 2).
+ */
+export function leavesBase(rel: string): boolean {
+  return /^\.\.(?:[\\/]|$)/.test(rel);
+}
+
 /** True when `child` is `parent` or inside it (after resolution). */
 export function isInside(parent: string, child: string): boolean {
   const rel = path.relative(path.resolve(parent), path.resolve(child));
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  return rel === "" || (!leavesBase(rel) && !path.isAbsolute(rel));
 }
 
 /** True when `candidate` is inside (or equal to) at least one of `roots`. */

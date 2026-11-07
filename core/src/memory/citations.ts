@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import type { FolderAudience } from "@mordomo/contracts";
 import type { MordomoPaths } from "../paths.js";
-import { realpathLenient } from "../security/paths.js";
+import { leavesBase, realpathLenient } from "../security/paths.js";
 import { deniedDirs, type FolderAccess } from "./folderAccess.js";
 
 /** What a hidden folder is written as in free text a device or an agent reads (plan amendment 5). */
@@ -46,7 +46,7 @@ export function citationRedactor(
     const relTo = (base: string): string | null => {
       for (const b of new Set([path.resolve(base), realpathLenient(base)])) {
         const rel = path.relative(b, abs);
-        if (rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)) return rel.split(path.sep).join("/");
+        if (rel !== "" && !leavesBase(rel) && !path.isAbsolute(rel)) return rel.split(path.sep).join("/");
       }
       return null;
     };
