@@ -426,7 +426,14 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   others, and the owner reads all. The cost: a device cannot read the older versions of a note that was moved, renamed
   or deleted while a folder is hidden from devices, even one that moved between two visible folders (its new path's
   versions are read), until the owner restores it; with nothing hidden from devices nothing changes (plan amendment
-  16). A device with a hidden folder is given no count of the index pass
+  16). **A known limit:** a note renamed outside the system (in a file manager, by a script) into a folder hidden from
+  devices, with a new file written at the old name before the index has passed, leaves no removal on record: the old
+  name has a file again, so the rule sees neither a removal nor a missing file, and a device can read the older versions
+  of the note that left until the next pass records the change as an edit; even then the older versions stay readable,
+  because nothing says the first note is gone. Closing it needs a note identifier written at write time, which the system
+  does not keep (plan amendment 17). A move the system makes itself (the cleanup's move) is recorded at once and is not
+  in this limit. A device with a hidden folder, or one whose index is its own because a root holds `artifacts/exports/`
+  or `guard/`, is given no count of the index pass
   (`lastIndex.stats`, the progress of a pass, the `index.*` events, the inbox row "Index finished" are zero or absent;
   the doctor report prints no "files scanned" and counts and names only the indexed folders the device sees;
   `semantic.vectors` counts the vectors of the files it sees), and a row or event about a hidden folder (an `fsWatch` sentinel's, `messageParams.folder`) does not exist for it:

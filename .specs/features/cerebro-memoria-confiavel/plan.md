@@ -690,6 +690,19 @@ memory_over_budget`, `413 note_too_large` e `429 too_many_proposals`. As rotas, 
     Limite escrito (achado 6): `effects` planeja cada fato contra os fatos como estão agora, não depois das operações
     anteriores da mesma decisão; isso nunca esconde uma mudança num fato do dono. Está em `docs/security.md`.
 
+20. **"Dentro de" compara segmentos, e a contagem do índice segue o índice do dispositivo (rodada 4 da verificação,
+    parte 2, achados 2, 4 e 7(b); correção de construção, sem pergunta).** Cada regra só estreita. (a) Um caminho relativo
+    sai da base só quando seu primeiro segmento é exatamente `..`; `..z` é uma pasta de nome assim, **dentro**. O teste de
+    texto `startsWith("..")` estava em `isInside` (`core/src/security/paths.ts`), na checagem de "dentro de `exports/` ou
+    `guard/`" da execução de um dispositivo e no redator de citações; um dispositivo com escopo `run` pedia uma execução
+    em `exports/..z` ou `guard/..g` e a recebia. Agora há uma função, `leavesBase`, e os três a usam. As cópias que falham
+    fechadas (a origem de um skill, a edição de `memory/..x.md`, a ignorada da faxina, a árvore) ficam, cada uma com sua
+    razão no `checks.md`. (b) O que um dispositivo recebe de contagem do índice (a passada, o progresso, os eventos
+    `index.*`, a linha "Index finished", o relatório do doutor, `semantic.vectors`) é decidido por `ownIndex()`: o índice que
+    ele lê não é o do dono, seja por pasta escondida seja por uma raiz que guarda `artifacts/exports/` ou `guard/`.
+    (c) Uma nota renomeada **fora do sistema** para uma pasta escondida, com um arquivo novo no nome antigo antes da passada
+    do índice, deixa o dispositivo ler as versões antigas: limite conhecido da emenda 17, escrito em `docs/security.md`.
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C7 - o escopo e a decisão pendente do dono (consolidação ligada ou desligada).
