@@ -5,7 +5,7 @@ import { parseSkillFile } from "./parse.js";
 import type { MordomoPaths } from "../paths.js";
 import { SkillFrontmatterSchema, type Skill, type SkillFrontmatter, type SkillResource, type SkillResourceKind } from "./types.js";
 import { isValidId, resolveInsideDir } from "../security/ids.js";
-import { PathAccessError } from "../security/paths.js";
+import { PathAccessError, realpathLenient } from "../security/paths.js";
 import {
   homeReadScope,
   listWorkspaceDir,
@@ -18,6 +18,9 @@ import {
 } from "../security/safeFs.js";
 import { copyTreeWithoutLinks, writeWorkspaceFile } from "../security/safeWrite.js";
 import type { StoreProblem } from "../routines/store.js";
+import { defaultSettings } from "../config/schema.js";
+import { askedFolder, takesFolder } from "../runs/protectedFolder.js";
+import { NATUREZA_AGENT_BLOCK } from "../memory/natureza.js";
 
 /** A SKILL.md body at or above this many lines is flagged "thick" (ARMS S-L2). */
 export const THICK_LINE_THRESHOLD = 150;
@@ -406,7 +409,7 @@ export class SkillCatalog {
    * so a skill never reaches for `memory/…` or `config/…` relative to where it is: it is told here. A memory skill
    * is also told how to reach the memory routes of the local API without the owner token.
    */
-  locationsBlock(skill: Skill): string {
+  locationsBlock(skill: Skill, inputs: Record<string, string> = {}): string {
     const lines = [`Skill folder (yours to read): ${skill.dir}`];
     if (skill.memoryAccess) {
       const memory = this.paths.memory;
@@ -417,20 +420,40 @@ export class SkillCatalog {
         `  daily journal: ${path.join(memory, "journal")}${path.sep}YYYY-MM-DD.md`,
         "Local API for the memory routes only: the environment variables MORDOMO_URL (base address) and MORDOMO_RUN_TOKEN (credential of this run only, sent as the header x-mordomo-token). If they are not set, there is no API for this run: use the files above and skip what needs the API, and say so. There is no other token and no other file to read: never look in the config folder of the home.",
       );
+      // A folder of the user handed to read only (cerebro-organizar, door 5); the engine checks it when the run starts.
+      const folder = takesFolder(skill) ? askedFolder(inputs) : null;
+      if (folder !== null) lines.push(`Folder to organize (read-only): ${realpathLenient(path.resolve(folder))}`);
+    } else if (defaultSettings().memorySkills.includes(skill.slug)) {
+      // A built-in memory skill the owner took out of the list: it is told why it has no memory, and how to get it.
+      lines.push(
+        `This skill works on the second brain, but "${skill.slug}" is not in the owner's settings.memorySkills, so this run has no memory folder and no API: say so and stop. The owner adds it with PUT /api/settings, memorySkills holding the current list plus "${skill.slug}" (Settings in the Command Centre).`,
+      );
     }
     return lines.join("\n");
   }
 
-  buildRunPrompt(skill: Skill, inputs: Record<string, string>, artifactsDir: string): string {
+  /**
+   * The prompt of a skill run. A run in a work context begins with `contextBlock` (cerebro-contextos, AC 21), before
+   * the rest: what the run is about comes first.
+   */
+  buildRunPrompt(
+    skill: Skill,
+    inputs: Record<string, string>,
+    artifactsDir: string,
+    contextBlock?: string,
+  ): string {
     const notesFile = this.notesFile(skill);
     const notes = (this.readText(notesFile) ?? "").trim();
     const inputLines = skill.inputs
       .map((input) => `- ${input.label} (${input.name}): ${inputs[input.name]?.trim() || "(not provided)"}`)
       .join("\n");
     return [
+      contextBlock ?? "",
       `You are executing the "${skill.name}" skill from this machine's MordomoOS skill catalog.`,
       `Read the skill definition at: ${skill.skillFile}`,
-      this.locationsBlock(skill),
+      this.locationsBlock(skill, inputs),
+      // A run with memory access reads what the agents' files say about the nature of what it recalls (AC 15).
+      skill.memoryAccess ? NATUREZA_AGENT_BLOCK.join("\n") : "",
       skill.resources.length > 0
         ? `The skill folder contains extra resource files; read ONLY the ones the skill's router points you to for this task.`
         : "",

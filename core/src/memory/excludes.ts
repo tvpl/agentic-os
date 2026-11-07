@@ -64,6 +64,114 @@ export function isBinaryBuffer(buf: Uint8Array): boolean {
   return false;
 }
 
+// ---- the access of folders (.specs/features/cerebro-memoria-confiavel, door 12) ------------------------------------
+
+/** The levels, from the one that lets most through to the one that lets nothing through. */
+const LEVEL_ORDER = ["write", "read", "hide"] as const;
+export type AccessLevel = (typeof LEVEL_ORDER)[number];
+
+/** The stricter of two levels. */
+export function stricterLevel(a: AccessLevel, b: AccessLevel): AccessLevel {
+  return LEVEL_ORDER.indexOf(a) >= LEVEL_ORDER.indexOf(b) ? a : b;
+}
+
+/**
+ * One entry of the access of folders, as the filter applies it: the absolute spellings that name the folder (its real
+ * path and the path as written) and its level for one audience. No spelling at all covers every path (the `"*"` an
+ * unreadable list reads as).
+ */
+export interface AccessRule {
+  spellings: string[];
+  level: AccessLevel;
+  /** Covers every path: the entry `"*"`. */
+  all?: boolean;
+}
+
+/**
+ * The level the rules give a path, as comparable segments: the rule whose spelling is the longest prefix of it by whole
+ * segments decides (so `notes/fin` covers `notes/fin/a.md` and not `notes/fin2/`); two rules as specific give the
+ * stricter of their levels; no rule gives `write`.
+ */
+export function decideLevel(
+  rules: ReadonlyArray<{ segs: ReadonlyArray<readonly string[]>; level: AccessLevel; all?: boolean }>,
+  segs: readonly string[],
+): AccessLevel {
+  let best: AccessLevel | null = null;
+  let bestLength = -1;
+  for (const rule of rules) {
+    const lengths = rule.all ? [0] : rule.segs.filter((s) => s.length <= segs.length && s.every((seg, i) => segs[i] === seg)).map((s) => s.length);
+    for (const length of lengths) {
+      if (length > bestLength) {
+        best = rule.level;
+        bestLength = length;
+      } else if (length === bestLength && best !== null) {
+        best = stricterLevel(best, rule.level);
+      }
+    }
+  }
+  return best ?? "write";
+}
+
+/**
+ * The marker an access view of the settings adds to `excludes` (`core/src/memory/folderAccess.ts`): every filter made
+ * from that list (`makeWorkspaceFilter`, so every read scope and every stored-row filter) then refuses a path the rules
+ * give `hide`, and the paths of `deny` whatever the rules say. It starts with a NUL, which no glob of the owner holds and
+ * no path segment matches, so a filter that did not know it would refuse nothing more and nothing less than before.
+ */
+const ACCESS_MARK = "\u0000folder-access:";
+
+export interface AccessMark {
+  rules: AccessRule[];
+  /** Folders hidden whatever the rules say (`artifacts/exports/` for a device, G11). */
+  deny: string[];
+}
+
+/** The `excludes` entry that carries `mark`. */
+export function accessExclude(mark: AccessMark): string {
+  return ACCESS_MARK + JSON.stringify(mark);
+}
+
+/** Whether an `excludes` entry is an access mark rather than a glob of the owner. */
+export function isAccessExclude(entry: string): boolean {
+  return entry.startsWith(ACCESS_MARK);
+}
+
+/**
+ * The test an access mark makes of an absolute path: true when it is hidden. A mark that cannot be read hides every
+ * path (fail closed), and so does a path that is not absolute: there is nothing to judge it by.
+ */
+function accessHider(entries: readonly string[], platform: NodeJS.Platform): ((absolute: string | undefined) => boolean) | null {
+  const marks = entries.filter(isAccessExclude);
+  if (marks.length === 0) return null;
+  const parsed: Array<{ rules: Array<{ segs: string[][]; level: AccessLevel; all?: boolean }>; deny: string[][] } | null> =
+    marks.map((entry) => {
+      try {
+        const mark = JSON.parse(entry.slice(ACCESS_MARK.length)) as AccessMark;
+        if (!Array.isArray(mark.rules) || !Array.isArray(mark.deny)) return null;
+        return {
+          rules: mark.rules.map((rule) => ({
+            segs: rule.spellings.map((s) => comparableSegments(path.resolve(s), platform)),
+            level: LEVEL_ORDER.includes(rule.level) ? rule.level : "hide",
+            ...(rule.all ? { all: true } : {}),
+          })),
+          deny: mark.deny.map((d) => comparableSegments(path.resolve(d), platform)),
+        };
+      } catch {
+        return null;
+      }
+    });
+  return (absolute) => {
+    if (absolute === undefined || !path.isAbsolute(absolute)) return true;
+    const segs = comparableSegments(path.resolve(absolute), platform);
+    return parsed.some(
+      (mark) =>
+        mark === null ||
+        mark.deny.some((d) => d.length <= segs.length && d.every((seg, i) => segs[i] === seg)) ||
+        decideLevel(mark.rules, segs) === "hide",
+    );
+  };
+}
+
 export interface WorkspaceFilterOptions {
   /**
    * The MordomoOS home. Its `config/` and `logs/` are never served. Required, so
@@ -100,7 +208,7 @@ export interface WorkspaceFilter {
  * drops, and on macOS in one Unicode form (APFS and HFS+ treat `é` written as one character or as `e` plus an
  * accent as the same name).
  */
-function comparableSegments(p: string, platform: NodeJS.Platform): string[] {
+export function comparableSegments(p: string, platform: NodeJS.Platform = process.platform): string[] {
   const insensitive = platform === "darwin" || platform === "win32";
   return segmentsOf(p).map((seg) => {
     const trimmed = platform === "win32" ? seg.replace(/[. ]+$/, "") : seg;
@@ -143,8 +251,9 @@ export function makeWorkspaceFilter(
   excludes: ReadonlyArray<string>,
   options: WorkspaceFilterOptions,
 ): WorkspaceFilter {
-  const userMatch = makeExcludeMatcher([...excludes]);
   const platform = options.platform ?? process.platform;
+  const userMatch = makeExcludeMatcher(excludes.filter((entry) => !isAccessExclude(entry)));
+  const hidden = accessHider(excludes, platform);
   const privateDirs = options.homeDir ? homePrivateDirs(options.homeDir, platform) : [];
   const homePrivateReason = (absolute: string): string | null => {
     if (privateDirs.length === 0 || !path.isAbsolute(absolute)) return null;
@@ -169,6 +278,7 @@ export function makeWorkspaceFilter(
   const reasonToSkip = (rel: string, absolute?: string): string | null => {
     const blocked = hardBlockedSegment(absolute ?? rel) ?? hardBlockedSegment(rel);
     if (blocked) return `Path is inside a protected directory (${blocked}/) and is never read.`;
+    if (hidden?.(absolute)) return "This folder is hidden from this caller (its access in Settings › Memory).";
     const homePrivate = absolute ? homePrivateReason(absolute) : null;
     if (homePrivate) return homePrivate;
     if (isSecretFile(path.basename(absolute ?? rel))) {

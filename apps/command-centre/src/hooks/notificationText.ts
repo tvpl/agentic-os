@@ -1,3 +1,12 @@
+import { tf, type TKey } from "../i18n";
+
+/** The reminders of the dashboards (cerebro-paineis, amendment 16): the text the interface writes for each rule. */
+const REMINDER_KEYS: Record<string, TKey> = {
+  "reminder.overdue": "reminder.overdue",
+  "reminder.due_today": "reminder.due_today",
+  "reminder.project_behind": "reminder.project_behind",
+};
+
 /** Translate persisted legacy system templates, preserving user-authored names and prompts. */
 export function notificationText(
   title: string,
@@ -5,6 +14,26 @@ export function notificationText(
   locale: string,
   message?: { messageKey?: string | null; messageParams?: Record<string, string | number | boolean> | null },
 ) {
+  const reminder = message?.messageKey ? REMINDER_KEYS[message.messageKey] : undefined;
+  if (reminder)
+    return {
+      title: tf(locale.startsWith("pt") ? "pt-BR" : "en", reminder, {
+        text: String(message?.messageParams?.text ?? ""),
+      }),
+      body,
+    };
+  // What agents proposed (cerebro-memoria-confiavel, door 11, AC 53): the server writes one language; both are here.
+  const lang = locale.startsWith("pt") ? "pt-BR" : "en";
+  if (message?.messageKey === "sentinel.proposalsPending")
+    return {
+      title: tf(lang, "proposals.notification", { n: String(message.messageParams?.count ?? "?") }),
+      body:
+        lang === "pt-BR"
+          ? "O que os agentes propuseram gravar na memória espera em Revisões › Do agente: aceite tudo, parte ou nada."
+          : body,
+    };
+  if (message?.messageKey === "proposals.invalidNotice")
+    return { title: tf(lang, "proposals.invalidNotice"), body };
   if (!locale.startsWith("pt")) return { title, body };
   if (message?.messageKey) {
     const p = message.messageParams ?? {};
@@ -64,6 +93,12 @@ export function notificationText(
         return {
           title: `${p.count ?? "?"} arquivos alterados`,
           body: `Alterações em ${p.folder ?? ""}. O índice de memória está sendo atualizado.`,
+        };
+      case "sentinel.reviewDue":
+        // cerebro-natureza, amendment 16: the server writes "N items to review", N shown as `display` ("20+").
+        return {
+          title: tf("pt-BR", "reviews.notification", { n: String(p.display ?? p.count ?? "?") }),
+          body: "Notas cuja revisão venceu esperam em Revisões: confirme, atualize, adie ou deixe para lá.",
         };
       case "sentinel.connectorDelta":
         return {

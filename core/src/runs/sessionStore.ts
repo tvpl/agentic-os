@@ -45,6 +45,8 @@ export interface CreateSessionInput {
   title: string;
   /** Only set when the caller already knows the provider-side id (rare). */
   providerSessionId?: string | null;
+  /** The work context the conversation runs in (cerebro-contextos, door 4); every run that continues it keeps it. */
+  contextId?: string | null;
 }
 
 /** How a finished run moves a session forward. */
@@ -69,8 +71,8 @@ export class SessionStore {
     const now = Date.now();
     this.db
       .prepare(
-        `INSERT INTO sessions (id, provider, provider_session_id, cwd, profile, title, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, provider, provider_session_id, cwd, profile, title, created_at, updated_at, context_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -81,11 +83,19 @@ export class SessionStore {
         sessionTitle(input.title),
         now,
         now,
+        input.contextId ?? null,
       );
     const record = this.get(id);
     if (!record) throw new Error("session insert failed");
     this.bus?.emit("session.created", { sessionId: id, provider: record.provider, title: record.title });
     return record;
+  }
+
+  /** The work context of a conversation (`sessions.context_id`); null without one, undefined for no conversation. */
+  contextIdOf(id: string): string | null | undefined {
+    const row = this.db.prepare("SELECT context_id FROM sessions WHERE id = ?").get(id) as
+      { context_id: string | null } | undefined;
+    return row ? row.context_id : undefined;
   }
 
   get(id: string): SessionRecord | null {

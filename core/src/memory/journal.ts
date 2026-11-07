@@ -25,7 +25,15 @@ export interface JournalEntry {
   date?: string;
   /** Prefix the line with a HH:MM stamp (default true). */
   timestamp?: boolean;
+  /**
+   * An agent wrote it (a run's credential, an MCP tool): the line ends with ` (autor:: agente)`
+   * (.specs/features/cerebro-memoria-confiavel, door 9).
+   */
+  agent?: boolean;
 }
+
+/** The mark of a journal line an agent wrote. */
+export const AGENT_LINE_MARK = " (autor:: agente)";
 
 export interface JournalDay {
   date: string;
@@ -147,9 +155,14 @@ export function listJournalDates(paths: MordomoPaths, limit = 60): string[] {
 }
 
 /** The last `days` days that have a journal (today included when it exists). */
-export function recentJournals(paths: MordomoPaths, days = 7, today: string = localDateString()): JournalDay[] {
+export function recentJournals(
+  paths: MordomoPaths,
+  days = 7,
+  today: string = localDateString(),
+  /** The scope the days are read through (a caller's own, which may hide `journal/`); one for the whole window. */
+  scope = homeReadScope(paths.home, [paths.memory]),
+): JournalDay[] {
   const out: JournalDay[] = [];
-  const scope = homeReadScope(paths.home, [paths.memory]); // one scope for the whole window
   for (let i = 0; i < days; i++) {
     try {
       const day = readJournal(paths, shiftDate(today, -i), scope);
@@ -180,7 +193,7 @@ export function appendJournal(paths: MordomoPaths, entry: JournalEntry): Journal
     entry.timestamp === false
       ? ""
       : `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")} `;
-  const bullet = `- ${stamp}${line}`;
+  const bullet = `- ${stamp}${line}${entry.agent ? AGENT_LINE_MARK : ""}`;
 
   const day = ensureJournal(paths, date);
   const lines = day.content.split("\n");

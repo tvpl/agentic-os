@@ -13,7 +13,7 @@ export type { TabsProps, TabItem, TabsVariant } from "./Tabs";
 export { Switch } from "./Switch";
 export type { SwitchProps } from "./Switch";
 export { DropdownMenu } from "./Menu";
-export type { DropdownMenuProps, MenuItem } from "./Menu";
+export type { DropdownMenuProps, MenuEntry, MenuItem, MenuNote, MenuSeparator } from "./Menu";
 export { Tooltip, UiProvider } from "./Tooltip";
 export type { TooltipProps } from "./Tooltip";
 export {

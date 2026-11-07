@@ -25,6 +25,7 @@ import {
   type Block,
 } from "../../brain/markdown";
 import { openNoteEditor } from "../../brain/noteEvents";
+import { RequestFailed } from "../../brain/RequestFailed";
 import { BrainGlyph } from "./BrainGlyph";
 import type { ContentKind } from "./brainGlyphs";
 import { starLabel } from "./brainModel";
@@ -85,6 +86,9 @@ export interface BrainSceneReaderProps {
   trail?: ReactNode;
   context: RailGroup[];
   nearby: RailEntry[];
+  /** The related files could not be loaded: the "nearby" list gives way to the error and its retry. */
+  relatedFailed?: boolean;
+  onRelatedRetry?: () => void;
   terms: Array<{ term: string; n: number }>;
   pinned: ReadonlySet<string>;
   kindOfId: (id: number) => ContentKind | null;
@@ -240,7 +244,12 @@ export const BrainSceneReader = memo(function BrainSceneReader(p: BrainSceneRead
           />
         ))}
       </section>
-      {p.nearby.length > 0 && (
+      {p.relatedFailed && (
+        <section className="bs-rail-sec">
+          <RequestFailed message={t("brain.related.failed")} onRetry={() => p.onRelatedRetry?.()} />
+        </section>
+      )}
+      {!p.relatedFailed && p.nearby.length > 0 && (
         <section className="bs-rail-sec">
           <RailList
             title={t("scene.brain.nearby")}

@@ -8,10 +8,10 @@ import { errorMessage } from "./shared";
  * (`useBrainState`) and the panels. This file loads the data, owns the
  * selection, translates canvas hits into navigation and lays the pieces out.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, type GraphData, type IndexProgressPayload, type RunSummary } from "../api";
 import { apiCall } from "../apiCall";
-import { useToast } from "../components/ui";
+import { Skeleton, useToast } from "../components/ui";
 import { useLang, useT, type TKey } from "../i18n";
 import { useOsEvent } from "../hooks/useEventStream";
 import { useOsNavigate } from "../hooks/useViewTransition";
@@ -56,8 +56,18 @@ import {
 } from "../brain/engine/world";
 import { saveLocalSettings, settingsFromUi } from "../brain/state";
 import "../brain/brain.css";
+import { graphRequest, useBrainSearch } from "../brain/memoryData";
+import type { Natureza } from "../brain/natureza";
+import { useWorkContext } from "../contexts/useWorkContext";
 import { useCommands, type Command } from "../commands/registry";
 import { openNoteEditor } from "../brain/noteEvents";
+import {
+  BrainViewSwitch,
+  NotesView,
+  ReviewsView,
+  useBrainMode,
+  useBrainViewCommands,
+} from "../brain/BrainViewSwitch";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
 /**
@@ -76,7 +86,6 @@ const LIST_BESIDE_PREVIEW_QUERY = "(min-width: 1100px)";
 const LIST_BESIDE_PREVIEW_GAP_PX = 12;
 /** Zoom a double-click on a file dives to (a single click uses the camera's focus zoom, never zooming out). */
 const FILE_DIVE_K = 3.2;
-const GRAPH_PATH = "/api/memory/graph?maxNodes=3000";
 const LAYOUT_KEYS: Record<
   LayoutKind,
   | "brain.layout.arcs"
@@ -92,7 +101,33 @@ const LAYOUT_KEYS: Record<
   rings: "brain.layout.rings",
 };
 
+/**
+ * The brain of the frame (and the Núcleo's classic map): the row "Grafo | Notas" (.specs/features/cerebro-vista-notas,
+ * AC 1), then the graph at `/brain` or the notes view at `/brain/notes`. Leaving the graph keeps its selection and
+ * camera for the way back (the navigation snapshot of `useBrainState`).
+ */
 export default function SecondBrain() {
+  const brain = useBrainMode();
+  useBrainViewCommands(brain);
+  return (
+    <div className="brain-app" data-mode={brain.mode}>
+      <BrainViewSwitch mode={brain.mode} onChoose={(mode) => brain.go(mode)} />
+      {brain.mode === "notes" ? (
+        <Suspense fallback={<Skeleton lines={6} />}>
+          <NotesView onShowInGraph={(id) => brain.go("graph", `?sel=${id}&local=1&hops=1`)} />
+        </Suspense>
+      ) : brain.mode === "reviews" ? (
+        <Suspense fallback={<Skeleton lines={6} />}>
+          <ReviewsView />
+        </Suspense>
+      ) : (
+        <SecondBrainGraph />
+      )}
+    </div>
+  );
+}
+
+function SecondBrainGraph() {
   const t = useT();
   const lang = useLang();
   const toast = useToast();
@@ -115,7 +150,6 @@ export default function SecondBrain() {
   const [missingSelection, setMissingSelection] = useState(false);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
-  const [hits, setHits] = useState<Array<{ id: number; name: string; rel: string }>>([]);
   const [dangling, setDangling] = useState<string[]>([]);
   const [timeline, setTimeline] = useState<{ value: number | null; playing: boolean }>({
     value: null,
@@ -129,7 +163,10 @@ export default function SecondBrain() {
   const [liveCount, setLiveCount] = useState(0);
 
   /* ---------- data ---------- */
-  const graphQuery = useApiQuery<GraphData>(qk.memoryGraph(GRAPH_PARAMS), GRAPH_PATH);
+  // In the active work context (cerebro-contextos AC 32): its files only; the whole index without one.
+  const work = useWorkContext();
+  const graphReq = graphRequest(GRAPH_PARAMS.maxNodes, work.query);
+  const graphQuery = useApiQuery<GraphData>(graphReq.key, graphReq.path, { enabled: work.ready });
   const skillsQuery = useOsSkills();
   const routinesQuery = useOsRoutines();
   const connectorsQuery = useOsConnectors();
@@ -313,25 +350,8 @@ export default function SecondBrain() {
   }, [ui.sel, version, world, dirty, centerOn, wantFocus, t]);
 
   /* ---------- search-as-you-type (server hits) ---------- */
-  useEffect(() => {
-    const q = ui.query.trim();
-    if (!q) {
-      setHits([]);
-      return;
-    }
-    let cancelled = false;
-    const id = window.setTimeout(() => {
-      void apiCall("GET /api/memory/search", { query: { q: q, limit: 8 } })
-        .then((res) => {
-          if (!cancelled) setHits(res);
-        })
-        .catch(() => undefined);
-    }, 180);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(id);
-    };
-  }, [ui.query]);
+  const [natureza, setNatureza] = useState<Natureza[]>([]);
+  const search = useBrainSearch(ui.query, 8, work.query, natureza);
 
   /* ---------- timeline playback ---------- */
   const range = brain.range;
@@ -752,7 +772,11 @@ export default function SecondBrain() {
           ui={ui}
           patch={patch}
           searchRef={searchRef}
-          hits={hits}
+          hits={search.hits}
+          natureza={natureza}
+          onNatureza={setNatureza}
+          searchFailed={search.failed}
+          onSearchRetry={search.retry}
           facets={brain.facets}
           kindCounts={brain.kindCounts}
           timeline={{ range, value: timeline.value, playing: timeline.playing }}

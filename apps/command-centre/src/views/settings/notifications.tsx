@@ -218,14 +218,25 @@ function OutsideTabToggles() {
 }
 
 type SentinelKey =
-  "fsWatch" | "repeatedFailure" | "silentRoutine" | "connectorDelta" | "repeatDetector" | "triage";
+  | "fsWatch"
+  | "repeatedFailure"
+  | "silentRoutine"
+  | "connectorDelta"
+  | "repeatDetector"
+  | "reviewDue"
+  | "triage"
+  | "proposalsPending";
 const SENTINEL_KEYS: SentinelKey[] = [
   "repeatedFailure",
   "silentRoutine",
   "connectorDelta",
   "repeatDetector",
   "fsWatch",
+  // The reviews that fell due, once a day (cerebro-natureza, amendment 16).
+  "reviewDue",
   "triage",
+  // What agents proposed, once a day (cerebro-memoria-confiavel, door 11, G19).
+  "proposalsPending",
 ];
 
 export function SentinelsCard({ s, put }: { s: SettingsShape; put: Put }) {
@@ -255,7 +266,7 @@ export function SentinelsCard({ s, put }: { s: SettingsShape; put: Put }) {
           <h2>{t("apps.settings.sentinels")}</h2>
           <p className="hint">{t("apps.settings.sentinelsHint")}</p>
         </div>
-        {SENTINEL_KEYS.map((key) => (
+        {SENTINEL_KEYS.filter((key) => sentinels[key]).map((key) => (
           <div className="apps-sound" key={key}>
             <div className="min0">
               <strong>{t(`apps.settings.sentinel.${key}`)}</strong>

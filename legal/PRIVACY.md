@@ -57,6 +57,10 @@ desligada por padrão), guarda também um vetor numérico por nota, calculado na
 `hash` ou por um endereço que você configurou (veja a linha "Embeddings da busca semântica" na seção 4.1).
 Desligar a busca semântica apaga os vetores na próxima indexação.
 
+Um painel (`memory/dashboards/`) guarda o último retrato do que mostra no banco local, e portanto nas cópias de
+segurança: num widget ligado a um conector, isso inclui os títulos e subtítulos dos itens de conector que ele mostra
+(assuntos de e-mail, eventos da agenda), substituídos a cada atualização e apagados com o painel.
+
 `mordomo uninstall` para o serviço e **preserva** os dados; `mordomo uninstall --purge` apaga o estado.
 `mordomo backup` copia a casa para dentro dela mesma (`config/backups/`). Apagar a casa apaga tudo que o
 MordomoOS guardou; ele não mantém cópia em outro lugar.

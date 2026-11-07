@@ -36,13 +36,15 @@ import {
   type Box,
 } from "./shell";
 
-const MAIN = ["nucleo", "brain", "runs", "skills", "routines"] as const;
+// cerebro-paineis, C81 (amendment 25): "Painéis" is the sixth main scene, on key 6.
+const MAIN = ["nucleo", "brain", "runs", "skills", "routines", "dashboards"] as const;
 const PATHS: Record<string, string> = {
   nucleo: "/",
   brain: "/brain",
   runs: "/runs",
   skills: "/skills",
   routines: "/routines",
+  dashboards: "/dashboards",
   connectors: "/connectors",
   artifacts: "/artifacts",
   generations: "/generations",
@@ -88,6 +90,7 @@ async function blur(page: Page) {
 }
 
 test("the spine travels by click, by 1–5 and by [ ], and reaches every scene", async ({ page }) => {
+  test.setTimeout(60_000); // about 28 s with the sixth main scene, near the 30 s default
   await openShell(page);
   await arrived(page, "nucleo");
   const spine = page.locator('nav.nu-spine[data-onboarding="modes"]');
@@ -97,7 +100,7 @@ test("the spine travels by click, by 1–5 and by [ ], and reaches every scene",
   const order = await spine
     .locator(".nu-mod")
     .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.scene));
-  expect(order.slice(0, 5)).toEqual([...MAIN]);
+  expect(order.slice(0, MAIN.length)).toEqual([...MAIN]);
   expect(order.at(-1)).toBe("settings");
   expect([...order].sort()).toEqual(Object.keys(PATHS).sort());
   await expect(page.locator(".nu-horizon, .nu-hz, .nu-hz-more")).toHaveCount(0);
@@ -139,6 +142,10 @@ test("the spine travels by click, by 1–5 and by [ ], and reaches every scene",
   await blur(page);
   await page.keyboard.press("[");
   await arrived(page, "nucleo");
+  // Back past the Núcleo is the last main scene, now the dashboards (C81), then routines before it.
+  await blur(page);
+  await page.keyboard.press("[");
+  await arrived(page, "dashboards");
   await blur(page);
   await page.keyboard.press("[");
   await arrived(page, "routines");

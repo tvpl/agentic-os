@@ -29,6 +29,9 @@ import {
   type WorkspaceFile,
   dailyPoints,
   isStartupServiceInstalled,
+  contextSyncTarget,
+  generateRouters,
+  type SyncPlan,
 } from "@mordomo/core/internal";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { bind } from "../contract.js";
@@ -56,6 +59,14 @@ function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: s
   }
 }
 import { httpError, principalName, requireAdapter, requireProvider, startedByOf } from "./common.js";
+import {
+  accessView,
+  redactorFor,
+  settingsForDevice,
+  type AccessView,
+  type DeviceRedactor,
+} from "../access.js";
+import { requireContext } from "./contexts.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -103,16 +114,29 @@ function mergeObjects(
   return out;
 }
 
+/** One level only: each field the patch names replaces the current one whole, an object included. */
+function mergeFields(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(patch)) if (value !== undefined) out[key] = value;
+  return out;
+}
+
 /**
- * Merge a partial settings patch over the current settings. `providers.*` and
- * `limits` merge field by field so `{providers:{claude:{enabled:true}}}` keeps
- * `binaryPath`; arrays and every other key replace wholesale.
+ * Merge a partial settings patch over the current settings. `providers.*`
+ * and `limits` merge field by field so `{providers:{claude:{enabled:true}}}`
+ * keeps `binaryPath`; `memory` merges its own fields only (cerebro-organizar,
+ * doors 12 and 13), so `{memory:{agentStance}}` keeps the journal budget while
+ * a `memory.embeddings` the patch carries replaces the stored one whole: an
+ * `apiKeyEnv` it leaves out is dropped, never carried to a new `endpoint`.
+ * Arrays and every other key replace wholesale.
  */
 export function deepMergeSettings(current: Settings, patch: SettingsPatch): Settings {
   const merged: Record<string, unknown> = { ...current };
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
-    if ((key === "providers" || key === "limits") && isPlainObject(value)) {
+    if (key === "memory" && isPlainObject(value)) {
+      merged[key] = mergeFields(merged[key] as Record<string, unknown>, value);
+    } else if ((key === "providers" || key === "limits") && isPlainObject(value)) {
       merged[key] = mergeObjects(merged[key] as Record<string, unknown>, value);
     } else {
       merged[key] = value;
@@ -138,6 +162,23 @@ function assertIndexableFolder(ctx: AppContext, folderPath: string): void {
 }
 
 /** A sync target must live inside the home or an enabled indexed folder. */
+/**
+ * The plan of the sync: into `target` (or the home) with the master router; with a work context, into the context's
+ * first `ok` path with the context's map in the master router's place (.specs/features/cerebro-contextos, AC 30). The
+ * map is brought up to date first, as a regeneration of the routers would.
+ */
+function syncPlan(ctx: AppContext, target: string | undefined, contextId: string | undefined): SyncPlan {
+  const context = contextId === undefined ? null : requireContext(ctx, contextId);
+  if (!context) return ctx.sync.plan(resolveSyncTarget(ctx, target));
+  const settings = ctx.settings();
+  const into = contextSyncTarget({ paths: ctx.paths, settings }, context);
+  if (!into) {
+    throw httpError(409, `None of the paths of the context ${context.id} is ok.`, "context_unavailable");
+  }
+  generateRouters(ctx.db, ctx.paths, settings);
+  return ctx.sync.plan(resolveSyncTarget(ctx, into.target), into.map);
+}
+
 function resolveSyncTarget(ctx: AppContext, target: string | undefined): string {
   if (!target) return ctx.paths.home;
   // Granted folders, on the real path, outside the home's config/ and logs/ (PathAccessError → 403).
@@ -232,9 +273,41 @@ export function artifactTitle(scope: ReadScope, abs: string, kind: ArtifactKind)
 type ArtifactListQueryT = HandlerCall<"artifacts.list">["query"];
 
 /** Walk artifacts/ (bounded), merge run metadata by relative path, filter and sort newest first. */
+/**
+ * The entries of `folderAccess` a patch may store (cerebro-memoria-confiavel, door 12): each path absolute, and inside
+ * `memory/` or an enabled indexed folder (the ones the patch leaves, or the stored ones). `400 validation` otherwise,
+ * and nothing is stored. The levels and the count are the schema's.
+ */
+function assertFolderAccess(
+  ctx: AppContext,
+  entries: ReadonlyArray<{ path: string }>,
+  folders: ReadonlyArray<{ path: string; enabled?: boolean }>,
+): void {
+  const roots = [ctx.paths.memory, ...folders.filter((f) => f.enabled !== false).map((f) => f.path)].map(
+    (r) => realpathLenient(path.resolve(r)),
+  );
+  for (const entry of entries) {
+    if (!path.isAbsolute(entry.path)) {
+      throw httpError(400, `folderAccess: ${entry.path} is not an absolute path.`, "validation");
+    }
+    const real = realpathLenient(path.resolve(entry.path));
+    if (!roots.some((root) => isInside(root, real) || isInside(root, path.resolve(entry.path)))) {
+      throw httpError(
+        400,
+        `folderAccess: ${entry.path} is not inside memory/ or an enabled indexed folder.`,
+        "validation",
+      );
+    }
+  }
+}
+
 export function listArtifacts(
   ctx: AppContext,
   q: ArtifactListQueryT,
+  /** The caller's view (cerebro-memoria-confiavel, G11): a device is never served `artifacts/exports/`. */
+  view: AccessView = accessView(ctx, { kind: "owner" }),
+  /** The caller's redactor when it is a paired device: what it is never served is not listed (round 1, finding 2). */
+  device: DeviceRedactor | null = null,
 ): { items: ArtifactListItem[]; total: number; skills: string[]; folders: string[] } {
   const root = ctx.paths.artifacts;
   const byRel = new Map<string, { runId: string; skillSlug: string | null; createdAt: number }>();
@@ -252,7 +325,7 @@ export function listArtifacts(
 
   const items: ArtifactListItem[] = [];
   // Listed and sized through the safe-read primitive: a link in artifacts/ is not an artifact.
-  const scope = ctx.scopeOf([root]);
+  const scope = view.scopeOf([root]);
   const realRoot = realpathLenient(root);
   const walk = (dir: string, depth: number) => {
     if (items.length >= LIST_MAX_FILES || depth > 6) return;
@@ -271,6 +344,7 @@ export function listArtifacts(
       if (!entry.isFile) continue;
       const rel = path.relative(realRoot, entry.path).split(path.sep).join("/");
       const abs = path.join(root, ...rel.split("/"));
+      if (device?.hiddenArtifact(abs)) continue;
       const meta = byRel.get(rel);
       const kind = artifactKind(entry.name);
       const folder = rel.split("/")[0] ?? "";
@@ -425,7 +499,13 @@ export function registerSystemRoutes(
     };
   });
 
-  bind(app, "settings.get", async () => ctx.settings());
+  // A device reads the settings without `folderAccess` and without the indexed folders and context paths hidden from it
+  // (cerebro-memoria-confiavel, AC 93): the list would name the folders the owner meant to hide.
+  bind(app, "settings.get", async (_input, req) => {
+    const settings = ctx.settings();
+    const view = accessView(ctx, req.principal);
+    return view.audience === "devices" ? settingsForDevice(view, settings) : settings;
+  });
 
   // ---- UI preferences (config/ui-preferences.json) ---------------------------
   bind(app, "uiPreferences.get", async () => ctx.uiPreferences.load());
@@ -487,6 +567,8 @@ export function registerSystemRoutes(
       );
       delete patch.bindAddress;
     }
+    if (patch.folderAccess !== undefined)
+      assertFolderAccess(ctx, patch.folderAccess, patch.indexedFolders ?? before.indexedFolders);
     const newFolders = (patch.indexedFolders ?? []).filter(
       (f) => !before.indexedFolders.some((b) => path.resolve(b.path) === path.resolve(f.path)),
     );
@@ -494,6 +576,14 @@ export function registerSystemRoutes(
 
     // SettingsStore.save() emits `settings.changed` on the event bus.
     const saved = ctx.settingsStore.save(deepMergeSettings(before, patch));
+    // The routers are the map agents read: a change of the access of folders rewrites the ones that exist, so they never
+    // name a folder that is now hidden from agents (cerebro-memoria-confiavel, AC 95).
+    if (patch.folderAccess !== undefined && !isDeepStrictEqual(before.folderAccess, saved.folderAccess)) {
+      if (fs.existsSync(path.join(ctx.paths.memory, "ROUTER.md"))) generateRouters(ctx.db, ctx.paths, saved);
+      // The search index and the related edges of the devices follow the access (door 19, door 20): the first is rebuilt by
+      // the next search, the second by a pass, which starts now. Until it ends a device is told of no "similar content".
+      void ctx.indexer.indexAllAsync().catch(() => undefined);
+    }
     ctx.reloadAdapters();
     ctx.invalidateProviderCache();
     ctx.scheduler.reload();
@@ -537,7 +627,10 @@ export function registerSystemRoutes(
 
   bind(app, "doctor.get", async ({ query: { audit } }, req) => {
     // The HUD of a paired phone asks for the report too; `npm audit` (a network call, 20 s) is for the owner at the desk.
-    return runDoctor(ctx, { npmAudit: audit !== "0" && req.principal?.kind !== "device" });
+    return runDoctor(ctx, {
+      npmAudit: audit !== "0" && req.principal?.kind !== "device",
+      view: accessView(ctx, req.principal),
+    });
   });
 
   /** Hourly samples of the last N days plus their daily fold (Settings › Trends). */
@@ -546,11 +639,16 @@ export function registerSystemRoutes(
     return { days: q.days, samples, daily: dailyPoints(samples) };
   });
 
-  bind(app, "approvals.list", async () => ctx.approvals.list("pending"));
+  // A device is told of no approval of a run in, or that would start in, a folder hidden from devices (amendment 5).
+  bind(app, "approvals.list", async (_input, req) => {
+    const device = redactorFor(ctx, req.principal);
+    return ctx.approvals.list("pending").filter((a) => !device?.hiddenApproval(a));
+  });
   /** One approval by id, any status (the permission tool polls this). */
   bind(app, "approvals.get", async ({ params: { id } }, req) => {
     const approval = ctx.approvals.get(id);
-    if (!approval) throw httpError(404, "Approval not found");
+    if (!approval || redactorFor(ctx, req.principal)?.hiddenApproval(approval))
+      throw httpError(404, "Approval not found");
     if (req.brokerRunId && approval.payload.runId !== req.brokerRunId)
       throw httpError(403, "This approval belongs to another run", "forbidden");
     return approval;
@@ -601,6 +699,12 @@ export function registerSystemRoutes(
     return approval;
   });
   bind(app, "approvals.resolve", async ({ params: { id }, body: { decision, answers } }, req) => {
+    // A device decides no approval it is never told of (amendment 5): it is not there for it.
+    const device = redactorFor(ctx, req.principal);
+    if (device) {
+      const approval = ctx.approvals.get(id);
+      if (!approval || device.hiddenApproval(approval)) throw httpError(404, "Approval not found");
+    }
     if (req.brokerRunId) {
       // The broker only gives up on its own prompt (timeout); approving is the owner's.
       const approval = ctx.approvals.get(id);
@@ -671,25 +775,26 @@ export function registerSystemRoutes(
   });
 
   // ---- Sync ------------------------------------------------------------------
-  bind(app, "sync.plan", async ({ query: { target } }) => {
-    return ctx.sync.plan(resolveSyncTarget(ctx, target));
+  bind(app, "sync.plan", async ({ query: { target, context } }) => {
+    return syncPlan(ctx, target, context);
   });
   bind(app, "sync.apply", async ({ body }) => {
-    const plan = ctx.sync.plan(resolveSyncTarget(ctx, body.target));
+    const plan = syncPlan(ctx, body.target, body.context);
     return ctx.sync.apply(plan, body.approvedConflicts);
   });
 
   // ---- Artifacts gallery (desktop search, /artifacts, /generations) --------
-  bind(app, "artifacts.list", async ({ query: q }) => {
-    return listArtifacts(ctx, q);
+  bind(app, "artifacts.list", async ({ query: q }, req) => {
+    return listArtifacts(ctx, q, accessView(ctx, req.principal), redactorFor(ctx, req.principal));
   });
 
   /** Binary artifact (images / video) for thumbnails — strictly inside the artifacts dir, allow-listed types only. */
-  bind(app, "artifacts.raw", async ({ query: { p } }, _req, reply) => {
+  bind(app, "artifacts.raw", async ({ query: { p } }, req, reply) => {
     let file: WorkspaceFile;
+    if (redactorFor(ctx, req.principal)?.hiddenArtifact(p)) throw httpError(404, "Artifact not found");
     try {
-      // PathAccessError → 403; the descriptor, not the path, is what gets streamed.
-      file = openWorkspaceFile(ctx.scopeOf([ctx.paths.artifacts]), p);
+      // PathAccessError → 403; the descriptor, not the path, is what gets streamed (a device: never artifacts/exports/).
+      file = openWorkspaceFile(accessView(ctx, req.principal).scopeOf([ctx.paths.artifacts]), p);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT" || err instanceof NotRegularFileError)
         throw httpError(404, "Artifact not found");

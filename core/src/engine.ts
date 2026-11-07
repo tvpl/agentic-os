@@ -42,10 +42,15 @@ import { openDb, type Db } from "./db/db.js";
 import { EventBus } from "./events.js";
 import { MordomoError } from "./errors.js";
 import { ExecutionService } from "./execution/service.js";
+import { JsonlLogger } from "./logs/jsonl.js";
 import { MemoryIndexer } from "./memory/indexer.js";
+import { generateRouters } from "./memory/routers.js";
 import { IndexWorkerHost } from "./memory/indexHost.js";
+import { CleanupScanner } from "./memory/cleanupScan.js";
 import { SemanticSearch } from "./memory/semantic.js";
 import { installJournalHooks } from "./memory/journal.js";
+import { installConsolidationHook } from "./memory/consolidationHook.js";
+import { MemoryGuard } from "./memory/memoryGuard.js";
 import { MetricsHistory } from "./metrics/history.js";
 import { PushStore } from "./notifications/pushStore.js";
 import { installNotificationRecorder } from "./notifications/recorder.js";
@@ -56,9 +61,16 @@ import { ensureDirs, resolvePaths, seedHome, tightenHomeFiles, type MordomoPaths
 import { RoutineScheduler } from "./routines/scheduler.js";
 import { RoutineStore } from "./routines/store.js";
 import { RunManager, providerEnvDrop, type CreateRunInput } from "./runs/runManager.js";
+import { takesFolder } from "./runs/protectedFolder.js";
 import { ApprovalStore, requiresFullReview, type Approval } from "./security/approvals.js";
 import { DeviceStore } from "./security/devices.js";
-import { grantedReadScope, readScope, type ReadScope } from "./security/safeFs.js";
+import {
+  grantedReadScope,
+  homeReadScope,
+  readScope,
+  statWorkspacePath,
+  type ReadScope,
+} from "./security/safeFs.js";
 import { writeDecision, type WriteOrigin } from "./security/profiles.js";
 import { SentinelRunner } from "./sentinels/runner.js";
 import { SkillCatalog } from "./skills/catalog.js";
@@ -165,6 +177,8 @@ export class MordomoEngine {
   readonly indexer: MemoryIndexer;
   /** Runs the index passes: in a worker thread when the worker script is there (`memory/indexHost.ts`). */
   readonly indexHost: IndexWorkerHost;
+  /** The scans of the guided cleanup (.specs/features/cerebro-faxina-guiada, S2), one running per scope. */
+  readonly cleanup: CleanupScanner;
   /** The semantic half of the search (off until `memory.embeddings.enabled`); one per engine. */
   readonly semantic: SemanticSearch;
   readonly routines: RoutineStore;
@@ -180,6 +194,8 @@ export class MordomoEngine {
   readonly skillRegistry: SkillRegistry;
   /** Sentinels: the cheap observers plus the triage listener; watching starts with `start()`. */
   readonly sentinels: SentinelRunner;
+  /** The guard of `memory/MEMORY.md` around every write run (cerebro-memoria-confiavel, door 8). */
+  readonly memoryGuard: MemoryGuard;
   /** Registered providers (manifests + factories). */
   readonly providers: ProviderRegistry;
   /** Web Push subscriptions and the VAPID pair. */
@@ -274,7 +290,7 @@ export class MordomoEngine {
         permissionBroker: (run) => this.permissionBrokerFor(run),
         skillAccess: (slug) => {
           const skill = this.skills.load(slug);
-          return skill ? { memory: skill.memoryAccess } : null;
+          return skill ? { memory: skill.memoryAccess, folder: takesFolder(skill) } : null;
         },
         runApiAccess: (run, mode) => this.runApiAccessFor(run, mode),
       },
@@ -293,6 +309,37 @@ export class MordomoEngine {
       bus: this.events,
       getSettings: () => this.settings(),
       indexer: this.indexer,
+    });
+    this.cleanup = new CleanupScanner({
+      db: this.db,
+      paths: this.paths,
+      bus: this.events,
+      getSettings: () => this.settings(),
+    });
+    // The routers follow the index (.specs/features/cerebro-correcoes, S5): a pass that changed rows brings them up to
+    // date before it is announced. Only routers that exist: the first ones are made by the setup, `mordomo index` or the
+    // owner's "Refresh", never by a pass on its own. A regeneration that fails is logged and never fails the pass.
+    this.indexer.setAfterPass(() => {
+      try {
+        statWorkspacePath(
+          homeReadScope(this.paths.home, [this.paths.memory]),
+          path.join(this.paths.memory, "ROUTER.md"),
+        );
+      } catch (error) {
+        // no routers yet: nothing to keep up to date (one that exists but cannot be read is regenerated, and its
+        // failure logged, below)
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      }
+      try {
+        generateRouters(this.db, this.paths, this.settings());
+      } catch (error) {
+        const { logMaxFileBytes, logRetentionDays } = this.settings().limits;
+        new JsonlLogger(this.paths.logs, "memory", logMaxFileBytes, logRetentionDays).append({
+          level: "warn",
+          code: "routers_failed",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
     // An index from before the home's config/ was private may hold rows of it: they go now, not at the next pass.
     try {
@@ -337,6 +384,25 @@ export class MordomoEngine {
         routines: this.routines,
       }),
     );
+    // What an agent writes to the memory waits for the owner (cerebro-memoria-confiavel, doors 6 and 8): a finished
+    // consolidation leaves a proposal, and a write run that changed MEMORY.md is put back with its bytes proposed.
+    this.disposers.push(
+      installConsolidationHook(this.events, {
+        db: this.db,
+        paths: this.paths,
+        getSettings: () => this.settings(),
+        runs: this.runs,
+        notifications: this.notifications,
+      }),
+    );
+    this.memoryGuard = new MemoryGuard({
+      db: this.db,
+      paths: this.paths,
+      getSettings: () => this.settings(),
+      runs: this.runs,
+      notifications: this.notifications,
+    });
+    this.disposers.push(this.memoryGuard.install(this.events));
     this.disposers.push(
       this.events.subscribe((event) => {
         if (event.type !== "run.finished") return;
@@ -663,6 +729,8 @@ export class MordomoEngine {
       skillSlug: input.slug,
       parentRunId: input.parentRunId ?? null,
       startedBy: input.startedBy,
+      ...(input.contextId ? { contextId: input.contextId } : {}),
+      ...(input.folderCheck ? { folderCheck: input.folderCheck } : {}),
     };
   }
 }

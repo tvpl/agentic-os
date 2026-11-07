@@ -138,7 +138,10 @@ async function freshResources() {
     kind: "every",
     every: { value: 1, unit: "hours" },
   });
-  return { objective, run };
+  const dashboard = (await world.call("POST", "/api/dashboards", { template: "overview" })).body as {
+    id: string;
+  };
+  return { objective, run, dashboard };
 }
 
 describe("S1 the route table and the registration", () => {
@@ -159,7 +162,7 @@ describe("S1 the route table and the registration", () => {
   });
 
   it("C53 the table holds the five routes of the second brain with scope, what they read, a schema per success status and their declared errors", () => {
-    expect(entries).toHaveLength(132);
+    expect(entries).toHaveLength(164);
     for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
       const entry = API[want.id];
       expect(entry, key).toBeDefined();
@@ -183,7 +186,23 @@ describe("S1 the route table and the registration", () => {
       )
       .map(([, e]) => routeKey(e))
       .sort();
-    expect(named).toEqual(["GET /api/memory/note", "POST /api/memory/notes", "PUT /api/memory/notes"]);
+    // cerebro-vista-notas: the properties of a note are written by a route of their own, with the same codes.
+    // cerebro-natureza: a review decision writes a note's properties through the same write (door 4).
+    // cerebro-paineis: a dashboard's definition is written with the guarded write of a note (door 1, AD-031), and a
+    // task's box too (amendment 17).
+    // cerebro-memoria-confiavel: a restore of the history writes a note through the same guarded write (door 10), and
+    // so does accepting a proposal (batch A2: a note's new text, a new note, MEMORY.md).
+    expect(named).toEqual([
+      "GET /api/memory/note",
+      "POST /api/memory/history/restore",
+      "POST /api/memory/notes",
+      "POST /api/memory/proposals/:id/decide",
+      "POST /api/memory/reviews",
+      "PUT /api/dashboards/:id",
+      "PUT /api/memory/notes",
+      "PUT /api/memory/notes/properties",
+      "PUT /api/memory/tasks",
+    ]);
   });
 
   it("C1 every route of the router has an entry", async () => {
@@ -191,10 +210,10 @@ describe("S1 the route table and the registration", () => {
     try {
       const router = app.apiRoutes.map((r) => `${r.method} ${r.url}`).sort();
       const table = entries.map(([, e]) => routeKey(e)).sort();
-      expect(router).toHaveLength(132);
+      expect(router).toHaveLength(164);
       expect(table).toEqual(router);
-      expect(new Set(table).size).toBe(132);
-      expect(new Set(entries.map(([id]) => id)).size).toBe(132);
+      expect(new Set(table).size).toBe(164);
+      expect(new Set(entries.map(([id]) => id)).size).toBe(164);
       for (const [id, entry] of entries) {
         expect(id, id).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)+$/);
         expect(entry.summary.length, `${id} summary`).toBeGreaterThan(8);
@@ -223,7 +242,10 @@ describe("S1 the route table and the registration", () => {
         const k = e.public ? "public" : e.scope!;
         counts[k] = (counts[k] ?? 0) + 1;
       }
-      expect(counts).toEqual({ owner: 66, monitor: 33, content: 24, run: 6, approve: 1, public: 2 });
+      // cerebro-memoria-confiavel: the two reads of the history (content) and its restore (owner); batch A2, the two
+      // reads of the review inbox (content) and its two writes (owner); batch B2, the export and the import of a folder
+      // (owner)
+      expect(counts).toEqual({ owner: 86, monitor: 33, content: 36, run: 6, approve: 1, public: 2 });
       expect(entries.filter(([, e]) => e.public && e.scope !== undefined)).toEqual([]);
 
       expect(
@@ -436,6 +458,7 @@ describe("S1 the route table and the registration", () => {
   const ACCEPTS_ANYTHING: Record<string, string[]> = {
     "GET /api/connectors/:id/data": ["query"],
     "GET /api/events": ["query"],
+    "GET /api/memory/status": ["query"],
     "GET /api/providers": ["query"],
     "GET /api/runs/:id/stream": ["query"],
     "GET /api/sync/plan": ["query"],
@@ -445,7 +468,7 @@ describe("S1 the route table and the registration", () => {
   it("C5 every part an entry declares is validated before the handler runs", async () => {
     const asked: string[] = [];
     const accepting: Record<string, string[]> = {};
-    // These four look their resource up before they read the body (`precheck`), so a bad body reaches the schema
+    // These five look their resource up before they read the body (`precheck`), so a bad body reaches the schema
     // only for a resource that exists.
     const fresh = await freshResources();
     const existing: Record<string, string> = {
@@ -453,6 +476,7 @@ describe("S1 the route table and the registration", () => {
       "POST /api/runs/:id/children": `/api/runs/${fresh.run.runId}/children`,
       "PUT /api/connectors/:id": "/api/connectors/order-connector",
       "PUT /api/routines/:id": "/api/routines/order-routine",
+      "PUT /api/dashboards/:id": `/api/dashboards/${fresh.dashboard.id}`,
     };
     for (const [, entry] of entries) {
       const k = routeKey(entry);
@@ -756,7 +780,7 @@ describe("S2 the real answer is checked", () => {
     // A route with no scenario, or a scenario for no route: both are a hole in this proof.
     expect(Object.keys(SCENARIOS).sort()).toEqual(router);
     expect(Object.keys(SCENARIOS).sort()).toEqual(tabled);
-    expect(results).toHaveLength(132);
+    expect(results).toHaveLength(164);
     const problems: string[] = [];
     for (const { key, entry, answer, id } of results) {
       const scenario = SCENARIOS[key]!;
@@ -811,7 +835,8 @@ describe("S2 the real answer is checked", () => {
       };
       const parked: Array<[string, string, unknown]> = [
         ["POST", "/api/runs", { prompt: "write something", mode: "write" }],
-        ["POST", `/api/skills/consolidate-memory/run`, { inputs: {} }],
+        // consolidate-memory only reads since cerebro-memoria-confiavel (AC 74): another bundled write skill parks
+        ["POST", `/api/skills/gauntlet-loop/run`, { inputs: {} }],
         ["POST", `/api/runs/${seed.runId}/children`, { prompts: ["write a thing"], mode: "write" }],
         ["POST", `/api/sessions/${seed.sessionId}/continue`, { prompt: "write on", mode: "write" }],
       ];
@@ -1029,7 +1054,18 @@ describe("S2 the real answer is checked", () => {
       .map(([pair, where]) => `${pair} (${where})`);
     expect(undocumented).toEqual([]);
     // The set the scan reads today, pinned: a raise that appears or disappears is a change to the contract of some route.
-    expect(raised.size).toBe(60);
+    // cerebro-contextos: four more (context_path_not_indexed, context_exists, context_not_found, context_unavailable).
+    // cerebro-organizar: two more (folder_not_indexed, folder_protection_unsupported).
+    // cerebro-vista-notas: three more (unknown_root, front_matter_unreadable, structure_fixed).
+    // cerebro-faxina-guiada: two more (400 scope_required of a cleanup scope, scan_running), and two in batch B
+    // (scan_stale, undo_conflict).
+    // cerebro-paineis, batch A: three more (dashboard_not_found, dashboard_exists, refresh_in_progress), and one in
+    // batch B (no_snapshot).
+    // cerebro-memoria-confiavel, batch A1: two more (provenance_required, fact_overlap), and three in batch A2
+    // (too_many_proposals, proposal_decided, memory_over_budget).
+    // cerebro-memoria-confiavel, batch B1: `403 folder_hidden`, `403 folder_read_only`, `409 folder_hide_unsupported`
+    // cerebro-memoria-confiavel, batch B2: `409 exists` (an export past -99, an import over a folder, G20, AC 110)
+    expect(raised.size).toBe(86);
     expect([...raised.keys()].filter((pair) => pair.includes("<unresolved>"))).toEqual([]);
     expect(raised.has("409 approval_resolved")).toBe(true);
     // The other way: every pair an entry lists as its own is raised somewhere in the tree. A documented answer no code

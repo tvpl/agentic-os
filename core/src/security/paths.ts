@@ -4,10 +4,18 @@ import { PathAccessError } from "../errors.js";
 
 export { PathAccessError };
 
+/**
+ * Whether a path relative to a base (`path.relative`) leaves it: its first segment is exactly `..`. A text prefix is not
+ * the test: `..z` is a folder named so, inside the base (round 4 finding 2).
+ */
+export function leavesBase(rel: string): boolean {
+  return /^\.\.(?:[\\/]|$)/.test(rel);
+}
+
 /** True when `child` is `parent` or inside it (after resolution). */
 export function isInside(parent: string, child: string): boolean {
   const rel = path.relative(path.resolve(parent), path.resolve(child));
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  return rel === "" || (!leavesBase(rel) && !path.isAbsolute(rel));
 }
 
 /** True when `candidate` is inside (or equal to) at least one of `roots`. */
@@ -35,13 +43,30 @@ export function resolveInsideRoots(roots: readonly string[], candidate: string):
  * outside the granted roots. A path with no existing ancestor comes back
  * resolved (absolute, `..` folded) but otherwise as given.
  */
+/**
+ * The real path of `absolute`, or null when it cannot be resolved (a link loop, a missing component): for a rule that
+ * must tell a path that resolves from one that does not (cerebro-memoria-confiavel, G17).
+ */
+export function realpathStrict(absolute: string): string | null {
+  try {
+    return realpathOf(absolute);
+  } catch {
+    return null;
+  }
+}
+
+/** The one raw realpath of the tree: every other reader resolves through `realpathLenient` or `realpathStrict`. */
+function realpathOf(p: string): string {
+  return fs.realpathSync(p);
+}
+
 export function realpathLenient(absolute: string): string {
   const resolved = path.resolve(absolute);
   let head = resolved;
   const tail: string[] = [];
   for (;;) {
     try {
-      return path.join(fs.realpathSync(head), ...tail);
+      return path.join(realpathOf(head), ...tail);
     } catch {
       // A dangling symlink or a missing component: walk up to what exists.
       const parent = path.dirname(head);

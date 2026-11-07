@@ -109,3 +109,9 @@
 .story-tabs {
   min-width: 0;
 }
+.story-notes {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+}

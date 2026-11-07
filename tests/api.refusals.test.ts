@@ -13,7 +13,7 @@ import { CEREBRO_V2_ROUTES } from "./helpers/routeScopes.js";
  * The refusals of the path filter and of the safe reader, and of a settings file the engine will not replace
  * (.specs/features/contratos-rest, the fixes after round 3): the routes that may answer `403 forbidden_path`, `404
  * not_a_file`, `413 file_too_large`, `409 settings_newer` and `409 settings_unpreserved` are not listed by hand and
- * trusted. Each of the 132 routes is called as its scenario calls it. For the file refusals the call is made once for
+ * trusted. Each of the 164 routes is called as its scenario calls it. For the file refusals the call is made once for
  * each kind of read the scenario makes, and in each call one kind of read (`core/src/security/safeFs.ts`, the only
  * place those errors come from) refuses in the way a hostile file would: outside the granted folders, a folder or a
  * link out in place of a file, a file past its cap. For the settings refusals the whole table runs over a
@@ -269,8 +269,8 @@ describe("S1 the refusals of the file readers", () => {
   }, 900_000);
 
   it("C45 the probe runs one scenario for each route, and the refusals reach the routes", () => {
-    expect(Object.keys(SCENARIOS)).toHaveLength(132);
-    expect(scenariosSeen).toBe(132);
+    expect(Object.keys(SCENARIOS)).toHaveLength(164);
+    expect(scenariosSeen).toBe(164);
     for (const fault of FAULTS) {
       expect(injected[fault], `${fault} injected`).toBeGreaterThan(20);
       // A probe that finds nothing would pass every comparison below.
@@ -290,6 +290,107 @@ describe("S1 the refusals of the file readers", () => {
     // the note reader is the route of the five that opens a file the person names
     expect(answering("forbidden_path")).toContain("GET /api/memory/note");
     expect(answering("not_a_file")).toContain("GET /api/memory/note");
+  });
+
+  it("C59 the probe has one scenario for each of the eight routes of the dashboards, and finds the refusals exactly where the contract lists them", () => {
+    // .specs/features/cerebro-paineis C59: the seven of /api/dashboards and the task's box.
+    const PAINEIS = [
+      "GET /api/dashboards",
+      "POST /api/dashboards",
+      "GET /api/dashboards/:id",
+      "PUT /api/dashboards/:id",
+      "DELETE /api/dashboards/:id",
+      "POST /api/dashboards/:id/refresh",
+      "POST /api/dashboards/:id/export",
+      "PUT /api/memory/tasks",
+    ];
+    const tabled = entries.map(([, e]) => routeKey(e));
+    for (const key of PAINEIS) {
+      expect(tabled, key).toContain(key);
+      expect(Object.keys(SCENARIOS), key).toContain(key);
+    }
+    expect(
+      Object.keys(SCENARIOS)
+        .filter((k) => k.includes("/api/dashboards"))
+        .sort(),
+    ).toEqual(PAINEIS.filter((k) => k.includes("/api/dashboards")).sort());
+    const byKey = new Map(entries.map(([, e]) => [routeKey(e), e]));
+    for (const fault of FAULTS) {
+      const here = answering(fault).filter((k) => PAINEIS.includes(k));
+      const declaredHere = PAINEIS.filter((k) => declares(byKey.get(k)!, fault)).sort();
+      expect(here, fault).toEqual(declaredHere);
+    }
+    // By name: the routes that list or write a folder through the safe primitives, and the task's box.
+    expect(answering("forbidden_path").filter((k) => PAINEIS.includes(k))).toEqual(
+      [
+        "GET /api/dashboards",
+        "POST /api/dashboards",
+        "POST /api/dashboards/:id/export",
+        "PUT /api/memory/tasks",
+      ].sort(),
+    );
+    expect(answering("not_a_file").filter((k) => PAINEIS.includes(k))).toEqual(["PUT /api/memory/tasks"]);
+    expect(answering("file_too_large").filter((k) => PAINEIS.includes(k))).toEqual([]);
+  });
+
+  it("C81 the probe has one scenario for each of the seven routes of the history and the review inbox, and finds the refusals exactly where the contract lists them", () => {
+    // .specs/features/cerebro-memoria-confiavel C81 (door 10): the history of memory/ and the review inbox.
+    const MEMORIA = [
+      "GET /api/memory/history",
+      "GET /api/memory/history/:id",
+      "POST /api/memory/history/restore",
+      "GET /api/memory/proposals",
+      "GET /api/memory/proposals/:id",
+      "POST /api/memory/proposals",
+      "POST /api/memory/proposals/:id/decide",
+    ];
+    const tabled = entries.map(([, e]) => routeKey(e));
+    for (const key of MEMORIA) {
+      expect(tabled, key).toContain(key);
+      expect(Object.keys(SCENARIOS), key).toContain(key);
+    }
+    expect(
+      Object.keys(SCENARIOS)
+        .filter((k) => /\/api\/memory\/(history|proposals)(\/|$)/.test(k))
+        .sort(),
+    ).toEqual([...MEMORIA].sort());
+    const byKey = new Map(entries.map(([, e]) => [routeKey(e), e]));
+    for (const fault of FAULTS) {
+      const here = answering(fault).filter((k) => MEMORIA.includes(k));
+      const declaredHere = MEMORIA.filter((k) => declares(byKey.get(k)!, fault)).sort();
+      expect(here, fault).toEqual(declaredHere);
+    }
+    // By name (plan amendment 2): the routes that read or write a file of memory/ through the primitives.
+    const reading = [
+      "GET /api/memory/history/:id",
+      "GET /api/memory/proposals/:id",
+      "POST /api/memory/history/restore",
+      "POST /api/memory/proposals/:id/decide",
+    ];
+    expect(answering("forbidden_path").filter((k) => MEMORIA.includes(k))).toEqual(reading);
+    expect(answering("not_a_file").filter((k) => MEMORIA.includes(k))).toEqual(reading);
+    expect(answering("file_too_large").filter((k) => MEMORIA.includes(k))).toEqual([
+      "GET /api/memory/proposals/:id",
+      "POST /api/memory/proposals/:id/decide",
+    ]);
+  });
+
+  it("C138 the probe has one scenario for the export and one for the import of a folder, and finds the refusals exactly where the contract lists them", () => {
+    // .specs/features/cerebro-memoria-confiavel C138 (doors 14 and 15).
+    const TRANSFER = ["POST /api/memory/export", "POST /api/memory/import"];
+    const tabled = entries.map(([, e]) => routeKey(e));
+    for (const key of TRANSFER) {
+      expect(tabled, key).toContain(key);
+      expect(Object.keys(SCENARIOS), key).toContain(key);
+    }
+    const byKey = new Map(entries.map(([, e]) => [routeKey(e), e]));
+    for (const fault of FAULTS) {
+      const here = answering(fault).filter((k) => TRANSFER.includes(k));
+      const declaredHere = TRANSFER.filter((k) => declares(byKey.get(k)!, fault)).sort();
+      expect(here, fault).toEqual(declaredHere);
+    }
+    // Both read the folder they copy through the safe reader: a path outside the granted folders is refused.
+    expect(answering("forbidden_path").filter((k) => TRANSFER.includes(k))).toEqual(TRANSFER);
   });
 
   for (const fault of FAULTS) {
@@ -396,7 +497,7 @@ describe("S1 real hostile files answer what the contract declares", () => {
 
 describe("S1 the refusals of a settings file the engine will not replace", () => {
   /**
-   * The 132 routes, called as their scenarios call them, against a `config/settings.json` that cannot be replaced: one
+   * The 164 routes, called as their scenarios call them, against a `config/settings.json` that cannot be replaced: one
    * written by a newer version, and one that holds values this version drops with every name for the copy that must be
    * kept aside taken by something else. The routes that answer `409 settings_newer` and `409 settings_unpreserved`
    * are the routes that list them, both ways.

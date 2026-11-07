@@ -4,7 +4,7 @@ MordomoOS keeps your memory in **files you own** (markdown in the folders you
 chose) plus a **derived index** (SQLite + FTS5) that is rebuilt from those
 files and never edits them. This guide explains how a question is answered
 with a fraction of the tokens, how the daily journal works, and how nightly
-consolidation promotes what matters into long-term memory.
+consolidation proposes what matters for long-term memory, for you to review.
 
 Related: [user manual](./user-manual.md) · [skills](./skills-guide.md) ·
 [routines](./routines-guide.md) · [security](./security.md).
@@ -55,7 +55,16 @@ produces the same answer (unit-tested in `tests/core.memory.v2.test.ts`).
 ```bash
 mordomo recall "what did we decide about the Q3 budget?"          # human output
 mordomo recall "what did we decide about the Q3 budget?" --json   # for scripts
+mordomo recall "qual é o preço do plano anual?" --natureza fato    # only what is a fact
 ```
+
+Each excerpt carries the `natureza` of what it says (`fato`, `opiniao`, `plano`, `hipotese`, `relato`, or none) and
+the `escopo` of its file (`pessoal`, `equipe`, `externo`): a `> [!plano]` passage of a note, else the note's
+`natureza:` header, else the section of `MEMORY.md` or of the journal it sits in (`## Open loops` is a plan,
+`## Reflections` an opinion). The human output opens a plan's line with `[Plano — ainda não é realidade]`, a
+hypothesis's with `[Hipótese]`, an opinion's with `[Opinião]` and an unclassified one's with `[Não classificado]`.
+`--natureza` and `--escopo` (comma-separated) keep only those excerpts, as `natureza=` and `escopo=` do on
+`GET /api/memory/recall` and `GET /api/memory/search`.
 
 ```bash
 # TOKEN = config/token inside the MordomoOS home (the repo root, or $MORDOMO_HOME)
@@ -127,6 +136,13 @@ fixed template:
   characters). Empty sections are dropped, today comes first, and whatever does
   not fit is cut with `…(trimmed)`. The journal block is excluded from the
   router pointer check, since it is free text, not a map.
+- **The routers follow the index.** Once `memory/ROUTER.md` exists (the setup,
+  `mordomo index` or "Refresh" make it), every index pass that added, updated or
+  removed a file brings it and `memory/areas/*.md` up to date before it announces
+  `index.finished`. A router is written only when its bytes change, and the area
+  indexes never list the routers themselves, so a folder watch on `memory/` does
+  not index its own write in a loop. A regeneration that fails is logged in
+  `logs/memory.jsonl` (`routers_failed`) and never fails the pass.
 
 | Endpoint | Purpose |
 |---|---|
@@ -139,26 +155,41 @@ fixed template:
 ## 3. Consolidation ("sleep")
 
 The journal is a log; `memory/MEMORY.md` is what the agent should remember.
-The **`consolidate-memory` skill** promotes one into the other:
+The **`consolidate-memory` skill** (version 2, read-only) proposes what to promote from one into the other; it changes
+nothing itself:
 
-1. reads the last N days of journal (`?days=`), the recall statistics and the
-   current facts;
+1. reads the last N days of journal (`?days=`), the recall statistics, the
+   current facts and `MEMORY.md` as it is;
 2. scores each bullet with **recall frequency × importance × recency**
    (`skills/consolidate-memory/resources/heuristics.md`); every "Decisions"
-   line and every line repeated on 2+ days is a candidate;
-3. appends the survivors to `memory/MEMORY.md` under `## Facts`,
-   `## Decisions`, `## Open loops`, `## Reflections`, each with its source
-   (`(journal 2026-09-03)`);
-4. **never deletes**: a contradicted line moves to `## Superseded` with
-   `valid_to:: <today>`, and the new value is asserted through
-   `POST /api/memory/facts`, which closes the previous fact automatically;
-5. writes a reflection when accumulated importance crosses the threshold, and
-   an artifact `consolidation.md` listing everything it did.
+   line the owner wrote and every line repeated on 2+ days is a candidate (a line ending `(autor:: agente)` is never
+   promoted by the "Decisions" rule);
+3. leaves **one proposal** in its artifacts directory, `proposal.json`: `{ "v": 1, "summary", "ops" }` with at most 200
+   operations — `add` (a line under `Facts`, `Decisions`, `Open loops` or `Reflections`), `supersede` (an exact line to
+   `## Superseded` with `valid_to:: <day>`, and its replacement), `close_loop` (`→ closed <day>` on an open loop),
+   `move_to_topic` (lines to `memory/topics/<slug>.md`, one pointer line left) and `fact` (a fact to assert);
+4. **never deletes**: lines are superseded, closed or moved, never removed.
+
+The proposal waits in **Revisões › Do agente** (`/brain/reviews?tab=agent`). Each operation shows its source as a link,
+and a trust badge MordomoOS computes from where the source line is — *Escrito por você* (a line you wrote in the journal
+or a note), *Saída de ferramenta* (a line under the journal's `## Runs`), *Inferido pelo agente* (anything else, any op whose text is not the whole text of the line it cites,
+and every fact: a fact an agent proposes is never born as yours, whatever line it cites); only the first starts
+ticked. Accepting writes the ticked operations to `MEMORY.md` through the guarded writer, each new line
+as `- <text> (fonte:: <source>:<line>) (autor:: agente) (em:: <day>)`, records a version of the history and asserts the
+accepted facts with their source and the proposal's id. `MEMORY.md` stays under **200 lines and 25 000 bytes** (what
+Claude Code loads of it): a result above that is refused unless it is smaller than the file is now. A newer
+consolidation supersedes the one still pending; a `proposal.json` that is missing or invalid leaves no proposal and one
+notification that says why.
 
 `routines/nightly-consolidation.json` runs it at **03:00** with profile
-`review_before_write` and is **disabled by default** — enable it in
-**Routines** once you trust the output. Under that profile the run proposes the
-new `MEMORY.md` as an artifact instead of writing it.
+`review_before_write` and is **disabled by default** on a new install — enable it in **Routines**, or press
+**Consolidar agora** in the empty "Do agente" tab. Its output is a proposal in **Revisões**, never a write to
+`MEMORY.md`. A home created before this keeps the value its copy of the routine had.
+
+**What agents write.** A run's credential that asserts a fact stores a proposal (`202`); the MCP tools `facts_assert`,
+`note_create` and `note_save` propose too; a journal line written by a run or by `journal_append` ends with
+`(autor:: agente)`. Any write run that changes `memory/MEMORY.md` on disk is put back when it finishes, unless you saved
+the file meanwhile, and what it wrote waits as a proposal ("Mudança no MEMORY.md").
 
 ---
 
@@ -262,7 +293,9 @@ name that several files share resolves to the one in the same folder, else the s
 alphabetically, and the others come back as `alternatives`. Names are compared without regard to case or to how an
 accent is spelled (`[[Édito]]`, `[[édito]]` and a file the system stored as `E` plus a combining accent are one name;
 without the accent it is another). **Renaming a note never rewrites other files**: the
-links that pointed at the old name show as broken in their sources until you fix them (or rename it back).
+links that pointed at the old name show as broken in their sources until you fix them (or rename it back). The
+graph, the related files, the orphans of the hygiene report and the recall's pointers count the same links as this
+panel (wikilinks included), resolved when they are read, and none of them shows a file today's policy excludes.
 
 **The index worker.** The pass that scans, reads, indexes, links and relates the files runs in a
 `worker_thread` with its own database connection (memory limit 512 MB), so the service keeps answering while
@@ -274,6 +307,12 @@ to start under it, and the pass refuses to start under a restore: `409 restore_i
 the Second Brain). A pass that died with the service is taken up again at the next start; the passes are
 incremental, so what was committed stays. `GET /api/memory/status` says `indexing.mode`: `worker`, or `inline`
 when the worker script is not next to the service (a source checkout).
+
+**Word search.** `GET /api/memory/search` searches the words that matter in the question (the stopwords of
+English and Portuguese left out, accents folded, at most 8): the notes that hold every word come first in BM25 order,
+then, when that does not fill the page, the notes that hold some of them, more words first. A question made only of
+stopwords is searched as typed; one with no word at all lists the recent files. Files your policy excludes are left
+out before the page is cut, so a page is never short because of them.
 
 **Semantic search (optional, off by default).** `GET /api/memory/search` ranks by words (BM25 over the
 full-text index; NUL bytes in `q` are ignored, so a `q` made only of them lists the recent files like an empty one). With `memory.embeddings.enabled` on (`PUT /api/settings`, owner only) the index also keeps one
@@ -290,10 +329,11 @@ turning it off deletes the vectors at the next index pass.
   note in the first three for 11 questions and the strict word search (every word of the question) for 5; the one it
   misses asks for a synonym. **What that number does not show**: a search for _any_ of the words, ranked by BM25,
   also gets the same 11, so on those questions the gain comes from not requiring every word, and the vectors add
-  nothing to it. What the `hash` vectors do add is measured on `tests/fixtures/semantic-morphology.json`: a question
-  made of the other number of Portuguese `-ção` and `-ão` words ("devoluções" for a note that says "devolução")
-  finds its note by the vectors, and neither the strict nor the any-word search finds it. Meaning (synonyms, a
-  question that shares no word with the note) needs the `http` provider.
+  nothing to it; the word search of the screens does exactly that since `cerebro-correcoes` (AD-037), and finds the
+  same 11 with the semantic search off. What the `hash` vectors still add is a singular question for a note that only
+  holds the plural of a Portuguese `-ção` word ("ação" for a note that says "ações"), which the full-text index keeps
+  apart and the vectors join. Meaning (synonyms, a question that shares no word with the note) needs the `http`
+  provider.
 - **`provider: "http"`** sends the text of each indexed `.md` or `.txt` file (the folders you indexed, not only your
   notes; cut at 8 000 characters, 16 per request) and **the question of every search** in mode `auto` or `semantic`
   (once there is a vector; mode `text` sends nothing) to `endpoint`, an
@@ -328,4 +368,4 @@ turning it off deletes the vectors at the next index pass.
 | `core/src/memory/embeddings.ts`, `vectors.ts`, `semantic.ts` | Embedding providers and the endpoint policy; vectors and sqlite-vec ranking; fusion with the words |
 | `apps/api/src/routes/memory.ts` | All endpoints above; installs the journal hooks |
 | `skills/recall/`, `skills/consolidate-memory/` | The agent-facing side |
-| `routines/nightly-consolidation.json` | 03:00, disabled by default, `review_before_write` |
+| `routines/nightly-consolidation.json` | 03:00, disabled by default, `review_before_write`; leaves a proposal |

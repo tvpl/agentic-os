@@ -1,0 +1,21 @@
+{
+  "id": 41,
+  "type": "notification.created",
+  "ts": 1793359860000,
+  "v": 1,
+  "payload": {
+    "id": "n_7c1e5a20-reminder",
+    "kind": "reminder",
+    "tone": "warn",
+    "messageKey": "reminder.overdue",
+    "messageParams": { "text": "Mandar a proposta" },
+    "title": "Overdue: Mandar a proposta",
+    "body": null,
+    "href": "/brain?sel=12",
+    "approvalId": null,
+    "runId": null,
+    "ts": 1793359860000,
+    "read": false,
+    "dedupeKey": "reminder:overdue:task:/home/me/memory/notes/projeto.md:3:2026-10-30"
+  }
+}

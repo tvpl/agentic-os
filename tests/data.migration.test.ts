@@ -516,7 +516,7 @@ describe("C30 migration 20 on a database that already holds an index", () => {
     }
   });
 
-  it("C56 file_vectors has exactly the shape of door 2, and the database ends at version 21", () => {
+  it("C56 file_vectors has exactly the shape of door 2, and the database ends at the last migration (23 since cerebro-contextos)", () => {
     const home = tempHome();
     const { db } = openDb(home.paths);
     try {
@@ -541,9 +541,29 @@ describe("C30 migration 20 on a database that already holds an index", () => {
         sql: string;
       };
       expect(table.sql).not.toMatch(/virtual|vec0/i);
-      expect(db.pragma("user_version", { simple: true })).toBe(21);
-      expect(MIGRATIONS.at(-1)!.version).toBe(21);
-      expect(MIGRATIONS.slice(-2).map((m) => m.name)).toEqual(["note-links", "file-vectors"]);
+      // cerebro-correcoes added migration 22 (the end of file_links) after these two, cerebro-contextos 23 (the
+      // work context of a run and of a conversation), cerebro-faxina-guiada 24 (the signatures and the decisions of
+      // the cleanup), cerebro-natureza 25 (the passages of a note and the review state of a file), and cerebro-paineis
+      // 26 (the tasks of a note, the snapshots and the series of the dashboards) and 27 (the reminder kind of the inbox),
+      // and cerebro-memoria-confiavel 28 (the keys and provenance of facts), 29 (the history of memory/), 30 (the
+      // review inbox), 31 (the search indexes of the audiences) and 32 (their related edges)
+      expect(db.pragma("user_version", { simple: true })).toBe(32);
+      expect(MIGRATIONS.at(-1)!.version).toBe(32);
+      expect(MIGRATIONS.slice(-13).map((m) => m.name)).toEqual([
+        "note-links",
+        "file-vectors",
+        "drop-file-links",
+        "run-context",
+        "cleanup",
+        "natureza",
+        "dashboards",
+        "notification-reminder",
+        "fact-keys-and-provenance",
+        "memory-history",
+        "memory-proposals",
+        "audience-search-indexes",
+        "audience-related-edges",
+      ]);
       // the migration SQL twice leaves the table as it was
       const sql = MIGRATIONS.find((m) => m.version === 21)!.sql!;
       db.exec(sql);

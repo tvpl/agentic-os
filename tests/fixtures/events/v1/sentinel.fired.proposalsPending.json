@@ -1,0 +1,15 @@
+{
+  "id": 52,
+  "type": "sentinel.fired",
+  "ts": 1793500200000,
+  "v": 1,
+  "payload": {
+    "sentinel": "proposalsPending",
+    "title": "3 agent proposals to review",
+    "body": "What agents proposed to write to the memory waits in Reviews › From the agent: accept all, part or none.",
+    "severity": "info",
+    "href": "/brain/reviews?tab=agent",
+    "count": 3,
+    "messageParams": { "count": 3 }
+  }
+}

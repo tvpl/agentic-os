@@ -17,12 +17,13 @@ import {
 } from "../../brain/engine/world";
 import { MODIFIED_RANGES, SIZE_RANGES, type BrainUi } from "../../brain/state";
 import { Switch } from "../../ui";
+import { openCleanup } from "../../brain/cleanupEvents";
 
 const KIND_KEYS: Record<EdgeKind, TKey> = {
   "markdown-link": "brain.kind.markdown-link",
+  wikilink: "brain.kind.wikilink",
   related: "brain.kind.related",
   "same-dir": "brain.kind.same-dir",
-  "same-area": "brain.kind.same-area",
   other: "brain.kind.other",
 };
 const MOD_KEYS: Record<ModifiedRange, TKey> = {
@@ -53,12 +54,18 @@ export interface BrainSceneMenuProps {
   onClassic: () => void;
   onReset: () => void;
   onBake: () => void;
+  /** The guided cleanup (cerebro-faxina-guiada, amendment 11): the last row of the actions; default, just open it. */
+  onCleanup?: () => void;
+  /** "Revisões (N)" (cerebro-natureza, amendment 10): after "Faxina", only with N > 0 files due in the context. */
+  reviewsDue?: number;
+  onReviews?: () => void;
   onNote: (id: number) => void;
 }
 
 export function BrainSceneMenu(p: BrainSceneMenuProps) {
   const t = useT();
   const ids = useId();
+  const due = p.reviewsDue ?? 0;
   const { ui, patch } = p;
   const toggleIn = (list: string[], v: string) =>
     list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
@@ -87,6 +94,14 @@ export function BrainSceneMenu(p: BrainSceneMenuProps) {
         <button type="button" onClick={p.onBake}>
           {t("brain.bake")}
         </button>
+        <button type="button" onClick={p.onCleanup ?? (() => openCleanup())}>
+          {t("cleanup.open.button")}
+        </button>
+        {due > 0 && (
+          <button type="button" onClick={p.onReviews}>
+            {t("reviews.button", { n: due })}
+          </button>
+        )}
       </section>
 
       <section aria-labelledby={`${ids}-view`}>

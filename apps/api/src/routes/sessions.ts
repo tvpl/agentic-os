@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { redactorFor } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError, startedByOf } from "./common.js";
@@ -17,10 +18,16 @@ export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): vo
     return ctx.runs.sessions.list(q);
   });
 
-  bind(app, "sessions.get", async ({ params: { id } }) => {
+  bind(app, "sessions.get", async ({ params: { id } }, req) => {
     const session = ctx.runs.sessions.get(id);
-    if (!session) throw httpError(404, "Session not found");
-    return { session, runs: ctx.runs.list({ sessionId: id, limit: 200 }) };
+    // A device is told of no conversation in a folder hidden from devices, nor of a run of one (amendment 5).
+    const device = redactorFor(ctx, req.principal);
+    if (!session || (device && session.cwd && device.hiddenPath(session.cwd)))
+      throw httpError(404, "Session not found");
+    return {
+      session,
+      runs: ctx.runs.list({ sessionId: id, limit: 200 }).filter((r) => !device?.hiddenRun(r.id)),
+    };
   });
 
   /** Continue the conversation: a new run that resumes the provider session. */

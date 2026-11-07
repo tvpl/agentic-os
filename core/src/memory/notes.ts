@@ -1,13 +1,22 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import type { Settings } from "../config/schema.js";
-import { PathAccessError } from "../errors.js";
+import { EditConflictError, PathAccessError } from "../errors.js";
 import type { MordomoPaths } from "../paths.js";
 import { realpathLenient } from "../security/paths.js";
 import { homeReadScope, openWorkspaceFile, statWorkspacePath, type ReadScope } from "../security/safeFs.js";
-import { writeWorkspaceFile } from "../security/safeWrite.js";
+import { createWorkspaceFile, writeWorkspaceFile, type CreatedFile } from "../security/safeWrite.js";
+import {
+  parseProperties,
+  setProperties,
+  validatePropertyChange,
+  type NoteProperties,
+  type Property,
+  type PropertyValue,
+} from "./frontMatter.js";
 import { workspaceScope } from "./preview.js";
 import { areaSlug } from "./routers.js";
+import { parseTasks } from "./tasks.js";
 
 /**
  * Notes: the Markdown files the owner creates and edits under `memory/` (.specs/features/cerebro-v2).
@@ -28,9 +37,11 @@ export const MAX_TAGS = 20;
 export const TAG_PATTERN = /^[\p{L}\d_-]{2,30}$/u;
 /** `-2` to `-99`: how many notes may share one title. */
 export const MAX_SAME_NAME = 99;
-/** Folders of `memory/` the engine writes itself (the routers) or only appends to (the journal). */
-const GENERATED_DIRS = new Set(["areas", "journal"]);
-const GENERATED_FILES = new Set(["router.md"]);
+/** How deep a `folder` of a new note may go under `memory/notes/` (.specs/features/cerebro-vista-notas, door 2). */
+export const MAX_FOLDER_LEVELS = 4;
+/** Folders of `memory/` the engine writes itself (the routers, the maps of the work contexts) or only appends to (the journal). */
+export const GENERATED_DIRS: ReadonlySet<string> = new Set(["areas", "journal", "contexts"]);
+export const GENERATED_FILES: ReadonlySet<string> = new Set(["router.md"]);
 const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
 const VERSION_PATTERN = /^sha256:([0-9a-f]{64})$/;
 
@@ -69,6 +80,15 @@ export class NoteExistsError extends Error {
     this.name = "NoteExistsError";
   }
 }
+/** `memory.notes.fixedStructure` is on and the note would make a folder or go straight into `memory/notes/` (door 5). */
+export class StructureFixedError extends Error {
+  readonly statusCode = 409;
+  readonly code = "structure_fixed";
+  constructor(message: string) {
+    super(message);
+    this.name = "StructureFixedError";
+  }
+}
 export class NoteTooLargeError extends Error {
   readonly statusCode = 413;
   readonly code = "note_too_large";
@@ -81,6 +101,17 @@ export class NoteTooLargeError extends Error {
 export interface NoteContext {
   paths: MordomoPaths;
   settings: Settings;
+  /**
+   * Told the bytes of every successful write, with what made it (.specs/features/cerebro-memoria-confiavel, door 4):
+   * the history records them as a version. Absent: nothing is recorded.
+   */
+  history?: ((file: string, bytes: Uint8Array | string, origin: "create" | "save" | "properties" | "task") => void) | undefined;
+  /**
+   * Told the file `createNote` made, right after it is made and before anything else (the history): a caller that must
+   * take the note back when a later step fails removes that very file (an accepted proposal, cerebro-memoria-confiavel
+   * G6). Absent: nothing is told.
+   */
+  created?: ((file: CreatedFile) => void) | undefined;
 }
 
 export interface NoteWritten {
@@ -92,7 +123,7 @@ export interface NoteWritten {
   mtime: number;
 }
 
-export interface NoteRead extends NoteWritten {
+export interface NoteRead extends NoteWritten, NoteProperties {
   content: string;
   editable: boolean;
   /** Why it cannot be edited, when `editable` is false. */
@@ -102,6 +133,8 @@ export interface NoteRead extends NoteWritten {
 export interface CreateNoteInput {
   title: string;
   area?: string | undefined;
+  /** A folder under `memory/notes/`, `/`-separated, each level made a name as a title is (door 2). */
+  folder?: string | undefined;
   content?: string | undefined;
   frontMatter?: boolean | undefined;
   tags?: string[] | undefined;
@@ -111,6 +144,13 @@ export interface SaveNoteInput {
   path: string;
   content: string;
   baseVersion: string;
+}
+
+export interface SavePropertiesInput {
+  path: string;
+  baseVersion: string;
+  set?: Record<string, PropertyValue> | undefined;
+  remove?: string[] | undefined;
 }
 
 /** The most bytes a note may hold under these settings. */
@@ -123,9 +163,9 @@ export function versionOf(bytes: Uint8Array | string): string {
   return `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
 }
 
-/** A file name (without extension) from a title. */
-export function slugify(title: string): string {
-  let slug = title
+/** What a title keeps as a name: no accents, lower case, `-` between runs of letters and digits; may be empty. */
+function slugBase(title: string): string {
+  return title
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
@@ -133,8 +173,35 @@ export function slugify(title: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 80)
     .replace(/-+$/g, "");
+}
+
+/** A file name (without extension) from a title. */
+export function slugify(title: string): string {
+  let slug = slugBase(title);
   if (slug === "") slug = "nota";
   return WINDOWS_DEVICE.test(slug) ? `${slug}-nota` : slug;
+}
+
+/**
+ * The folders of a new note's `folder` (door 2): up to four `/`-separated levels, each made a name by the rule of a
+ * note's title. An empty level (`a//b`, a leading `/`), `..`, `.` and a level that keeps no letter or digit are
+ * `400 validation`.
+ */
+export function folderSegments(folder: string): string[] {
+  const parts = folder.split("/");
+  if (parts.length > MAX_FOLDER_LEVELS) {
+    throw new NoteValidationError("validation", `folder: at most ${MAX_FOLDER_LEVELS} levels under memory/notes`);
+  }
+  return parts.map((part) => {
+    const slug = slugBase(part);
+    if (part.trim() === "" || part.trim() === "." || part.trim() === ".." || slug === "") {
+      throw new NoteValidationError(
+        "validation",
+        "folder: each level is a name with a letter or a digit (no empty level, no . or ..)",
+      );
+    }
+    return WINDOWS_DEVICE.test(slug) ? `${slug}-nota` : slug;
+  });
 }
 
 const memoryScope = (ctx: NoteContext): ReadScope =>
@@ -204,7 +271,9 @@ function classify(ctx: NoteContext, candidate: string): Classified {
       reason:
         parts[0]!.toLowerCase() === "journal"
           ? "The journal only grows; add a line to it instead of editing it."
-          : "The area indexes are generated; regenerate them instead of editing them.",
+          : parts[0]!.toLowerCase() === "contexts"
+            ? "The context maps are generated; change the context or regenerate the routers instead of editing them."
+            : "The area indexes are generated; regenerate them instead of editing them.",
     };
   }
   const ext = path.extname(real).toLowerCase();
@@ -248,11 +317,18 @@ function readClassified(ctx: NoteContext, candidate: string): NoteRead {
       mtime: Math.floor(file.stat.mtimeMs),
     };
     if (text === null) {
-      return { ...base, content: "", editable: false, reason: "The file is not UTF-8 text." };
+      return {
+        ...base,
+        content: "",
+        editable: false,
+        reason: "The file is not UTF-8 text.",
+        ...parseProperties(""),
+      };
     }
     return {
       ...base,
       content: text,
+      ...parseProperties(text),
       editable: classified.editable,
       ...(classified.reason ? { reason: classified.reason } : {}),
     };
@@ -300,31 +376,69 @@ export function newNoteText(input: CreateNoteInput, title: string, now: Date = n
  * a name taken gets `-2`, `-3` … up to `-99`.
  */
 export function createNote(ctx: NoteContext, input: CreateNoteInput, now: Date = new Date()): NoteWritten {
+  const { dir, slug, text, scope } = planNewNote(ctx, input, now);
+  for (let n = 1; n <= MAX_SAME_NAME; n++) {
+    const name = `${n === 1 ? slug : `${slug}-${n}`}.md`;
+    const target = path.join(dir, name);
+    let made: CreatedFile;
+    try {
+      made = createWorkspaceFile(scope, target, text);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") continue;
+      throw err;
+    }
+    ctx.created?.(made);
+    ctx.history?.(target, text, "create");
+    const stat = statWorkspacePath(scope, target).stat;
+    return { path: target, name, version: versionOf(text), size: Buffer.byteLength(text, "utf8"), mtime: Math.floor(stat.mtimeMs) };
+  }
+  throw new NoteExistsError(`There are already ${MAX_SAME_NAME} notes named "${slug}".`);
+}
+
+/**
+ * What `createNote` checks before it writes anything, and the folder, the name and the text it would write: the title,
+ * the tags, the area, the size and the fixed structure (door 5). A proposal of a new note is checked the same way when
+ * it is made (.specs/features/cerebro-memoria-confiavel, AC 47), so a note that could never be created is refused then.
+ */
+export function planNewNote(
+  ctx: NoteContext,
+  input: CreateNoteInput,
+  now: Date = new Date(),
+): { dir: string; slug: string; text: string; scope: ReadScope } {
   const title = validateTitle(input.title);
   validateTags(input.tags ?? []);
   if (input.area !== undefined && !ctx.settings.areas.includes(input.area)) {
     throw new NoteValidationError("unknown_area", `Unknown area "${input.area}": use one of the areas in the settings.`);
   }
+  if (input.area !== undefined && input.folder !== undefined) {
+    throw new NoteValidationError("validation", "area and folder: name one of them");
+  }
+  const folders = input.folder !== undefined ? folderSegments(input.folder) : input.area ? [areaSlug(input.area) || "area"] : [];
   const text = newNoteText(input, title, now);
   const limit = noteLimitBytes(ctx.settings);
   if (Buffer.byteLength(text, "utf8") > limit) throw new NoteTooLargeError(limit);
 
-  const dir = path.join(ctx.paths.memory, NOTES_DIR, ...(input.area ? [areaSlug(input.area) || "area"] : []));
+  const dir = path.join(ctx.paths.memory, NOTES_DIR, ...folders);
   const slug = slugify(title);
   const scope = memoryScope(ctx);
-  for (let n = 1; n <= MAX_SAME_NAME; n++) {
-    const name = `${n === 1 ? slug : `${slug}-${n}`}.md`;
-    const target = path.join(dir, name);
-    try {
-      writeWorkspaceFile(scope, target, text, { mode: "create" });
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "EEXIST") continue;
-      throw err;
+  // Door 5: with the structure fixed a note goes only into a folder that exists, never straight into memory/notes/.
+  if (ctx.settings.memory?.notes?.fixedStructure === true) {
+    if (folders.length === 0) {
+      throw new StructureFixedError("The structure is fixed: create the note inside an existing folder of memory/notes.");
     }
-    const stat = statWorkspacePath(scope, target).stat;
-    return { path: target, name, version: versionOf(text), size: Buffer.byteLength(text, "utf8"), mtime: Math.floor(stat.mtimeMs) };
+    if (!isFolder(scope, dir)) {
+      throw new StructureFixedError(`The structure is fixed: the folder ${dir} does not exist and is not made.`);
+    }
   }
-  throw new NoteExistsError(`There are already ${MAX_SAME_NAME} notes named "${slug}".`);
+  return { dir, slug, text, scope };
+}
+
+function isFolder(scope: ReadScope, dir: string): boolean {
+  try {
+    return statWorkspacePath(scope, dir).stat.isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -350,6 +464,7 @@ export function saveNote(ctx: NoteContext, input: SaveNoteInput): NoteWritten {
     }
     throw err;
   }
+  ctx.history?.(classified.logical, bytes, "save");
   const stat = statWorkspacePath(memoryScope(ctx), classified.logical).stat;
   return {
     path: classified.logical,
@@ -359,3 +474,134 @@ export function saveNote(ctx: NoteContext, input: SaveNoteInput): NoteWritten {
     mtime: Math.floor(stat.mtimeMs),
   };
 }
+
+/**
+ * Change the properties of a note's front matter (.specs/features/cerebro-vista-notas, doors 2 and 3), only if the note
+ * is still the version the caller read: the change is checked first (`400 validation`), then the note (`403`, `404`,
+ * `413`), then its version (`409 edit_conflict`) and its header (`409 front_matter_unreadable`); the new text replaces
+ * the file through the guarded writer, so a file that changes in between keeps its bytes.
+ */
+export function saveProperties(ctx: NoteContext, input: SavePropertiesInput): NoteWritten & { properties: Property[] } {
+  const match = VERSION_PATTERN.exec(input.baseVersion);
+  if (!match) throw new NoteValidationError("validation", "baseVersion: expected sha256: and 64 hex digits");
+  const change = { set: input.set, remove: input.remove };
+  validatePropertyChange(change);
+  const classified = classifyNotePath(ctx, input.path);
+  if (!classified.editable) throw new NoteNotEditableError(classified.reason ?? "This file cannot be edited.");
+  const limit = noteLimitBytes(ctx.settings);
+  const scope = memoryScope(ctx);
+  const missing = (err: unknown): never => {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new NoteMissingError("The note does not exist.");
+    throw err;
+  };
+  let bytes: Buffer;
+  try {
+    bytes = unnameableIsForbidden(input.path, () => {
+      const file = openWorkspaceFile(scope, classified.logical);
+      try {
+        if (file.stat.size > limit) throw new NoteTooLargeError(limit);
+        return file.readBytes(limit).bytes;
+      } finally {
+        file.close();
+      }
+    });
+  } catch (err) {
+    return missing(err);
+  }
+  const text = assertText(bytes);
+  if (text === null) throw new NoteNotEditableError("The file is not UTF-8 text.");
+  if (versionOf(bytes) !== input.baseVersion) throw new EditConflictError();
+  const next = setProperties(text, change);
+  const nextBytes = Buffer.from(next, "utf8");
+  if (nextBytes.length > limit) throw new NoteTooLargeError(limit);
+  if (next !== text) {
+    try {
+      unnameableIsForbidden(input.path, () =>
+        writeWorkspaceFile(scope, classified.logical, nextBytes, { mode: "replace", expectSha256: match[1]! }),
+      );
+    } catch (err) {
+      missing(err);
+    }
+    ctx.history?.(classified.logical, nextBytes, "properties");
+  }
+  const stat = statWorkspacePath(scope, classified.logical).stat;
+  return {
+    path: classified.logical,
+    name: path.basename(classified.logical),
+    version: versionOf(nextBytes),
+    size: nextBytes.length,
+    mtime: Math.floor(stat.mtimeMs),
+    properties: parseProperties(next).properties,
+  };
+}
+
+export interface SaveTaskInput {
+  path: string;
+  /** 1-based, as `note_tasks.line`. */
+  line: number;
+  done: boolean;
+  baseVersion: string;
+}
+
+export interface TaskWritten {
+  path: string;
+  version: string;
+  task: { line: number; done: boolean; text: string };
+}
+
+/**
+ * Check or uncheck one task of a note (.specs/features/cerebro-paineis, AC 48 to AC 50, amendment 17), only if the note
+ * is still the version the caller read: only the box of that line changes (`[ ]` to `[x]`, or `[x]`/`[X]` to `[ ]`),
+ * every other byte is kept, line ends and indentation included. The note is checked as a save checks it (`403`,
+ * `404`, `413`), then its version and the line (`409 edit_conflict` for a line that is no task, or past the end); a
+ * box already as asked writes nothing.
+ */
+export function saveTask(ctx: NoteContext, input: SaveTaskInput): TaskWritten {
+  const match = VERSION_PATTERN.exec(input.baseVersion);
+  if (!match) throw new NoteValidationError("validation", "baseVersion: expected sha256: and 64 hex digits");
+  const classified = classifyNotePath(ctx, input.path);
+  if (!classified.editable) throw new NoteNotEditableError(classified.reason ?? "This file cannot be edited.");
+  const limit = noteLimitBytes(ctx.settings);
+  const scope = memoryScope(ctx);
+  const missing = (err: unknown): never => {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new NoteMissingError("The note does not exist.");
+    throw err;
+  };
+  let bytes: Buffer;
+  try {
+    bytes = unnameableIsForbidden(input.path, () => {
+      const file = openWorkspaceFile(scope, classified.logical);
+      try {
+        if (file.stat.size > limit) throw new NoteTooLargeError(limit);
+        return file.readBytes(limit).bytes;
+      } finally {
+        file.close();
+      }
+    });
+  } catch (err) {
+    return missing(err);
+  }
+  const text = assertText(bytes);
+  if (text === null) throw new NoteNotEditableError("The file is not UTF-8 text.");
+  if (versionOf(bytes) !== input.baseVersion) throw new EditConflictError();
+  const task = parseTasks(text).find((t) => t.line === input.line);
+  // A line that holds no task (or is past the end) is a note that changed since the dashboard read it.
+  if (!task) throw new EditConflictError();
+  const lines = text.split("\n");
+  const box = /^(\s*[-*] \[)( |x|X)\]/.exec(lines[input.line - 1]!);
+  if (!box) throw new EditConflictError();
+  const result = { line: input.line, done: input.done, text: task.text };
+  if ((box[2] !== " ") === input.done) return { path: classified.logical, version: input.baseVersion, task: result };
+  const offset = lines.slice(0, input.line - 1).reduce((n, l) => n + l.length + 1, 0) + box[1]!.length;
+  const nextBytes = Buffer.from(`${text.slice(0, offset)}${input.done ? "x" : " "}${text.slice(offset + 1)}`, "utf8");
+  try {
+    unnameableIsForbidden(input.path, () =>
+      writeWorkspaceFile(scope, classified.logical, nextBytes, { mode: "replace", expectSha256: match[1]! }),
+    );
+  } catch (err) {
+    missing(err);
+  }
+  ctx.history?.(classified.logical, nextBytes, "task");
+  return { path: classified.logical, version: versionOf(nextBytes), task: result };
+}
+

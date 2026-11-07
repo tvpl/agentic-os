@@ -34,6 +34,7 @@ export const qk = {
   artifacts: ["artifacts"] as const,
   connectors: ["connectors"] as const,
   memoryStatus: ["memory", "status"] as const,
+  contexts: ["contexts"] as const,
   memoryGraph: (params?: Record<string, string | number | undefined>) =>
     ["memory", "graph", params ?? {}] as const,
   approvals: ["approvals"] as const,
@@ -57,10 +58,15 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
   "index.progress": [["memory", "status"]],
   "index.finished": [["memory"], ["metrics"]],
   "index.failed": [["memory"]],
+  // The guided cleanup's scan (cerebro-faxina-guiada, door 6): the wizard listens; nothing in the cache depends on it.
+  "cleanup.progress": [],
+  "cleanup.finished": [],
+  "cleanup.failed": [],
   "approval.requested": [["approvals"], ["run"], ["notifications"]],
   "approval.resolved": [["approvals"], ["run"], ["runs"], ["settings"], ["connectors"], ["notifications"]],
   "approval.expired": [["approvals"], ["run"], ["runs"]],
-  "settings.changed": [["settings"], ["meta"], ["providers"], ["uiPreferences"]],
+  // The work contexts live in settings.json (cerebro-contextos): another window that changes them refreshes the selector.
+  "settings.changed": [["settings"], ["meta"], ["providers"], ["uiPreferences"], ["contexts"]],
   "backup.created": [["backups"]],
   "notification.read": [["notifications"]],
   "notification.created": [["notifications"], ["metrics"]],
@@ -130,6 +136,9 @@ export const useOsMeta = (o?: ApiQueryOptions<Result<"GET /api/meta">>) =>
   useRouteQuery(qk.meta, "GET /api/meta", undefined, o);
 export const useOsProviders = (o?: ApiQueryOptions<Result<"GET /api/providers">>) =>
   useRouteQuery(qk.providers, "GET /api/providers", undefined, o);
+/** The work contexts (.specs/features/cerebro-contextos), with the state of each path and their file counts. */
+export const useOsContexts = (o?: ApiQueryOptions<Result<"GET /api/contexts">>) =>
+  useRouteQuery(qk.contexts, "GET /api/contexts", undefined, o);
 export const useOsSkills = (o?: ApiQueryOptions<Result<"GET /api/skills">>) =>
   useRouteQuery(qk.skills, "GET /api/skills", undefined, o);
 export const useOsRoutines = (o?: ApiQueryOptions<Result<"GET /api/routines">>) =>

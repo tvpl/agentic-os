@@ -111,8 +111,15 @@ describe.skipIf(!POSIX)(
       }
     });
 
-    it("a skill that talks of the run credential is one the owner's settings name, and the two memory skills are", () => {
-      expect(s.ctx.settings().memorySkills).toEqual(["recall", "consolidate-memory"]);
+    it("a skill that talks of the run credential is one the owner's settings name, and the three memory skills are", () => {
+      // cerebro-organizar (AC 9, C11): organize-brain is the third built-in memory skill; cerebro-paineis (door 7,
+      // amendment 19) adds dashboard-answer after it.
+      expect(s.ctx.settings().memorySkills).toEqual([
+        "recall",
+        "consolidate-memory",
+        "organize-brain",
+        "dashboard-answer",
+      ]);
       for (const skill of skills()) {
         const text = textFiles(skill.dir)
           .map((f) => fs.readFileSync(f, "utf8"))
@@ -126,7 +133,7 @@ describe.skipIf(!POSIX)(
           .filter((k) => k.memoryAccess)
           .map((k) => k.slug)
           .sort(),
-      ).toEqual(["consolidate-memory", "recall"]);
+      ).toEqual(["consolidate-memory", "dashboard-answer", "organize-brain", "recall"]);
     });
 
     it("each skill run starts in <home>/workspace with its own folder, and a memory skill also gets memory/ and its credential", async () => {
@@ -304,17 +311,21 @@ describe.skipIf(!POSIX)(
         200,
       );
 
-      // the fact says which run asserted it: the run's own id, whatever the body claims
+      // the fact says which run asserted it: the run's own id, whatever the body claims. Since cerebro-memoria-confiavel
+      // (door 9, AD-045) a run's fact waits in the review inbox: a proposal of the run, and no fact yet.
       const asserted = await rw("POST", "/api/memory/facts", {
         ...fact,
         object: "o2",
         sourceRunId: "somebody-else",
       });
-      expect(asserted.statusCode, asserted.body).toBe(201);
-      const stored = s.ctx.db.prepare("SELECT source_run_id FROM facts WHERE object = 'o2'").get() as {
-        source_run_id: string;
-      };
-      expect(stored.source_run_id).toBe(writeRun.id);
+      expect(asserted.statusCode, asserted.body).toBe(202);
+      const stored = s.ctx.db
+        .prepare("SELECT run_id, author, payload FROM memory_proposals WHERE id = ?")
+        .get(asserted.json().proposal.id) as { run_id: string; author: string; payload: string };
+      expect(stored.run_id).toBe(writeRun.id);
+      expect(stored.author).toBe(`run:${writeRun.id}`);
+      expect(JSON.parse(stored.payload).sourceRunId).toBe(writeRun.id);
+      expect(s.ctx.db.prepare("SELECT COUNT(*) c FROM facts WHERE object = 'o2'").get()).toEqual({ c: 0 });
 
       // recall: the owner finds a note in a granted folder, the run's credential only what is in memory/
       fs.mkdirSync(path.join(s.userFolder, "notes"), { recursive: true });
@@ -654,7 +665,7 @@ describe.skipIf(!POSIX)(
         fs.rmSync(path.join(s.home, "skills", "borrowed"), { recursive: true });
       }
       // the list is the owner's: a device cannot change it, the owner can, and only then does a skill gain the memory
-      const patch = { memorySkills: ["recall", "consolidate-memory", "sneaky-owner"] };
+      const patch = { memorySkills: ["recall", "consolidate-memory", "organize-brain", "sneaky-owner"] };
       const asDevice = await s.app.inject({
         method: "PUT",
         url: "/api/settings",
@@ -673,7 +684,7 @@ describe.skipIf(!POSIX)(
       try {
         expect((await run("sneaky-owner")).extraEnv?.MORDOMO_RUN_TOKEN).toMatch(/^rc_/);
       } finally {
-        s.ctx.settingsStore.update({ memorySkills: ["recall", "consolidate-memory"] });
+        s.ctx.settingsStore.update({ memorySkills: ["recall", "consolidate-memory", "organize-brain"] });
       }
     });
 

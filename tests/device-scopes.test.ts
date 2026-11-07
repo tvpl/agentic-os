@@ -161,7 +161,7 @@ describe("S1 each route says who may call it", () => {
     const device = pair([]);
     expect(ctx.devices.get(device.id)?.scopes).toEqual([]);
     const routes = apiRoutes();
-    expect(routes).toHaveLength(130);
+    expect(routes).toHaveLength(162);
     const before = {
       fp: fingerprint(),
       settings: fs.readFileSync(settingsFile()),
@@ -183,7 +183,7 @@ describe("S1 each route says who may call it", () => {
       if (expected === "owner") owners += 1;
       else scoped += 1;
     }
-    expect([owners, scoped]).toEqual([66, 64]);
+    expect([owners, scoped]).toEqual([86, 76]);
     expect(fingerprint()).toBe(before.fp);
     expect(fs.readFileSync(settingsFile()).equals(before.settings)).toBe(true);
     expect(launches()).toHaveLength(before.launches);
@@ -223,7 +223,7 @@ describe("S1 each route says who may call it", () => {
       apiRoutes().map((r) => [key(r), r.config.scope as RouteScope | undefined]),
     );
     expect(registered).toEqual(EXPECTED_ROUTE_SCOPES);
-    expect(Object.keys(registered)).toHaveLength(130);
+    expect(Object.keys(registered)).toHaveLength(162);
     const publics = app.apiRoutes.filter((r) => r.config.public === true).map(key);
     expect(publics.sort()).toEqual([...PUBLIC_ROUTES].sort());
     expect(app.apiRoutes.filter((r) => r.config.public === true && r.config.scope !== undefined)).toEqual([]);
@@ -231,7 +231,7 @@ describe("S1 each route says who may call it", () => {
       Object.fromEntries(
         (["owner", "monitor", "content", "run", "approve"] as const).map((s) => [s, routesOf(s).length]),
       ),
-    ).toEqual({ owner: 66, monitor: 33, content: 24, run: 6, approve: 1 });
+    ).toEqual({ owner: 86, monitor: 33, content: 36, run: 6, approve: 1 });
     // The route document carries the same scope on every operation that is not public.
     const doc = (
       await app.inject({ method: "GET", url: "/api/v1/openapi.json", headers: owner() })
@@ -452,8 +452,12 @@ describe("S1 each route says who may call it", () => {
     const READS = [
       "GET /api/memory/recall",
       "GET /api/memory/recall/stats",
+      // cerebro-contextos, door 8: the search, read as the recall is
+      "GET /api/memory/search",
       "GET /api/memory/journal",
       "GET /api/memory/facts",
+      // cerebro-organizar, door 10: the folder map, read as memory/notes/ and the run's folders
+      "GET /api/memory/maps",
     ];
     const WRITES = ["POST /api/memory/journal/append", "POST /api/memory/facts"];
     const probe = async (credential: string, route: { method: string; url: string }) => {
@@ -477,7 +481,7 @@ describe("S1 each route says who may call it", () => {
     expect(await passes(brokerToken)).toEqual([...BROKER].sort());
     expect(await passes(reader)).toEqual([...READS].sort());
     expect(await passes(writer)).toEqual([...READS, ...WRITES].sort());
-    expect(apiRoutes()).toHaveLength(130);
+    expect(apiRoutes()).toHaveLength(162);
   });
 });
 
@@ -1090,12 +1094,30 @@ describe("S3 who asked does not approve", () => {
     try {
       const target = MIGRATIONS.find((m) => m.name === "device-scopes-and-who-asked")!.version;
       // Later migrations also run over these rows: who a push subscription and a retry receipt belong to (round 1), and
-      // the table of links between notes (cerebro-v2), which touches none of them.
+      // the table of links between notes (cerebro-v2) and the end of the old link table (cerebro-correcoes), which touch
+      // none of them, and the work context of a run (cerebro-contextos), a column that reads NULL on the old run, and
+      // the signatures and decisions of the cleanup (cerebro-faxina-guiada), two new tables, and the passages of a
+      // note and the review state of a file (cerebro-natureza), two more, and the tasks of a note and the snapshots
+      // and series of the dashboards (cerebro-paineis), three more, and the reminder kind of the inbox (cerebro-paineis
+      // batch B), a table made again with the same rows, and the keys and provenance of facts, the history of memory/
+      // and the review inbox (cerebro-memoria-confiavel), columns on facts and three new tables, and the search indexes
+      // of the audiences and their related edges (doors 19 and 20), three more.
       expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([
         "push-subscription-device",
         "run-action-receipt-requester",
         "note-links",
         "file-vectors",
+        "drop-file-links",
+        "run-context",
+        "cleanup",
+        "natureza",
+        "dashboards",
+        "notification-reminder",
+        "fact-keys-and-provenance",
+        "memory-history",
+        "memory-proposals",
+        "audience-search-indexes",
+        "audience-related-edges",
       ]);
       const raw = new Database(tmp.paths.dbFile);
       for (const m of MIGRATIONS.filter((x) => x.version < target)) {
@@ -1202,7 +1224,7 @@ describe("S6 the documents say the same as the router", () => {
       }
     }
     expect(documented).toEqual(EXPECTED_ROUTE_SCOPES);
-    expect(counts).toEqual({ owner: 66, monitor: 33, content: 24, run: 6, approve: 1 });
+    expect(counts).toEqual({ owner: 86, monitor: 33, content: 36, run: 6, approve: 1 });
     // What this feature leaves open is written down, one phrase each.
     const open: Array<[string, string]> = [
       [
@@ -1258,7 +1280,7 @@ describe("S6 the documents say the same as the router", () => {
     };
     const operations = Object.values(doc.paths).reduce((n, methods) => n + Object.keys(methods).length, 0);
     expect(operations).toBe(app.apiRoutes.length);
-    expect(operations).toBe(132);
+    expect(operations).toBe(164);
     expect(doc.paths["/api/v1/stream-tickets"]!.post!["x-mordomo-scope"]).toBe("monitor");
     expect(doc.paths["/api/v1/devices/{id}"]!.patch!["x-mordomo-scope"]).toBe("owner");
     expect(doc.paths["/api/v1/devices/{id}"]!.patch!.security).toEqual([{ localToken: [] }]);

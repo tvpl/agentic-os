@@ -74,7 +74,15 @@ export default function NoteEditor({
   onClose: () => void;
 }) {
   return request.mode === "new" ? (
-    <NewNote onClose={onClose} onCreated={(path) => onRequest({ mode: "edit", path })} />
+    <NewNote
+      folder={request.folder}
+      onClose={onClose}
+      onCreated={(path) => {
+        if (!request.onCreated) return onRequest({ mode: "edit", path });
+        request.onCreated(path);
+        onClose();
+      }}
+    />
   ) : (
     <EditNote
       key={request.path}
@@ -87,13 +95,26 @@ export default function NoteEditor({
 
 /* ---------------------------------------------------------------- new note */
 
-function NewNote({ onClose, onCreated }: { onClose: () => void; onCreated: (path: string) => void }) {
+function NewNote({
+  folder: chosen,
+  onClose,
+  onCreated,
+}: {
+  folder?: string | undefined;
+  onClose: () => void;
+  onCreated: (path: string) => void;
+}) {
   const t = useT();
   const qc = useQueryClient();
   const settings = useOsSettings();
   const titleRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [area, setArea] = useState("");
+  // A folder chosen by the caller (cerebro-vista-notas, AC 41): read-only until "Trocar"; a folder and an area are
+  // never sent together (door 7).
+  const [folder, setFolder] = useState(chosen ?? "");
+  const [changing, setChanging] = useState(false);
+  const inFolder = folder.trim().replace(/^\/+|\/+$/g, "");
   const [frontMatter, setFrontMatter] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +128,7 @@ function NewNote({ onClose, onCreated }: { onClose: () => void; onCreated: (path
       const made = await apiCall("POST /api/memory/notes", {
         body: {
           title: title.trim(),
-          ...(area ? { area } : {}),
+          ...(inFolder ? { folder: inFolder } : area ? { area } : {}),
           ...(frontMatter ? { frontMatter: true } : {}),
         },
       });
@@ -134,21 +155,42 @@ function NewNote({ onClose, onCreated }: { onClose: () => void; onCreated: (path
             onChange={(event) => setTitle(event.target.value)}
           />
         </Field>
-        <Field label={t("note.new.area")} htmlFor="note-new-area">
-          <select
-            id="note-new-area"
-            className="input"
-            value={area}
-            onChange={(event) => setArea(event.target.value)}
-          >
-            <option value="">{t("note.noArea")}</option>
-            {(settings.data?.areas ?? []).map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {chosen !== undefined && (
+          <Field label={t("note.new.folder")} htmlFor="note-new-folder">
+            <div className="note-folder">
+              <input
+                id="note-new-folder"
+                className="input mono"
+                value={folder}
+                readOnly={!changing}
+                autoComplete="off"
+                onChange={(event) => setFolder(event.target.value)}
+              />
+              {!changing && (
+                <Button size="sm" variant="secondary" onClick={() => setChanging(true)}>
+                  {t("note.new.change")}
+                </Button>
+              )}
+            </div>
+          </Field>
+        )}
+        {!inFolder && (
+          <Field label={t("note.new.area")} htmlFor="note-new-area">
+            <select
+              id="note-new-area"
+              className="input"
+              value={area}
+              onChange={(event) => setArea(event.target.value)}
+            >
+              <option value="">{t("note.noArea")}</option>
+              {(settings.data?.areas ?? []).map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <label className="note-check">
           <input
             type="checkbox"

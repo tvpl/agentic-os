@@ -2,7 +2,15 @@ import type { Settings } from "../config/schema.js";
 import type { Db } from "../db/db.js";
 import { chooseProvider, type EmbeddingProvider } from "./embeddings.js";
 import { fileRowFromDb } from "./indexer.js";
-import { searchFiles, searchFilters, type SearchFilters, type SearchHit, type SearchVia } from "./search.js";
+import {
+  admits,
+  searchFiles,
+  searchFilters,
+  searchHitOf,
+  type SearchFilters,
+  type SearchHit,
+  type SearchVia,
+} from "./search.js";
 import { VectorIndex, countVectors, storedSemanticError, type VectorBackend, type VectorLoader } from "./vectors.js";
 
 /**
@@ -69,14 +77,15 @@ export class SemanticSearch {
     return choice.state === "ready" ? choice.provider : null;
   }
 
-  status(): SemanticStatus {
+  /** `allow`: the vectors counted are those of the files a caller may see (a device with a hidden folder). */
+  status(allow?: (row: { root: string; rel: string }) => boolean): SemanticStatus {
     const config = this.getSettings().memory.embeddings;
     const choice = chooseProvider(config);
     return {
       enabled: config.enabled,
       provider: choice.state === "ready" ? choice.provider.id : null,
       backend: choice.state === "ready" ? this.vectors.backend() : null,
-      vectors: choice.state === "ready" ? countVectors(this.db) : 0,
+      vectors: choice.state === "ready" ? countVectors(this.db, allow) : 0,
       blocked: choice.state === "blocked" ? choice.reason : null,
       error: this.queryError ?? storedSemanticError(this.db)?.message ?? null,
     };
@@ -102,18 +111,40 @@ export class SemanticSearch {
     const text = question === "" ? [] : searchFiles(this.db, { ...filters, limit: DEPTH });
     if (question === "" || countVectors(this.db) === 0) return mode === "semantic" ? [] : searchFiles(this.db, filters);
 
+    // Every file the vector list names, the rows the filters admit being the hits (the text list's first).
+    const byId = new Map<number, SearchHit>();
+    for (const hit of text) byId.set(hit.id, hit);
+    const refused = new Set<number>();
     let ranked: Array<{ id: number; similarity: number }> = [];
     try {
       const [vector] = await provider.embed([question], new AbortController().signal);
       this.queryError = null;
       if (vector && vector.some((n) => n !== 0)) {
         const { clauses, params } = searchFilters(filters);
-        ranked = this.vectors.rank(
-          vector,
-          provider,
-          { sql: clauses.map((clause) => `AND ${clause}`).join(" "), params },
-          DEPTH,
-        );
+        const sql = clauses.map((clause) => `AND ${clause}`).join(" ");
+        // The depth is `DEPTH` files the caller may see, not `DEPTH` files (cerebro-memoria-confiavel, round 2 finding 4):
+        // the policy (`allow`, the nature and the scope) is judged here, in JavaScript, so a list cut before it would
+        // be short by as many hidden files as are nearer to the question, and say how many. The list is read deeper
+        // until it holds `DEPTH` admitted files or the vectors are all read.
+        for (let depth = DEPTH; ; depth *= 4) {
+          const read = this.vectors.rank(vector, provider, { sql, params }, depth);
+          const unknown = read.map((r) => r.id).filter((id) => !byId.has(id) && !refused.has(id));
+          for (let i = 0; i < unknown.length; i += 500) {
+            const chunk = unknown.slice(i, i + 500);
+            const rows = this.db
+              .prepare(`SELECT * FROM files WHERE id IN (${chunk.map(() => "?").join(",")})`)
+              .all(...chunk) as Array<Record<string, unknown>>;
+            for (const row of rows) {
+              const file = fileRowFromDb(row);
+              if (admits(filters, file)) byId.set(file.id, searchHitOf(file, { snippet: null, score: 0, via: "semantic" }));
+              else refused.add(file.id);
+            }
+            for (const id of chunk) if (!byId.has(id)) refused.add(id);
+          }
+          ranked = read.filter((r) => byId.has(r.id));
+          if (ranked.length >= DEPTH || read.length < depth) break;
+        }
+        ranked = ranked.slice(0, DEPTH);
       }
     } catch (error) {
       this.queryError = error instanceof Error ? error.message : String(error);
@@ -121,19 +152,10 @@ export class SemanticSearch {
       return searchFiles(this.db, filters);
     }
 
-    const byId = new Map<number, SearchHit>();
-    for (const hit of text) byId.set(hit.id, hit);
+    // `ranked` holds admitted files only: a file the filters do not admit (a folder hidden from the caller) is out of
+    // the ranking before the lists are fused, not after, so a rank never counts it and the files after it keep the
+    // place they have in a world without it.
     const semanticIds = ranked.map((r) => r.id);
-    const missing = semanticIds.filter((id) => !byId.has(id));
-    if (missing.length > 0) {
-      const rows = this.db
-        .prepare(`SELECT * FROM files WHERE id IN (${missing.map(() => "?").join(",")})`)
-        .all(...missing) as Array<Record<string, unknown>>;
-      for (const row of rows) {
-        const file = fileRowFromDb(row);
-        if (filters.allow?.(file) ?? true) byId.set(file.id, { ...file, snippet: null, score: 0, via: "semantic" });
-      }
-    }
     const textIds = text.map((hit) => hit.id);
     const lists = mode === "semantic" ? [semanticIds] : [textIds, semanticIds];
     const inText = new Set(mode === "semantic" ? [] : textIds);

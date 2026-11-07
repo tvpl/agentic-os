@@ -283,6 +283,7 @@ export class IndexWorkerHost implements IndexRunner {
           opts.bus.emit("index.progress", message.progress);
         } else if (message.t === "done") {
           settle(() => {
+            opts.indexer.finishPass(message.stats as IndexStats);
             opts.bus.emit("index.finished", { stats: message.stats as IndexStats, runId: run.id });
             resolve(message.stats as IndexStats);
           });

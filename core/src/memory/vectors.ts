@@ -58,8 +58,15 @@ function setSemanticError(db: Db, error: SemanticError | null): void {
     );
 }
 
-export function countVectors(db: Db): number {
-  return (db.prepare("SELECT COUNT(*) AS c FROM file_vectors").get() as { c: number }).c;
+/** The vectors stored; with `allow`, only those of files the caller may see (a device is not told of the others). */
+export function countVectors(db: Db, allow?: (row: { root: string; rel: string }) => boolean): number {
+  if (!allow) return (db.prepare("SELECT COUNT(*) AS c FROM file_vectors").get() as { c: number }).c;
+  let count = 0;
+  for (const row of db
+    .prepare("SELECT f.root, f.rel FROM file_vectors v JOIN files f ON f.id = v.file_id")
+    .iterate() as IterableIterator<{ root: string; rel: string }>)
+    if (allow(row)) count++;
+  return count;
 }
 
 export interface EmbedPendingOptions {

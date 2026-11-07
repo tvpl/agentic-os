@@ -1,0 +1,15 @@
+{
+  "id": 41,
+  "type": "sentinel.fired",
+  "ts": 1793361600000,
+  "v": 1,
+  "payload": {
+    "sentinel": "reviewDue",
+    "title": "3 items to review",
+    "body": "Notes whose review date has passed are waiting in Reviews: confirm, update, snooze or let them go.",
+    "severity": "info",
+    "href": "/brain/reviews",
+    "dedupeKey": "sentinel:reviewDue:2026-10-30:all",
+    "messageParams": { "count": 3, "display": "3" }
+  }
+}

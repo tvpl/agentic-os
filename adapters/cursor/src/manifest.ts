@@ -16,6 +16,7 @@ export const cursorManifest: ProviderManifest = {
     resume: "none",
     writeConfinement: "none",
     readConfinement: "none",
+    protectsDirs: false,
   },
   layout: {
     instructionsFile: "AGENTS.md",

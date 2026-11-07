@@ -72,11 +72,15 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   (`tests/builtin-context.test.ts`). Such a skill is told the absolute paths it needs in its prompt, gets
   `memory/` as an added folder, and gets `MORDOMO_URL` and `MORDOMO_RUN_TOKEN` in its environment: `rc_` +
   32 random bytes, in memory, dropped the moment its run finishes, accepted only while the run is `queued`
-  or `running`, and only on `GET /api/memory/recall`, `…/recall/stats`, `…/journal`, `…/facts`; the two
+  or `running`, and only on `GET /api/memory/recall`, `…/recall/stats`, `…/search`, `…/journal`, `…/facts`, `…/maps`; the two
   routes that write (`POST /api/memory/journal/append`, `…/facts`) are open to the credential of a *write*
   run only, are capped (100 writes a run, 500 a day) and record the run as the source (a fact's
-  `sourceRunId` is the credential's run, whatever the body says). Anything else is `403`. Recall through
-  it reads `memory/` only, not the owner's other granted folders. The request log records who called
+  `sourceRunId` is the credential's run, whatever the body says). Anything else is `403`. Recall and search
+  through it read `memory/` only, not the owner's other granted folders; for a run started in a work context,
+  `memory/` and that context's `ok` folders (the ones the run is already handed as its working and added folders),
+  and without `context` they answer for the context alone (`context=all`: everything the credential reads). The folder
+  map (`…/maps`) answers it only the folders under `memory/notes/` and under the folders the run was handed (its
+  `folder` input and its context's `ok` paths); any other `root` is `404`. The request log records who called
   (`owner`, `device:<id>`, `broker:<run>`, `run:<run>`). It replaces the instruction to `cat config/token`
   that those skills used to carry (AD-012). The CLI path (`mordomo recall`) reads the index directly and
   needs no credential. `tests/builtin-context.test.ts` runs every built-in skill and routine against the
@@ -86,6 +90,25 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   user, and the same holds for the permission broker's `brk_` credential); and the owner token itself is
   still obtainable by a program of this user from the page (next bullet), so this narrows what a run is
   *given*, it does not stop a run that goes looking.
+- **What an agent writes to the memory waits for the owner** (`.specs/features/cerebro-memoria-confiavel`, door 9).
+  A run's credential that calls `POST /api/memory/facts` writes no fact: it gets `202` and a proposal of `run:<id>`
+  that waits in the review inbox ("Revisões", tab "Do agente") until the owner accepts or rejects it with `POST
+  /api/memory/proposals/:id/decide`, which only the owner token reaches; a line it appends with `POST
+  /api/memory/journal/append` ends with ` (autor:: agente)`, and the consolidation never promotes such a line. The
+  run's two route lists did not grow. In the same way the MCP tools `facts_assert`, `note_create` and `note_save` call
+  `POST /api/memory/proposals` (`author: "mcp"`), and `journal_append` sends `author: "agent"`. **The authorship mark is
+  provenance, not containment:** `mordomo mcp` runs with the owner token, so the process that serves it, or any program
+  that reads the token, can still call the owner's routes and write as the owner. What is guaranteed is that the tools
+  MordomoOS hands an agent propose instead of writing, and that every proposal and every version says who wrote it.
+  **What the review shows of a fact's effects, and what it does not.** The detail of a proposal lists what accepting each
+  of its facts would close, retract or refuse (`effects`). Each fact is checked against the facts as they are *now*, not
+  against the state left by the earlier operations of the same decision. When one consolidation holds two fact operations
+  about the same subject and predicate, the list for the second does not include what the first will have done by the time
+  it is accepted, so the second may close or retract a fact that the first one wrote, or be refused (`409 fact_overlap`)
+  by it, and the list did not foretell that. This never hides a change to a fact of the owner: every operation is checked against
+  every owner's fact, and an earlier operation can only shorten or retract one, never make it overlap one more, so
+  every owner's fact the decision closes or retracts is already named in the list. What can change without being named is a fact the same proposal wrote earlier. The `at` of a
+  close that names no start date is the moment the detail is read, not the moment of the decision.
 - **A SKILL.md is data, never code.** Every SKILL.md is parsed by one function (`parseSkillFile`,
   `core/src/skills/parse.ts`): `gray-matter` would run a `---js`, `---javascript`, `---coffee` or `---cson`
   frontmatter with `eval`, so those engines are replaced by ones that refuse (`400 invalid_frontmatter`),
@@ -112,10 +135,10 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
 | Scope | What it is | Routes |
 | --- | --- | --- |
 | `monitor` (33) | See runs, approvals, notifications and status (the health report included, without `npm audit` for a device); it reads the inbox (marking rows read and deleting them is the owner's). | `GET /api/approvals`<br>`GET /api/approvals/:id`<br>`GET /api/channels/telegram/status`<br>`GET /api/doctor`<br>`GET /api/events`<br>`GET /api/health`<br>`GET /api/memory/status`<br>`GET /api/metrics`<br>`GET /api/metrics/history`<br>`GET /api/notifications`<br>`GET /api/objectives`<br>`GET /api/objectives/:id`<br>`GET /api/openapi.json`<br>`GET /api/providers`<br>`POST /api/push/unsubscribe`<br>`GET /api/push/vapid`<br>`GET /api/routines`<br>`GET /api/routines/:id/history`<br>`GET /api/routines/silent`<br>`GET /api/routines/summary`<br>`GET /api/runs`<br>`GET /api/runs/:id`<br>`GET /api/runs/:id/children`<br>`GET /api/runs/:id/stream`<br>`GET /api/sentinels`<br>`GET /api/sessions`<br>`GET /api/sessions/:id`<br>`GET /api/settings`<br>`GET /api/skills`<br>`POST /api/stream-tickets`<br>`GET /api/system/info`<br>`GET /api/ui-preferences`<br>`GET /api/updates` |
-| `content` (24) | Read what the owner's folders, notes and memory hold: memory, artifacts, run diffs, skills' text and resources, connector data, and register a push subscription at a browser's push service (a push carries inbox text). | `GET /api/artifacts/file`<br>`GET /api/artifacts/list`<br>`GET /api/artifacts/raw`<br>`GET /api/artifacts/recent`<br>`GET /api/connectors`<br>`GET /api/connectors/:id/data`<br>`GET /api/memory/facts`<br>`GET /api/memory/graph`<br>`GET /api/memory/hygiene`<br>`GET /api/memory/journal`<br>`GET /api/memory/links`<br>`GET /api/memory/note`<br>`GET /api/memory/preview`<br>`GET /api/memory/query`<br>`GET /api/memory/recall`<br>`GET /api/memory/recall/stats`<br>`GET /api/memory/related`<br>`GET /api/memory/routers/check`<br>`GET /api/memory/search`<br>`POST /api/push/subscribe`<br>`GET /api/runs/:id/diff`<br>`GET /api/skills/:slug`<br>`GET /api/skills/:slug/notes`<br>`GET /api/skills/:slug/resource` |
+| `content` (36) | Read what the owner's folders, notes and memory hold: memory, the history of memory/, the agent's proposals waiting for review, the work contexts, the dashboards, artifacts, run diffs, skills' text and resources, connector data, and register a push subscription at a browser's push service (a push carries inbox text). | `GET /api/artifacts/file`<br>`GET /api/artifacts/list`<br>`GET /api/artifacts/raw`<br>`GET /api/artifacts/recent`<br>`GET /api/connectors`<br>`GET /api/connectors/:id/data`<br>`GET /api/contexts`<br>`GET /api/dashboards`<br>`GET /api/dashboards/:id`<br>`GET /api/memory/cleanup/inventory`<br>`GET /api/memory/cleanup/scans/:id`<br>`GET /api/memory/facts`<br>`GET /api/memory/graph`<br>`GET /api/memory/history`<br>`GET /api/memory/history/:id`<br>`GET /api/memory/hygiene`<br>`GET /api/memory/journal`<br>`GET /api/memory/links`<br>`GET /api/memory/maps`<br>`GET /api/memory/note`<br>`GET /api/memory/preview`<br>`GET /api/memory/proposals`<br>`GET /api/memory/proposals/:id`<br>`GET /api/memory/query`<br>`GET /api/memory/recall`<br>`GET /api/memory/recall/stats`<br>`GET /api/memory/related`<br>`GET /api/memory/reviews`<br>`GET /api/memory/routers/check`<br>`GET /api/memory/search`<br>`GET /api/memory/tree`<br>`POST /api/push/subscribe`<br>`GET /api/runs/:id/diff`<br>`GET /api/skills/:slug`<br>`GET /api/skills/:slug/notes`<br>`GET /api/skills/:slug/resource` |
 | `run` (6) | Ask for runs: read-only on a provider that keeps reads in the working folder, a write waits for a human (see *Separation of duties*); cancel and repeat a run. | `POST /api/runs`<br>`POST /api/runs/:id/cancel`<br>`POST /api/runs/:id/children`<br>`POST /api/runs/:id/retry`<br>`POST /api/sessions/:id/continue`<br>`POST /api/skills/:slug/run` |
 | `approve` (1) | Decide what someone else asked for. | `POST /api/approvals/:id/resolve` |
-| `owner` (66) | Only the local token. A paired device gets `403 owner_only`: settings, providers (changing them), backups and restore, sync, skills and routines (writing them), objectives, connectors, memory writes (facts, the journal, the notes: creating and saving a note is the owner's alone), devices and pairing, the channels. | `POST /api/approvals/tool`<br>`GET /api/backups`<br>`POST /api/backups`<br>`POST /api/backups/:name/restore`<br>`GET /api/backups/restore-pending`<br>`DELETE /api/backups/restore-pending`<br>`POST /api/channels/telegram/send`<br>`POST /api/channels/telegram/test`<br>`POST /api/connectors`<br>`PUT /api/connectors/:id`<br>`DELETE /api/connectors/:id`<br>`GET /api/connectors/:id/setup`<br>`GET /api/connectors/audit`<br>`GET /api/devices`<br>`PATCH /api/devices/:id`<br>`DELETE /api/devices/:id`<br>`GET /api/diagnostics/export`<br>`POST /api/memory/facts`<br>`POST /api/memory/facts/:id/retract`<br>`POST /api/memory/index`<br>`POST /api/memory/index/cancel`<br>`POST /api/memory/journal/append`<br>`POST /api/memory/notes`<br>`PUT /api/memory/notes`<br>`POST /api/memory/open`<br>`POST /api/memory/routers`<br>`POST /api/microapps/pixel/save`<br>`DELETE /api/notifications/:id`<br>`POST /api/notifications/read`<br>`POST /api/objectives`<br>`DELETE /api/objectives/:id`<br>`POST /api/objectives/:id/dispatch`<br>`POST /api/objectives/:id/steps/:stepId/retry`<br>`POST /api/pair/start`<br>`POST /api/providers/:id/detect`<br>`GET /api/providers/:id/models`<br>`POST /api/providers/:id/smoke`<br>`PUT /api/providers/default`<br>`GET /api/push/subscriptions`<br>`DELETE /api/push/subscriptions/:id`<br>`POST /api/push/test`<br>`POST /api/routines`<br>`PUT /api/routines/:id`<br>`DELETE /api/routines/:id`<br>`POST /api/routines/:id/duplicate`<br>`POST /api/routines/:id/run`<br>`POST /api/routines/:id/toggle`<br>`PATCH /api/sessions/:id`<br>`DELETE /api/sessions/:id`<br>`PUT /api/settings`<br>`POST /api/skills`<br>`PUT /api/skills/:slug`<br>`DELETE /api/skills/:slug`<br>`POST /api/skills/:slug/favorite`<br>`POST /api/skills/:slug/notes`<br>`POST /api/skills/:slug/notes/promote`<br>`POST /api/skills/:slug/toggle`<br>`POST /api/skills/import`<br>`POST /api/skills/install`<br>`GET /api/skills/registry`<br>`GET /api/startup-plan`<br>`POST /api/sync/apply`<br>`GET /api/sync/plan`<br>`POST /api/system/reap`<br>`POST /api/system/restart`<br>`PUT /api/ui-preferences` |
+| `owner` (86) | Only the local token. A paired device gets `403 owner_only`: settings, providers (changing them), backups and restore, sync, the work contexts (defining them), the dashboards (writing, refreshing, exporting and archiving them), skills and routines (writing them), objectives, connectors, memory writes (facts, the journal, the notes and their tasks, a version of the history put back, a proposal stored or decided, a folder exported or imported: creating, saving and restoring a note, and accepting what an agent proposed, is the owner's alone), devices and pairing, the channels. | `POST /api/approvals/tool`<br>`GET /api/backups`<br>`POST /api/backups`<br>`POST /api/backups/:name/restore`<br>`GET /api/backups/restore-pending`<br>`DELETE /api/backups/restore-pending`<br>`POST /api/channels/telegram/send`<br>`POST /api/channels/telegram/test`<br>`POST /api/connectors`<br>`PUT /api/connectors/:id`<br>`DELETE /api/connectors/:id`<br>`GET /api/connectors/:id/setup`<br>`GET /api/connectors/audit`<br>`POST /api/contexts`<br>`PATCH /api/contexts/:id`<br>`DELETE /api/contexts/:id`<br>`POST /api/dashboards`<br>`PUT /api/dashboards/:id`<br>`DELETE /api/dashboards/:id`<br>`POST /api/dashboards/:id/refresh`<br>`POST /api/dashboards/:id/export`<br>`GET /api/devices`<br>`PATCH /api/devices/:id`<br>`DELETE /api/devices/:id`<br>`GET /api/diagnostics/export`<br>`POST /api/memory/cleanup/apply`<br>`PUT /api/memory/cleanup/decisions`<br>`POST /api/memory/cleanup/scans`<br>`POST /api/memory/cleanup/undo`<br>`POST /api/memory/export`<br>`POST /api/memory/facts`<br>`POST /api/memory/facts/:id/retract`<br>`POST /api/memory/history/restore`<br>`POST /api/memory/import`<br>`POST /api/memory/index`<br>`POST /api/memory/index/cancel`<br>`POST /api/memory/journal/append`<br>`POST /api/memory/notes`<br>`PUT /api/memory/notes`<br>`PUT /api/memory/notes/properties`<br>`PUT /api/memory/tasks`<br>`POST /api/memory/open`<br>`POST /api/memory/proposals`<br>`POST /api/memory/proposals/:id/decide`<br>`POST /api/memory/reviews`<br>`POST /api/memory/routers`<br>`POST /api/microapps/pixel/save`<br>`DELETE /api/notifications/:id`<br>`POST /api/notifications/read`<br>`POST /api/objectives`<br>`DELETE /api/objectives/:id`<br>`POST /api/objectives/:id/dispatch`<br>`POST /api/objectives/:id/steps/:stepId/retry`<br>`POST /api/pair/start`<br>`POST /api/providers/:id/detect`<br>`GET /api/providers/:id/models`<br>`POST /api/providers/:id/smoke`<br>`PUT /api/providers/default`<br>`GET /api/push/subscriptions`<br>`DELETE /api/push/subscriptions/:id`<br>`POST /api/push/test`<br>`POST /api/routines`<br>`PUT /api/routines/:id`<br>`DELETE /api/routines/:id`<br>`POST /api/routines/:id/duplicate`<br>`POST /api/routines/:id/run`<br>`POST /api/routines/:id/toggle`<br>`PATCH /api/sessions/:id`<br>`DELETE /api/sessions/:id`<br>`PUT /api/settings`<br>`POST /api/skills`<br>`PUT /api/skills/:slug`<br>`DELETE /api/skills/:slug`<br>`POST /api/skills/:slug/favorite`<br>`POST /api/skills/:slug/notes`<br>`POST /api/skills/:slug/notes/promote`<br>`POST /api/skills/:slug/toggle`<br>`POST /api/skills/import`<br>`POST /api/skills/install`<br>`GET /api/skills/registry`<br>`GET /api/startup-plan`<br>`POST /api/sync/apply`<br>`GET /api/sync/plan`<br>`POST /api/system/reap`<br>`POST /api/system/restart`<br>`PUT /api/ui-preferences` |
 
 - **Separation of duties.** A device does not approve what it asked for. Every run records `startedBy` and every
   approval `requestedBy` (`owner`, `device:<id>`, or null for a routine, a sentinel, the CLI and what predates
@@ -328,6 +351,159 @@ remaining `ApprovalKind`s — installing software, changing global configs, dest
 commands, sending data to external services — are declared for connectors and the
 agent contract but are not yet raised by any code path. **Adding an indexed folder is
 validated (absolute, existing directory, outside `config/`) but not approval-gated.**
+
+## Folder access
+
+The owner says, per folder, what agents and paired devices may do there (`settings.folderAccess`,
+`.specs/features/cerebro-memoria-confiavel`, door 12). There are three levels and two audiences, `agents` (the runs:
+what the agent may reach on disk and what a run's credential reads) and `devices` (the paired devices): `write` is what
+every folder has when no entry covers it, `read` refuses what would write there, and `hide` leaves the folder out of
+everything the audience reads. A level other than `write` only narrows; nothing here gives anyone more than they had.
+The owner's token is never bound by a level: the owner reads and writes every folder whatever its levels.
+
+- **Which entry decides.** At most 200 entries, each an absolute path inside `memory/` or an enabled indexed folder
+  (`PUT /api/settings` answers `400 validation` otherwise). The entry whose real path is the longest prefix of the path
+  decides, by whole segments (`notes/fin` covers `notes/fin/a.md`, not `notes/fin2/`). It fails closed: an entry whose
+  level cannot be read is `hide` for both audiences; one whose path cannot be resolved (a link loop, a folder that is
+  not there) is `hide` for both over its path as written; a list that cannot be read (or that holds a path that is not
+  absolute) is `hide` for devices and `read` for agents on every path, and the file is kept as `settings.json.invalid`.
+- **Devices.** Every route a device reads leaves out what is hidden from it, through the same filter that leaves out the
+  owner's excludes (the search, the recall and the links it follows, the graph, related, links, the tree, the maps,
+  hygiene, the field query, the journal, the routers' check, the recall's statistics, the contexts, the facts by their
+  source, the reviews, the cleanup's inventory and scans, the dashboards, the history, the proposals and the run diff).
+  A note or a file it may not see answers `404 not_found`, the same body as one that does not exist, so the answer
+  does not say the folder is there; a hidden journal day is `404 not_found` and is not created. `GET /api/settings`,
+  and the `settings.changed` events of its stream, carry no `folderAccess` and no indexed folder or context path hidden
+  from devices. `artifacts/exports/` is never served to a device, whatever the levels: it is where
+  `POST /api/memory/export` copies a folder, and an import (`POST /api/memory/import`) reads only a folder the owner
+  reads, outside `memory/`, into a new folder of `memory/notes/`. A dashboard's snapshot is
+  computed once for every caller: a device gets it without the items whose `path` or `sourcePath` is hidden and without
+  the highlights that point at one, but the numbers (counts, totals, KPIs) stay as they were computed. A run a device
+  asks for in a folder hidden from devices is `404 not_found`; one that would write in a folder `read` for devices is
+  `403 folder_read_only`. A run a device asks for whose working folder (or a folder it is handed) **holds** a folder
+  hidden from devices, or `artifacts/exports/`, or the guard's folder, is not refused but is launched with the same
+  deny rules the agents' hidden folders get (`Read`, `Grep`, `Glob`, `Edit` and `Write` under each, in every mode): the
+  agent reads everything under its folder without asking, and the device reads what the agent prints (plan amendment
+  12). A folder handed to a device's run that is itself hidden from devices, or the exports, is `404 not_found` and
+  names nothing. A device only starts a provider whose reads stay in the working folder, which is the one the deny
+  rules exist for (Codex and Cursor: `403 device_provider_refused`, and `409 folder_hide_unsupported` where a manifest
+  changes between the request and the launch). The rules are what is proven (the launch arguments); the fake CLI reads
+  no file, and the rule syntax is not exercised against the installed CLI here. Beyond the files, every answer a device reads leaves out what exists only through a hidden
+  path, and writes a hidden path in free text as `(pasta oculta)` (plan amendment 5): the runs that ran in, or were
+  handed, a hidden folder (absent from `GET /api/runs` and a run's children, `404 not_found` for the run, its stream,
+  its children and its diff), their conversations, approvals (which a device can neither read nor resolve) and
+  notifications; the events of the stream about them; the context sources of objectives; the routines whose working
+  folder is hidden; the connectors whose entry point is; the facets of `GET /api/memory/status`; and the text of
+  skills, their notes and their text resources. A run, approval or notification whose run (or approval) can no longer
+  be found is hidden from a device while devices have a hidden folder (it fails closed). The search's and the recall's
+  `score` for a device, and for a run's credential, is `1 / position` in the list it gets (plan amendment 4), and the
+  order itself is the one the search would give with the hidden folders not there (plan amendment 7): bm25 weighs a word
+  by how many files hold it and how long they are, so ranking over the whole index let a hidden folder change a device's
+  order. A device and a run's credential search an index of their own (`files_fts_devices`, `files_fts_agents`,
+  contentless, migration 31) that holds only the files they may see, kept current by every pass and rebuilt when
+  `folderAccess` or the exclusions change; an audience that hides nothing from itself reads the owner's index and has
+  no copy (about 40 % of the owner's index per audience that has one, measured on 5 000 notes of 5 KB). The owner sees
+  the bm25 of the whole index as before. A run's `artifacts/<run id>/` is another way a run's output arrives: for a
+  device, an artifact of a run it is told does not exist (hidden folder, or a run that is gone) is not listed and
+  answers `404 not_found`, and, while a folder is hidden from devices, so does a run's `proposal.json`, which quotes the
+  notes its ops are sourced in. Hidden folders in free text are matched by their configured spellings (absolute,
+  relative to the home and to `memory/`, `~/`), so a name with a space is written `(pasta oculta)` whole. What a device
+  is told about the index is worked out as the owner's view without the hidden folders (plan amendment 11): the
+  "related" edges and the graph's "Similar content" come from `file_related_devices` (migration 32), computed over the
+  files the device may see only, since TF-IDF over the whole corpus let a hidden note change which words a visible pair
+  shared; until the pass that builds it has run a device is read no edge from the table, never the owner's (the graph works its
+  edges out on the fly over the files the device may see). The table is named for the view it was worked out for: a
+  pass that read the access before it changed writes nothing after the change, and edges found named for another view
+  are emptied at the read (round 3 finding 3). With embeddings on,
+  the vector list is read deeper until it holds 50 files the caller may see (or the vectors end) before it is fused with
+  the words list, so a hidden folder shortens neither the list nor changes `via`. A device's index also leaves out the
+  export copies under an indexed root that holds `artifacts/exports/`. The history is keyed by path, so a note
+  that moves leaves its versions under the path it came from, and where it went is not always known (an unversioned
+  folder, a vault outside `memory/`, a rename made outside the system). While a folder is hidden from devices, a device
+  is therefore told of no version of a path that predates a removal of that path (the removal itself included), nor of
+  any version of a path whose file is gone and whose removal the index has not recorded yet, whatever became of the
+  note; the versions from the last removal on (a new note at the name, a restore by the owner) are read like any
+  others, and the owner reads all. The cost: a device cannot read the older versions of a note that was moved, renamed
+  or deleted while a folder is hidden from devices, even one that moved between two visible folders (its new path's
+  versions are read), until the owner restores it; with nothing hidden from devices nothing changes (plan amendment
+  16). **A known limit:** a note renamed outside the system (in a file manager, by a script) into a folder hidden from
+  devices, with a new file written at the old name before the index has passed, leaves no removal on record: the old
+  name has a file again, so the rule sees neither a removal nor a missing file, and a device can read the older versions
+  of the note that left until the next pass records the change as an edit; even then the older versions stay readable,
+  because nothing says the first note is gone. Closing it needs a note identifier written at write time, which the system
+  does not keep (plan amendment 17). A move the system makes itself (the cleanup's move) is recorded at once and is not
+  in this limit. A device with a hidden folder, or one whose index is its own because a root holds `artifacts/exports/`
+  or `guard/`, is given no count of the index pass
+  (`lastIndex.stats`, the progress of a pass, the `index.*` events, the inbox row "Index finished" are zero or absent;
+  the doctor report prints no "files scanned" and counts and names only the indexed folders the device sees;
+  `semantic.vectors` counts the vectors of the files it sees), and a row or event about a hidden folder (an `fsWatch` sentinel's, `messageParams.folder`) does not exist for it:
+  dropped, not renamed, since a renamed row would still say that files changed, how many and when. Changing
+  `folderAccess` starts an index pass. What a device is not spared: that a pass ran and when (`lastIndex.at`, the doctor's
+  time of the last pass, the order of the event ids), which a change to a file it can see shows as well; the differential
+  probe of C159 scrubs exactly those clocks.
+- **Agents.** A run's credential reads (search, recall, maps, journal, facts, the recall's statistics) leave out what is
+  hidden from agents, and a run's credential appends to the journal only where agents may write (`403 folder_hidden`,
+  `403 folder_read_only`). The context block and the routers in a run's prompt, and the routers and context maps the
+  engine writes into `memory/` (the map every agent reads), never name a folder hidden from agents. A run that would
+  start in a folder `hide` for agents, or be handed one to read, is refused with `403 folder_hidden`; a write run in a
+  folder `read` for agents with `403 folder_read_only`. When the run's folder (or a folder it is handed) holds a folder
+  hidden from agents, Claude Code launches with `--disallowedTools` denying `Read`, `Grep`, `Glob`, `Edit` and
+  `Write` under it (the rule syntax is not exercised against the installed CLI here); **Codex and Cursor are refused
+  with `409 folder_hide_unsupported`**, as is a provider whose manifest does not say it keeps reads in the working
+  folder: they read the whole disk (AD-015(d)), and "hidden" would be false. A write run whose folders hold a folder
+  `read` for agents keeps it read-only (`protectedDirs`), and fails with `409 folder_protection_unsupported` on a
+  provider that cannot protect a folder. The triage sentinel, which puts a sentinel's title and detail into the prompt
+  of a model run, writes the folders hidden from agents in them as `(pasta oculta)`, in the same spellings.
+- **When it is checked.** Every way a run is created checks the levels when it is asked for (`POST /api/runs`,
+  `POST /api/skills/:slug/run`, a retry, a child, a conversation continued, a routine run now), and again when it
+  launches, so a level changed in between decides; a run nobody's request waits on (a routine fired by its schedule,
+  an objective's step, a dashboard's question) is checked when it launches and fails with `failure.code`
+  `folder_hidden`, `folder_read_only` or `folder_hide_unsupported`.
+- **Limits.** The levels are what MordomoOS serves and what it hands a run; they are not a sandbox. A provider that
+  reads the whole disk is refused only when a hidden folder lies inside the run's folders: in a sibling folder, Codex
+  and Cursor can still open a hidden folder by its absolute path. Claude Code's `Bash` is not covered by the deny rules;
+  it asks a human first in every profile a run uses. A binary a device is served (an image of an artifact or of a
+  skill) is sent as it is, and the totals in the `x-total-count` header of `GET /api/runs` and `GET /api/sessions`
+  count every row, hidden ones included. **`mordomo mcp` reads with the owner's token** (it is the owner's own program),
+  so an agent session that has its tools (`recall`, `note_read`, `facts_query`) reads hidden folders: `hide` for agents
+  binds the runs MordomoOS starts and the credential it gives them, not a program the owner configures with the token.
+  A name is hidden whole only where it is written as a path: a bare folder name in a sentence (`fin`) is not a
+  citation and stays; the tail of a hidden path stops at the first space, so the part of a file name after a space
+  below a hidden folder may stay. The output of a run the owner (or a routine) started that was handed a folder hidden from
+  devices only (a memory skill reads `memory/` whole) can quote it, and a device reads that output; a run a device
+  started is denied the folder (above). Hiding from devices is enforced where a file is served or indexed, and for a
+  device's own runs by the deny rules, not by following what an agent copies.
+
+
+## The guard of MEMORY.md
+
+`memory/MEMORY.md` is what every agent session loads first, so a run that may write must not be able to leave its own
+text there (`.specs/features/cerebro-memoria-confiavel`, door 8, plan amendments 8, 9 and 13). At `run.started` of a write
+run the guard keeps the file's bytes; at `run.finished`, when the file changed and the owner saved none in between, it
+puts the owner's bytes back and stores what the run left as a `memory_edit` proposal for the owner to accept or reject.
+
+- **Nothing the run can shape is on the guard's way.** What the run left at the name and a plain put-back cannot take
+  (a file past the guard's 4 MiB read, a link, a folder) is set aside whole in `<home>/guard/`, under
+  `guard-<runId>-MEMORY.md` and then `-2` ... `-99`, and after those under a name made of twelve random hex digits, so a
+  run that can write the whole home (a provider with no sandbox, Cursor with `--force`) cannot fill the names beforehand
+  and make the guard give up. A name that exists is never overwritten. `guard/` is no folder a run is handed (not its
+  working folder, nor `memory/`, nor its artifacts); backups do not copy it (the set-asides are what the owner rejected,
+  not the owner's memory) and nothing bounds it, so the owner deletes what it holds when it is no longer wanted.
+- **A link at the name is never followed.** The guard finds it by `lstat`, sets it aside as a link, and the proposal
+  holds the link's target as written (`linkTarget`) and no content, so a link to a note hidden from agents and devices
+  hands no byte of it to the proposal. A proposal that names a target hidden from an audience is hidden from it, and
+  accepting one is refused (`400 validation`).
+- **`guard/` is the owner's alone.** A paired device is served nothing in it (`404`, as for `artifacts/exports/`: the
+  folder is outside every device's and every run credential's reads, whatever the levels of `folderAccess` say), and
+  only the owner (or what the owner set up: a routine, the CLI) may start a run whose working folder is in it: a
+  device's request is `403 forbidden_path` when it is asked for and again when the run launches.
+- **Told, not logged.** When the guard sets something aside, or a step of it fails, the owner gets an inbox row
+  (`memory.guard`), `danger` when the owner's bytes could not be put back.
+- **Limits.** The guard's start states live in the service's memory: a service killed during a write run loses them (a
+  graceful stop still emits `run.finished`). It guards the file at the root of `memory/`, not the other notes (a run
+  that writes those leaves an `external` version on the next index pass) and not the journal. A program the owner
+  runs with the owner's token, or a run with an unconfined shell that can replace `<home>/guard/` itself, is outside
+  what a folder can bound.
 
 ## Notes and the index worker
 

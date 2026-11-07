@@ -1,0 +1,46 @@
+/* The labels of trustworthy memory (.specs/features/cerebro-memoria-confiavel, design.md "Rótulos"): 12px, tokens only. */
+.mc-author,
+.mc-opstate,
+.mc-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-2);
+}
+
+.mc-opstate {
+  color: var(--warn);
+}
+
+.mc-trust {
+  gap: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.mc-trust.tone-ok {
+  color: var(--ok);
+}
+
+.mc-trust.tone-warn {
+  color: var(--warn);
+}
+
+.mc-trust.tone-info {
+  color: var(--info);
+}
+
+.mc-author svg,
+.mc-opstate svg,
+.mc-trust svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.mc-meta {
+  display: flex;
+  gap: var(--s-2);
+  color: var(--text-dim);
+}

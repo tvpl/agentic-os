@@ -1,0 +1,11 @@
+{
+  "id": 14,
+  "type": "dashboard.refreshed",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "id": "visao-geral",
+    "generatedAt": 1760000000000,
+    "status": "partial"
+  }
+}

@@ -64,6 +64,8 @@ export interface FieldQuery {
   /** `key` alone (any value), `key:value` (exact, case-insensitive) or `key:~value` (substring). */
   where: string;
   limit?: number;
+  /** Today's policy over stored rows (`MemoryIndexer.rowFilter`): a row it refuses is not a hit. */
+  allow?: (row: { root: string; rel: string }) => boolean;
 }
 
 export interface FieldHit extends FileRow {
@@ -103,6 +105,7 @@ export function queryFilesByField(db: Db, q: FieldQuery): FieldHit[] {
   const out: FieldHit[] = [];
   const wanted = parsed.value?.toLowerCase() ?? null;
   for (const row of rows) {
+    if (q.allow && !q.allow({ root: String(row.root), rel: String(row.rel) })) continue;
     const fields = fieldsFromDb(row.fields);
     const actual = fields[parsed.key];
     if (actual === undefined) continue;

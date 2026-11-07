@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import { statWorkspacePath } from "@mordomo/core/internal";
+import { redactorFor } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError, startedByOf } from "./common.js";
@@ -50,7 +51,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
   bind(
     app,
     "skills.resource",
-    async ({ params: { slug }, query: { rel } }, _req, reply) => {
+    async ({ params: { slug }, query: { rel } }, req, reply) => {
       if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
       // Opened through the safe-read primitive: the descriptor, not the path, is what gets streamed.
       const hit = ctx.skills.openResource(slug, rel);
@@ -67,6 +68,16 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
           "content-disposition",
           `${hit.resource.kind === "pdf" ? "inline" : "attachment"}; filename="${hit.resource.name.replace(/["\\\r\n]/g, "_")}"`,
         );
+      }
+      // A device reads a text resource with every hidden path in it written as `(pasta oculta)` (cerebro-memoria-confiavel,
+      // amendment 5): read whole (it is bounded above), then sent. A binary one is sent as it is.
+      const device = redactorFor(ctx, req.principal);
+      if (device && /^(text\/|application\/(json|xml))/.test(hit.contentType)) {
+        try {
+          return reply.send(device.text(hit.file.readBytes(MAX_RESOURCE_BYTES).bytes.toString("utf8")));
+        } finally {
+          hit.file.close();
+        }
       }
       return reply.send(hit.file.createReadStream());
     },

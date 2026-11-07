@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { redactorFor } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
@@ -14,10 +15,21 @@ import { httpError } from "./common.js";
  * Command Centre on a device marks rows read on that screen and lets the server's refusal pass.
  */
 export function registerNotificationRoutes(app: FastifyInstance, ctx: AppContext): void {
-  bind(app, "notifications.list", async ({ query: q }) => {
+  bind(app, "notifications.list", async ({ query: q }, req) => {
+    // A device is told of no notification of a hidden run, approval or file, and they are not in its unread count
+    // (cerebro-memoria-confiavel, amendment 5).
+    const device = redactorFor(ctx, req.principal);
+    if (!device) {
+      return {
+        items: ctx.notifications.list({ limit: q.limit, unreadOnly: q.unread === true }),
+        unread: ctx.notifications.unreadCount(),
+      };
+    }
+    const shown = (n: Parameters<typeof device.hiddenNotification>[0]) => !device.hiddenNotification(n);
+    const all = ctx.notifications.list({ limit: 1000, unreadOnly: q.unread === true }).filter(shown);
     return {
-      items: ctx.notifications.list({ limit: q.limit, unreadOnly: q.unread === true }),
-      unread: ctx.notifications.unreadCount(),
+      items: all.slice(0, q.limit ?? all.length),
+      unread: ctx.notifications.list({ limit: 1000, unreadOnly: true }).filter(shown).length,
     };
   });
 

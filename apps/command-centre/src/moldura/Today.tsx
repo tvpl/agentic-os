@@ -4,7 +4,9 @@
  * lâmina; here they sit side by side.
  */
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useLocale, useT, type TKey } from "../i18n";
+import { useRouteQuery } from "../queries";
 import { WIDGET_REGISTRY } from "../desktop/registry";
 import type { WidgetId } from "../desktop/defaultLayout";
 
@@ -38,6 +40,12 @@ export default function Today() {
     [locale],
   );
   const date = dateFormat.format(today);
+  // "Ver a visão geral →" when an overview dashboard exists (cerebro-paineis, AC 43, amendment 25); the cards stay.
+  const dashboards = useRouteQuery(["dashboards", "list"], "GET /api/dashboards", undefined, {
+    retry: false,
+    staleTime: 60_000,
+  });
+  const overview = dashboards.data?.dashboards.find((d) => d.kind === "overview");
   return (
     <div className="page mold-today">
       <h2 className="mold-today-h">
@@ -46,6 +54,11 @@ export default function Today() {
           ·
         </span>
         <span className="mold-today-date">{date}</span>
+        {overview && (
+          <Link className="mold-today-link" to={`/dashboards/${encodeURIComponent(overview.id)}`}>
+            {t("dash.today.link")}
+          </Link>
+        )}
       </h2>
       <div className="mold-cards">
         {TODAY_CARDS.map(({ widget, titleKey }) => {

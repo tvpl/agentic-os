@@ -11,7 +11,7 @@
  * `frame-layer` show the same primitives inside the two interfaces, each with
  * the stylesheet that dresses them there (luz.css, moldura.css).
  */
-import { StrictMode, useMemo, useRef, useState, type ReactNode } from "react";
+import { StrictMode, Suspense, lazy, useMemo, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -52,6 +52,14 @@ import AttentionWidget from "../desktop/widgets/AttentionWidget";
 import NowPanel from "../desktop/NowPanel";
 import EventTimeline from "../runs/EventTimeline";
 import type { RunEventView } from "../runs/useRunStream";
+
+/** The notes view (cerebro-vista-notas, C78): a chunk of its own, as the view is in the app. */
+const NotesStory = lazy(() => import("./notesStory"));
+/** The guided cleanup (cerebro-faxina-guiada, C81): through the wizard's chunk, as it is in the app. */
+const CleanupStory = lazy(() => import("./cleanupStory"));
+/** "Revisões" (cerebro-natureza, C91): through the screen's chunk, as it is in the app. */
+const ReviewsStory = lazy(() => import("./reviewsStory"));
+const DashboardsStory = lazy(() => import("./dashboardsStory"));
 
 /* ---------- fixtures (plainly synthetic; the gallery never talks to the API) ---------- */
 const NOW = Date.UTC(2026, 8, 2, 14, 30);
@@ -163,6 +171,7 @@ const run = (
   permissionProfile: null,
   startedBy: null,
   usage: null,
+  contextId: null,
   ...fields,
 });
 const runs: RunRecord[] = [
@@ -854,6 +863,38 @@ function Gallery() {
 
       <Story id="timeline" title="Run event timeline">
         <EventTimeline events={events} live={false} height={320} />
+      </Story>
+
+      <Story id="notes" title="Notes view">
+        <Suspense fallback={null}>
+          <NotesStory />
+        </Suspense>
+      </Story>
+
+      <Story id="cleanup" title="Guided cleanup">
+        <Suspense fallback={null}>
+          <CleanupStory />
+        </Suspense>
+      </Story>
+
+      <Story id="reviews" title="Reviews">
+        <Suspense fallback={null}>
+          <ReviewsStory />
+        </Suspense>
+      </Story>
+
+      <Story id="dashboards" title="Dashboards">
+        <Suspense fallback={null}>
+          <DashboardsStory />
+        </Suspense>
+      </Story>
+
+      <Story id="memoria" title="Trustworthy memory (memória confiável)">
+        <Suspense fallback={null}>
+          {/* through the screens' own story modules, and so their chunks */}
+          <ReviewsStory part="memoria" />
+          <NotesStory part="memoria" />
+        </Suspense>
       </Story>
     </main>
   );

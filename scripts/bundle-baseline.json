@@ -55,6 +55,54 @@
       "jsGzip": 505228,
       "cssRaw": 329795,
       "cssGzip": 70310
+    },
+    {
+      "feature": "cerebro-contextos",
+      "reason": "the work contexts in the interface: the context selector in both shells, the New context dialog, Settings > Memory > Contexts, the chip in the composer, the two palette commands, the menu primitive's checked items, separators and lines of text, and their strings in two languages (about 3.2 KB more JS gzip than cerebro-v2's ceiling); measured on the build of batch C",
+      "jsRaw": 1571334,
+      "jsGzip": 511418,
+      "cssRaw": 334705,
+      "cssGzip": 71378
+    },
+    {
+      "feature": "cerebro-vista-notas",
+      "reason": "the notes view of the Second Brain as a chunk of its own (NotesView, about 15.6 KB JS gzip with the tree, the tabs, the reader, the properties table, the editor in place and the creation controls, fetched the first time Notas is chosen; the gallery's notes story loads that same chunk), the Grafo | Notas row and its commands in both shells, the one data module of the brain screens, the callouts of the one Markdown renderer, and the view's strings in two languages; measured on the build of batch C: 23.0 KB JS gzip and 3.2 KB CSS gzip above cerebro-contextos (C79, amendment 15)",
+      "jsRaw": 1644357,
+      "jsGzip": 534932,
+      "cssRaw": 347899,
+      "cssGzip": 74679
+    },
+    {
+      "feature": "cerebro-faxina-guiada",
+      "reason": "the guided cleanup wizard of the Second Brain as a chunk of its own (CleanupWizard, its five steps and its stylesheet, fetched the first time it is opened; the gallery's cleanup story loads that same chunk), its four entries (the context selector's item, the palette's command, the graph's Faxina button and the Núcleo scene menu's row), the host that hears the request, and the wizard's strings in two languages; measured on the build of round 1 of its verification: 11.2 KB JS gzip and 1.8 KB CSS gzip above cerebro-vista-notas (C82, amendment 13)",
+      "jsRaw": 1678375,
+      "jsGzip": 546409,
+      "cssRaw": 354978,
+      "cssGzip": 76471
+    },
+    {
+      "feature": "cerebro-natureza",
+      "reason": "the Reviews screen of the Second Brain as a chunk of its own (ReviewsScreen, its list and detail, the Virou realidade dialog and its stylesheet, fetched the first time /brain/reviews is opened; the gallery's reviews story loads that same chunk), the nature badges and the search's nature filters in the three brain screens, the preview's badges and Revisar agora, the Revisões entries of both shells and the palette, the Settings row of the reviewDue sentinel and its inbox text, and the strings in two languages; measured on the build of batch D: 9.5 KB JS gzip and 1.3 KB CSS gzip above cerebro-faxina-guiada (C92, amendment 21)",
+      "jsRaw": 1704752,
+      "jsGzip": 556121,
+      "cssRaw": 358295,
+      "cssGzip": 77763
+    },
+    {
+      "feature": "cerebro-paineis",
+      "reason": "the dashboards as chunks of their own (DashboardsPage for the moldura and DashboardsScene for the Núcleo, over one DashboardBoard chunk with the eight widgets, the hand-made sparkline and bars, the two dialogs and their stylesheet, fetched the first time /dashboards opens; the gallery's dashboards story loads that same chunk), the Painéis entries of both shells (the sidebar item, the sixth scene, the two palette commands), Today's link, the reminder rows of the inbox, the four chart tokens and the strings in two languages; measured on the build of round 1 of its verification: 17.8 KB JS gzip and 2.4 KB CSS gzip above cerebro-natureza (C96, amendment 24)",
+      "jsRaw": 1758900,
+      "jsGzip": 574327,
+      "cssRaw": 367911,
+      "cssGzip": 80203
+    },
+    {
+      "feature": "cerebro-memoria-confiavel",
+      "reason": "trustworthy memory in the interface: the agent tab of Reviews, the note panel's History fold, the version and memory history dialogs and the facts widget's provenance line (part A), the folder menu and access marks of the notes tree, the Import folder item of the NOTAS menu, the permissions, export and import modals as one chunk of their own (FolderTools, also the restricted folders of Settings > Memory), and the strings in two languages; the fact effects the agent tab draws under a fact op (C186-C192); the refusal line of an effect by its reason (C196); measured on the build of round 4, part 3: 15.9 KB of JS gzip and 1.6 KB of CSS gzip above cerebro-paineis (C147)",
+      "jsRaw": 1807747,
+      "jsGzip": 590614,
+      "cssRaw": 372457,
+      "cssGzip": 81852
     }
   ]
 }

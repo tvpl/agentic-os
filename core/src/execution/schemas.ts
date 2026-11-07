@@ -23,6 +23,9 @@ const StartedBy = z
 
 const Timeout = z.number().int().min(RUN_LIMITS.timeoutMinMs).max(RUN_LIMITS.timeoutMaxMs);
 
+/** The work context a run is started in (cerebro-contextos, S3): an id that names none is `404 context_not_found`. */
+const ContextId = z.string().min(1).max(64);
+
 export const StartPromptSchema = z
   .object({
     prompt: z.string().min(1).max(RUN_LIMITS.promptMaxChars),
@@ -36,6 +39,7 @@ export const StartPromptSchema = z
     sessionId: z.string().uuid().optional(),
     parentRunId: z.string().uuid().optional(),
     submissionId: z.string().uuid().optional(),
+    contextId: ContextId.optional(),
   })
   .strict();
 
@@ -50,6 +54,7 @@ export const StartSkillSchema = z
     effort: EffortLevel.optional(),
     cwd: z.string().optional(),
     timeoutMs: Timeout.optional(),
+    contextId: ContextId.optional(),
   })
   .strict();
 

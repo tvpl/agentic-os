@@ -11,9 +11,12 @@ import {
   Archive,
   BrainCircuit,
   CalendarClock,
+  CircleCheck,
   FilePlus,
   Grid3x3,
+  History,
   Keyboard,
+  LayoutDashboard,
   LayoutGrid,
   ListTree,
   Palette,
@@ -38,6 +41,9 @@ import { getNotifySound, setNotifySound, useNotifications } from "../hooks/useNo
 import { errorMessage } from "../views/shared";
 import { openOnboarding } from "../onboarding/state";
 import { openNoteEditor } from "../brain/noteEvents";
+import { openCleanup } from "../brain/cleanupEvents";
+import { openMemoryHistory } from "../brain/memoria";
+import { REVIEWS_PATH } from "../brain/natureza";
 import { useCommands, type Command } from "./registry";
 
 /** Opens the palette (and closes it: the palette registers the same keys in its own `modal` scope). */
@@ -213,6 +219,70 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["note", "nota", "memory", "memoria", "write", "escrever", "create", "criar"],
         palette: true,
         run: () => openNoteEditor({ mode: "new" }),
+      },
+      {
+        // The guided cleanup (cerebro-faxina-guiada, AC 44), at its step 1 with the active context preselected.
+        id: "action:cleanup",
+        title: "cleanup.title",
+        group: "actions",
+        scope: "global",
+        icon: Sparkles,
+        keywords: ["cleanup", "faxina", "limpeza", "arquivar"],
+        palette: true,
+        run: () => openCleanup(),
+      },
+      {
+        // "Revisões" (cerebro-natureza, AC 37, amendment 10): the screen at /brain/reviews, the frame's page and the
+        // Núcleo's brain panel.
+        id: "action:reviews",
+        title: "reviews.title",
+        group: "actions",
+        scope: "global",
+        icon: CircleCheck,
+        keywords: ["reviews", "revisoes", "revisões", "revisar", "review", "natureza"],
+        palette: true,
+        run: go(REVIEWS_PATH),
+      },
+      {
+        // "Histórico da memória" (cerebro-memoria-confiavel, AC 44): the newest changes of memory/, in a dialog.
+        id: "action:memory-history",
+        title: "history.memory",
+        group: "actions",
+        scope: "global",
+        icon: History,
+        keywords: [
+          "history",
+          "historico",
+          "histórico",
+          "versions",
+          "versoes",
+          "versões",
+          "memory",
+          "memoria",
+        ],
+        palette: true,
+        run: () => openMemoryHistory(),
+      },
+      {
+        // "Abrir painéis" (cerebro-paineis, amendment 25): the dashboards, in both shells; distinct from
+        // `action:open-panel`, which projects a lâmina.
+        id: "action:dashboards",
+        title: "dash.cmd.open",
+        group: "actions",
+        scope: "global",
+        icon: LayoutDashboard,
+        keywords: [
+          "dashboards",
+          "dashboard",
+          "paineis",
+          "painéis",
+          "painel",
+          "kpi",
+          "overview",
+          "visao geral",
+        ],
+        palette: true,
+        run: go("/dashboards"),
       },
       {
         id: "action:now",

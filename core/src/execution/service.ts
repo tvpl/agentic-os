@@ -12,6 +12,15 @@ import type { RunMode } from "../agents/types.js";
 import type { ProviderId } from "../config/schema.js";
 import type { MordomoEngine } from "../engine.js";
 import { MordomoError } from "../errors.js";
+import {
+  ContextNotFoundError,
+  ContextUnavailableError,
+  ContextValidationError,
+  contextOkPaths,
+  insideContext,
+} from "../memory/contexts.js";
+import { realpathLenient } from "../security/paths.js";
+import { askedFolder, assertProtectsDirs, folderVerdict, takesFolder } from "../runs/protectedFolder.js";
 import { launchPromptRun, launchSkillRun } from "./launch.js";
 import type { PromptRunInput, SkillRunInput } from "./inputs.js";
 import {
@@ -86,7 +95,7 @@ export class ExecutionService implements Execution {
     // `composed`: the prompt was assembled by the engine from its own records (an objective's context packet), so
     // the bound meant for text a caller typed does not apply.
     const body = (options.composed === true ? TrustedPromptSchema : StartPromptSchema).parse(input);
-    return this.submitPrompt(body, options.onError ?? noop).body;
+    return this.submitPrompt(body, options.onError ?? noop, options.folderCheck).body;
   }
 
   startSkill(input: StartSkillInput, options: StartOptions = {}): StartedRun {
@@ -108,10 +117,32 @@ export class ExecutionService implements Execution {
       }
     }
 
-    const cwd = engine.resolveCwd(body.cwd);
+    // A memory skill handed a folder of the user (cerebro-organizar, doors 5 and 9): the folder only to read, and the
+    // run in <home>/workspace; with a work context and no folder, the context's first ok path is the folder.
+    let inputs = body.inputs;
+    let cwd: string;
+    const context = body.contextId !== undefined ? this.requireContext(body.contextId) : null;
+    const asked = takesFolder(skill) ? (askedFolder(body.inputs) ?? context?.ok[0] ?? null) : null;
+    if (asked !== null) {
+      assertProtectsDirs(engine.providers.manifest(provider), provider);
+      const real = folderVerdict({ paths: engine.paths, settings }, asked);
+      if (context && !insideContext(context.env, context.context, real)) {
+        throw new ContextValidationError(
+          "validation",
+          `The folder ${asked} is not inside a path of the work context ${context.context.id}.`,
+        );
+      }
+      inputs = { ...body.inputs, folder: asked };
+      cwd = engine.resolveCwd(null);
+    } else {
+      cwd =
+        body.contextId !== undefined
+          ? this.contextCwd(body.contextId, body.cwd)
+          : engine.resolveCwd(body.cwd);
+    }
     const skillInput: SkillRunInput = {
       slug: body.slug,
-      inputs: body.inputs,
+      inputs,
       provider,
       model:
         body.model !== undefined ? body.model : (skill.recommendedModel ?? providerSettings.defaultModel),
@@ -121,6 +152,8 @@ export class ExecutionService implements Execution {
       cwd,
       timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
       startedBy: body.startedBy,
+      ...(body.contextId !== undefined ? { contextId: body.contextId } : {}),
+      ...(options.folderCheck ? { folderCheck: options.folderCheck } : {}),
     };
     return this.gateAndLaunchSkill(
       skillInput,
@@ -253,8 +286,12 @@ export class ExecutionService implements Execution {
    * conversation": resolve the session's defaults (provider and cwd, unless the caller overrides them), apply the
    * write gate, then launch. `waiting_approval` when the profile wants a human first.
    */
-  private submitPrompt(body: PromptBody, onError: (err: unknown, runId: string) => void): PromptRunResponse {
-    if (!body.submissionId) return this.createPromptSubmission(body, onError);
+  private submitPrompt(
+    body: PromptBody,
+    onError: (err: unknown, runId: string) => void,
+    folderCheck?: "launch",
+  ): PromptRunResponse {
+    if (!body.submissionId) return this.createPromptSubmission(body, onError, folderCheck);
     const { submissionId, ...payload } = body;
     const { startedBy, ...request } = payload;
     // Who asked is part of the request's identity: a receipt holds the run ids of the one who made it, so the same
@@ -290,7 +327,7 @@ export class ExecutionService implements Execution {
     );
     let result: PromptRunResponse;
     try {
-      result = this.createPromptSubmission(payload, onError);
+      result = this.createPromptSubmission(payload, onError, folderCheck);
     } catch (error) {
       db.prepare("DELETE FROM prompt_submissions WHERE id = ?").run(submissionId);
       throw error;
@@ -307,11 +344,27 @@ export class ExecutionService implements Execution {
   private createPromptSubmission(
     body: Omit<PromptBody, "submissionId">,
     onError: (err: unknown, runId: string) => void,
+    folderCheck?: "launch",
   ): PromptRunResponse {
     const engine = this.engine;
     const settings = engine.settings();
     const session = body.sessionId ? engine.runs.sessions.get(body.sessionId) : null;
     if (body.sessionId && !session) throw new MordomoError(404, "Session not found");
+    // An id that names no work context is that, before anything else is said about it (cerebro-contextos, AC 20).
+    if (body.contextId !== undefined && !settings.contexts.some((c) => c.id === body.contextId)) {
+      throw new ContextNotFoundError(`No work context is called ${body.contextId}.`);
+    }
+    // A conversation keeps the work context it started in (door 4): asking for another is refused.
+    let contextId = body.contextId;
+    if (session) {
+      const kept = engine.runs.sessions.contextIdOf(session.id) ?? null;
+      if (body.contextId !== undefined && body.contextId !== kept) {
+        throw new ContextUnavailableError(
+          `This conversation runs ${kept ? `in the work context ${kept}` : "without a work context"}; it cannot continue in ${body.contextId}. Start a new conversation instead.`,
+        );
+      }
+      contextId = kept ?? undefined;
+    }
     const provider = body.provider ?? session?.provider ?? settings.defaultProvider;
     const providerSettings = engine.requireProvider(provider, settings);
     if (!providerSettings.enabled) throw new MordomoError(400, `Provider ${provider} is not enabled`);
@@ -320,7 +373,10 @@ export class ExecutionService implements Execution {
     // A session's cwd is re-checked against the *current* roots: a folder that
     // was granted when the conversation started may have been revoked since.
     const requested = body.cwd ?? session?.cwd ?? null;
-    const cwd = engine.resolveCwd(requested);
+    const cwd =
+      contextId !== undefined
+        ? this.contextCwd(contextId, body.cwd, session?.cwd)
+        : engine.resolveCwd(requested);
     const input: PromptRunInput = {
       prompt: body.prompt,
       provider,
@@ -332,9 +388,13 @@ export class ExecutionService implements Execution {
       ...(body.sessionId ? { sessionId: body.sessionId } : {}),
       ...(body.parentRunId ? { parentRunId: body.parentRunId } : {}),
       startedBy: body.startedBy,
+      ...(contextId !== undefined ? { contextId } : {}),
+      ...(folderCheck ? { folderCheck } : {}),
     };
     // Refused writes must not leave an empty conversation behind.
     engine.assertWriteAllowed(body.mode, "manual");
+    // Nor a folder the access of folders refuses (cerebro-memoria-confiavel, door 12): checked again by `create`.
+    if (!folderCheck) engine.runs.assertFolderAccess(input);
     input.sessionId = this.ensureSession(input);
     const gate = engine.gateWrite(
       body.mode,
@@ -370,7 +430,44 @@ export class ExecutionService implements Execution {
       cwd: input.cwd,
       profile: input.mode === "write" ? this.engine.settings().securityProfile : "read_only",
       title: input.prompt,
+      contextId: input.contextId ?? null,
     }).id;
+  }
+
+  /**
+   * Where a run of a work context starts (cerebro-contextos, AC 17-20): `404 context_not_found` for an id that names
+   * none, `409 context_unavailable` when none of its paths is `ok`; a `cwd` the caller gives must lie inside one of
+   * its `ok` paths (`400 validation`); a conversation's folder is kept while it is still inside one; otherwise the
+   * first `ok` path. Always through `resolveCwd`, the one rule of where an agent may start.
+   */
+  private contextCwd(contextId: string, given: string | undefined, kept?: string | null): string {
+    const engine = this.engine;
+    const { context, env, ok } = this.requireContext(contextId);
+    if (given !== undefined) {
+      if (!insideContext(env, context, realpathLenient(given))) {
+        throw new ContextValidationError(
+          "validation",
+          `The working folder ${given} is not inside a path of the work context ${contextId}.`,
+        );
+      }
+      return engine.resolveCwd(given);
+    }
+    if (kept && insideContext(env, context, realpathLenient(kept))) return engine.resolveCwd(kept);
+    return engine.resolveCwd(ok[0]!);
+  }
+
+  /** The work context an id names, with its `ok` paths: `404 context_not_found`, or `409 context_unavailable` with none. */
+  private requireContext(contextId: string) {
+    const engine = this.engine;
+    const settings = engine.settings();
+    const context = settings.contexts.find((c) => c.id === contextId);
+    if (!context) throw new ContextNotFoundError(`No work context is called ${contextId}.`);
+    const env = { paths: engine.paths, settings };
+    const ok = contextOkPaths(env, context);
+    if (ok.length === 0) {
+      throw new ContextUnavailableError(`None of the paths of the work context ${contextId} is ok.`);
+    }
+    return { context, env, ok };
   }
 
   // ------------------------------------------------------------ approving --

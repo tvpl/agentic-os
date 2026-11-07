@@ -11,8 +11,19 @@ import {
   statWorkspacePath,
 } from "../security/safeFs.js";
 import { writeWorkspaceFile } from "../security/safeWrite.js";
-import { fileRowFromDb, type FileRow } from "./indexer.js";
+import type { WorkContext } from "../config/schema.js";
+import {
+  contextBriefFile,
+  contextMapFile,
+  contextMembership,
+  contextPathStates,
+  type ContextEnv,
+} from "./contexts.js";
+import { fileRowFromDb, storedRowFilter, type FileRow } from "./indexer.js";
 import { ensureJournal, journalSections, localDateString, readJournal, shiftDate, type JournalDay } from "./journal.js";
+import { linkEdges } from "./links.js";
+import { folderDigests, type FolderMap } from "./maps.js";
+import { accessSettings } from "./folderAccess.js";
 
 /**
  * Memory routers (ARMS Memory L2): a short master router plus one index per
@@ -33,6 +44,20 @@ const JOURNAL_START = "<!-- journal:start -->";
 const JOURNAL_END = "<!-- journal:end -->";
 /** Default token budget for the journal block of the master router (chars / 4). */
 export const DEFAULT_JOURNAL_BUDGET_TOKENS = 1200;
+
+/**
+ * Write a router file only when its bytes change (.specs/features/cerebro-correcoes, AC 28): a regeneration that would
+ * write what is already there leaves the file, its mtime and its inode alone, so a watcher of `memory/` does not see
+ * the routers' own write as a change and index again.
+ */
+function writeIfChanged(scope: ReturnType<typeof homeReadScope>, file: string, text: string): void {
+  try {
+    if (readWorkspaceText(scope, file, { maxBytes: MAX_ROUTER_BYTES }).text === text) return;
+  } catch {
+    // missing, too large or not readable: the write below decides (and refuses what it must)
+  }
+  writeWorkspaceFile(scope, file, text);
+}
 
 /**
  * Today's and yesterday's journal, rendered for the master router under a
@@ -66,19 +91,31 @@ export function renderJournalBlock(days: JournalDay[], budgetTokens: number): st
 export function generateRouters(
   db: Db,
   paths: MordomoPaths,
-  settings: Settings,
+  owned: Settings,
 ): { written: string[] } {
   fs.mkdirSync(paths.memory, { recursive: true });
   const written: string[] = [];
+  // The routers are the map every agent reads (and the sync compiler embeds): written as agents see the folders
+  // (cerebro-memoria-confiavel, door 12), so a folder hidden from agents is never named in them, nor a file in it.
+  const settings = accessSettings({ paths, settings: owned }, "agents");
+  const shown = storedRowFilter(settings.excludes, { homeDir: paths.home });
+  const journalHidden = !shown({ root: paths.memory, rel: path.join("journal", `${localDateString()}.md`) });
   const areas = settings.areas;
   const folders = settings.indexedFolders.filter((f) => f.enabled);
 
+  // The routers are pointers to the files, never to themselves: a router listed by mtime would move each time it is
+  // written, and its own rewrite would make the next pass write it again (.specs/features/cerebro-correcoes, AC 29).
+  const masterFile = path.join(paths.memory, "ROUTER.md");
+  const areasFolder = path.join(paths.memory, "areas") + path.sep;
+  const contextsFolder = path.join(paths.memory, "contexts") + path.sep;
+  const isRouter = (file: { path: string }) =>
+    file.path === masterFile || file.path.startsWith(areasFolder) || file.path.startsWith(contextsFolder);
   const areaFiles = new Map<string, FileRow[]>();
   for (const area of areas) {
     const rows = db
-      .prepare("SELECT * FROM files WHERE area = ? ORDER BY mtime DESC LIMIT 40")
+      .prepare("SELECT * FROM files WHERE area = ? ORDER BY mtime DESC LIMIT 42")
       .all(area) as Array<Record<string, unknown>>;
-    areaFiles.set(area, rows.map(fileRowFromDb));
+    areaFiles.set(area, rows.map(fileRowFromDb).filter((file) => !isRouter(file) && shown(file)).slice(0, 40));
   }
 
   // Master router
@@ -109,11 +146,12 @@ export function generateRouters(
     lines.push("", `Long-term memory: [MEMORY.md](./MEMORY.md) — consolidated facts and reflections (read its section index first).`);
   }
   lines.push("", `Retrieval: ask \`mordomo recall "<question>"\` (or GET /api/memory/recall) before opening files by hand.`);
+  lines.push(...folderIndexLines(paths, folderDigests(db, { paths, settings }) ?? []));
   // Journal: today (created on first access) + yesterday, under the token budget.
   const today = localDateString();
   // A day that is a link out of memory/ is left out; it must not stop the routers from being written.
   const days: JournalDay[] = [];
-  for (const read of [() => ensureJournal(paths, today), () => readJournal(paths, shiftDate(today, -1))]) {
+  for (const read of journalHidden ? [] : [() => ensureJournal(paths, today), () => readJournal(paths, shiftDate(today, -1))]) {
     try {
       const day = read();
       if (day) days.push(day);
@@ -125,7 +163,7 @@ export function generateRouters(
   lines.push("", ...renderJournalBlock(days, budget));
   const masterPath = path.join(paths.memory, "ROUTER.md");
   const scope = homeReadScope(paths.home, [paths.memory]);
-  writeWorkspaceFile(scope, masterPath, lines.join("\n") + "\n");
+  writeIfChanged(scope, masterPath, lines.join("\n") + "\n");
   written.push(masterPath);
 
   // Area indexes — pointers, not documentation; kept under a page.
@@ -146,14 +184,194 @@ export function generateRouters(
       areaLines.push(`- ${label} → \`${f.path}\``);
     }
     const areaPath = path.join(areasDir, `${areaSlug(area)}.md`);
-    writeWorkspaceFile(scope, areaPath, areaLines.join("\n") + "\n");
+    writeIfChanged(scope, areaPath, areaLines.join("\n") + "\n");
     written.push(areaPath);
   }
+
+  written.push(...writeContextMaps(db, { paths, settings }, scope, isRouter));
   return { written };
 }
 
+// ---- the index notes of the folders (.specs/features/cerebro-organizar, AC 26) --------------------------------------
+
+/** The most folders "Folders without an index" lists. */
+export const FOLDERS_WITHOUT_INDEX_MAX = 20;
+
+/**
+ * The two sections of the master router about the index notes: each index note that exists (`fresh` or `stale`) as a
+ * link with its folder, and up to 20 folders whose note is missing or stale, the ones with most children first. A
+ * section with nothing to list is left out.
+ */
+export function folderIndexLines(paths: MordomoPaths, folders: FolderMap[]): string[] {
+  const lines: string[] = [];
+  const link = (file: string) => `./${path.relative(paths.memory, file).split(path.sep).join("/")}`;
+  const indexed = folders.filter((f) => f.index !== null);
+  if (indexed.length > 0) {
+    lines.push("", "## Folder indexes", "", "Read the index note of a folder before opening its files:");
+    for (const f of indexed) {
+      const mark = f.state === "stale" ? " (stale)" : "";
+      lines.push(`- [${path.basename(f.path)}](${link(f.index!)}) → \`${f.path}\`${mark}`);
+    }
+  }
+  // Array.prototype.sort is stable: folders with as many children keep the order of the map (by path).
+  const waiting = folders
+    .filter((f) => f.state !== "fresh")
+    .sort((a, b) => b.children - a.children)
+    .slice(0, FOLDERS_WITHOUT_INDEX_MAX);
+  if (waiting.length > 0) {
+    lines.push("", "## Folders without an index", "", "Run the organize-brain skill (etapa indexar) to write these:");
+    for (const f of waiting) lines.push(`- \`${f.path}\` (${f.children} children, ${f.state})`);
+  }
+  return lines;
+}
+
+// ---- the map of each work context (.specs/features/cerebro-contextos, S4) ------------------------------------------
+
+/** The first line of a context map (door 2): what marks the file as one the engine writes and may delete. */
+export const CONTEXT_MAP_HEADER = "<!-- generated by MordomoOS -->";
+/** The most a context map holds, in characters (about 1 200 tokens, the budget of the journal block). */
+export const CONTEXT_MAP_MAX_CHARS = 4800;
+/** The most key files a context map lists. */
+export const CONTEXT_MAP_FILES = 30;
+
+const leftOut = (n: number): string => `…(${n} arquivos a mais; use o recall com o contexto)`;
+
+/**
+ * The text of one context map: the name, the paths with their state, the brief when there is one, and the key files
+ * of the context - the ones most linked to from inside it (by `note_links`, resolved today), then the most recently
+ * touched - each as `- <title or name> → <path>`, at most 30 and within 4 800 characters, with a last line that says
+ * how many were left out.
+ */
+export function renderContextMap(
+  db: Db,
+  env: ContextEnv,
+  context: WorkContext,
+  inbound: (member: (row: { root: string; rel: string }) => boolean) => Map<number, number>,
+  isRouter: (file: { path: string }) => boolean,
+): string {
+  const lines: string[] = [
+    CONTEXT_MAP_HEADER,
+    `# ${context.name} — Context map`,
+    "",
+    "The map of this work context: read the files it points at, and ask the recall with the context for the rest.",
+    "",
+    "Paths:",
+    ...contextPathStates(env, context).map((p) => `- ${p.path} (${p.state})`),
+  ];
+  const brief = contextBriefFile(env.paths, context.id);
+  try {
+    if (statWorkspacePath(homeReadScope(env.paths.home, [env.paths.memory]), brief).stat.isFile()) {
+      lines.push("", `Brief: [_resumo.md](../notes/${context.id}/_resumo.md) → ${brief}`);
+    }
+  } catch {
+    // no brief (or one that is not a file of memory/): nothing to point at
+  }
+  const member = contextMembership(env, context);
+  const policy = storedRowFilter(env.settings.excludes, { homeDir: env.paths.home });
+  const files: FileRow[] = [];
+  for (const row of db.prepare("SELECT * FROM files ORDER BY mtime DESC").iterate() as IterableIterator<
+    Record<string, unknown>
+  >) {
+    const file = fileRowFromDb(row);
+    if (!isRouter(file) && member(file) && policy(file)) files.push(file);
+  }
+  const links = inbound((row) => member(row) && policy(row));
+  // Array.prototype.sort is stable: files linked to as often keep the most recent first.
+  files.sort((a, b) => (links.get(b.id) ?? 0) - (links.get(a.id) ?? 0));
+
+  lines.push("");
+  if (files.length === 0) {
+    lines.push("_No indexed files in this context yet._");
+    return lines.join("\n") + "\n";
+  }
+  lines.push("Key files (most linked to from inside the context first, then the most recently touched):");
+  const size = (all: string[]) => all.join("\n").length + 1;
+  let listed = 0;
+  for (const file of files.slice(0, CONTEXT_MAP_FILES)) {
+    const line = `- ${file.title ?? file.name} → ${file.path}`;
+    const left = files.length - (listed + 1);
+    if (size([...lines, line, ...(left > 0 ? [leftOut(left)] : [])]) > CONTEXT_MAP_MAX_CHARS) break;
+    lines.push(line);
+    listed++;
+  }
+  if (listed < files.length) lines.push(leftOut(files.length - listed));
+  return lines.join("\n") + "\n";
+}
+
+/**
+ * Write the map of every context that changed (`memory/contexts/<id>.md`), and delete the map of a context that no
+ * longer exists - only a file that starts with the generated header. The folder is made when there is a context.
+ */
+function writeContextMaps(
+  db: Db,
+  env: ContextEnv,
+  scope: ReturnType<typeof homeReadScope>,
+  isRouter: (file: { path: string }) => boolean,
+): string[] {
+  const written: string[] = [];
+  const dir = path.join(env.paths.memory, "contexts");
+  const contexts = env.settings.contexts;
+  if (contexts.length > 0) {
+    fs.mkdirSync(dir, { recursive: true });
+    // The links of the whole index once, resolved as the links panel resolves them; each map counts the ones whose
+    // two ends are its files.
+    const edges = linkEdges(db, storedRowFilter(env.settings.excludes, { homeDir: env.paths.home }));
+    const byId = new Map(
+      (db.prepare("SELECT id, root, rel FROM files").all() as Array<{ id: number; root: string; rel: string }>).map(
+        (row) => [row.id, row],
+      ),
+    );
+    const inbound = (member: (row: { root: string; rel: string }) => boolean): Map<number, number> => {
+      const inside = new Map<number, boolean>();
+      const isInside = (id: number): boolean => {
+        let known = inside.get(id);
+        if (known === undefined) {
+          const row = byId.get(id);
+          known = row !== undefined && member(row);
+          inside.set(id, known);
+        }
+        return known;
+      };
+      const counts = new Map<number, number>();
+      for (const edge of edges) {
+        if (isInside(edge.source) && isInside(edge.target)) counts.set(edge.target, (counts.get(edge.target) ?? 0) + 1);
+      }
+      return counts;
+    };
+    for (const context of contexts) {
+      const file = contextMapFile(env.paths, context.id);
+      writeIfChanged(scope, file, renderContextMap(db, env, context, inbound, isRouter));
+      written.push(file);
+    }
+  }
+  if (!fs.existsSync(dir)) return written;
+  const ids = new Set(contexts.map((c) => `${c.id}.md`));
+  let entries: ReturnType<typeof listWorkspaceDir> = [];
+  try {
+    entries = listWorkspaceDir(scope, dir);
+  } catch {
+    return written;
+  }
+  for (const entry of entries) {
+    if (!entry.isFile || !entry.name.endsWith(".md") || ids.has(entry.name)) continue;
+    try {
+      const text = readWorkspaceText(scope, entry.path, { maxBytes: MAX_ROUTER_BYTES }).text;
+      if (text.startsWith(CONTEXT_MAP_HEADER)) fs.unlinkSync(entry.path);
+    } catch {
+      // not readable as a map: not one the engine wrote, so it stays
+    }
+  }
+  return written;
+}
+
 /** Detect stale routers and broken pointers (M-L2 "stale pointer" rule). */
-export function checkRouters(db: Db, paths: MordomoPaths, settings: Settings): RouterIssue[] {
+export function checkRouters(
+  db: Db,
+  paths: MordomoPaths,
+  settings: Settings,
+  /** Which pointers the caller may be told of (today's policy, and the folders hidden from it); all without it. */
+  allow?: (absolute: string) => boolean,
+): RouterIssue[] {
   const issues: RouterIssue[] = [];
   const masterPath = path.join(paths.memory, "ROUTER.md");
   if (!fs.existsSync(masterPath)) {
@@ -188,6 +406,7 @@ export function checkRouters(db: Db, paths: MordomoPaths, settings: Settings): R
     }
     for (const match of content.matchAll(/`(\/[^`]+|[A-Za-z]:\\[^`]+)`/g)) {
       const target = match[1]!;
+      if (allow && !allow(target)) continue;
       if (!fs.existsSync(target)) {
         issues.push({ file, problem: `Broken pointer: ${target} no longer exists.` });
       }

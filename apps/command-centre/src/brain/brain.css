@@ -162,9 +162,8 @@
 .brain-kind-swatch.same-dir {
   border-top: 2px dotted var(--info);
 }
-.brain-kind-swatch.same-area {
-  border-top: 1px solid var(--text-faint);
-  opacity: 0.6;
+.brain-kind-swatch.wikilink {
+  border-top: 2px dotted var(--accent);
 }
 .brain-kind-swatch.other {
   border-top: 1px dashed var(--text-faint);

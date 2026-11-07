@@ -19,8 +19,25 @@ describe("scenes", () => {
     expect(sceneForPath("/nope").id).toBe("nucleo");
   });
 
-  it("has five main scenes, the Núcleo first", () => {
-    expect(MAIN_SCENES.map((s) => s.id)).toEqual(["nucleo", "brain", "runs", "skills", "routines"]);
+  // cerebro-paineis, C81 (amendment 25): "Painéis" is the sixth main scene; the five of before keep their order.
+  it("C81 has six main scenes, the Núcleo first and dashboards sixth, on key 6 at /dashboards", () => {
+    expect(MAIN_SCENES.map((s) => s.id)).toEqual([
+      "nucleo",
+      "brain",
+      "runs",
+      "skills",
+      "routines",
+      "dashboards",
+    ]);
+    // The number keys are the positions (nucleo/index.tsx: `String(i + 1)`): the sixth is 6.
+    const sixth = MAIN_SCENES[6 - 1]!;
+    expect([sixth.id, sixth.path, sixth.app, sixth.labelKey]).toEqual([
+      "dashboards",
+      "/dashboards",
+      "dashboards",
+      "dash.nav",
+    ]);
+    expect(sceneForPath("/dashboards/visao-geral").id).toBe("dashboards");
   });
 
   it("dives out of the Núcleo, rises back to it, and turns between scenes the short way", () => {

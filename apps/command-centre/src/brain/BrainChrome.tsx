@@ -4,16 +4,46 @@
  * toggles), the layout pill and the hover tooltip. Presentational only.
  */
 import { type ReactNode, useContext } from "react";
-import { ArrowLeft, Diamond, Maximize2, Menu, Minus, Plus, RefreshCw, Scan, Tv, X, Zap } from "lucide-react";
+import {
+  ArrowLeft,
+  CircleCheck,
+  Diamond,
+  Maximize2,
+  Menu,
+  Minus,
+  Plus,
+  RefreshCw,
+  Scan,
+  Sparkles,
+  Tv,
+  X,
+  Zap,
+} from "lucide-react";
 import type { IndexProgressPayload } from "../api";
 import { LAUNCHER_EVENT } from "../App";
 import { AppRouteContext } from "../desktop/appRoute";
 import { ErrorBox } from "../components/ui";
 import { useT } from "../i18n";
 import { IndexProgress } from "./IndexProgress";
+import { openCleanup } from "./cleanupEvents";
+import { useBrainMode } from "./BrainViewSwitch";
+import { useReviewsDue } from "./natureza";
 import { APP_COLOR, EDGE_KINDS, ROUTINE_COLOR, SKILL_COLOR, type EdgeKind } from "./engine/world";
 import type { BrainUi } from "./state";
 import { Tooltip } from "../ui";
+
+/** The fourth `.btn.sm` of the graph's action row: "Revisões (N)" with N > 0 due in the active context, else nothing. */
+function ReviewsButton() {
+  const t = useT();
+  const n = useReviewsDue();
+  const { go } = useBrainMode();
+  if (n <= 0) return null;
+  return (
+    <button className="btn sm" onClick={() => go("reviews")}>
+      <CircleCheck aria-hidden /> {t("reviews.button", { n })}
+    </button>
+  );
+}
 
 export interface HoverInfo {
   x: number;
@@ -57,15 +87,15 @@ export interface BrainChromeProps {
 const KIND_KEYS: Record<
   EdgeKind,
   | "brain.kind.markdown-link"
+  | "brain.kind.wikilink"
   | "brain.kind.related"
   | "brain.kind.same-dir"
-  | "brain.kind.same-area"
   | "brain.kind.other"
 > = {
   "markdown-link": "brain.kind.markdown-link",
+  wikilink: "brain.kind.wikilink",
   related: "brain.kind.related",
   "same-dir": "brain.kind.same-dir",
-  "same-area": "brain.kind.same-area",
   other: "brain.kind.other",
 };
 
@@ -146,6 +176,12 @@ export function BrainChrome(p: BrainChromeProps) {
                 <Tv aria-hidden />
               </button>
             </Tooltip>
+            {/* The guided cleanup, at its step 1 (cerebro-faxina-guiada, amendment 11). */}
+            <button className="btn sm" onClick={() => openCleanup()}>
+              <Sparkles aria-hidden /> {t("cleanup.open.button")}
+            </button>
+            {/* "Revisões (N)" when something fell due (cerebro-natureza, amendment 10). */}
+            <ReviewsButton />
             {/* On the stage the brain is a panel: the desktop is behind it, and
                 the palette is ⌘K — neither needs a chip inside the app (G2). */}
             {!inPanel && (

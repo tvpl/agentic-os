@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { EditConflictError } from "../errors.js";
-import { realpathLenient } from "./paths.js";
+import { EditConflictError, PathAccessError } from "../errors.js";
+import { isInside, realpathLenient } from "./paths.js";
 import {
   O_NOFOLLOW,
   O_NONBLOCK,
@@ -83,6 +83,53 @@ export function writeWorkspaceFile(
   data: string | Uint8Array,
   options: WriteOptions = {},
 ): string {
+  return writeFile(scope, candidate, data, options).real;
+}
+
+/** A file `createWorkspaceFile` made: its real path, and the device and inode it was made with. */
+export interface CreatedFile {
+  path: string;
+  dev: number;
+  ino: number;
+}
+
+/**
+ * `writeWorkspaceFile` in `create` mode, answering what was made: the real path and the identity of the very file the
+ * call created, so a caller that must take its work back (a decision whose later write failed) removes that file and
+ * only that file (`removeCreatedFile`).
+ */
+export function createWorkspaceFile(
+  scope: ReadScope,
+  candidate: string,
+  data: string | Uint8Array,
+  options: Pick<WriteOptions, "fileMode"> = {},
+): CreatedFile {
+  const { real, stat } = writeFile(scope, candidate, data, { ...options, mode: "create" });
+  if (!stat)
+    throw new Error(`The file ${candidate} was created but cannot be told apart: it is not removable`);
+  return { path: real, dev: stat.dev, ino: stat.ino };
+}
+
+/**
+ * Remove a file `createWorkspaceFile` made, only while it is still that very file: the same real path inside the scope
+ * (no folder on the way became a link), a regular file, the same device and inode. A file someone else wrote under the
+ * name in between, or one that is gone, is left alone. Returns whether the file was removed.
+ */
+export function removeCreatedFile(scope: ReadScope, created: CreatedFile): boolean {
+  try {
+    if (assertWritablePath(scope, created.path) !== created.path) return false;
+  } catch {
+    return false;
+  }
+  return removeIfStillOurs(created.path, created);
+}
+
+function writeFile(
+  scope: ReadScope,
+  candidate: string,
+  data: string | Uint8Array,
+  options: WriteOptions,
+): { real: string; stat: fs.Stats | null } {
   const mode = options.mode ?? "replace";
   const expected = options.expectSha256;
   if (expected !== undefined && mode !== "replace") {
@@ -140,11 +187,11 @@ export function writeWorkspaceFile(
         fs.closeSync(fd);
       });
       if (!replaced) replaceInPlace(scope, candidate, real, expected, bytes);
-      return real;
+      return { real, stat: null };
     }
     if (mode === "replace") fs.ftruncateSync(fd, 0);
     writeAll(fd, bytes, mode === "append");
-    return real;
+    return { real, stat };
   } catch (err) {
     if (!existed && stat?.isFile()) removeIfStillOurs(real, stat);
     throw err;
@@ -358,12 +405,208 @@ function sha256OfDescriptor(fd: number, size: number): string {
 }
 
 /** Remove the file this call created and then refused, only if `real` still names that very file. */
-function removeIfStillOurs(real: string, ours: fs.Stats): void {
+function removeIfStillOurs(real: string, ours: Pick<fs.Stats, "ino" | "dev">): boolean {
   try {
     const named = fs.lstatSync(real);
     if (named.isFile() && named.ino === ours.ino && named.dev === ours.dev) fs.unlinkSync(real);
+    else return false;
+    return true;
   } catch {
-    /* gone already, or not ours to remove */
+    return false; // gone already, or not ours to remove
+  }
+}
+
+/** What `moveWorkspaceFile` did: the real paths, the bytes' SHA-256 (hex) and size, and how. */
+export interface MovedFile {
+  from: string;
+  to: string;
+  sha256: string;
+  size: number;
+  /** `rename` on one device, or a confirmed copy and then the removal of the origin. */
+  how: "rename" | "copy";
+}
+
+/** `to` is taken (a file, a folder or a link, a dangling one included): nothing was moved. */
+function destinationExists(to: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(`The destination exists: ${to}`), { code: "EEXIST" });
+}
+
+/**
+ * Refuse a link on the way to `candidate`, the last component included (`moveWorkspaceFile`): every component below
+ * the scope's root that holds it, as given, is looked at with `lstat` and never followed. A path under no root of the
+ * scope, as given, is refused.
+ */
+function assertNoLinkOnTheWay(scope: ReadScope, candidate: string): void {
+  const full = path.resolve(candidate);
+  const root = scope.roots
+    .map((r) => path.resolve(r))
+    .filter((r) => isInside(r, full))
+    .sort((a, b) => b.length - a.length)[0];
+  if (root === undefined) throw new PathAccessError(candidate);
+  let at = root;
+  for (const part of path.relative(root, full).split(path.sep).filter(Boolean)) {
+    at = path.join(at, part);
+    let info: fs.Stats;
+    try {
+      info = fs.lstatSync(at);
+    } catch {
+      return; // nothing further exists: nothing further can be a link
+    }
+    if (info.isSymbolicLink())
+      throw new PathAccessError(candidate, `Refusing to move through a link: ${candidate}`);
+  }
+}
+
+/** What is at a name, looked at without following a link at its last component. */
+export type WorkspaceEntryKind = "none" | "file" | "link" | "other";
+
+/**
+ * What is at `candidate` now, never followed: nothing, a regular file, a link (dangling or not), or anything else (a
+ * folder, a pipe). The folders on the way must hold no link and lie inside the scope (`PathAccessError` otherwise).
+ */
+export function workspaceEntryKind(scope: ReadScope, candidate: string): WorkspaceEntryKind {
+  const full = path.resolve(candidate);
+  assertNoLinkOnTheWay(scope, path.dirname(full));
+  let info: fs.Stats;
+  try {
+    info = fs.lstatSync(full);
+  } catch {
+    return "none";
+  }
+  if (info.isSymbolicLink()) return "link";
+  return info.isFile() ? "file" : "other";
+}
+
+/**
+ * What a link at `candidate` points to, as it is written in the link and never followed: the name, not the content. Null
+ * when the entry is not a link. The folders on the way must hold no link and lie inside the scope.
+ */
+export function workspaceLinkTarget(scope: ReadScope, candidate: string): string | null {
+  const full = path.resolve(candidate);
+  assertNoLinkOnTheWay(scope, path.dirname(full));
+  try {
+    return fs.lstatSync(full).isSymbolicLink() ? fs.readlinkSync(full) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Take a name back from whatever was put there (the guard of `MEMORY.md`, .specs/features/cerebro-memoria-confiavel
+ * door 8): the entry at `candidate` is renamed to `to` as it is (a link as a link, never followed; a file of any size;
+ * a folder with what it holds), and then `data` (when given) is written at `candidate` as a new file by
+ * `writeWorkspaceFile` in `create` mode. Nothing is removed: what was there stays at `to`, which must not exist
+ * (`EEXIST`, and what is there is untouched). `to` is judged by `toScope` (default: `scope`), so it can lie in a folder
+ * of its own that the run whose entry it is cannot shape. A link on the way to either folder, or a `to` the filter
+ * refuses, is refused before anything moves. Answers what was set aside.
+ */
+export function setAsideAndWrite(
+  scope: ReadScope,
+  candidate: string,
+  to: string,
+  data: string | Uint8Array | null,
+  toScope: ReadScope = scope,
+): { aside: "file" | "link" | "other" | null } {
+  const full = path.resolve(candidate);
+  const kind = workspaceEntryKind(scope, full);
+  let aside: "file" | "link" | "other" | null = null;
+  if (kind !== "none") {
+    assertNoLinkOnTheWay(toScope, path.dirname(path.resolve(to)));
+    try {
+      fs.lstatSync(path.resolve(to));
+      throw destinationExists(to);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") throw err;
+    }
+    const realTo = assertWritablePath(toScope, to);
+    fs.mkdirSync(path.dirname(realTo), { recursive: true, mode: 0o700 });
+    assertNoLinkOnTheWay(toScope, path.dirname(path.resolve(to)));
+    fs.renameSync(full, realTo);
+    aside = kind;
+  }
+  if (data !== null) writeWorkspaceFile(scope, full, data, { mode: "create" });
+  return { aside };
+}
+
+/**
+ * Move a file the engine owns inside the scope (.specs/features/cerebro-faxina-guiada, door 1), never deleting one
+ * without a confirmed copy:
+ *
+ *  - a link anywhere on the way to `from` or to `to` (the last component included) is refused, and so is a path the
+ *    filter refuses (`PathAccessError`);
+ *  - `to` must not exist, a dangling link included (`EEXIST`);
+ *  - `from` is opened `O_NOFOLLOW` and hashed through that descriptor; other bytes than `expectSha256`, or another
+ *    file under the name after the open, is `EditConflictError`, before anything moves;
+ *  - on one device the file is renamed (the same inode); on another (`EXDEV`) it is written to `to` by
+ *    `writeWorkspaceFile(..., { mode: "create" })`, the copy is hashed again from the disk, and only a copy with the
+ *    same SHA-256 lets the origin go. A copy that differs is taken away again (only that very file, by device and
+ *    inode) and `from` stays.
+ *
+ * Missing parent folders of `to` are made. The whole file is held in memory for a copy across devices.
+ */
+export function moveWorkspaceFile(
+  scope: ReadScope,
+  from: string,
+  to: string,
+  options: { expectSha256?: string } = {},
+): MovedFile {
+  assertNoLinkOnTheWay(scope, from);
+  // the folders on the way to `to`; a name already at `to` itself, a link included, is `EEXIST`
+  assertNoLinkOnTheWay(scope, path.dirname(path.resolve(to)));
+  const taken = (at: string): boolean => {
+    try {
+      fs.lstatSync(at);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (taken(path.resolve(to))) throw destinationExists(to);
+  const realTo = assertWritablePath(scope, to);
+  const file = openWorkspaceFile(scope, from);
+  try {
+    const realFrom = file.path;
+    const sha256 = file.sha256();
+    if (options.expectSha256 !== undefined && sha256 !== options.expectSha256) throw new EditConflictError();
+    const stillOrigin = (): boolean => {
+      if (process.platform === "win32") return true;
+      try {
+        const named = fs.lstatSync(realFrom);
+        return named.ino === file.stat.ino && named.dev === file.stat.dev;
+      } catch {
+        return false;
+      }
+    };
+    // The bytes were read through the descriptor: the name must still be that file, or what moves is not what was seen.
+    if (!stillOrigin()) throw new EditConflictError();
+    fs.mkdirSync(path.dirname(realTo), { recursive: true });
+    assertNoLinkOnTheWay(scope, path.dirname(path.resolve(to)));
+    if (taken(realTo)) throw destinationExists(to);
+    if (assertWritablePath(scope, to) !== realTo) throw changed(to);
+    const size = file.stat.size;
+    try {
+      fs.renameSync(realFrom, realTo);
+      return { from: realFrom, to: realTo, sha256, size, how: "rename" };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EXDEV") throw err;
+    }
+    // Another device: a copy, confirmed by its hash read back from the disk, and only then the origin goes.
+    const { bytes } = file.readBytes(size);
+    if (crypto.createHash("sha256").update(bytes).digest("hex") !== sha256) throw new EditConflictError();
+    writeWorkspaceFile(scope, realTo, bytes, { mode: "create", fileMode: file.stat.mode & 0o777 });
+    const copy = openWorkspaceFile(scope, realTo);
+    try {
+      if (copy.sha256() !== sha256 || !stillOrigin()) {
+        removeIfStillOurs(realTo, copy.stat);
+        throw new EditConflictError();
+      }
+    } finally {
+      copy.close();
+    }
+    fs.unlinkSync(realFrom);
+    return { from: realFrom, to: realTo, sha256, size, how: "copy" };
+  } finally {
+    file.close();
   }
 }
 
@@ -394,6 +637,14 @@ export const DEFAULT_COPY_LIMITS: CopyLimits = {
   maxDepth: 12,
 };
 
+/** What a copy tells its caller (an export's manifest, an import's versions and its list of what stayed behind). */
+export interface CopyReport {
+  /** Each file copied: its path relative to the source, `/`-separated, and the bytes written. */
+  copied?: (rel: string, bytes: Uint8Array) => void;
+  /** Gains the path, relative to the source, of each entry left behind (a link, a secret, what the filter refuses). */
+  skipped?: string[];
+}
+
 /** The folder holds the home's `config/` or `logs/` (it is the home, or a folder above it). */
 /**
  * Copy a folder the scope grants (an import source, a downloaded bundle) into
@@ -415,8 +666,10 @@ export function copyTreeWithoutLinks(
   targetScope: ReadScope,
   target: string,
   limits: CopyLimits = DEFAULT_COPY_LIMITS,
+  report: CopyReport = {},
 ): { files: number; bytes: number } {
   const root = resolveReadable(sourceScope, source).real;
+  const relOf = (full: string) => path.relative(root, full).split(path.sep).join("/");
   assertHoldsNoPrivateFolder(sourceScope, root);
   const realTarget = realpathLenient(path.resolve(target));
   let files = 0;
@@ -427,7 +680,10 @@ export function copyTreeWithoutLinks(
   const copyDir = (dir: string, into: string, depth: number): void => {
     if (depth > limits.maxDepth) throw tooBig(`more than ${limits.maxDepth} levels deep`);
     fs.mkdirSync(into, { recursive: true });
-    for (const entry of listWorkspaceDir(sourceScope, dir)) {
+    const left: string[] = [];
+    const entries = listWorkspaceDir(sourceScope, dir, left);
+    for (const full of left) report.skipped?.push(relOf(full));
+    for (const entry of entries) {
       const to = path.join(into, entry.name);
       // The target is not part of what is copied (it may lie inside the source).
       if (entry.path === realTarget) continue;
@@ -444,7 +700,9 @@ export function copyTreeWithoutLinks(
           throw tooBig(`${entry.name} is larger than ${limits.maxFileBytes} bytes`);
         bytes += file.stat.size;
         if (bytes > limits.maxTotalBytes) throw tooBig(`more than ${limits.maxTotalBytes} bytes`);
-        writeWorkspaceFile(targetScope, to, file.readBytes(limits.maxFileBytes).bytes, { mode: "create" });
+        const read = file.readBytes(limits.maxFileBytes).bytes;
+        writeWorkspaceFile(targetScope, to, read, { mode: "create" });
+        report.copied?.(relOf(entry.path), read);
       } finally {
         file.close();
       }

@@ -14,7 +14,7 @@ import { ArrowLeft, ClipboardList, Copy, CornerDownRight, FileText, RefreshCw, S
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiCall } from "../apiCall";
 import { useLocale, useT } from "../i18n";
-import { useOsArtifacts, useOsObjectives, useOsProviders } from "../queries";
+import { useOsArtifacts, useOsContexts, useOsObjectives, useOsProviders } from "../queries";
 import { ErrorBox, Skeleton, StatusBadge, formatDuration, timeAgo, useToast } from "../components/ui";
 import { Badge, Button, EmptyState, Segmented } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
@@ -33,6 +33,7 @@ import { contextUsed, foldUsage, formatTokens, formatUsd, totalTokens } from "./
 import { isNotFound, isRunActive, useRunQuery, useRunStream } from "./useRunStream";
 import { useCommands, type Command } from "../commands/registry";
 import { Tooltip } from "../ui";
+import { RunContext } from "../contexts/RunContext";
 
 type DetailTab = "timeline" | "replay";
 
@@ -65,6 +66,8 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
   const followUpRef = useRef<HTMLTextAreaElement>(null);
 
   const artifacts = useOsArtifacts();
+  // Only a run in a work context reads the contexts: its name, or that it was deleted since (cerebro-contextos AC 24).
+  const contexts = useOsContexts({ enabled: Boolean(run?.contextId), staleTime: 30_000 });
   const objectives = useOsObjectives({ staleTime: 10_000 });
   const mine = (artifacts.data ?? []).filter((a) => a.runId === id);
   const objective = objectives.data?.find((candidate) => candidate.steps.some((step) => step.runId === id));
@@ -336,6 +339,14 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
                 ·
               </span>
               <span>{run.origin}</span>
+              {run.contextId && (
+                <>
+                  <span className="dot" aria-hidden>
+                    ·
+                  </span>
+                  <RunContext contextId={run.contextId} contexts={contexts.data?.contexts} />
+                </>
+              )}
               <span className="dot" aria-hidden>
                 ·
               </span>

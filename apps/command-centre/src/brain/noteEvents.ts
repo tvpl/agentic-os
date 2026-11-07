@@ -5,7 +5,15 @@
  */
 export const OPEN_NOTE_EVENT = "mordomo:open-note";
 
-export type NoteEditorRequest = { mode: "new" } | { mode: "edit"; path: string };
+export type NoteEditorRequest =
+  | {
+      mode: "new";
+      /** A folder under `memory/notes`, chosen already (the notes view's selected folder): read-only, with "Trocar". */
+      folder?: string;
+      /** Who asked takes the new note (the notes view opens it in a tab); otherwise the dialog edits it. */
+      onCreated?: (path: string) => void;
+    }
+  | { mode: "edit"; path: string };
 
 export function openNoteEditor(request: NoteEditorRequest): void {
   window.dispatchEvent(new CustomEvent<NoteEditorRequest>(OPEN_NOTE_EVENT, { detail: request }));

@@ -1,0 +1,49 @@
+/* The diff of trustworthy memory (design.md "Binding sources"): mono 12px, the sign always drawn, tokens only. */
+.mc-diff {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.mc-diff table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+}
+
+.mc-diff td {
+  padding: 0 var(--s-2);
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.mc-diff td:nth-child(-n + 3) {
+  width: 1%;
+  text-align: right;
+  white-space: pre;
+  user-select: none;
+}
+
+.mc-diff .mc-add {
+  background: var(--ok-bg);
+}
+
+.mc-diff .mc-del {
+  background: var(--danger-bg);
+}
+
+.mc-diff .mc-add td:nth-child(n + 3) {
+  color: var(--ok);
+}
+
+.mc-diff .mc-del td:nth-child(n + 3) {
+  color: var(--danger);
+}
+
+.mc-diff .mc-hunk td {
+  color: var(--info);
+}

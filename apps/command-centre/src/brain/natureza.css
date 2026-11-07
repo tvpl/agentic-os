@@ -1,0 +1,68 @@
+/* The nature badges and the search's nature filters (.specs/features/cerebro-natureza, design.md "Selo de natureza"). */
+.nb {
+  gap: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.nb svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.nb.tone-ok {
+  color: var(--ok);
+}
+
+.nb.tone-info {
+  color: var(--info);
+}
+
+.nb.tone-warn {
+  color: var(--warn);
+}
+
+.nb.tone-accent {
+  color: var(--accent-text);
+}
+
+.nb-scope {
+  font-weight: 500;
+}
+
+.nb-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.nb-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nb-filter {
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-2);
+  cursor: pointer;
+}
+
+.nb-filter[aria-pressed="true"] {
+  border-color: var(--accent-line);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+.brain-hit-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}

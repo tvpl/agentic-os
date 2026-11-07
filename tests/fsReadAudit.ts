@@ -365,3 +365,48 @@ export function unclassifiedFsPathApis(rootDir: string): string[] {
     .filter((n) => !classified.has(n))
     .sort();
 }
+
+/**
+ * The runtime half (.specs/features/cerebro-paineis, round 1, F6): record every path a file is opened or read by,
+ * through each entry of `node:fs` that reads one - `openSync`, `open`, `readFileSync`, `readFile`, `createReadStream`,
+ * `fs.promises.open` and `fs.promises.readFile`. Node 22 reads a utf8 `readFileSync` on a fast path that never calls
+ * `openSync`, so wrapping `openSync` alone misses it. The module's own functions are wrapped and the ESM named exports
+ * synced (`syncBuiltinESMExports`), so `import fs`, `import { readFileSync }` and `node:fs/promises` all go through the
+ * wrappers. The spellings it does not see: a read through a file descriptor opened before it started, and a native
+ * addon's own reads.
+ */
+export async function recordFileReads(keep: (file: string) => boolean): Promise<{
+  paths: string[];
+  restore: () => void;
+}> {
+  const { syncBuiltinESMExports } = await import("node:module");
+  const paths: string[] = [];
+  const restores: Array<() => void> = [];
+  const note = (file: unknown) => {
+    if (typeof file === "string" || Buffer.isBuffer(file) || file instanceof URL) {
+      const p = file instanceof URL ? file.pathname : String(file);
+      if (keep(p)) paths.push(p);
+    }
+  };
+  const wrap = (target: Record<string, unknown>, name: string) => {
+    const real = target[name] as (...args: unknown[]) => unknown;
+    target[name] = function (this: unknown, ...args: unknown[]) {
+      note(args[0]);
+      return real.apply(this, args);
+    };
+    restores.push(() => {
+      target[name] = real;
+    });
+  };
+  const fsAny = fs as unknown as Record<string, unknown>;
+  for (const name of ["openSync", "open", "readFileSync", "readFile", "createReadStream"]) wrap(fsAny, name);
+  for (const name of ["open", "readFile"]) wrap(fs.promises as unknown as Record<string, unknown>, name);
+  syncBuiltinESMExports();
+  return {
+    paths,
+    restore() {
+      for (const undo of restores.reverse()) undo();
+      syncBuiltinESMExports();
+    },
+  };
+}

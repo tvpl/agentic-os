@@ -5,6 +5,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { SENTINEL_IDS } from "@mordomo/core/internal";
+import { redactorFor } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 
@@ -19,10 +20,12 @@ export interface SentinelStatusRow {
 }
 
 export function registerSentinelRoutes(app: FastifyInstance, ctx: AppContext): void {
-  bind(app, "sentinels.list", async () => {
+  bind(app, "sentinels.list", async (_input, req) => {
+    // A device is told of no row about a folder hidden from it: the fs sentinel titles the folder by its name alone.
+    const device = redactorFor(ctx, req.principal);
     const settings = ctx.settings();
     const cfg = settings.sentinels as Record<string, Record<string, unknown> & { enabled?: boolean }>;
-    const recent = ctx.notifications.list({ limit: 300 });
+    const recent = ctx.notifications.list({ limit: 300 }).filter((n) => !device?.hiddenNotification(n));
     const ids: string[] = [...SENTINEL_IDS, "repeatDetector", "triage"];
     const rows: SentinelStatusRow[] = ids.map((id) => {
       const last = recent.find((n) =>

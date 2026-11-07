@@ -75,8 +75,16 @@ export function resolveWikilink(
           .prepare(`SELECT * FROM files WHERE lower(name) IN (${names.map(() => "?").join(",")})`)
           .all(...names) as Array<Record<string, unknown>>
       ).map(fileRowFromDb);
-  return rows
-    .filter((file) => allow(file))
+  return rankWikilink(source, key, rows.filter((file) => allow(file)));
+}
+
+/**
+ * The resolution order of a wikilink key over the files whose name it can mean: only those whose path ends with the
+ * key, then the one in the source's own folder, the shortest relative path, the first in alphabetical order. One rule
+ * for the links of one note (`resolveWikilink`) and for every link at once (`linkEdges`).
+ */
+function rankWikilink<T extends { dir: string; rel: string }>(source: { dir: string }, key: string, files: T[]): T[] {
+  return files
     .filter((file) => {
       const stem = stemOf(file.rel);
       const named = keyed(file.rel);
@@ -88,6 +96,63 @@ export function resolveWikilink(
         a.rel.length - b.rel.length ||
         (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0),
     );
+}
+
+/** One link between two indexed files, as it resolves today (`linkEdges`). */
+export interface LinkEdge {
+  source: number;
+  target: number;
+  kind: LinkKind;
+  /** The first line of the source that holds it. */
+  line: number;
+}
+
+type EdgeFile = { id: number; root: string; rel: string; dir: string; name: string; path: string };
+
+/**
+ * Every link of `note_links` that resolves to an indexed file, between files today's policy allows
+ * (.specs/features/cerebro-correcoes, door 2): resolved here, when somebody asks, like `linksOf`, so a rename or a new
+ * file changes the edges without any source being read again. Two queries whatever the number of links: the files
+ * once, the links once, and the resolution in memory. One edge per (source, target, kind), never a file to itself.
+ * `sources` limits the links read to the ones these files hold.
+ */
+export function linkEdges(db: Db, allow: Allow, sources?: ReadonlySet<number>): LinkEdge[] {
+  const files = (db.prepare("SELECT id, root, rel, dir, name, path FROM files").all() as EdgeFile[]).filter((file) =>
+    allow(file),
+  );
+  const byPath = new Map<string, EdgeFile>();
+  const byName = new Map<string, EdgeFile[]>();
+  for (const file of files) {
+    byPath.set(file.path, file);
+    const name = foldName(file.name);
+    const list = byName.get(name) ?? [];
+    list.push(file);
+    byName.set(name, list);
+  }
+  const byId = new Map(files.map((file) => [file.id, file]));
+  const resolve = (source: EdgeFile, key: string): EdgeFile | undefined => {
+    const last = key.slice(key.lastIndexOf("/") + 1);
+    const named = [`${last}.md`, `${last}.markdown`, last].flatMap((name) => byName.get(name) ?? []);
+    return rankWikilink(source, key, [...new Set(named)])[0];
+  };
+
+  const rows = db.prepare("SELECT src_id, kind, target, line FROM note_links ORDER BY src_id, line").all() as Array<{
+    src_id: number;
+    kind: LinkKind;
+    target: string;
+    line: number;
+  }>;
+  const edges = new Map<string, LinkEdge>();
+  for (const row of rows) {
+    if (sources && !sources.has(row.src_id)) continue;
+    const source = byId.get(row.src_id);
+    if (!source) continue;
+    const target = row.kind === "markdown-link" ? byPath.get(row.target) : resolve(source, row.target);
+    if (!target || target.id === source.id) continue;
+    const key = `${source.id}>${target.id}>${row.kind}`;
+    if (!edges.has(key)) edges.set(key, { source: source.id, target: target.id, kind: row.kind, line: row.line });
+  }
+  return [...edges.values()];
 }
 
 /** The keys a wikilink may use to mean this file: every tail of its path without the extension. */

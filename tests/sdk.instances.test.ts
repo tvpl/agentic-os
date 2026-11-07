@@ -100,6 +100,74 @@ describe("S4 nothing of an engine is shared with another", () => {
       expect(Object.keys(PROCESS_SCOPED).join("\n"), file).not.toContain(`core/src/memory/${file}.ts`);
   });
 
+  it("C61 no module-level mutable state in the dashboards, their route, the task writer or where the clock and the shared cache are made; the refresh lock is the service instance's", async () => {
+    // .specs/features/cerebro-paineis C61 (AC 57, L-038).
+    const files = [
+      ...sourcesUnder("core/src/dashboards"),
+      ...["apps/api/src/routes/dashboards.ts", "core/src/memory/tasks.ts", "core/src/memory/notes.ts"].map(
+        (f) => path.join(root, f),
+      ),
+      // the service's one-minute clock (startServer) and the one connector cache per service (AppContext)
+      ...["apps/api/src/server.ts", "apps/api/src/context.ts"].map((f) => path.join(root, f)),
+    ];
+    const relative = files.map((f) => path.relative(root, f).split(path.sep).join("/"));
+    expect(relative.filter((f) => f.startsWith("core/src/dashboards/")).length).toBe(11);
+    const found = files.flatMap((file, i) =>
+      moduleState(fs.readFileSync(file, "utf8"), relative[i]!).map((f) => `${f.file} ${f.name} (${f.why})`),
+    );
+    expect(found).toEqual([]);
+    // the list is still the nine, and none is of these files
+    expect(Object.keys(PROCESS_SCOPED)).toHaveLength(9);
+    for (const file of relative)
+      expect(
+        Object.keys(PROCESS_SCOPED).filter((item) => item.startsWith(`${file} `)),
+        file,
+      ).toEqual([]);
+    // the walker sees a lock held at module level in the folder (it is awake there)
+    expect(
+      moduleState(
+        "const running = new Map<string, Promise<unknown>>(); export const lock = (id: string) => running.set(id, Promise.resolve());",
+        "core/src/dashboards/__planted__.ts",
+      ).map((f) => f.name),
+    ).toEqual(["running"]);
+
+    // Behaviour: two services of one process, each with a dashboard of the same id. While the first one's refresh
+    // waits on its connector, the second refreshes its own, and only the first refuses a second refresh.
+    const { AppContext } = await import("../apps/api/src/context.js");
+    const { makeTempHome } = await import("./helpers.js");
+    const homes = [makeTempHome("mordomo-c61-a-"), makeTempHome("mordomo-c61-b-")];
+    const ctxs = homes.map((h) => {
+      fs.copyFileSync(
+        path.join(root, "connectors", "calendar-google.json"),
+        path.join(h.paths.connectors, "calendar-google.json"),
+      );
+      return new AppContext(h.paths.home);
+    });
+    try {
+      const [a, b] = ctxs as [InstanceType<typeof AppContext>, InstanceType<typeof AppContext>];
+      const ok = { status: "ok" as const, syncedAt: Date.now(), items: [], summary: {} };
+      let release: (v: typeof ok) => void = () => undefined;
+      const held = new Promise<typeof ok>((resolve) => (release = resolve));
+      vi.spyOn(a.connectorCache, "read").mockImplementation(() => held);
+      vi.spyOn(b.connectorCache, "read").mockImplementation(async () => ok);
+      const ida = a.dashboards.create({ template: "overview" }).id;
+      const idb = b.dashboards.create({ template: "overview" }).id;
+      expect(ida).toBe(idb);
+      const first = a.dashboards.refresh(ida, { fresh: true });
+      await expect(b.dashboards.refresh(idb, { fresh: true })).resolves.toMatchObject({ dashboardId: idb });
+      await expect(a.dashboards.refresh(ida, { fresh: true })).rejects.toMatchObject({
+        code: "refresh_in_progress",
+      });
+      release(ok);
+      await expect(first).resolves.toMatchObject({ dashboardId: ida });
+      await expect(a.dashboards.refresh(ida, { fresh: true })).resolves.toMatchObject({ dashboardId: ida });
+    } finally {
+      vi.restoreAllMocks();
+      for (const ctx of ctxs) ctx.close();
+      for (const h of homes) h.cleanup();
+    }
+  }, 60_000);
+
   it("C31 what one engine announces, another never hears", async () => {
     const echo = echoProvider();
     const a = buildEngine([echo]);
