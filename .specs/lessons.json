@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 62,
+  "next_id": 67,
   "lessons": [
     {
       "id": "L-001",
@@ -893,6 +893,76 @@
       "evidence": ["C35 sources.ts:490 (security)"],
       "created": "2026-10-31T12:05:33Z",
       "last_seen": "2026-10-31T12:05:33Z"
+    },
+    {
+      "id": "L-062",
+      "key": "surviving_mutant::a proof must run the cases it is credited for name every case with the check id or the proof command passes while the mutant lives",
+      "text": "A proof must run the cases it is credited for: name every case with the check id, or the proof command passes while the mutant lives.",
+      "signal": "surviving_mutant",
+      "scope": "tests",
+      "status": "candidate",
+      "features": ["cerebro-memoria-confiavel"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C69 guard.test.ts (tests)"],
+      "created": "2026-11-07T02:12:12Z",
+      "last_seen": "2026-11-07T02:12:12Z"
+    },
+    {
+      "id": "L-063",
+      "key": "surviving_mutant::test that a relative path leaves its base by its first segment being exactly never by a text prefix",
+      "text": "Test that a relative path leaves its base by its first segment being exactly '..', never by a text prefix.",
+      "signal": "surviving_mutant",
+      "scope": "security",
+      "status": "candidate",
+      "features": ["cerebro-memoria-confiavel"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["folderLevels.ts:178 (security)"],
+      "created": "2026-11-07T02:12:12Z",
+      "last_seen": "2026-11-07T02:12:12Z"
+    },
+    {
+      "id": "L-064",
+      "key": "ac_gap::a twin comparison must recompute derived data from scratch in the twin world or it shares the leak it is meant to catch",
+      "text": "A twin comparison must recompute derived data from scratch in the twin world, or it shares the leak it is meant to catch.",
+      "signal": "ac_gap",
+      "scope": "security",
+      "status": "candidate",
+      "features": ["cerebro-memoria-confiavel"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C113 twin (security)"],
+      "created": "2026-11-07T02:12:12Z",
+      "last_seen": "2026-11-07T02:12:12Z"
+    },
+    {
+      "id": "L-065",
+      "key": "ac_gap::trust must come from provenance the agent cannot shape a quotation test on text an agent writes can be forged",
+      "text": "Trust must come from provenance the agent cannot shape; a quotation test on text an agent writes can be forged.",
+      "signal": "ac_gap",
+      "scope": "security",
+      "status": "candidate",
+      "features": ["cerebro-memoria-confiavel"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C52 proposals.ts (security)"],
+      "created": "2026-11-07T02:12:12Z",
+      "last_seen": "2026-11-07T02:12:12Z"
+    },
+    {
+      "id": "L-066",
+      "key": "surviving_mutant::probe every audience readable route with a differential test hide n more items and require every answer to stay equal",
+      "text": "Probe every audience-readable route with a differential test: hide N more items and require every answer to stay equal.",
+      "signal": "surviving_mutant",
+      "scope": "security",
+      "status": "candidate",
+      "features": ["cerebro-memoria-confiavel"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C176 doctor.ts:189 (security)"],
+      "created": "2026-11-07T02:12:12Z",
+      "last_seen": "2026-11-07T02:12:12Z"
     }
   ]
 }

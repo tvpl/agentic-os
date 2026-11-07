@@ -1,5 +1,9 @@
 # Roteiro do segundo cérebro: estado, o que falta, gaps e o que revisar
 
+> **Atualização de 07/11/2026:** a C7 fechou por escalonamento (AD-046) depois da quarta verificação; os itens da seção 3.1 e
+> os furos de 4.2 (1) foram tratados, e o que restou está nos limites escritos em `docs/security.md`. Faltam C8 a C11. O
+> resto deste arquivo descreve o estado de 01/11/2026.
+
 Escrito em 01/11/2026, a pedido do dono, quando a construção foi parada. Branch `chore/cerebro-v3-roteiro`, tudo empurrado até o
 commit `2cd2578`. A fonte de cada decisão é o `.specs/STATE.md` (AD-037 a AD-045 e "Perguntas ao dono"); o plano de cada
 feature está em `.specs/features/<nome>/`.

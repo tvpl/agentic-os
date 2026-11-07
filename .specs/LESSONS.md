@@ -439,6 +439,41 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C35 sources.ts:490 (security)
 - last seen: 2026-10-31T12:05:33Z
 
+### L-062 - A proof must run the cases it is credited for: name every case with the check id, or the proof command passes while the mutant lives.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: cerebro-memoria-confiavel
+- evidence: C69 guard.test.ts (tests)
+- last seen: 2026-11-07T02:12:12Z
+
+### L-063 - Test that a relative path leaves its base by its first segment being exactly '..', never by a text prefix.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `security` · harmful: 0
+- features: cerebro-memoria-confiavel
+- evidence: folderLevels.ts:178 (security)
+- last seen: 2026-11-07T02:12:12Z
+
+### L-064 - A twin comparison must recompute derived data from scratch in the twin world, or it shares the leak it is meant to catch.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `security` · harmful: 0
+- features: cerebro-memoria-confiavel
+- evidence: C113 twin (security)
+- last seen: 2026-11-07T02:12:12Z
+
+### L-065 - Trust must come from provenance the agent cannot shape; a quotation test on text an agent writes can be forged.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `security` · harmful: 0
+- features: cerebro-memoria-confiavel
+- evidence: C52 proposals.ts (security)
+- last seen: 2026-11-07T02:12:12Z
+
+### L-066 - Probe every audience-readable route with a differential test: hide N more items and require every answer to stay equal.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `security` · harmful: 0
+- features: cerebro-memoria-confiavel
+- evidence: C176 doctor.ts:189 (security)
+- last seen: 2026-11-07T02:12:12Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
