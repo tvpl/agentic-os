@@ -690,3 +690,84 @@ for (const theme of THEMES)
       ).toBe(false);
       expect(await serious(page)).toEqual([]);
     });
+
+/* ---------------- C203: the confirmation of an accept that closes or retracts ---------------- */
+
+for (const theme of THEMES)
+  for (const shell of SHELLS)
+    test(`C203 the ${shell}, ${theme}: accepting what closes or retracts asks first in a Modal that names the facts, focus on Cancelar, Escape and Cancelar send nothing and give focus back, Aceitar sends one decision, no serious axe violation`, async ({
+      page,
+    }) => {
+      test.setTimeout(150_000);
+      await open(page, shell, theme, "/brain");
+      await consolidationWithEffects(page);
+      const decisions: unknown[] = [];
+      await page.route(`**/api/v1/memory/proposals/${EFFECT_ID}/decide`, async (route) => {
+        decisions.push(route.request().postDataJSON());
+        await route.fulfill({ json: { proposal: {}, written: [], facts: [] } });
+      });
+      await page.evaluate(() => document.fonts.ready);
+      await page.goto("/#/brain/reviews?tab=agent");
+      const detail = page.locator(".rv .ag-detail");
+      const asker = detail.getByRole("button", { name: "Aceitar selecionadas (2)" });
+      await expect(asker).toBeVisible();
+      const dialog = page.getByRole("dialog", { name: "Aceitar vai mudar fatos que já existem" });
+      const ask = async () => {
+        await asker.focus();
+        await page.keyboard.press("Enter");
+        await expect(dialog).toBeVisible();
+      };
+
+      await ask();
+      expect(decisions).toEqual([]);
+      // the facts, and only what closes or retracts, in the route's order; at 13px or more; the tones' own colours
+      const items = dialog.locator(".ag-effects > .ag-effect");
+      await expect(items).toHaveCount(2);
+      expect(await items.evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.effect))).toEqual([
+        "close",
+        "retract",
+      ]);
+      expect(await items.nth(0).textContent()).toMatch(
+        /Encerra o fato Cliente X · status · ativo em \d{2}\/\d{2}\/\d{4}\./,
+      );
+      await expect(items.nth(1)).toContainText(
+        "Retrata o fato Cliente X · status · prospect como nunca verdadeiro. Não tem volta.",
+      );
+      const px = await items.evaluateAll((els) =>
+        els.map((el) => parseFloat(getComputedStyle(el.querySelector("span")!).fontSize)),
+      );
+      for (const size of px) expect(size).toBeGreaterThanOrEqual(13);
+      const danger = await page.evaluate(() => {
+        const probe = document.createElement("div");
+        probe.style.color = "var(--danger)";
+        document.body.appendChild(probe);
+        const value = getComputedStyle(probe).color;
+        probe.remove();
+        return value;
+      });
+      expect(await items.nth(1).evaluate((el) => getComputedStyle(el).color)).toBe(danger);
+      expect(Math.round((await dialog.boundingBox())!.width)).toBe(480);
+      // the buttons by Tab: focus starts on Cancelar, then Aceitar
+      await expect(dialog.getByRole("button", { name: "Cancelar" })).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(dialog.getByRole("button", { name: "Aceitar", exact: true })).toBeFocused();
+      expect(await serious(page)).toEqual([]);
+
+      // Escape cancels: nothing sent, focus back on the button that asked
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await expect(asker).toBeFocused();
+      expect(decisions).toEqual([]);
+      // Cancelar cancels the same way, and the ticks are kept
+      await ask();
+      await dialog.getByRole("button", { name: "Cancelar" }).click();
+      await expect(dialog).toHaveCount(0);
+      expect(decisions).toEqual([]);
+      await expect(asker).toBeVisible();
+      // Aceitar sends one decision
+      await ask();
+      await dialog.getByRole("button", { name: "Aceitar", exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect.poll(() => decisions.length).toBe(1);
+      expect(decisions).toEqual([{ action: "accept", ops: [0, 1], baseVersion: "sha256:e2e" }]);
+    });

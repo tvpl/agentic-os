@@ -191,7 +191,7 @@ describe("C145 the part-B copy of design.md in both locales", () => {
 
 /**
  * key → [pt-BR, en] for the tables of "Emenda 1" of design.md (what accepting a fact does, round 3 finding 6) and
- * "Emenda 2" (the two texts of its refusal, round 4 finding 5): read from the sections before "Texto", so rows 1-65 of
+ * "Emenda 2" (the two texts of its refusal, round 4 finding 5) and "Emenda 3" (the title of the confirmation, G40): read from the sections before "Texto", so rows 1-65 of
  * "Texto" (C104, C145) keep their numbers.
  */
 function amendment1(): Array<[string, string, string]> {
@@ -203,8 +203,8 @@ function amendment1(): Array<[string, string, string]> {
     .map(([key, pt, en]) => [key!.replace(/`/g, ""), pt!, en!]);
 }
 
-describe("C190 the copy of design.md's Emenda 1 and Emenda 2 in both locales", () => {
-  it("C190 the amendments' tables give the 6 keys effects.close, .retract, .unchanged, .error (Emenda 1) and .refuses.covers, .refuses.startsInside (Emenda 2), each in en and ptBR with its text, and the old effects.refuses is gone", () => {
+describe("C190 the copy of design.md's Emenda 1, 2 and 3 in both locales", () => {
+  it("C190 the amendments' tables give the 7 keys effects.close, .retract, .unchanged, .error (Emenda 1), .refuses.covers, .refuses.startsInside (Emenda 2) and .confirm.title (Emenda 3), each in en and ptBR with its text, and the old effects.refuses is gone", () => {
     const keys = amendment1();
     expect(keys.map(([k]) => k)).toEqual([
       "effects.close",
@@ -213,6 +213,7 @@ describe("C190 the copy of design.md's Emenda 1 and Emenda 2 in both locales", (
       "effects.error",
       "effects.refuses.covers",
       "effects.refuses.startsInside",
+      "effects.confirm.title",
     ]);
     expect(Object.keys(brain.en)).not.toContain("effects.refuses");
     expect(Object.keys(brain.ptBR)).not.toContain("effects.refuses");

@@ -803,12 +803,14 @@ describe("C86 the earlier behaviour this feature must not change", () => {
 // ---- C147: the screens' chunks and their weight (batch B2) ---------------------------------------------------------
 
 describe("C147 the dialogs' chunks and the weight of both screen batches", () => {
-  it("C147 the version dialog, the memory history dialog and the folder tools (the permissions, export and import modals) are reached from both entries only by a dynamic import(); the baseline's cerebro-memoria-confiavel entry follows cerebro-paineis with a reason of more than 40 characters and the four numbers, at most 16 KB of JS gzip and 3 KB of CSS gzip above it (574 327 B and 80 203 B)", () => {
+  it("C147 the version dialog, the memory history dialog and the folder tools (the permissions, export and import modals) are reached from both entries only by a dynamic import(); the baseline's cerebro-memoria-confiavel entry follows cerebro-paineis with a reason of more than 40 characters and the four numbers, at most 17 152 B of JS gzip (16 KB until the G40 confirmation, plan amendment 21) and 3 KB of CSS gzip above it (574 327 B and 80 203 B)", () => {
     const tree = loadTree(path.join(repoRoot, "apps", "command-centre", "src"));
     const dialogs = [
       "brain/notes/VersionDialog.tsx",
       "brain/notes/MemoryHistoryDialog.tsx",
       "brain/notes/FolderTools.tsx",
+      // the confirmation of an accept that closes or retracts (G40): fetched when it is asked for
+      "brain/reviews/AgentConfirm.tsx",
     ];
     // What each page loads without anyone asking: its entry and what that imports statically.
     for (const entry of ENTRIES) {
@@ -839,6 +841,9 @@ describe("C147 the dialogs' chunks and the weight of both screen batches", () =>
     ]);
     for (const from of importers("brain/notes/FolderTools.tsx"))
       expect(how(from, "brain/notes/FolderTools.tsx"), from).toBe("dynamic");
+    // the confirmation of G40: one way in, an import() from the tab, so the tab's own chunk does not carry it
+    expect(importers("brain/reviews/AgentConfirm.tsx")).toEqual(["brain/reviews/AgentTab.tsx"]);
+    expect(how("brain/reviews/AgentTab.tsx", "brain/reviews/AgentConfirm.tsx")).toBe("dynamic");
 
     type Entry = {
       feature: string;
@@ -862,7 +867,8 @@ describe("C147 the dialogs' chunks and the weight of both screen batches", () =>
     expect(entry.reason.length).toBeGreaterThan(40);
     for (const k of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
       expect(Number.isInteger(entry[k]) && entry[k] > 0, k).toBe(true);
-    expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(16 * 1024);
+    // 16 KB until the owner asked for the confirmation of G40 (plan amendment 21): the measured 17 108 B rounded up to 256 B
+    expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(17_152);
     expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(3 * 1024);
   });
 });

@@ -7,7 +7,7 @@
  * aceita." stays 8 s with "Ver histórico". No bare key decides: `j`/`k` move (the screen's commands) and `Enter` on an
  * item is its button's own click.
  */
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { Suspense, lazy, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { AlertTriangle, CalendarDays, Check, Inbox, Sparkles, Undo2, X, type LucideIcon } from "lucide-react";
 import type { ApiCallResult } from "@mordomo/contracts";
 import { ApiError } from "../../api";
@@ -22,6 +22,8 @@ import { Author, OpState, TrustBadge, authorText, notesHref } from "../memoria";
 import { DiffLines } from "../memoriaDiff";
 import { useMemoryRoot, withoutExt } from "../notes/notesData";
 import "./agent.css";
+
+const AgentConfirm = lazy(() => import("./AgentConfirm"));
 
 type T = ReturnType<typeof useT>;
 export type ProposalList = ApiCallResult<"GET /api/memory/proposals">;
@@ -263,6 +265,14 @@ export function AgentDetail({
     () => new Set(detail.ops.flatMap((o, i) => (o.state === "valid" && o.trust === "usuario" ? [i] : []))),
   );
   const enabled = detail.ops.flatMap((o, i) => (o.state === "valid" ? [i] : []));
+  // The facts this accept would close or retract (owner answer G40): a second confirmation names them.
+  const [confirming, setConfirming] = useState<FactEffect[] | null>(null);
+  const accept = () => {
+    const ops = withOps ? [...ticked].sort((a, b) => a - b) : null;
+    const changing = detail.effects.filter((e) => e.closes.length > 0 && (e.op === null || ticked.has(e.op)));
+    if (changing.length === 0) onAccept(ops);
+    else setConfirming(changing);
+  };
   const note = String(detail.payload.path ?? detail.payload.title ?? detail.summary);
   const name = withoutExt(note.slice(note.lastIndexOf("/") + 1));
   const what =
@@ -318,7 +328,7 @@ export function AgentDetail({
           type="button"
           className="btn primary"
           disabled={withOps && ticked.size === 0}
-          onClick={() => onAccept(withOps ? [...ticked].sort((a, b) => a - b) : null)}
+          onClick={accept}
         >
           <Check aria-hidden />
           {withOps ? t("proposals.accept", { k: ticked.size }) : t("proposals.acceptOne")}
@@ -328,6 +338,22 @@ export function AgentDetail({
           {t("proposals.reject")}
         </button>
       </div>
+      {confirming && (
+        <Suspense fallback={null}>
+          <AgentConfirm
+            onCancel={() => setConfirming(null)}
+            onConfirm={() => {
+              setConfirming(null);
+              onAccept(withOps ? [...ticked].sort((a, b) => a - b) : null);
+            }}
+          >
+            {/* only what closes or retracts: the refusal, the identical fact and the error are not drawn here */}
+            {confirming.map((e, i) => (
+              <Effects key={i} effect={{ ...e, refuses: null, unchanged: null, error: "" }} />
+            ))}
+          </AgentConfirm>
+        </Suspense>
+      )}
     </div>
   );
 }

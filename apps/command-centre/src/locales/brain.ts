@@ -494,6 +494,7 @@ export const en = {
     "Will be refused: the fact {fact} starts inside this period. Accepting fails with 409 fact_overlap.",
   "effects.unchanged": "An identical fact already exists. Nothing changes.",
   "effects.error": "Cannot be recorded: {reason}",
+  "effects.confirm.title": "Accepting will change facts that already exist",
 } as const;
 
 export const ptBR = {
@@ -988,4 +989,5 @@ export const ptBR = {
     "Será recusado: o fato {fact} começa dentro desse período. Aceitar dá o erro 409 fact_overlap.",
   "effects.unchanged": "Já existe um fato idêntico. Nada muda.",
   "effects.error": "Não pode ser registrado: {reason}",
+  "effects.confirm.title": "Aceitar vai mudar fatos que já existem",
 } satisfies Record<keyof typeof en, string>;
