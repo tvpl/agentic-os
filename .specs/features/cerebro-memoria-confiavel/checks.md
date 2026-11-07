@@ -2951,3 +2951,11 @@ Status of round 4 of the verification, part 2 (C193-C195, findings 2, 3, 4 and 7
   index is judged by `ownIndex()`. No owner question is new
 - **Abandoned:** patching only the three places the verifier named (the same bug was in `isInside`, which sixty callers
   use); a second `Proof:` line for C69 (the cases are in the file its command runs); redacting `semantic.vectors` alone
+- **Boundary (round 4, part 2):** `92f37ea` (finding 2, C193), `8c0c9fe` (C194, and C69's own-layer cases into its proof file),
+  `8e891eb` (finding 7 (b), C195) and the commit with these entries, plan amendment 20 and `docs/security.md`. On the tree
+  after them: `npm run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0 (JS gzip 590 595 B, within
+  620 125), `npx vitest run` at the root is green (191 files, 2835 tests passed, 1 skipped), `npm run test -w
+apps/command-centre` is green (189 files, 1669 tests), `security-reads` and `sdk.instances` pass in full (86 tests), each
+  `Proof:` line of C69, C113 (both), C119, C126, C127, C159, C179 to C182, C185, C193, C194 and C195 passes run alone;
+  `validate_checks.py` and `validate_plan.py` exit 0 (their one warning each is the older C147 selector and the plan's
+  open-questions line). No pin of another feature moved and no allowlist changed
