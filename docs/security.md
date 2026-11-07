@@ -100,6 +100,15 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   provenance, not containment:** `mordomo mcp` runs with the owner token, so the process that serves it, or any program
   that reads the token, can still call the owner's routes and write as the owner. What is guaranteed is that the tools
   MordomoOS hands an agent propose instead of writing, and that every proposal and every version says who wrote it.
+  **What the review shows of a fact's effects, and what it does not.** The detail of a proposal lists what accepting each
+  of its facts would close, retract or refuse (`effects`). Each fact is checked against the facts as they are *now*, not
+  against the state left by the earlier operations of the same decision. When one consolidation holds two fact operations
+  about the same subject and predicate, the list for the second does not include what the first will have done by the time
+  it is accepted, so the second may close or retract a fact that the first one wrote, or be refused (`409 fact_overlap`)
+  by it, and the list did not foretell that. This never hides a change to a fact of the owner: every operation is checked against
+  every owner's fact, and an earlier operation can only shorten or retract one, never make it overlap one more, so
+  every owner's fact the decision closes or retracts is already named in the list. What can change without being named is a fact the same proposal wrote earlier. The `at` of a
+  close that names no start date is the moment the detail is read, not the moment of the decision.
 - **A SKILL.md is data, never code.** Every SKILL.md is parsed by one function (`parseSkillFile`,
   `core/src/skills/parse.ts`): `gray-matter` would run a `---js`, `---javascript`, `---coffee` or `---cson`
   frontmatter with `eval`, so those engines are replaced by ones that refuse (`400 invalid_frontmatter`),

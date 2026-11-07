@@ -113,7 +113,8 @@ Proof: `npx vitest run tests/memoria.layer.test.ts -t "C10 "`
 **C11** - Asserting `[T, U)` over a fact of the same keys and another object that starts before T and never ends, and over
 one that starts before T and ends at U + 1, each answers `409 fact_overlap` and leaves the rows of `facts` equal to before;
 over one that starts before T and ends exactly at U it answers `201` and closes that fact at T (the old fact does not end
-after U); the door-2 table at its own layer, one asserted case per row: begins before T and overlaps → `valid_to = T`;
+after U); the refusal's message says which it is (a fact that covers the new period, or one that starts inside it) and
+is true of each; the door-2 table at its own layer, one asserted case per row: begins before T and overlaps → `valid_to = T`;
 begins at or after T, overlaps, new without U → `retracted_at = now`; begins at or after U → unchanged; new strictly inside
 → refused (AC 10, door 2)
 Proof: `npx vitest run tests/memoria.facts.test.ts -t "C11 "`
@@ -1474,14 +1475,15 @@ rows of `facts` are equal before and after): for a `fact` proposal one entry, fo
 op with its `op` index (none for an invalid op, an empty list for the other kinds). An entry is `{ op, subject, predicate,
 object, validFrom, validTo, unchanged, closes, refuses }` (`error` when the fact itself cannot be asserted): `closes` lists
 by `id`, `object`, `validFrom`, `validTo`, `action` and `at` each fact accepting closes (`action: "close"`, `at` the new
-fact's `validFrom`) or retracts as never true (`action: "retract"`, `at` now), `refuses` the fact that holds over the whole
-new interval (accepting is `409 fact_overlap`), `unchanged` the id of an identical open fact. An MCP proposal of `cliente x
+fact's `validFrom`) or retracts as never true (`action: "retract"`, `at` now), `refuses` the fact that stops it (accepting is `409 fact_overlap`; with a `reason`, `covers` when it began before
+the new period and lasts beyond it, `starts_inside` when it begins inside the new closed period), `unchanged` the id of an identical open fact. An MCP proposal of `cliente x
 · STATUS · inadimplente` from `validFrom` January over the owner's open `Cliente X · status · ativo` from June names that
 fact with `retract`, and accepting retracts it; one from June closes it at June; one closed inside it refuses; an identical
 one is unchanged; another key has no effect. A caller that is not the owner sees only the facts `GET /api/memory/facts`
 would show it (a fact whose source is in a folder hidden from it is left out, its value in no answer). The field is
 `effects` and each entry is the `FactEffect` of `contracts/src/api/memory.ts`, for the screen to draw in the diff (finding 6)
 Proof: `npx vitest run tests/memoria.proposals.test.ts -t "C178 "`
+Proof: `npx vitest run tests/memoria.layer.test.ts -t "C178 "`
 
 - **Finding 3 (C113 strengthened, C172; Landing 20, migration 32).** TF-IDF over the whole corpus let a hidden note change
   which terms a visible pair shared (the verifier's 58 % `estrela, galaxia` against 85 % `zeta, planeta, orbita`). The
@@ -1881,6 +1883,58 @@ and to close by escalation, with no fifth verification (plan amendment 17).
   itself puts in a note or the journal without the `(autor:: agente)` mark is "of the owner" to the rule for `add`,
   `supersede` and `close_loop` (the guard covers `MEMORY.md` only)
 
+- **Finding 4 (own-layer): `factEffects` proved with no HTTP (C178).** Its cases ran only through the route, so a mutant
+  could hide behind the route's own checks. `tests/memoria.layer.test.ts` now holds nine C178 cases over a real database,
+  calling `factEffects` with a hand-built record and views: a close and its `at` (the new fact's `validFrom`), a retract and
+  its `at` (now), the two refusing rows of `overlapAction` (`facts.ts` row "begins before the new one and outlasts its
+  end" with `reason: "covers"`, row "begins inside a closed new interval" with `reason: "starts_inside"`), an identical fact
+  (`unchanged`, its id), a fact the layer refuses itself (`error` and an empty `closes`/`refuses`), the op index of a
+  consolidation (an add and an invalid fact op get no entry, the others carry their own index), the caller's filter (a fact
+  it hides, or a filter that throws, leaves `closes`, `refuses` and `unchanged`), the other kinds (none) and nothing written
+  (the rows of `facts` equal before and after). **Re-injected, each failing at the layer (not through the route):** the `at` of a
+  close taken as now (2 cases); the `at` of a retract taken as the `validFrom`; every action `close`; `refuses` always null (3);
+  `refuses`, `closes` and `unchanged` each not filtered by the caller (1 each); a filter that throws letting the fact
+  through; `unchanged` dropped; the error swallowed; the error entry keeping a refusal; the op index off by one; invalid ops
+  planned; a `fact` proposal's op not null (2); the other kinds planned like a fact; `factEffects` writing the fact it
+  plans (6); and in `overlapAction`, the begins-inside row made `keep` and the covers row made `close`
+- **Finding 5 (core half): the 409 no longer says the existing fact holds over the whole period when it does not (plan
+  amendment 19, Landing 21 additive, C11, C178).** The message was written for the first refusing row; the second row
+  (`overlapAction`: the existing fact begins at or after the new start, inside a closed new interval) refused with the same
+  words, which were false. `FactOverlapError` and `effects.refuses` now carry `reason` (`covers` or `starts_inside`; a
+  helper `overlapRefusal` in `core/src/memory/facts.ts` is the one place that decides it) and the message names which. The
+  message for `covers`: "The fact N (object) already covers the whole new period (it began before it and lasts beyond it);
+  retract or close it first." For `starts_inside`: "The fact N (object) starts inside the new period; retract it as wrong
+  first, or give the new fact a period that ends before it starts." It does not offer to close, because closing a fact
+  that begins inside the new period leaves it beginning there and the refusal stays (the C11 case closes it through the
+  route to show it, then retracts it as wrong and the assert is `201`). **Cases:** C11 asserts both messages word for word over
+  the route, and that the second does not say "whole"; C178 asserts `reason` for both rows in `effects` and the two messages
+  in the `409` of an accept. **Re-injected, each failing:** the old message for both rows (C11, C178); the two rows' reasons
+  swapped (C11, C178); `reason` in `effects` always `covers` (C178). **For the next builder, the screen text** (keys
+  `effects.refuses.covers` and `effects.refuses.startsInside` replace `effects.refuses` in `apps/command-centre/src/locales/brain.ts`,
+  both languages; the screen reads `refuses.reason` to choose; `{fact}` is what the line already fills in; `design.md`'s
+  table row for `effects.refuses` is replaced by these two):
+  - `effects.refuses.covers`, en: "Will be refused: the fact {fact} already covers this whole period (it began before it and
+    lasts beyond it). Accepting fails with 409 fact_overlap."
+  - `effects.refuses.covers`, pt-BR: "Será recusado: o fato {fact} já cobre todo esse período (começou antes dele e dura além
+    dele). Aceitar dá o erro 409 fact_overlap."
+  - `effects.refuses.startsInside`, en: "Will be refused: the fact {fact} starts inside this period. Accepting fails with 409
+    fact_overlap."
+  - `effects.refuses.startsInside`, pt-BR: "Será recusado: o fato {fact} começa dentro desse período. Aceitar dá o erro 409
+    fact_overlap."
+
+  The old key's text ("já vale em todo esse período" / "already holds over this whole period") is true of neither row
+  taken alone and goes. The screen's checks (C187, C189, C191) that name that text are the next builder's to rewrite
+  with the `reason` that the effect carries; this builder did not touch the screen
+
+- **Finding 6 (doc): the limit of `effects`, said plainly (Settled).** `effects` plans each fact against the facts as they
+  are now, not after the earlier operations of the same decision (it was in the Landing 21 row; it is now also in
+  `docs/security.md`, in the paragraph on what an agent's writes wait for). Settled: it never hides a change to a fact of
+  the owner (every operation is checked against every owner's fact, and an earlier operation can only shorten or retract
+  one, never make it overlap one more), while a fact the same proposal wrote earlier can be changed by the decision, or
+  can refuse a later operation (`409 fact_overlap`), without being listed. The `at` of a close is the new fact's
+  `validFrom`, or, for a fact with no `validFrom`, the moment the detail is read, which is not the moment of the decision
+  (a retraction's `at` is likewise the moment the detail is read). No code changes; the limit is in the docs
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None
@@ -2019,6 +2073,8 @@ blocks the build.
 | guard/ as a working folder, round 3 (4)                                       | the request C69 · `create` C69 · the launch C69 · the owner and a routine accepted C69                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | guard set-aside names, round 3 (4)                                            | `guard-<runId>` and `-2` C69 · `-99` the last readable C69 · all 99 taken, random C69 · an earlier set-aside never overwritten C69                                                                                                                                                                                                                                                                                                                                                                                        |
 | claim a cited line must support, round 4 (6)                                  | add `equals` C52 · supersede `equals` C52 · close_loop `equals` C52 · a fact of a consolidation is `inferido`, restated or inverted C52 · a fact proposal is `inferido` C52 · a fragment or the empty claim refused C52                                                                                                                                                                                                                                                                                                   |
+| why a fact overlap is refused, round 4 (3)                                    | covers: the message and `reason` C11 C178 · starts inside: the message and `reason` C11 C178 · closing the late fact does not clear it, retracting as wrong does C11                                                                                                                                                                                                                                                                                                                                                      |
+| factEffects at its own layer, round 4 (9)                                     | close and `at` C178 · retract and `at` C178 · refuses covers C178 · refuses starts inside C178 · identical C178 · error C178 · op index of a consolidation C178 · the caller's filter C178 · other kinds, nothing written C178                                                                                                                                                                                                                                                                                            |
 | effects of accepting a fact, round 3 (6)                                      | a retraction C178 · a close C178 · a refusal C178 · an identical fact C178 · a consolidation's op index C178 · the other kinds, none C178                                                                                                                                                                                                                                                                                                                                                                                 |
 | who reads the facts an effect names, round 3 (2)                              | the owner: all C178 · a device: the ones `GET /api/memory/facts` shows C178                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | effects drawn on the screen, round 3 (5)                                      | close C186 · retract C186 · refuses C187 · unchanged C187 · error C187                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
