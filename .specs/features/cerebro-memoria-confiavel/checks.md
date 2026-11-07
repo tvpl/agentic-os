@@ -2126,6 +2126,63 @@ apps/command-centre` is green (189 files, 1 675 tests), each `Proof:` line of C1
   (C187, C196); the two texts swapped in the pt-BR locale (C187, C190, C196); the old wording back in the en `covers` text
   (C190, C196)
 
+## Correção depois do fechamento (G40)
+
+The owner answered G40 on 07/11/2026 (STATE, AD-047 g), after the feature was closed by escalation (AD-046). Closed in
+`7c1468b` (checks C197-C203, design.md "Emenda 3", plan amendment 21) and `7e02530` (the screen, the proofs, the
+ceiling and the baseline entry).
+
+- **What changed, and why.** Round 3 finding 6 had the detail show what accepting a fact closes or retracts (C178, C186-C196)
+  and kept the safe default of G40: show the effect and ask nothing more, C187 asserting "no second question". The
+  owner chose the alternative: a second confirmation that names the facts, because retracting is `retracted_at` with no
+  way back and the person accepting is often looking at one op among many. C187 therefore no longer asserts that nothing
+  more is asked for a close or a retraction: it keeps the cases that are still true (a refusal, an identical fact, an
+  error and the rest are accepted at once) and says that what closes or retracts asks first (C197). No other approved claim
+  was weakened: C186, C188, C189, C191 and C196 are as they were; C190 reads one more amendment (seven keys)
+- **What is built.** When "Aceitar selecionadas" (or "Aceitar") would accept a fact op whose effect has a `closes` entry,
+  of action `close` or `retract`, a `Modal` (480px, the class of the rejection's) opens first: the title "Aceitar vai
+  mudar fatos que já existem" (the one new text, `effects.confirm.title`, pt-BR and en), one list per such ticked op, in
+  the ops' order, of the lines the detail already draws ("Encerra o fato … em <dia>." and "Retrata o fato … como nunca
+  verdadeiro. Não tem volta."), and "Cancelar" then "Aceitar" (the keys `common.cancel` and `proposals.acceptOne`, no new
+  text). The refusal, the identical fact and the error of the same effect are not drawn in it. "Cancelar", the X and
+  Escape send nothing and leave the proposal, the selection and the ticks as they were, and focus returns to "Aceitar
+  selecionadas"; "Aceitar" sends one decision with the same ticked ops and `baseVersion`. Without a `closes` entry
+  nothing changes: the decision is sent at once. The dialog is the `Modal` primitive (named by its title, no live
+  region), so the one thing announced after a refused decision is still the detail's alert, once
+- **Settled mid-build.** (a) only the **ticked** ops count: an effect of an op the person unticked is not accepted and
+  does not ask (C197's consolidation case); the brief said "any of its effects", and the unticked op's fact is not
+  touched by the decision, so asking about it would name a fact nothing happens to; (b) the focus lands on "Cancelar"
+  because the `Modal` primitive focuses the first control that is not the X and the facts are text; an `initialFocus`
+  of my own was written and dropped as redundant, and C201 pins the result (it fails with the buttons in the other order);
+  (c) the confirm button is `.btn.primary` and not `.btn.danger`: the text names a retraction and says it has no way back,
+  and the rejection's modal keeps `danger` for the one thing that writes nothing; (d) the lines in the Modal are the very
+  `Effects` component of the detail, with `refuses`, `unchanged` and `error` blanked, so the two never differ; (e) a
+  double click on "Aceitar" sends one decision because the first click unmounts the Modal (C200 double-clicks it);
+  (f) `Escape` and the X reach the screen through the primitive's `onClose` after its exit, and C199 and C201 ask again
+  after each way out, which kills a Modal that hides itself and leaves the screen's state set (found while re-injecting:
+  with `onClose` a no-op the first version of the Escape proof still passed)
+- **Weight and the ceiling of C147.** The Modal is a chunk of its own, `import()`ed by the tab (C147's test now also asserts
+  that `AgentConfirm.tsx` has one importer, `AgentTab.tsx`, by a dynamic import, and is not in either entry's static
+  reach; with a static import it fails), so the tab's chunk grew by its state and the Suspense only. The build of
+  `7e02530`: 591 435 B JS gzip (+17 108 B over `cerebro-paineis`; 591 435 B against 590 614 B before the confirmation, +821
+  B, of which the new chunk is 0.4 KB) and 81 852 B CSS gzip (unchanged, within its 3 KB). The 16 KB ceiling of C147
+  (16 384 B) had 97 B left, so it is **raised from 16 384 B to 17 152 B**, the measured 17 108 B rounded up to the next
+  256 B, as the owner chose (a new ceiling per feature, the minimum that fits): `tests/memoria.contract.test.ts` C147,
+  C147's claim above, plan amendment 21 and the entry's reason say so. The margin is 44 B. The CSS ceiling and every other
+  feature's are as they were; `pixel.plugin` C28 (2% of the newest entry) and `bundle:check` pass on the re-measured entry
+- **Gates.** On the tree of `7e02530`: `npm run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0,
+  `npx vitest run` at the root is green (191 files, 2 835 tests passed, 1 skipped), `npm run test -w apps/command-centre` is
+  green (189 files, 1 692 tests), each `Proof:` line of C186-C189, C191 and C196-C202 passes run alone (C197 8 tests, C198
+  3, C199 1, C200 2, C201 2, C202 1; C190 3), C88-C96, C104, C105, C145 and the three proofs of C147 still pass, C203
+  passes in the browser (4), `memoria.spec.ts`, `a11y.spec.ts`, `gallery.spec.ts`, `gallery-contrast.spec.ts` and
+  `reviews.spec.ts` run together pass (113 tests), and `validate_checks.py` and `validate_plan.py` exit 0
+- **Re-injected, each failing the check named.** The Modal opening for any effect and so without `closes` (C187, C189,
+  C197); always opening (C187, C189, C197); confirm sending the decision twice (C200, and C203 in the browser); "Cancelar"
+  sending the decision (C197, C199, C201); Escape and the X not cancelling (C199, C201, and C203 in the browser); "Aceitar"
+  placed before "Cancelar", so focus opens on it (C198, C201); the ticks ignored, so an unticked op's effect asks (C197);
+  the refusal, the identical fact and the error drawn in the Modal (C198); a `role="status"` on the Modal's body (C202);
+  the Modal imported statically by the tab (C147)
+
 ## Gaps found by this derivation
 
 Each is a line for an owner question; the safe default is what the checks above assert until the owner answers. None
