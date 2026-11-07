@@ -183,7 +183,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     const facets = listFacets(ctx.db, within);
     // The counts of a pass are over every file, hidden ones included: a device with a hidden folder is given none
     // (round 2 finding 8), nor the progress of a pass that is running.
-    const redact = view.audience === "devices" && view.access.hides("devices");
+    const redact = view.ownIndex();
     const indexing = ctx.indexHost.status();
     return {
       lastIndex: last && redact ? { ...last, stats: zeroCounts(last.stats) } : last,

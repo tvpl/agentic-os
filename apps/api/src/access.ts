@@ -33,6 +33,12 @@ export interface AccessView {
   /** Whether `absolute` is hidden from the caller (always false for the owner). */
   hidden(absolute: string): boolean;
   /**
+   * Whether the index the caller reads is its own, smaller than the owner's (a folder hidden from it, or a root that
+   * holds a folder it is never served): the counts of the owner's index (a pass's files, the vectors) are then over
+   * files it cannot see, and it is given none of them (round 4 finding 7).
+   */
+  ownIndex(): boolean;
+  /**
    * Whether the caller may be told of `absolute`: today's policy (the owner's excludes, the protected folders, the
    * secret names, the home's private folders) and, for a device or a run, the folders hidden from it. A path outside
    * every granted root is judged by the hidden folders alone (the owner is told of it, as before).
@@ -63,6 +69,9 @@ export function accessView(ctx: AppContext, principal: Principal | null | undefi
     audience,
     access,
     settings,
+    ownIndex() {
+      return audience === "devices" && ctx.indexer.audienceTable("devices") !== "files_fts";
+    },
     hidden(absolute) {
       if (audience === null) return false;
       if (!path.isAbsolute(absolute)) return true;
@@ -173,7 +182,7 @@ export function zeroCounts<T>(value: T): T {
 }
 
 export interface DeviceRedactor {
-  /** Some folder is hidden from the devices (an entry gives them `hide`): the counts over every file are not theirs. */
+  /** The devices read an index of their own (a folder hidden from them, or a root that holds what they are never served): the counts over every file are not theirs. */
   readonly hides: boolean;
   /** Nothing is hidden from devices but `artifacts/exports/` (no entry gives devices `hide`). */
   readonly restricts: boolean;
@@ -307,7 +316,7 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
     messageParams?: Record<string, unknown> | null;
   }): boolean => {
     // The row that says an index pass ended counts every file, the hidden ones included.
-    if (n.kind === "index" && view.access.hides("devices")) return true;
+    if (n.kind === "index" && view.ownIndex()) return true;
     if (aboutHidden(n)) return true;
     if (n.runId && hiddenRun(n.runId)) return true;
     if (n.approvalId) {
@@ -344,7 +353,7 @@ export function deviceRedactor(ctx: AppContext, view: AccessView): DeviceRedacto
     return false;
   };
   return {
-    hides: view.access.hides("devices"),
+    hides: view.ownIndex(),
     restricts,
     hiddenPath,
     text,

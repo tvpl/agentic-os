@@ -7,10 +7,11 @@ import type { AgentRun } from "@mordomo/core";
 import { citationRedactor } from "../core/src/memory/citations.js";
 import { resolveFolderAccess } from "../core/src/memory/folderAccess.js";
 import { isInside, leavesBase } from "../core/src/security/paths.js";
+import { stream, ticket } from "./helpers/sse.js";
 import { code, runWorld, type Json, type RunWorld } from "./helpers/memoriaWorld.js";
 
 /**
- * .specs/features/cerebro-memoria-confiavel, round 4 of the verification, part 2: the access layer (C186 to C189).
+ * .specs/features/cerebro-memoria-confiavel, round 4 of the verification, part 2: the access layer (C193 to C195).
  */
 
 const opened: RunWorld[] = [];
@@ -37,10 +38,10 @@ async function seeded(prefix: string) {
 const runCount = (w: RunWorld): number =>
   (w.ctx.db.prepare("SELECT COUNT(*) c FROM runs").get() as { c: number }).c;
 
-// ---- C186: a folder whose name starts with two dots ----------------------------------------------------------------------
+// ---- C193: a folder whose name starts with two dots ----------------------------------------------------------------------
 
-describe("C186 the segment test of 'inside'", () => {
-  it("C186 a relative path leaves its base only when its first segment is exactly '..': '..z', '...' and '..a/b' are inside; '..', '../x' and an absolute path are not", () => {
+describe("C193 the segment test of 'inside'", () => {
+  it("C193 a relative path leaves its base only when its first segment is exactly '..': '..z', '...' and '..a/b' are inside; '..', '../x' and an absolute path are not", () => {
     for (const rel of ["..", "../x", "../..", "..\\x"]) expect(leavesBase(rel), rel).toBe(true);
     for (const rel of ["", ".", "..z", "...", "..a/b", "a/..", "a/../b", ".hidden", "x..", "..․"])
       expect(leavesBase(rel), rel).toBe(false);
@@ -58,8 +59,8 @@ describe("C186 the segment test of 'inside'", () => {
   });
 });
 
-describe("C186 a device's run in a folder named with two dots under the exports or the guard", () => {
-  it("C186 exports/..z, exports/ok, exports/..., guard/..g and guard/sub are refused as the exports and the guard are; exports/.. and exports/../x are the folders they name; at the request, at create, at assertFolderAccess and at the launch", async () => {
+describe("C193 a device's run in a folder named with two dots under the exports or the guard", () => {
+  it("C193 exports/..z, exports/ok, exports/..., guard/..g and guard/sub are refused as the exports and the guard are; exports/.. and exports/../x are the folders they name; at the request, at create, at assertFolderAccess and at the launch", async () => {
     const { w } = await seeded("mordomo-round4-c186-");
     const artifacts = w.ctx.paths.artifacts;
     const exp = path.join(artifacts, "exports");
@@ -150,7 +151,7 @@ describe("C186 a device's run in a folder named with two dots under the exports 
     expect(x).toBeTruthy();
   });
 
-  it("C186 a run in exports/..z is no run for a device (not listed, 404), and a file under exports/..z or guard/..g is not served to it; the owner reads both", async () => {
+  it("C193 a run in exports/..z is no run for a device (not listed, 404), and a file under exports/..z or guard/..g is not served to it; the owner reads both", async () => {
     const { w } = await seeded("mordomo-round4-c186v-");
     const exp = path.join(w.ctx.paths.artifacts, "exports", "..z");
     const guard = path.join(w.home, "guard", "..g");
@@ -176,8 +177,8 @@ describe("C186 a device's run in a folder named with two dots under the exports 
   });
 });
 
-describe("C186 a hidden folder whose name starts with two dots, written in a citation", () => {
-  it("C186 'memory/..fin' is hidden from devices: its spelling relative to memory/ ('..fin/x.md') is written (pasta oculta) as every other spelling is", async () => {
+describe("C193 a hidden folder whose name starts with two dots, written in a citation", () => {
+  it("C193 'memory/..fin' is hidden from devices: its spelling relative to memory/ ('..fin/x.md') is written (pasta oculta) as every other spelling is", async () => {
     const { w } = await seeded("mordomo-round4-c186c-");
     const dots = path.join(w.memory, "..fin");
     fs.mkdirSync(dots, { recursive: true });
@@ -192,5 +193,87 @@ describe("C186 a hidden folder whose name starts with two dots, written in a cit
     expect(redactor.text("veja ..fin2/x.md e outro/..fin/x.md"), "look-alikes stay").toBe(
       "veja ..fin2/x.md e outro/..fin/x.md",
     );
+  });
+});
+
+// ---- C195: the counts of a device that is hidden nothing but is never served the exports --------------------------------
+
+describe("C195 the counts a device is given when a root holds the exports and nothing is hidden", () => {
+  it("C195 with no level set and the artifacts folder indexed (export copies under it), a device reads no pass count and only the vectors of the files it sees; the owner reads all; with no root holding the exports the counts are the whole index's", async () => {
+    const w = await runWorld("mordomo-round4-c195-");
+    opened.push(w);
+    w.update((s) => {
+      s.memory.embeddings = {
+        ...s.memory.embeddings,
+        enabled: true,
+        provider: "hash",
+      } as typeof s.memory.embeddings;
+    });
+    const outra = path.join(w.memory, "notes", "outra");
+    w.put(path.join(outra, "a.md"), "# A\n\numa nota visível com texto bastante\n");
+    w.put(path.join(outra, "b.md"), "# B\n\noutra nota visível com texto bastante\n");
+    await w.index();
+    const device = w.device(["monitor", "content"]);
+    const status = async (headers?: Record<string, string>) =>
+      (await w.call("GET", "/api/memory/status", undefined, headers)).body;
+    const doctor = async (headers?: Record<string, string>) =>
+      ((await w.call("GET", "/api/doctor?audit=0", undefined, headers)).body.checks as Json[]).find(
+        (c) => c.id === "memory-index",
+      )!.detail as string;
+
+    // no root holds the exports: the device's index is the owner's and so are its counts
+    expect(w.ctx.indexer.audienceTable("devices")).toBe("files_fts");
+    const plain = await status(device);
+    expect(plain.semantic.vectors).toBe(2);
+    expect(plain.lastIndex.stats.scanned).toBeGreaterThan(0);
+    expect(await doctor(device)).toMatch(/\d+ files scanned/);
+
+    // the artifacts folder indexed, export copies under it, no level set
+    w.update((s) => {
+      s.indexedFolders = [...s.indexedFolders, { path: w.ctx.paths.artifacts, area: null, enabled: true }];
+    });
+    const exported = path.join(w.ctx.paths.artifacts, "exports", "copia-1");
+    for (let i = 0; i < 5; i++)
+      w.put(path.join(exported, `c${i}.md`), `# Cópia ${i}\n\ncópia de nota oculta número ${i} com texto\n`);
+    await w.index();
+    expect(w.ctx.indexer.audienceTable("devices"), "the device's own index").toBe("files_fts_devices");
+    const owner = await status();
+    expect(owner.semantic.vectors, "the owner's vectors hold the copies").toBeGreaterThanOrEqual(7);
+    const seen = await status(device);
+    expect(seen.semantic.vectors, "the device's vectors are the files it sees").toBe(2);
+    expect(Object.values(seen.lastIndex.stats as Record<string, number>).every((n) => n === 0)).toBe(true);
+    expect(seen.indexing.scanned).toBe(0);
+    expect(await doctor(device)).not.toMatch(/scanned|files/);
+    expect(await doctor()).toMatch(/\d+ files scanned/);
+    const inbox = JSON.stringify((await w.call("GET", "/api/notifications", undefined, device)).body);
+    expect(inbox).not.toMatch(/scanned/);
+    // the stream: the counts of a pass that ends while the device listens
+    const emit = async () => {
+      w.ctx.events.emit("index.finished", {
+        stats: {
+          scanned: 26,
+          added: 26,
+          updated: 0,
+          removed: 0,
+          skippedExcluded: 0,
+          skippedBinary: 0,
+          related: 0,
+          durationMs: 40,
+        },
+      });
+      w.ctx.events.emit("notification.read", { all: true });
+    };
+    const url = async (headers: Record<string, string>) =>
+      `/api/events?ticket=${await ticket(w, headers, { target: "events" })}`;
+    const told = await stream(w, await url(device), /notification\.read/, emit);
+    expect(told).toContain("index.finished");
+    expect(told).not.toContain('"scanned":26');
+    expect(await stream(w, await url(w.owner()), /notification\.read/, emit)).toContain('"scanned":26');
+    // more copies: the device's answers do not move
+    for (let i = 5; i < 12; i++)
+      w.put(path.join(exported, `c${i}.md`), `# Cópia ${i}\n\ncópia de nota oculta número ${i} com texto\n`);
+    await w.index();
+    expect((await status(device)).semantic.vectors).toBe(2);
+    expect((await status()).semantic.vectors).toBeGreaterThan(owner.semantic.vectors);
   });
 });

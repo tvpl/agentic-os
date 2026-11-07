@@ -122,7 +122,7 @@ export async function runDoctor(ctx: AppContext, opts: DoctorOptions = {}): Prom
   const checks: DoctorCheck[] = [];
   const settings = opts.view && opts.view.audience !== null ? opts.view.settings : ctx.settings();
   // The counts of a pass are over every file, hidden ones included (round 2 finding 8, round 3 finding 4).
-  const hideCounts = opts.view?.audience === "devices" && opts.view.access.hides("devices");
+  const hideCounts = opts.view?.ownIndex() ?? false;
 
   const [major] = process.versions.node.split(".");
   checks.push({
