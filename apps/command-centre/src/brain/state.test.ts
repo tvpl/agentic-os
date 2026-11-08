@@ -20,17 +20,17 @@ describe("brain ui state codecs", () => {
     ui.layout = "force";
     ui.local = true;
     ui.localHops = 2;
-    ui.edgeKinds = ["same-area", "markdown-link"];
+    ui.edgeKinds = ["wikilink", "markdown-link"];
     ui.filters = { exts: [".md", ".ts"], tags: ["core"], modified: "7d", size: "small" };
     ui.query = "plan";
     ui.filterGroup = "Docs";
     ui.groups = [{ query: "notes", color: "#22d3ee" }];
     const p = paramsFromUi(ui);
     expect(p.get("sel")).toBe("42");
-    expect(p.get("kinds")).toBe("markdown-link,same-area");
+    expect(p.get("kinds")).toBe("markdown-link,wikilink");
     expect(p.get("groups")).toBe("notes~22d3ee");
     const back = uiFromParams(p, defaultUi());
-    expect(back).toEqual({ ...ui, edgeKinds: ["markdown-link", "same-area"] });
+    expect(back).toEqual({ ...ui, edgeKinds: ["markdown-link", "wikilink"] });
     expect(sameParams(p, paramsFromUi(back))).toBe(true);
   });
 

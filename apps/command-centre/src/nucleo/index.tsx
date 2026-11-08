@@ -80,6 +80,7 @@ import { useResolveApproval } from "../runs/ApprovalCards";
 import { requiresFullReview } from "../runs/approvals";
 import { useBriefing } from "./useBriefing";
 import VoiceHints from "./VoiceHints";
+import { ContextSelector } from "../contexts/ContextSelector";
 import { ACTIVITY_EVENT, FOCUS_EVENT } from "./events";
 import { freshOrigin, pressTarget, setOrigin } from "./travel";
 import Beams from "./Beams";
@@ -707,6 +708,10 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
                 }}
               />
             )}
+            {/* The work context, left of the voice line (cerebro-contextos design). */}
+            <div className="nu-context">
+              <ContextSelector variant="nucleo" />
+            </div>
             <div
               className="nu-voice"
               data-open={dialog ? "" : undefined}

@@ -3,6 +3,8 @@ import { z } from "zod";
 import { UI_PREFERENCE_KEYS, UiPreferencesSchema } from "../preferences.js";
 import { EffortLevel, ProviderId, ProviderSettingsSchema, SettingsSchema } from "../settings.js";
 import { BackupNameParams, UuidParams, err, notFound, settingsWriteErrors } from "./common.js";
+import { ContextQuery, contextNotFound, contextUnavailable } from "./contexts.js";
+import { CONTEXT_ID } from "../workContext.js";
 import { binary, route } from "./route.js";
 import {
   ApprovalSchema,
@@ -21,6 +23,9 @@ import { RoutineStatusSchema } from "../routines.js";
 export const SettingsPatchSchema = SettingsSchema.partial().extend({
   providers: z.record(ProviderId, ProviderSettingsSchema.partial()).optional(),
   limits: SettingsSchema.shape.limits.removeDefault().partial().optional(),
+  // memory's own fields, one level (cerebro-organizar, doors 12 and 13): `{memory:{agentStance}}` keeps the journal
+  // budget and the embeddings, and a `memory.embeddings` the patch carries replaces the stored one whole.
+  memory: SettingsSchema.shape.memory.removeDefault().partial().optional(),
 });
 
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
@@ -30,6 +35,11 @@ export const UiPreferencesPatchSchema = UiPreferencesSchema.partial().extend({
   shell: UiPreferencesSchema.shape.shell.removeCatch().optional(),
   /** The layout this writer started from; a different stored layout means another window saved first. */
   dashboardLayoutBase: UiPreferencesSchema.shape.dashboardLayout.removeDefault().optional(),
+  /**
+   * Strict on write (.specs/features/cerebro-contextos, door 5): the shape of a context id or `null`; a stored value
+   * this version cannot read is still read back as `null`.
+   */
+  activeContext: z.string().regex(CONTEXT_ID, "the id of a work context").nullable().optional(),
 });
 
 const BuildStatusSchema = z.object({ installedAt: z.number(), startedAt: z.number(), stale: z.boolean() });
@@ -305,7 +315,12 @@ export const systemRoutes = {
     summary: "The engine settings",
     tag: "settings",
     scope: "monitor",
-    responses: { 200: SettingsSchema },
+    // A paired device is answered without `folderAccess` (cerebro-memoria-confiavel, AC 93).
+    responses: {
+      200: SettingsSchema.extend({
+        folderAccess: SettingsSchema.shape.folderAccess.removeDefault().optional(),
+      }),
+    },
   }),
   "settings.update": route({
     method: "PUT",
@@ -574,21 +589,29 @@ export const systemRoutes = {
   "sync.plan": route({
     method: "GET",
     path: "/api/sync/plan",
-    summary: "What the config compiler would write into each provider's native files",
+    summary:
+      "What the config compiler would write into each provider's native files; with context, into its first ok path, with its map in the place of the master router",
     tag: "sync",
     scope: "owner",
-    query: z.object({ target: z.string().optional() }),
+    query: z.object({ target: z.string().optional(), context: ContextQuery }),
     responses: { 200: SyncPlanSchema },
+    errors: [contextNotFound, contextUnavailable],
   }),
   "sync.apply": route({
     method: "POST",
     path: "/api/sync/apply",
-    summary: "Write the plan; a hand-edited file is written only when listed in approvedConflicts",
+    summary:
+      "Write the plan; a hand-edited file is written only when listed in approvedConflicts; context as in the plan",
     tag: "sync",
     scope: "owner",
-    body: z.object({ target: z.string().optional(), approvedConflicts: z.array(z.string()).default([]) }),
+    body: z.object({
+      target: z.string().optional(),
+      approvedConflicts: z.array(z.string()).default([]),
+      context: ContextQuery,
+    }),
     bodyOptional: true,
     responses: { 200: SyncApplyResultSchema },
+    errors: [contextNotFound, contextUnavailable],
   }),
   "artifacts.list": route({
     method: "GET",

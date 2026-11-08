@@ -23,6 +23,12 @@ export type OsEventType =
   | "index.finished"
   | "index.failed"
   | "index.cancelled"
+  /** A cleanup scan of a scope advanced, finished or failed (.specs/features/cerebro-faxina-guiada, door 6). */
+  | "cleanup.progress"
+  | "cleanup.finished"
+  | "cleanup.failed"
+  /** A dashboard was refreshed and its snapshot stored (.specs/features/cerebro-paineis, door 6). */
+  | "dashboard.refreshed"
   | "approval.requested"
   | "approval.resolved"
   | "approval.expired"
@@ -75,6 +81,9 @@ export interface IndexStats {
 export const INDEX_PHASES = ["scan", "index", "prune", "related", "vectors"] as const;
 export type IndexPhase = (typeof INDEX_PHASES)[number];
 
+/** The phases of a cleanup scan, in order (`cleanup.progress`, .specs/features/cerebro-faxina-guiada, door 6). */
+export type CleanupPhase = "inventory" | "signatures" | "links" | "findings";
+
 /** Where an index pass runs: a `worker_thread` of the service, or the service's own thread (no worker script). */
 export type IndexMode = "worker" | "inline";
 
@@ -107,13 +116,18 @@ export interface BudgetCrossedPayload {
   budgetUsd: number;
 }
 
-export type SentinelId = "fsWatch" | "repeatedFailure" | "silentRoutine" | "connectorDelta";
+export type SentinelId =
+  "fsWatch" | "repeatedFailure" | "silentRoutine" | "connectorDelta" | "reviewDue" | "proposalsPending";
 
 export const SENTINEL_IDS: readonly SentinelId[] = [
   "fsWatch",
   "repeatedFailure",
   "silentRoutine",
   "connectorDelta",
+  /** The notes whose review fell due, once a day (.specs/features/cerebro-natureza, door 5). */
+  "reviewDue",
+  /** The agent's proposals waiting for review, once a day (.specs/features/cerebro-memoria-confiavel, door 11). */
+  "proposalsPending",
 ];
 
 export type SentinelSeverity = "info" | "warn" | "danger";
@@ -127,6 +141,8 @@ export interface SentinelFiredPayload {
   severity: SentinelSeverity;
   /** Where the Command Centre should send the reader. */
   href?: string;
+  /** How many things the finding counts, when it counts (`proposalsPending`: the proposals pending). */
+  count?: number;
   /** Rows sharing this key collapse (see `NotificationStore.hasDedupeKey`). */
   dedupeKey?: string;
   /** Ask the triage run to decide what this means (costs money — see `triage.ts`). */
@@ -156,6 +172,10 @@ export interface OsEventMap {
   "index.finished": { stats: IndexStats; runId?: string };
   "index.failed": { code: string; previousIndexPreserved: boolean; runId?: string };
   "index.cancelled": { runId: string };
+  "cleanup.progress": { scanId: string; phase: CleanupPhase; done: number; total: number };
+  "cleanup.finished": { scanId: string; findings: number };
+  "cleanup.failed": { scanId: string; code: string };
+  "dashboard.refreshed": { id: string; generatedAt: number; status: "ok" | "partial" | "error" };
   "approval.requested": { id: string; kind: ApprovalKind; description: string; runId?: string | null };
   "approval.resolved": { id: string; kind: ApprovalKind; status: Approval["status"]; runId: string | null };
   "approval.expired": { count: number };

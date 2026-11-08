@@ -1,4 +1,4 @@
-import { DEFAULT_EXCLUDES } from "@mordomo/contracts";
+import { DEFAULT_EXCLUDES, FOLDER_ACCESS_UNREADABLE } from "@mordomo/contracts";
 import type { FailClosedField } from "./tolerant.js";
 
 /**
@@ -63,4 +63,14 @@ export const SETTINGS_FAIL_CLOSED: readonly FailClosedField[] = [
   { path: "sentinels.repeatedFailure.enabled", closed: false },
   { path: "sentinels.silentRoutine.enabled", closed: false },
   { path: "sentinels.repeatDetector.enabled", closed: false },
+  { path: "sentinels.reviewDue.enabled", closed: false },
+  { path: "sentinels.proposalsPending.enabled", closed: false },
+  // The access of folders (cerebro-memoria-confiavel, door 12, AC 89 and 90). An entry's level this version cannot
+  // read makes that entry `hide` for both audiences, and the other entries stay as written; these two come before the
+  // field's own rule, which the first matching rule wins over. Anything else unreadable in the list (a path that is not
+  // a string, an entry without a level, more than 200 entries, a value that is not a list) reads the whole field as
+  // `FOLDER_ACCESS_UNREADABLE`: `hide` for devices and `read` for agents, everywhere.
+  { path: "folderAccess.*.agents", closed: "hide", also: [{ sibling: "devices", value: "hide" }] },
+  { path: "folderAccess.*.devices", closed: "hide", also: [{ sibling: "agents", value: "hide" }] },
+  { path: "folderAccess", closed: () => [{ ...FOLDER_ACCESS_UNREADABLE }] },
 ];

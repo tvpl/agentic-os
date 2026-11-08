@@ -1,7 +1,7 @@
 /**
  * The scenes (immersive shell). There are no windows: each place in the OS
- * fills the screen, one at a time, and the URL says which. The five main
- * scenes sit on the horizon and answer to 1–5; the rest are reached from the
+ * fills the screen, one at a time, and the URL says which. The six main
+ * scenes sit on the horizon and answer to 1–6; the rest are reached from the
  * palette, the horizon's "more" and deep links, and appear on the horizon
  * only while you are in them.
  */
@@ -35,6 +35,15 @@ export const SCENES: readonly SceneDef[] = [
     glyph: "◷",
     main: true,
     app: "routines",
+  },
+  // The sixth main scene, on key 6 (.specs/features/cerebro-paineis, amendment 25).
+  {
+    id: "dashboards",
+    path: "/dashboards",
+    labelKey: "dash.nav",
+    glyph: "▤",
+    main: true,
+    app: "dashboards",
   },
   {
     id: "connectors",

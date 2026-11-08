@@ -9,6 +9,7 @@ import {
   SilentRoutineSchema,
 } from "../routines.js";
 import { EffortLevel, ProviderId } from "../settings.js";
+import { folderAccessErrors } from "./runs.js";
 import {
   DeletedSchema,
   IdParams,
@@ -268,6 +269,7 @@ export const routineRoutes = {
       err(400, "bad_request", "The routine's skill is not in the catalog"),
       err(409, "conflict", "The routine is already running"),
       err(409, "budget_exhausted", "The routine's daily budget is exhausted"),
+      ...folderAccessErrors,
     ],
   }),
   "routines.history": route({
@@ -278,6 +280,8 @@ export const routineRoutes = {
     scope: "monitor",
     params: IdParams,
     responses: { 200: z.array(RoutineHistoryEntrySchema) },
+    // cerebro-memoria-confiavel, amendment 5: a routine that works in a folder hidden from devices, for a device.
+    errors: [notFound("For a paired device: a routine whose working folder is hidden from devices")],
   }),
 
   // ---- connectors

@@ -88,7 +88,9 @@
         ".ssh",
         ".gnupg"
       ],
+      "folderAccess": [],
       "areas": ["Worker", "Documentos", "Finanças", "Projetos"],
+      "contexts": [],
       "limits": {
         "maxConcurrentRuns": 3,
         "skillNotesMax": 40,
@@ -106,7 +108,7 @@
         "toolApprovalTimeoutMs": 600000
       },
       "favoriteSkills": [],
-      "memorySkills": ["recall", "consolidate-memory"],
+      "memorySkills": ["recall", "consolidate-memory", "organize-brain", "dashboard-answer"],
       "routines": {
         "allowWebhooks": false,
         "heartbeatIntervalMinutes": 30,
@@ -119,6 +121,31 @@
       },
       "memory": {
         "journalBudgetTokens": 1200,
+        "agentStance": "neutral",
+        "notes": {
+          "fixedStructure": false
+        },
+        "cleanup": {
+          "staleDays": 180,
+          "largeBytes": 5242880
+        },
+        "reviews": {
+          "cadence": {
+            "opiniao": "90d",
+            "plano": "30d",
+            "hipotese": "60d",
+            "relato": "never",
+            "fato": "never"
+          },
+          "byType": {
+            "status": "30d",
+            "conceito": "180d"
+          },
+          "maxPerDay": 20
+        },
+        "history": {
+          "maxBytes": 268435456
+        },
         "embeddings": {
           "enabled": false,
           "provider": "hash",
@@ -149,6 +176,12 @@
           "minRuns": 2,
           "similarity": 0.6
         },
+        "reviewDue": {
+          "enabled": true
+        },
+        "proposalsPending": {
+          "enabled": true
+        },
         "triage": {
           "enabled": true,
           "model": "haiku",
@@ -169,6 +202,12 @@
           "enabled": false,
           "minTone": "warn",
           "subject": "mailto:mordomo@localhost"
+        }
+      },
+      "dashboards": {
+        "reminders": {
+          "maxPerDay": 3,
+          "at": "08:30"
         }
       }
     }

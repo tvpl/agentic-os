@@ -1,0 +1,43 @@
+/*
+ * The tools of a folder (.specs/features/cerebro-memoria-confiavel): 480px modals, tokens only. The six hints are
+ * sentences, so they are 13px (design-system binding), not the 12px of the feature's design.md (an owner question,
+ * G37); "Herdado de <pasta>" is a short label and is the 12px design.md gives it.
+ */
+.modal.ft-modal {
+  width: min(480px, 100%);
+}
+
+.ft-path {
+  overflow-wrap: anywhere;
+}
+
+.ft-hint,
+.ft-inherited,
+.ft-done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.ft-hint {
+  font-size: var(--fs-3);
+  color: var(--text-dim);
+}
+
+.ft-inherited {
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+
+.ft-hint svg,
+.ft-inherited svg,
+.ft-done svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.ft-error {
+  color: var(--danger);
+}

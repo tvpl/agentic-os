@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useT } from "../i18n";
 import { useDrawer } from "../ui";
+import { ContextSelector } from "../contexts/ContextSelector";
 import { useScrimPress } from "./hooks";
 import { NAV_GROUPS, type NavItem } from "./nav";
 
@@ -40,6 +41,8 @@ export function Sidebar({ name, current, collapsed, overlay, pending, onToggle, 
         </span>
         {!collapsed && <span className="mold-brand-name">{name}</span>}
       </div>
+      {/* The work context, between the brand and the main group (cerebro-contextos design). */}
+      <ContextSelector variant="frame" collapsed={collapsed} />
       <NavGroup items={NAV_GROUPS.main} current={current} collapsed={collapsed} pending={pending} />
       <div className="mold-nav-group">
         {collapsed ? (

@@ -45,6 +45,10 @@ import { registerChannelRoutes } from "./routes/channels.js";
 import { registerPushRoutes } from "./routes/push.js";
 import { resolveApprovalForChat } from "./approvalActions.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
+import { registerCleanupRoutes } from "./routes/cleanup.js";
+import { registerReviewRoutes } from "./routes/reviews.js";
+import { registerContextRoutes } from "./routes/contexts.js";
+import { registerDashboardRoutes } from "./routes/dashboards.js";
 import { registerRoutineRoutes } from "./routes/routines.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
 import { registerMicroappRoutes } from "./routes/microapps.js";
@@ -56,6 +60,7 @@ import { isApiRequest, isApiRoutePath, rewriteApiUrl, successorHeaders } from ".
 import { SlidingWindow } from "./rateLimit.js";
 import { registerOpenApiRoute } from "./openapi.js";
 import { installResponseCheck, responsesValidated } from "./contract.js";
+import { redactorFor } from "./access.js";
 import { principalName, type Principal } from "./routes/common.js";
 import { ticketKey } from "./tickets.js";
 import { ignoredBindMessage, listenPlan } from "./transport.js";
@@ -236,9 +241,13 @@ const BROKER_ROUTES = new Set([
  */
 const RUN_API_READ_ROUTES = new Set([
   "GET /api/memory/recall",
+  // cerebro-contextos, door 8: the search, read as the recall is (memory/ and the run's work context).
+  "GET /api/memory/search",
   "GET /api/memory/recall/stats",
   "GET /api/memory/journal",
   "GET /api/memory/facts",
+  // cerebro-organizar, door 10: the folder map, read as memory/notes/ and the folders the run was handed.
+  "GET /api/memory/maps",
 ]);
 const RUN_API_WRITE_ROUTES = new Set(["POST /api/memory/journal/append", "POST /api/memory/facts"]);
 
@@ -620,6 +629,15 @@ export async function buildServer(
     closeAllSse(app);
   });
 
+  // What a paired device is told (cerebro-memoria-confiavel, amendment 5): every JSON answer leaves out the items that live
+  // in a folder hidden from devices, and writes a hidden path in free text as `(pasta oculta)`. Before the contract
+  // check, so the answer checked is the one sent.
+  app.addHook("preSerialization", async (req, _reply, payload) => {
+    if (req.principal?.kind !== "device" || payload === null || typeof payload !== "object") return payload;
+    if (Buffer.isBuffer(payload)) return payload;
+    return redactorFor(ctx, req.principal)!.value(payload);
+  });
+
   // Development and tests: a response that departs from its route's entry is a 500 that names the paths.
   if (options.validateResponses ?? responsesValidated()) installResponseCheck(app);
 
@@ -634,6 +652,10 @@ export async function buildServer(
   registerChannelRoutes(app, ctx);
   registerPushRoutes(app, ctx);
   registerMemoryRoutes(app, ctx);
+  registerCleanupRoutes(app, ctx);
+  registerReviewRoutes(app, ctx);
+  registerContextRoutes(app, ctx);
+  registerDashboardRoutes(app, ctx);
   registerRoutineRoutes(app, ctx);
   registerConnectorRoutes(app, ctx);
   registerMicroappRoutes(app, ctx);
@@ -781,6 +803,9 @@ export class PortInUseError extends Error {
   }
 }
 
+/** How often the service's clock looks for a dashboard to refresh. */
+export const DASHBOARD_TICK_MS = 60_000;
+
 export async function startServer(homeOverride?: string, sidecar?: SidecarOptions): Promise<ServerHandle> {
   const ctx = new AppContext(homeOverride, { applyPendingRestore: true });
   const settings = ctx.settings();
@@ -877,6 +902,13 @@ export async function startServer(homeOverride?: string, sidecar?: SidecarOption
   const approvalSweep = setInterval(sweepApprovals, 3_600_000);
   approvalSweep.unref?.();
 
+  // The dashboards' clock (.specs/features/cerebro-paineis, AC 10, amendment 12): beside the hourly sweep, once a
+  // minute, each dashboard whose interval has passed is refreshed. Only the service that owns the home has it.
+  const dashboardClock = setInterval(() => {
+    ctx.dashboards.tick().catch((err: unknown) => app.log.error({ err, msg: "dashboard tick failed" }));
+  }, DASHBOARD_TICK_MS);
+  dashboardClock.unref?.();
+
   // A service that is starting is the one that should be running on its port.
   // Take the port first; only when it is busy do we stop what holds it — the
   // process listening there if it is a MordomoOS service, plus leftovers of
@@ -894,6 +926,7 @@ export async function startServer(homeOverride?: string, sidecar?: SidecarOption
     if ((err as NodeJS.ErrnoException).code !== "EADDRINUSE") throw err;
     if (sidecar) {
       clearInterval(approvalSweep);
+      clearInterval(dashboardClock);
       await app.close();
       ctx.close();
       throw new PortInUseError(wantedPort);
@@ -947,6 +980,7 @@ export async function startServer(homeOverride?: string, sidecar?: SidecarOption
       process.off("SIGINT", onSignal);
       process.off("unhandledRejection", onRejection);
       clearInterval(approvalSweep);
+      clearInterval(dashboardClock);
       ctx.sentinels.stop();
       try {
         fs.unlinkSync(pidFile);

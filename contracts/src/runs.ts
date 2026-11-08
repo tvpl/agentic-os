@@ -32,7 +32,17 @@ export interface RunFailure {
     | "cancelled"
     | "interrupted"
     | "provider"
-    | "unknown";
+    | "unknown"
+    /** The run's folder (door 5 of cerebro-organizar) stopped being one a run may be handed before it launched. */
+    | "folder_not_indexed"
+    /** The run's provider cannot keep a folder read-only (door 5 of cerebro-organizar). */
+    | "folder_protection_unsupported"
+    /** The run's folder, or one it is handed, is hidden from agents (cerebro-memoria-confiavel, door 12, G16). */
+    | "folder_hidden"
+    /** The run would write in a folder agents may only read (cerebro-memoria-confiavel, door 12, G16). */
+    | "folder_read_only"
+    /** The run's folder holds a folder hidden from agents and its provider reads the whole disk (door 13, G16). */
+    | "folder_hide_unsupported";
   message: string;
   recoverable: boolean;
   effectsUncertain: boolean;
@@ -78,6 +88,11 @@ export interface RunRecord {
   startedBy: string | null;
   /** Token usage and provider-reported cost; null until a provider reports it. */
   usage: RunUsage | null;
+  /**
+   * The work context the run was started in (.specs/features/cerebro-contextos, door 4), kept as it was when the context
+   * is deleted later; null for a run without one and for runs created before migration 23.
+   */
+  contextId: string | null;
 }
 
 /** One thing a provider reported while a run was going. */

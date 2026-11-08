@@ -1,0 +1,95 @@
+import type { FastifyInstance } from "fastify";
+import type { Settings } from "@mordomo/core";
+import {
+  changedContext,
+  contextMembership,
+  describeContexts,
+  ensureContextBrief,
+  findContext,
+  newContext,
+  removeContextMap,
+} from "@mordomo/core/internal";
+import { accessView } from "../access.js";
+import type { AppContext } from "../context.js";
+import { bind } from "../contract.js";
+import { httpError } from "./common.js";
+
+type WorkContext = Settings["contexts"][number];
+
+/** The rules of a context read the settings as they are now. */
+const envOf = (ctx: AppContext, settings: Settings = ctx.settings()) => ({ paths: ctx.paths, settings });
+
+/**
+ * The work context a read names (`context=<id>`; `all` or nothing is the whole index): the test that keeps its files
+ * (door 6), `undefined` for the whole index, `404 context_not_found` for an id that names none.
+ */
+export function contextFilter(
+  ctx: AppContext,
+  value: string | undefined,
+  /** The caller's view of the settings (cerebro-memoria-confiavel, door 12); the settings as they are without it. */
+  settings: Settings = ctx.settings(),
+): ((row: { root: string; rel: string }) => boolean) | undefined {
+  const context = requireContext(ctx, value, settings);
+  return context ? contextMembership(envOf(ctx, settings), context) : undefined;
+}
+
+/** The context `value` names, `null` for the whole index, `404 context_not_found` for an id that names none. */
+export function requireContext(
+  ctx: AppContext,
+  value: string | undefined,
+  settings: Settings = ctx.settings(),
+): WorkContext | null {
+  const context = findContext(settings, value);
+  if (context === undefined) throw httpError(404, `No work context is called ${value}.`, "context_not_found");
+  return context;
+}
+
+export function registerContextRoutes(app: FastifyInstance, ctx: AppContext): void {
+  // A device sees no context path in a folder hidden from it, nor a file of one in its counts (door 12, G11).
+  bind(app, "contexts.list", async (_input, req) => {
+    const view = accessView(ctx, req.principal);
+    return { contexts: describeContexts(ctx.db, envOf(ctx, view.settings), undefined, view.rowFilter()) };
+  });
+
+  bind(app, "contexts.create", async ({ body }, _req, reply) => {
+    let created: WorkContext | null = null;
+    // Read-modify-write in one step of the store: the rules see the contexts the save replaces.
+    const saved = ctx.settingsStore.update((current) => {
+      created = newContext(envOf(ctx, current), body);
+      return { contexts: [...current.contexts, created] };
+    });
+    reply.code(201);
+    return describeContexts(ctx.db, envOf(ctx, saved), created!)[0]!;
+  });
+
+  bind(app, "contexts.update", async ({ params: { id }, body: { brief, ...patch } }) => {
+    let changed: WorkContext | null = null;
+    let saved = ctx.settings();
+    if (patch.name !== undefined || patch.paths !== undefined) {
+      saved = ctx.settingsStore.update((current) => {
+        const next = changedContext(envOf(ctx, current), id, patch);
+        changed = next;
+        return { contexts: current.contexts.map((c) => (c.id === id ? next : c)) };
+      });
+    } else {
+      changed = changedContext(envOf(ctx, saved), id, {});
+    }
+    // "Edit brief" (door 9): the brief is made from the template when it is missing, never written over.
+    if (brief) ensureContextBrief(envOf(ctx, saved), changed!);
+    return describeContexts(ctx.db, envOf(ctx, saved), changed!)[0]!;
+  });
+
+  bind(app, "contexts.delete", async ({ params: { id } }) => {
+    ctx.settingsStore.update((current) => {
+      if (!current.contexts.some((c) => c.id === id)) {
+        throw httpError(404, `No work context is called ${id}.`, "context_not_found");
+      }
+      return { contexts: current.contexts.filter((c) => c.id !== id) };
+    });
+    // The map goes with the context; its notes (memory/notes/<id>/) stay where they are.
+    removeContextMap(ctx.paths, id);
+    const prefs = ctx.uiPreferences.load();
+    if (prefs.activeContext === id) ctx.uiPreferences.save({ ...prefs, activeContext: null });
+    return { deleted: true as const, id };
+  });
+}

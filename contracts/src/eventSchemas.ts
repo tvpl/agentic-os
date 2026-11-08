@@ -40,13 +40,22 @@ const IndexStatsSchema = z.object({
 });
 
 const SentinelFiredSchema = z.object({
-  sentinel: z.enum(["fsWatch", "repeatedFailure", "silentRoutine", "connectorDelta"]),
+  sentinel: z.enum([
+    "fsWatch",
+    "repeatedFailure",
+    "silentRoutine",
+    "connectorDelta",
+    "reviewDue",
+    "proposalsPending",
+  ]),
   messageParams: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
   title: z.string(),
   body: z.string(),
   severity: z.enum(["info", "warn", "danger"]),
   /** Where the Command Centre should send the reader. */
   href: z.string().optional(),
+  /** How many things the finding counts, when it counts. */
+  count: z.number().optional(),
   /** Rows sharing this key collapse. */
   dedupeKey: z.string().optional(),
   /** Ask the triage run to decide what this means (costs money). */
@@ -98,6 +107,19 @@ const PAYLOADS_V1 = {
     runId: z.string().optional(),
   }),
   "index.cancelled": z.object({ runId: z.string() }),
+  "cleanup.progress": z.object({
+    scanId: z.string(),
+    phase: z.enum(["inventory", "signatures", "links", "findings"]),
+    done: z.number().int().min(0),
+    total: z.number().int().min(0),
+  }),
+  "cleanup.finished": z.object({ scanId: z.string(), findings: z.number().int().min(0) }),
+  "cleanup.failed": z.object({ scanId: z.string(), code: z.string().min(1) }),
+  "dashboard.refreshed": z.object({
+    id: z.string(),
+    generatedAt: z.number().int().min(0),
+    status: z.enum(["ok", "partial", "error"]),
+  }),
   "approval.requested": z.object({
     id: z.string(),
     kind: ApprovalKindSchema,

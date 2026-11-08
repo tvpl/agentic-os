@@ -3,6 +3,7 @@ import { z } from "zod";
 import { EffortLevel, ProviderId } from "../settings.js";
 import { PageQuery, RunPrompt, RunTimeout, UuidParam, UuidParams, err, notFound } from "./common.js";
 import { route, stream } from "./route.js";
+import { ContextIdField, contextNotFound, contextUnavailable } from "./contexts.js";
 import {
   ApprovalSchema,
   RunEventSchema,
@@ -42,6 +43,11 @@ export const CreateRunBodySchema = z.object({
   ...PromptRunFields,
   /** Continue this conversation instead of starting a new one. */
   sessionId: UuidParam.optional(),
+  /**
+   * Run in this work context (.specs/features/cerebro-contextos, S3): without `cwd` the run starts in the context's
+   * first `ok` path, its other `ok` paths and its notes are added folders, and its prompt begins with the context.
+   */
+  contextId: ContextIdField,
 });
 
 const RunDiffSchema = z.discriminatedUnion("kind", [
@@ -101,7 +107,24 @@ const submissionErrors = [
   ),
 ];
 
+/** The refusals of a run asked for in a work context (`contextId`). */
+export const runContextErrors = [contextNotFound, contextUnavailable];
+
 /** The refusals any route that starts a run can answer. */
+/**
+ * What a folder's access refuses when a run is asked for (.specs/features/cerebro-memoria-confiavel, door 12 and 13,
+ * G16): the same three codes on every route that creates a run.
+ */
+export const folderAccessErrors = [
+  err(403, "folder_hidden", "The run's folder, or a folder it would be handed, is hidden from agents"),
+  err(403, "folder_read_only", "The run would write in a folder that agents, or this device, may only read"),
+  err(
+    409,
+    "folder_hide_unsupported",
+    "The run's folder holds a folder hidden from agents and the provider reads the whole disk",
+  ),
+];
+
 const startErrors = [
   err(400, "unknown_provider", "No adapter is registered for the provider"),
   err(400, "bad_request", "The provider is not enabled"),
@@ -113,6 +136,7 @@ const startErrors = [
   ),
   err(409, "workspace_unavailable", "The working folder cannot be used"),
   err(429, "too_many_requests", "The queue of runs is full"),
+  ...folderAccessErrors,
 ];
 
 export const runRoutes = {
@@ -145,12 +169,13 @@ export const runRoutes = {
   "runs.create": route({
     method: "POST",
     path: "/api/runs",
-    summary: "Start a prompt run (202 when the write waits for a human)",
+    summary:
+      "Start a prompt run (202 when the write waits for a human); contextId runs it in a work context, cwd then inside one of its paths",
     tag: "runs",
     scope: "run",
     body: CreateRunBodySchema,
     responses: { 200: RunLaunchSchema, 202: RunLaunchSchema },
-    errors: [notFound("The conversation"), ...startErrors, ...submissionErrors],
+    errors: [notFound("The conversation"), ...startErrors, ...submissionErrors, ...runContextErrors],
   }),
   "runs.children.create": route({
     method: "POST",
@@ -296,7 +321,8 @@ export const runRoutes = {
   "sessions.continue": route({
     method: "POST",
     path: "/api/sessions/:id/continue",
-    summary: "Continue a conversation: a new run that resumes the provider session",
+    summary:
+      "Continue a conversation: a new run that resumes the provider session, in the work context of the conversation",
     tag: "sessions",
     scope: "run",
     params: UuidParams,
@@ -307,9 +333,11 @@ export const runRoutes = {
       effort: EffortLevel.optional(),
       model: z.string().nullable().optional(),
       timeoutMs: RunTimeout.optional(),
+      /** The conversation keeps its work context: a different one is `409 context_unavailable`. */
+      contextId: ContextIdField,
     }),
     responses: { 200: RunLaunchSchema, 202: RunLaunchSchema },
-    errors: [notFound("The conversation"), ...startErrors, ...submissionErrors],
+    errors: [notFound("The conversation"), ...startErrors, ...submissionErrors, ...runContextErrors],
   }),
   "sessions.rename": route({
     method: "PATCH",

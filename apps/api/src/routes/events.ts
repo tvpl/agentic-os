@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import type { OsEvent } from "@mordomo/core";
+import type { OsEvent, Settings } from "@mordomo/core";
 import { currentEventVersion } from "@mordomo/contracts/events";
+import { accessView, redactorFor, settingsForDevice, zeroCounts } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { ticketKey } from "../tickets.js";
@@ -53,10 +54,35 @@ export function registerEventRoutes(app: FastifyInstance, ctx: AppContext): void
     }
     // Without a resume point nothing is replayed: start after the current id.
     let seen = stale ? 0 : (since ?? ctx.events.lastId);
+    // A device is told of the settings as `GET /api/settings` tells it (cerebro-memoria-confiavel, AC 93).
+    const device = req.principal?.kind === "device";
+    const told = (e: OsEvent): OsEvent => {
+      if (!device || e.type !== "settings.changed") return e;
+      const payload = e.payload as { settings?: Settings };
+      if (!payload.settings) return e;
+      return {
+        ...e,
+        payload: {
+          ...payload,
+          settings: settingsForDevice(accessView(ctx, req.principal), payload.settings),
+        },
+      } as OsEvent;
+    };
+    // A device is told of no event of a hidden run, notification or approval, and every hidden path in the others is
+    // written as `(pasta oculta)` (cerebro-memoria-confiavel, amendment 5).
     const push = (e: OsEvent) => {
       if (e.id <= seen) return; // already sent (replay/live overlap)
       seen = e.id;
-      ch.send({ id: e.id, event: e.type, data: e });
+      if (!device) {
+        ch.send({ id: e.id, event: e.type, data: e });
+        return;
+      }
+      const redactor = redactorFor(ctx, req.principal)!;
+      if (redactor.hiddenEvent(e)) return;
+      // The counts of an index pass are over every file: none to a device that has a folder hidden from it.
+      const counted =
+        redactor.hides && e.type.startsWith("index.") ? { ...e, payload: zeroCounts(e.payload) } : told(e);
+      ch.send({ id: e.id, event: e.type, data: redactor.value(counted) });
     };
     // Subscribe before replaying so nothing emitted in between is lost.
     ch.onClose(ctx.events.subscribe(push));

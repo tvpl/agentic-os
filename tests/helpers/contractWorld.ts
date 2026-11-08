@@ -6,7 +6,16 @@ import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { API, routeKey, type RouteDefinition } from "@mordomo/contracts";
-import { SkillRegistry, b64url, createNote, type Fetcher } from "@mordomo/core/internal";
+import {
+  SkillRegistry,
+  applyCleanup,
+  b64url,
+  createNote,
+  recordFileVersion,
+  saveCleanupDecisions,
+  storeProposal,
+  type Fetcher,
+} from "@mordomo/core/internal";
 import { AppContext } from "../../apps/api/src/context.js";
 import { buildServer } from "../../apps/api/src/server.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "../helpers.js";
@@ -118,6 +127,11 @@ export async function buildWorld(options: { validateResponses?: boolean } = {}):
   settings.providers.claude.binaryPath = path.join(FAKE_BIN, "claude");
   settings.indexedFolders = [{ path: workspace, area: "Projetos", enabled: true }];
   settings.areas = ["Projetos"];
+  // Two work contexts the scenarios change and delete (cerebro-contextos): they live in settings.json, like the rest.
+  settings.contexts = [
+    { id: "contract-context", name: "Contexto do contrato", paths: [workspace] },
+    { id: "contract-context-gone", name: "Contexto que some", paths: [workspace] },
+  ];
   settings.channels.telegram.botTokenEnv = TELEGRAM_ENV;
   settings.channels.telegram.chatId = "12345";
   settings.channels.push.enabled = true;
@@ -339,6 +353,75 @@ const uuid = () => crypto.randomUUID();
 const noteOf = (w: World, title: string) =>
   createNote({ paths: w.ctx.paths, settings: w.ctx.settings() }, { title });
 
+/** A note made for a scenario and its first version in the history of memory/ (cerebro-memoria-confiavel). */
+function versionOf(w: World, title: string): { id: number; version: string } {
+  const note = noteOf(w, title);
+  const env = { db: w.ctx.db, paths: w.ctx.paths, settings: w.ctx.settings() };
+  const id = recordFileVersion(env, note.path, fs.readFileSync(note.path), "owner", "create")!;
+  return { id, version: note.version };
+}
+
+/**
+ * A consolidation proposal made for a scenario (cerebro-memoria-confiavel, door 5): one `add` op citing a line of a
+ * journal day of memory/, as a run of consolidate-memory would leave it.
+ */
+function proposalOf(w: World, text: string): string {
+  const journal = path.join(w.ctx.paths.memory, "journal", "2026-10-30.md");
+  if (!fs.existsSync(journal)) {
+    fs.mkdirSync(path.dirname(journal), { recursive: true });
+    fs.writeFileSync(journal, "# 2026-10-30\n\n## Decisions\n\n- Uma decisão do cenário\n");
+  }
+  return storeProposal(
+    w.ctx.db,
+    {
+      kind: "consolidation",
+      author: "run:contract",
+      runId: "contract",
+      summary: text,
+      payload: {
+        v: 1,
+        summary: text,
+        ops: [{ op: "add", section: "Decisions", text, source: "journal/2026-10-30.md", line: 5 }],
+      },
+    },
+    { capped: false },
+  ).id;
+}
+
+/** The dashboard of the contract's context (cerebro-paineis), made by the engine when it is not there yet. */
+function dashboardOf(w: World): { id: string; definition: unknown; version: string } {
+  const found = w.ctx.dashboards.store.read("contexto-contract-context");
+  if (found !== null && !("problem" in found)) return found;
+  return w.ctx.dashboards.create({ template: "area", contextId: "contract-context" });
+}
+
+/** Wait for a cleanup scan to end (a scan runs on after its 202). */
+async function scanEnded(w: World, scanId: string | undefined): Promise<void> {
+  if (!scanId) return;
+  for (let i = 0; i < 2000 && w.ctx.cleanup.get(scanId)?.status === "running"; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+/**
+ * A finished cleanup scan of a new folder under memory/notes/ holding one untitled note, and that finding's key; with
+ * `archive`, the decision to archive it is stored too. Made through the engine, so the scenario's only request is its
+ * own route's.
+ */
+async function cleanupReady(w: World, archive = false): Promise<{ scanId: string; key: string }> {
+  const dir = path.join(w.ctx.paths.memory, "notes", `faxina-${uuid().slice(0, 8)}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "sem-titulo.md");
+  fs.writeFileSync(file, `sem titulo ${uuid()}\n`);
+  await w.ctx.indexer.requestIndexPaths([file]);
+  const scanId = w.ctx.cleanup.start({ dir });
+  await scanEnded(w, scanId);
+  const scan = w.ctx.cleanup.get(scanId)!;
+  const key = scan.findings.find((f) => f.kind === "untitled")?.key ?? "";
+  if (archive) saveCleanupDecisions(w.ctx.db, scan, [{ key, decision: "archive" }]);
+  return { scanId, key };
+}
+
 export const SCENARIOS: Record<string, Scenario> = {
   // ---- reads
   [key("GET", "/api/system/info")]: { run: (w) => w.call("GET", "/api/system/info") },
@@ -422,6 +505,99 @@ export const SCENARIOS: Record<string, Scenario> = {
       w.call("GET", `/api/memory/preview?p=${encodeURIComponent(path.join(w.workspace, "plan.md"))}`),
   },
   [key("GET", "/api/memory/routers/check")]: { run: (w) => w.call("GET", "/api/memory/routers/check") },
+  // cerebro-organizar, door 4: the folder map over the indexed workspace and memory/notes/.
+  [key("GET", "/api/memory/maps")]: { run: (w) => w.call("GET", "/api/memory/maps") },
+  // cerebro-vista-notas, door 1: one level of the notes tree, from the index rows.
+  [key("GET", "/api/memory/tree")]: { run: (w) => w.call("GET", "/api/memory/tree") },
+  // cerebro-faxina-guiada, door 5: the inventory of a context, a scan of a folder (waited for, so that its reads end
+  // inside its own scenario), and a scan read back once it ended.
+  [key("GET", "/api/memory/cleanup/inventory")]: {
+    run: (w) => w.call("GET", "/api/memory/cleanup/inventory?context=contract-context"),
+  },
+  [key("POST", "/api/memory/cleanup/scans")]: {
+    run: async (w) => {
+      const answer = await w.call("POST", "/api/memory/cleanup/scans", { dir: w.workspace });
+      await scanEnded(w, (answer.body as { scanId?: string } | null)?.scanId);
+      return answer;
+    },
+  },
+  [key("GET", "/api/memory/cleanup/scans/:id")]: {
+    run: async (w) => {
+      const scanId = w.ctx.cleanup.start({ dir: w.workspace });
+      await scanEnded(w, scanId);
+      return w.call("GET", `/api/memory/cleanup/scans/${scanId}`);
+    },
+  },
+  // cerebro-faxina-guiada, batch B: the owner's answer to a finding, the apply of an archived one, and its undo.
+  [key("PUT", "/api/memory/cleanup/decisions")]: {
+    run: async (w) => {
+      const { scanId, key: finding } = await cleanupReady(w);
+      return w.call("PUT", "/api/memory/cleanup/decisions", {
+        scanId,
+        decisions: [{ key: finding, decision: "keep" }],
+      });
+    },
+  },
+  [key("POST", "/api/memory/cleanup/apply")]: {
+    run: async (w) => {
+      const { scanId } = await cleanupReady(w, true);
+      return w.call("POST", "/api/memory/cleanup/apply", { scanId });
+    },
+  },
+  [key("POST", "/api/memory/cleanup/undo")]: {
+    run: async (w) => {
+      const { scanId } = await cleanupReady(w, true);
+      const applied = applyCleanup(
+        { paths: w.ctx.paths, settings: w.ctx.settings(), db: w.ctx.db, indexer: w.ctx.indexer },
+        w.ctx.cleanup.get(scanId)!,
+      );
+      return w.call("POST", "/api/memory/cleanup/undo", { manifest: applied.manifest });
+    },
+  },
+  // cerebro-natureza, batch B: the review queue, and a "still holds" on an indexed note of memory/notes/.
+  [key("GET", "/api/memory/reviews")]: { run: (w) => w.call("GET", "/api/memory/reviews?kind=due") },
+  [key("POST", "/api/memory/reviews")]: {
+    run: async (w) => {
+      const note = noteOf(w, "Cenário de revisão");
+      await w.ctx.indexer.requestIndexPaths([note.path]);
+      return w.call("POST", "/api/memory/reviews", {
+        path: note.path,
+        action: "keep",
+        baseVersion: note.version,
+      });
+    },
+  },
+  // cerebro-paineis, batch A: the dashboards, each over one the engine made of the contract's context (no connector).
+  [key("GET", "/api/dashboards")]: {
+    run: (w) => {
+      dashboardOf(w);
+      return w.call("GET", "/api/dashboards");
+    },
+  },
+  [key("POST", "/api/dashboards")]: {
+    run: (w) => w.call("POST", "/api/dashboards", { template: "question", question: "Cenário de painel" }),
+  },
+  [key("GET", "/api/dashboards/:id")]: { run: (w) => w.call("GET", `/api/dashboards/${dashboardOf(w).id}`) },
+  [key("PUT", "/api/dashboards/:id")]: {
+    run: (w) => {
+      const d = dashboardOf(w);
+      return w.call("PUT", `/api/dashboards/${d.id}`, { definition: d.definition, baseVersion: d.version });
+    },
+  },
+  [key("POST", "/api/dashboards/:id/refresh")]: {
+    run: (w) => w.call("POST", `/api/dashboards/${dashboardOf(w).id}/refresh`),
+  },
+  // cerebro-paineis, batch B: the export of the contract context's dashboard, refreshed first so it has a snapshot.
+  [key("POST", "/api/dashboards/:id/export")]: {
+    run: async (w) => {
+      const d = dashboardOf(w);
+      if (w.ctx.dashboards.store.snapshot(d.id) === null) await w.ctx.dashboards.refresh(d.id);
+      return w.call("POST", `/api/dashboards/${d.id}/export`);
+    },
+  },
+  [key("DELETE", "/api/dashboards/:id")]: {
+    run: (w) => w.call("DELETE", `/api/dashboards/${w.ctx.dashboards.create({ template: "overview" }).id}`),
+  },
   [key("GET", "/api/memory/recall")]: { run: (w) => w.call("GET", "/api/memory/recall?q=Alfa&record=false") },
   [key("GET", "/api/memory/recall/stats")]: { run: (w) => w.call("GET", "/api/memory/recall/stats") },
   [key("GET", "/api/memory/journal")]: { run: (w) => w.call("GET", "/api/memory/journal") },
@@ -438,6 +614,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     run: (w) =>
       w.call("GET", `/api/memory/note?p=${encodeURIComponent(noteOf(w, "Cenário de leitura").path)}`),
   },
+  [key("GET", "/api/contexts")]: { run: (w) => w.call("GET", "/api/contexts") },
   [key("GET", "/api/devices")]: { run: (w) => w.call("GET", "/api/devices") },
   [key("GET", "/api/notifications")]: { run: (w) => w.call("GET", "/api/notifications") },
   [key("GET", "/api/push/vapid")]: { run: (w) => w.call("GET", "/api/push/vapid") },
@@ -661,6 +838,40 @@ export const SCENARIOS: Record<string, Scenario> = {
       });
     },
   },
+  // cerebro-vista-notas, door 2: a property of a note made for the scenario.
+  [key("PUT", "/api/memory/notes/properties")]: {
+    run: (w) => {
+      const note = noteOf(w, "Cenário de propriedades");
+      return w.call("PUT", "/api/memory/notes/properties", {
+        path: note.path,
+        baseVersion: note.version,
+        set: { status: "draft" },
+      });
+    },
+  },
+  // cerebro-paineis, batch B: a task of a new note checked (its box is line 3, under the heading and a blank line).
+  [key("PUT", "/api/memory/tasks")]: {
+    run: (w) => {
+      const note = createNote(
+        { paths: w.ctx.paths, settings: w.ctx.settings() },
+        { title: "Cenário de tarefa", content: "- [ ] Tarefa do cenário" },
+      );
+      return w.call("PUT", "/api/memory/tasks", {
+        path: note.path,
+        line: 3,
+        done: true,
+        baseVersion: note.version,
+      });
+    },
+  },
+  [key("POST", "/api/contexts")]: {
+    run: (w) => w.call("POST", "/api/contexts", { name: "Cenário de contexto", paths: [w.workspace] }),
+  },
+  [key("PATCH", "/api/contexts/:id")]: {
+    // With the brief too (door 9), so the probe reaches the write that makes it.
+    run: (w) =>
+      w.call("PATCH", "/api/contexts/contract-context", { name: "Contexto renomeado", brief: true }),
+  },
   [key("POST", "/api/memory/open")]: {
     run: (w) => w.call("POST", "/api/memory/open", { p: path.join(w.workspace, "plan.md") }),
   },
@@ -673,6 +884,69 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   [key("POST", "/api/memory/facts/:id/retract")]: {
     run: (w) => w.call("POST", `/api/memory/facts/${w.ids.factId}/retract`),
+  },
+  // cerebro-memoria-confiavel, door 10: the history of memory/, over a version of a note made for the scenario.
+  [key("GET", "/api/memory/history")]: {
+    run: (w) => {
+      versionOf(w, "Cenário de histórico");
+      return w.call("GET", "/api/memory/history");
+    },
+  },
+  [key("GET", "/api/memory/history/:id")]: {
+    run: (w) => w.call("GET", `/api/memory/history/${versionOf(w, "Cenário de uma versão").id}`),
+  },
+  [key("POST", "/api/memory/history/restore")]: {
+    run: (w) => {
+      const v = versionOf(w, "Cenário de restauração");
+      return w.call("POST", "/api/memory/history/restore", { id: v.id, baseVersion: v.version });
+    },
+  },
+  // cerebro-memoria-confiavel, door 10: the review inbox, over a consolidation proposal made for the scenario.
+  [key("GET", "/api/memory/proposals")]: {
+    run: (w) => {
+      proposalOf(w, "Cenário da lista de propostas");
+      return w.call("GET", "/api/memory/proposals?status=pending");
+    },
+  },
+  [key("GET", "/api/memory/proposals/:id")]: {
+    run: (w) => w.call("GET", `/api/memory/proposals/${proposalOf(w, "Cenário de uma proposta")}`),
+  },
+  [key("POST", "/api/memory/proposals")]: {
+    run: (w) =>
+      w.call("POST", "/api/memory/proposals", {
+        kind: "fact",
+        subject: "Gama",
+        predicate: "status",
+        object: "proposto",
+      }),
+  },
+  [key("POST", "/api/memory/proposals/:id/decide")]: {
+    run: async (w) => {
+      const id = proposalOf(w, "Cenário de uma decisão");
+      const read = await w.call("GET", `/api/memory/proposals/${id}`);
+      const baseVersion = (read.body as { baseVersion?: string | null } | null)?.baseVersion ?? undefined;
+      return w.call("POST", `/api/memory/proposals/${id}/decide`, {
+        action: "accept",
+        ...(baseVersion ? { baseVersion } : {}),
+      });
+    },
+  },
+  // cerebro-memoria-confiavel, doors 14 and 15: a folder of memory/ exported, a folder of the workspace imported.
+  [key("POST", "/api/memory/export")]: {
+    run: (w) => {
+      const dir = path.join(w.ctx.paths.memory, "notes", "cenario-export");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "a.md"), "# A\n");
+      return w.call("POST", "/api/memory/export", { folder: dir });
+    },
+  },
+  [key("POST", "/api/memory/import")]: {
+    run: (w) => {
+      const dir = path.join(w.workspace, "to-import-notes");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "b.md"), "# B\n");
+      return w.call("POST", "/api/memory/import", { sourceDir: dir, folder: `importada-${uuid()}` });
+    },
   },
   [key("POST", "/api/pair/start")]: { run: (w) => w.call("POST", "/api/pair/start", { name: "phone 2" }) },
   [key("POST", "/api/pair/claim")]: {
@@ -758,6 +1032,9 @@ export const SCENARIOS: Record<string, Scenario> = {
   [key("DELETE", "/api/sessions/:id")]: { run: (w) => w.call("DELETE", `/api/sessions/${w.ids.sessionId}`) },
   [key("DELETE", "/api/skills/:slug")]: { run: (w) => w.call("DELETE", `/api/skills/${w.ids.skillSlug}`) },
   [key("DELETE", "/api/routines/:id")]: { run: (w) => w.call("DELETE", "/api/routines/contract-routine") },
+  [key("DELETE", "/api/contexts/:id")]: {
+    run: (w) => w.call("DELETE", "/api/contexts/contract-context-gone"),
+  },
   [key("DELETE", "/api/connectors/:id")]: {
     run: (w) => w.call("DELETE", "/api/connectors/contract-connector"),
   },

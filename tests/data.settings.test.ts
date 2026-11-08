@@ -53,6 +53,9 @@ function leafVariants(node: unknown): unknown[] {
       [...node, "extra-entry"],
       [...node, "https://example.com/index.json"],
       [...node, { path: "/tmp/kept-folder" }],
+      [...node, { id: "kept-context", name: "Kept", paths: ["/tmp/kept-folder"] }],
+      // cerebro-memoria-confiavel, door 12: an entry of `folderAccess`
+      [...node, { path: "/tmp/kept-folder", agents: "read", devices: "hide" }],
     ];
   if (node !== null && typeof node === "object") {
     return Object.entries(node).flatMap(([key, value]) =>
@@ -92,6 +95,8 @@ const d = defaults as Record<string, any>;
 const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
   securityProfile: "read_only",
   memorySkills: [],
+  // cerebro-memoria-confiavel, AC 90: an unreadable list hides every folder from devices and leaves agents only reading
+  folderAccess: [{ path: "*", agents: "read", devices: "hide" }],
   limits: { ...d.limits, dailyBudgetUsd: 0.01, approvalTtlDays: 1 },
   remote: { ...d.remote, deviceTtlDays: 1 },
   sentinels: {
@@ -100,6 +105,9 @@ const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
     silentRoutine: { ...d.sentinels.silentRoutine, enabled: false },
     connectorDelta: { ...d.sentinels.connectorDelta, enabled: false },
     repeatDetector: { ...d.sentinels.repeatDetector, enabled: false },
+    reviewDue: { ...d.sentinels.reviewDue, enabled: false },
+    // cerebro-memoria-confiavel, door 11: the sentinel of the agent's proposals, closed with the others
+    proposalsPending: { ...d.sentinels.proposalsPending, enabled: false },
     triage: { ...d.sentinels.triage, enabled: false, dailyBudgetUsd: 0 },
   },
   channels: {
@@ -111,7 +119,8 @@ const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
 describe("S3 settings tolerate an invalid field", () => {
   it("C19 an invalid value in any top-level field costs only that field", () => {
     const keys = Object.keys(SettingsSchema.shape);
-    expect(keys).toHaveLength(27);
+    // cerebro-paineis: `dashboards` (door 5, amendment 16); cerebro-memoria-confiavel: `folderAccess` (door 12)
+    expect(keys).toHaveLength(30);
     const good: Record<string, unknown> = {};
     for (const key of keys) good[key] = key === "version" ? defaults.version : variantOf(key, defaults[key]);
     // The base document is itself accepted as written.
@@ -480,8 +489,10 @@ describe("S3 settings tolerate an invalid field", () => {
     expect(onByDefault.sort()).toEqual([
       "indexedFolders.0.enabled",
       "sentinels.connectorDelta.enabled",
+      "sentinels.proposalsPending.enabled",
       "sentinels.repeatDetector.enabled",
       "sentinels.repeatedFailure.enabled",
+      "sentinels.reviewDue.enabled",
       "sentinels.silentRoutine.enabled",
       "sentinels.triage.enabled",
     ]);
@@ -549,6 +560,8 @@ describe("S3 settings tolerate an invalid field", () => {
       "indexedFolders.*.path": "names a folder; an entry without a readable path is removed whole",
       "indexedFolders.*.area": "a label",
       areas: "labels",
+      contexts:
+        "work contexts only narrow what a read sees; an entry this version cannot read is dropped whole (cerebro-contextos AC 8)",
       "limits.maxConcurrentRuns": "resource use, not permission",
       "limits.skillNotesMax": "size",
       "limits.defaultTimeoutMs": "size",
@@ -570,6 +583,29 @@ describe("S3 settings tolerate an invalid field", () => {
       "connectors.dataTimeoutMs": "timeout",
       "connectors.allowedCommands": "default empty: only the base allowlist",
       "memory.journalBudgetTokens": "a token budget",
+      "memory.agentStance":
+        "what the compiled AGENTS.md asks of an agent about the owner's goals; an unreadable value reads neutral (cerebro-organizar door 7)",
+      "memory.notes.fixedStructure":
+        "where a new note may go, not who may read or write; an unreadable value reads off (cerebro-vista-notas door 5)",
+      "memory.cleanup.staleDays":
+        "how old a file is before the cleanup asks about it; it moves nothing (cerebro-faxina-guiada amendment 14)",
+      "memory.cleanup.largeBytes":
+        "how big a file is before the cleanup asks about it; it moves nothing (cerebro-faxina-guiada amendment 14)",
+      "memory.reviews.cadence.opiniao":
+        "how long an opinion holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.cadence.plano":
+        "how long a plan holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.cadence.hipotese":
+        "how long a hypothesis holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.cadence.relato":
+        "how long a report holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.cadence.fato":
+        "how long a fact holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.byType.status":
+        "how long a status note holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.byType.conceito":
+        "how long a concept note holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
+      "memory.reviews.maxPerDay": "how many items the review queue shows at a time (cerebro-natureza door 5)",
       "sentinels.fsWatch.enabled": "default off; an unreadable value reads off",
       "sentinels.fsWatch.debounceMs": "timing",
       "sentinels.repeatedFailure.threshold": "a count for a notification",
@@ -591,6 +627,12 @@ describe("S3 settings tolerate an invalid field", () => {
       "channels.push.enabled": "default off; an unreadable value reads off",
       "channels.push.minTone": "what is worth a message",
       "channels.push.subject": "a contact address for the push service",
+      "dashboards.reminders.maxPerDay":
+        "how many reminders of the dashboards the inbox gets a day; it writes no file and opens nothing (cerebro-paineis door 5)",
+      "dashboards.reminders.at":
+        "from what local time the dashboards' reminders are written; it opens nothing (cerebro-paineis door 5)",
+      "memory.history.maxBytes":
+        "how many bytes the history of memory/ keeps before it drops old versions; it writes no file and opens nothing (cerebro-memoria-confiavel door 4)",
     };
     const unclassified = [...normalized].filter(
       (leaf) => !closed.some((re) => re.test(leaf)) && !(leaf in OPENS_NOTHING),

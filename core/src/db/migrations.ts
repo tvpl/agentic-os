@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { factKey } from "../memory/facts.js";
 
 /**
  * Versioned migrations. Never edit an existing entry after release — append a new one.
@@ -519,6 +520,265 @@ CREATE TABLE IF NOT EXISTS file_vectors (
   mtime INTEGER NOT NULL,
   size INTEGER NOT NULL
 );
+`,
+  },
+  {
+    version: 22,
+    name: "drop-file-links",
+    // cerebro-correcoes, door 1: the links between files are only the ones of `note_links`, resolved when read. The old
+    // table of resolved ids and its map of pending targets go; `note_links` already holds every link (migration 20).
+    sql: `
+DROP TABLE IF EXISTS file_links;
+DELETE FROM meta WHERE key = 'index.pending_links';
+`,
+  },
+  {
+    version: 23,
+    name: "run-context",
+    // cerebro-contextos, door 4: the work context a run was started in, and the one a conversation keeps. Text, not a
+    // foreign key: a context lives in settings.json, and a run stays readable after its context is deleted. Every row
+    // that exists reads NULL. Guarded by column, so running it again leaves the same schema.
+    up(db) {
+      if (!hasColumn(db, "runs", "context_id")) db.exec("ALTER TABLE runs ADD COLUMN context_id TEXT");
+      if (!hasColumn(db, "sessions", "context_id"))
+        db.exec("ALTER TABLE sessions ADD COLUMN context_id TEXT");
+    },
+  },
+  {
+    version: 24,
+    name: "cleanup",
+    // cerebro-faxina-guiada, doors 2 and 3: at most one MinHash signature per indexed file (64 Uint32 little-endian,
+    // `algo` minhash-v1:64:w5, with the mtime and size of the file it was made from), and the owner's decision on a
+    // finding of a scope, one per (scope, key). Created empty; nothing changes a row that exists.
+    sql: `
+CREATE TABLE IF NOT EXISTS file_minhash (
+  file_id INTEGER PRIMARY KEY,
+  algo TEXT NOT NULL,
+  sig BLOB NOT NULL,
+  mtime INTEGER NOT NULL,
+  size INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cleanup_decisions (
+  scope TEXT NOT NULL,
+  key TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  keep_file_id INTEGER,
+  until INTEGER,
+  decided_at INTEGER NOT NULL,
+  PRIMARY KEY (scope, key)
+);
+`,
+  },
+  {
+    version: 25,
+    name: "natureza",
+    // cerebro-natureza, doors 2 and 6: the `> [!natureza]` passages of an indexed Markdown file (they go with its row),
+    // and the owner's review decisions on a file, keyed by its path so that a full reindex keeps them. Created empty;
+    // nothing changes a row that exists. The passages of the files that do not change are filled by the next pass
+    // from the text the index already stores (`index.note_passages` in `meta`).
+    sql: `
+CREATE TABLE IF NOT EXISTS note_passages (
+  file_id INTEGER NOT NULL,
+  natureza TEXT NOT NULL,
+  start_line INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  PRIMARY KEY (file_id, start_line)
+);
+CREATE TABLE IF NOT EXISTS review_state (
+  path TEXT PRIMARY KEY,
+  last_reviewed INTEGER,
+  snooze_until INTEGER,
+  never INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+`,
+  },
+  {
+    version: 26,
+    name: "dashboards",
+    // cerebro-paineis, doors 3 and 4: the Markdown tasks of an indexed file (they go with its row), the last snapshot of
+    // each dashboard, and one point per KPI per local hour (90 days). Created empty; nothing changes a row that exists.
+    // The tasks of the files that do not change are filled by the next pass from the text the index already stores
+    // (`index.note_tasks` in `meta`), which also adds `due` to their `fields`.
+    sql: `
+CREATE TABLE IF NOT EXISTS note_tasks (
+  src_id INTEGER NOT NULL,
+  line INTEGER NOT NULL,
+  done INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  due TEXT,
+  priority INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (src_id, line)
+);
+CREATE INDEX IF NOT EXISTS idx_note_tasks_due ON note_tasks(done, due);
+CREATE TABLE IF NOT EXISTS dashboard_snapshots (
+  dashboard_id TEXT PRIMARY KEY,
+  generated_at INTEGER NOT NULL,
+  json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dashboard_series (
+  dashboard_id TEXT NOT NULL,
+  widget_id TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  value REAL NOT NULL,
+  PRIMARY KEY (dashboard_id, widget_id, at)
+);
+`,
+  },
+  {
+    version: 27,
+    name: "notification-reminder",
+    // cerebro-paineis, door 8: the inbox gains the kind `reminder` (door 5). SQLite cannot widen a CHECK in place, so
+    // the table is made again with the same columns (those of migrations 6 and 13) and the CHECK that names
+    // `reminder`, every row copied as it is, and its two indexes. No table refers to it.
+    sql: `
+CREATE TABLE notifications_v27 (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('approval','run','routine','index','system','reminder')),
+  tone TEXT,
+  title TEXT NOT NULL,
+  body TEXT,
+  href TEXT,
+  approval_id TEXT,
+  run_id TEXT,
+  ts INTEGER NOT NULL,
+  read INTEGER NOT NULL DEFAULT 0,
+  dedupe_key TEXT,
+  message_key TEXT,
+  message_params TEXT
+);
+INSERT INTO notifications_v27 (id, kind, tone, title, body, href, approval_id, run_id, ts, read, dedupe_key, message_key, message_params)
+  SELECT id, kind, tone, title, body, href, approval_id, run_id, ts, read, dedupe_key, message_key, message_params FROM notifications;
+DROP TABLE notifications;
+ALTER TABLE notifications_v27 RENAME TO notifications;
+CREATE INDEX IF NOT EXISTS idx_notifications_ts ON notifications(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+`,
+  },
+  {
+    version: 28,
+    name: "fact-keys-and-provenance",
+    // cerebro-memoria-confiavel, doors 1 to 3: the keys two facts are compared by, the time a fact was found never to
+    // have been true, the line of its source, who wrote it, how far it is trusted, and the proposal it was accepted
+    // from. SQLite adds a NOT NULL column only with a default; every row that exists is then given its keys by
+    // `factKey` (the function the route uses), `author` = `run:<source_run_id>` or `unknown`, and `trust` = `inferido`.
+    // `valid_from`, `valid_to` and `object` are not touched: two open facts that now share keys stay both open.
+    // Guarded by column, so running it again leaves the same schema and the same rows.
+    up(db) {
+      const add = (column: string, decl: string) => {
+        if (!hasColumn(db, "facts", column)) db.exec(`ALTER TABLE facts ADD COLUMN ${column} ${decl}`);
+      };
+      add("subject_key", "TEXT NOT NULL DEFAULT ''");
+      add("predicate_key", "TEXT NOT NULL DEFAULT ''");
+      add("retracted_at", "INTEGER");
+      add("source_line", "INTEGER");
+      add("author", "TEXT NOT NULL DEFAULT 'unknown'");
+      add("trust", "TEXT NOT NULL DEFAULT 'inferido'");
+      add("proposal_id", "TEXT");
+      const rows = db.prepare("SELECT id, subject, predicate, source_run_id FROM facts").all() as Array<{
+        id: number;
+        subject: string;
+        predicate: string;
+        source_run_id: string | null;
+      }>;
+      const update = db.prepare(
+        "UPDATE facts SET subject_key = ?, predicate_key = ?, author = ?, trust = 'inferido' WHERE id = ?",
+      );
+      for (const row of rows) {
+        update.run(
+          factKey(row.subject),
+          factKey(row.predicate),
+          row.source_run_id ? `run:${row.source_run_id}` : "unknown",
+          row.id,
+        );
+      }
+      db.exec("CREATE INDEX IF NOT EXISTS idx_facts_key ON facts(subject_key, predicate_key)");
+    },
+  },
+  {
+    version: 29,
+    name: "memory-history",
+    // cerebro-memoria-confiavel, door 4: the internal history of memory/. A blob is the bytes of a version, deflated
+    // (`zlib.deflateRawSync`) and keyed by the sha256 of the bytes as they were, stored once; a version is keyed by its
+    // path relative to memory/ (never by files.id: it outlives a reindex and the file). Created empty; the first index
+    // pass writes the `baseline` of every versioned file.
+    sql: `
+CREATE TABLE IF NOT EXISTS memory_blobs (
+  sha256 TEXT PRIMARY KEY,
+  codec TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  bytes BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS memory_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  path TEXT NOT NULL,
+  sha256 TEXT,
+  at INTEGER NOT NULL,
+  author TEXT NOT NULL,
+  origin TEXT NOT NULL,
+  proposal_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_memory_versions_path ON memory_versions(path, id);
+`,
+  },
+  {
+    version: 30,
+    name: "memory-proposals",
+    // cerebro-memoria-confiavel, door 5: the review inbox of what an agent writes to the memory. `run_id` is text with
+    // no foreign key (runs are pruned by `limits.runRetentionDays`, a proposal is not); `payload` and `result` are JSON.
+    // Created empty; nothing in it expires on its own.
+    sql: `
+CREATE TABLE IF NOT EXISTS memory_proposals (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  author TEXT NOT NULL,
+  run_id TEXT,
+  created_at INTEGER NOT NULL,
+  decided_at INTEGER,
+  summary TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  result TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_memory_proposals_status ON memory_proposals(status, created_at);
+`,
+  },
+  {
+    version: 31,
+    name: "audience-search-indexes",
+    // cerebro-memoria-confiavel, door 19: the full-text index each audience that is not the owner searches (`agents`, the
+    // runs; `devices`, the paired devices), holding only the files that audience may see, so that bm25 (its IDF and its
+    // average length are worked out over the whole index) ranks as it would with the hidden folders not there. Contentless
+    // (the text stays in `files_fts`, the snippet is read from it) and created EMPTY: what each holds is decided by the
+    // `meta` row `fts.<audience>` (`core/src/memory/audienceIndex.ts`), which a new database does not have, so the first
+    // search of an audience builds it. `contentless_delete` (SQLite 3.43) so a row can be deleted by its rowid.
+    sql: `
+CREATE VIRTUAL TABLE IF NOT EXISTS files_fts_agents USING fts5(
+  name, rel, content, content='', contentless_delete=1, tokenize='porter unicode61'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS files_fts_devices USING fts5(
+  name, rel, content, content='', contentless_delete=1, tokenize='porter unicode61'
+);
+`,
+  },
+  {
+    version: 32,
+    name: "audience-related-edges",
+    // cerebro-memoria-confiavel, door 20: the "related by content" edges a paired device reads. `file_related` is TF-IDF over
+    // the whole corpus (the weight of a word and the cut of the words that are everywhere come from every file), so a
+    // device's percentage and shared words would depend on files it may not see. This table has the shape of
+    // `file_related` and holds the edges worked out over the files the devices may see; created EMPTY, filled by a pass
+    // when the `meta` row `rel.devices` does not name the view the table is for (`core/src/memory/audienceIndex.ts`).
+    sql: `
+CREATE TABLE IF NOT EXISTS file_related_devices (
+  src_id INTEGER NOT NULL,
+  dst_id INTEGER NOT NULL,
+  score REAL NOT NULL,
+  terms TEXT NOT NULL DEFAULT '[]',
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (src_id, dst_id)
+);
+CREATE INDEX IF NOT EXISTS idx_file_related_devices_dst ON file_related_devices(dst_id);
 `,
   },
 ];

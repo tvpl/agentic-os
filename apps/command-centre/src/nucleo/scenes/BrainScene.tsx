@@ -18,7 +18,7 @@
  * hygiene. What the sky does not show — layouts, pins, hubs, minimap, query
  * groups — stays one click away in the classic 2D map, behind "⋯".
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   type Connector,
@@ -30,7 +30,7 @@ import {
 } from "../../api";
 import { apiCall } from "../../apiCall";
 import { escapeLayerOpen, getDialogDepth, keyLayerOpen, Popover, Tooltip } from "../../ui";
-import { timeAgo, useToast } from "../../components/ui";
+import { Skeleton, timeAgo, useToast } from "../../components/ui";
 import { useWorkspace } from "../../components/Workspace";
 import { useLang, useT, type TKey } from "../../i18n";
 import { useOsEvent } from "../../hooks/useEventStream";
@@ -62,6 +62,7 @@ import type { SceneViewProps } from "../sceneViews";
 import { BrainSceneCanvas, type EdgeCard, type GroupCard, type StarCard } from "./BrainSceneCanvas";
 import { BrainSceneGauge } from "./BrainSceneGauge";
 import { BrainSceneLegend, type LegendItem } from "./BrainSceneLegend";
+import { openCleanup } from "../../brain/cleanupEvents";
 import { BrainSceneMenu } from "./BrainSceneMenu";
 import { BrainSceneReader, type RailEntry, type RailGroup, type SheetPreview } from "./BrainSceneReader";
 import { BrainSceneTrail, type TrailCrumb } from "./BrainSceneTrail";
@@ -113,9 +114,20 @@ import {
 } from "./brainTrail";
 import { distanceForLevel } from "./brainZoom";
 import "./brainScene.css";
+import { RequestFailed } from "../../brain/RequestFailed";
+import { graphRequest, useBrainSearch, useRelatedFiles } from "../../brain/memoryData";
+import { NatureBadge, NatureSearchFilters, useReviewsDue, type Natureza } from "../../brain/natureza";
+import { useWorkContext } from "../../contexts/useWorkContext";
+import {
+  BrainViewSwitch,
+  NotesView,
+  ReviewsView,
+  useBrainMode,
+  useBrainViewCommands,
+  type BrainModeState,
+} from "../../brain/BrainViewSwitch";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
-const GRAPH_PATH = "/api/memory/graph?maxNodes=3000";
 const NO_SKILLS: Skill[] = [];
 const NO_ROUTINES: RoutineStatus[] = [];
 const NO_CONNECTORS: Connector[] = [];
@@ -127,9 +139,9 @@ const HIST_BINS = 48;
 const NARROW = "(max-width: 760px)";
 const KIND_KEYS: Record<EdgeKind, TKey> = {
   "markdown-link": "brain.kind.markdown-link",
+  wikilink: "brain.kind.wikilink",
   related: "brain.kind.related",
   "same-dir": "brain.kind.same-dir",
-  "same-area": "brain.kind.same-area",
   other: "brain.kind.other",
 };
 const CONTENT_KEYS: Record<ContentKind, TKey> = {
@@ -206,8 +218,31 @@ export default function BrainScene({ onMetaChanged }: SceneViewProps) {
       /* the choice lasts for this visit */
     }
   }, []);
+  const brain = useBrainMode();
+  // The classic map is the frame's brain, which has the row and the commands of its own.
+  useBrainViewCommands(brain);
+  if (brain.mode !== "graph") return <NotesMode brain={brain} />;
   if (classic) return <ClassicMap onBack={() => setClassic(false)} onMetaChanged={onMetaChanged} />;
-  return <Constellation onClassic={() => setClassic(true)} />;
+  return <Constellation onClassic={() => setClassic(true)} view={brain} />;
+}
+
+/**
+ * The scene's "Notas" mode (.specs/features/cerebro-vista-notas, AC 1) and its "Revisões" (cerebro-natureza, S5): the
+ * same notes view and the same reviews screen as the frame's, under the HUD.
+ */
+function NotesMode({ brain }: { brain: BrainModeState }) {
+  return (
+    <div className="bs-notes">
+      <BrainViewSwitch mode={brain.mode} onChoose={(mode) => brain.go(mode)} />
+      <Suspense fallback={<Skeleton lines={6} />}>
+        {brain.mode === "reviews" ? (
+          <ReviewsView />
+        ) : (
+          <NotesView onShowInGraph={(id) => brain.go("graph", `?sel=${id}&local=1&hops=1`)} />
+        )}
+      </Suspense>
+    </div>
+  );
 }
 
 /** The production Second Brain, full screen, with a way back to the sky. */
@@ -230,7 +265,7 @@ interface TourState {
   playing: boolean;
 }
 
-function Constellation({ onClassic }: { onClassic: () => void }) {
+function Constellation({ onClassic, view }: { onClassic: () => void; view: BrainModeState }) {
   const t = useT();
   const lang = useLang();
   const toast = useToast();
@@ -265,7 +300,10 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   }, [stage]);
 
   /* ---------- data ---------- */
-  const graphQuery = useApiQuery<GraphData>(qk.memoryGraph(GRAPH_PARAMS), GRAPH_PATH);
+  // In the active work context (cerebro-contextos AC 32): its files only; the whole index without one.
+  const work = useWorkContext();
+  const graphReq = graphRequest(GRAPH_PARAMS.maxNodes, work.query);
+  const graphQuery = useApiQuery<GraphData>(graphReq.key, graphReq.path, { enabled: work.ready });
   const uiPreferencesQuery = useOsUiPreferences();
   const skillsQuery = useOsSkills();
   const graph = graphQuery.data ?? null;
@@ -685,20 +723,14 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pinnedKey, stage]);
 
-  const [related, setRelated] = useState<Array<{ id: number; why: string }>>([]);
-  useEffect(() => {
-    setRelated([]);
-    if (!selNode) return;
-    let cancelled = false;
-    void apiCall("GET /api/memory/related", { query: { id: selNode.id } })
-      .then((res) => {
-        if (!cancelled) setRelated(res.map((r) => ({ id: r.file.id, why: r.why })));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [selNode]);
+  // A failed request is said (and can be asked again), never shown as "nothing related" (cerebro-correcoes, AC 25);
+  // in the active work context, as the graph and the search (cerebro-vista-notas, C74).
+  const relatedFiles = useRelatedFiles(selNode?.id ?? null, work.query);
+  const relatedFailed = relatedFiles.failed;
+  const related = useMemo(
+    () => relatedFiles.related.map((r) => ({ id: r.file.id, why: r.why })),
+    [relatedFiles.related],
+  );
 
   const kindOfIdx = useCallback((i: number): ContentKind => stage.model?.kind[i] ?? "note", [stage]);
   const entryOf = useCallback(
@@ -769,27 +801,11 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   }, [railGroups, nearby, need]);
 
   /* ---------- search: the sky's matches + the server's content hits ---------- */
-  const [hits, setHits] = useState<Array<{ id: number; name: string; rel: string }>>([]);
+  const [natureza, setNatureza] = useState<Natureza[]>([]);
+  const reviewsDue = useReviewsDue();
+  const search = useBrainSearch(ui.query, 8, work.query, natureza);
+  const hits = search.hits;
   const [searchFocus, setSearchFocus] = useState(false);
-  useEffect(() => {
-    const q = ui.query.trim();
-    if (!q) {
-      setHits([]);
-      return;
-    }
-    let cancelled = false;
-    const id = window.setTimeout(() => {
-      void apiCall("GET /api/memory/search", { query: { q: q, limit: 8 } })
-        .then((res) => {
-          if (!cancelled) setHits(res);
-        })
-        .catch(() => undefined);
-    }, 180);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(id);
-    };
-  }, [ui.query]);
 
   const [lit, setLit] = useState<number[] | null>(null);
   useEffect(() => {
@@ -1507,6 +1523,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
       data-narrow={narrow ? "" : undefined}
       data-dim={dim}
     >
+      <BrainViewSwitch mode="graph" onChoose={(mode) => view.go(mode)} />
       {graph && !empty && (
         <BrainSceneCanvas
           stage={stage}
@@ -1656,12 +1673,14 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
               </button>
             </Tooltip>
           </div>
+          <NatureSearchFilters chosen={natureza} onChange={setNatureza} />
           {q && (
             <div className="bs-results" data-open={searchFocus || !sheetOpen ? "" : undefined}>
               <p className="bs-eyebrow" role="status">
                 {litCount > 0 ? t("scene.brain.matches", { n: litCount }) : t("scene.brain.noMatches", { q })}
               </p>
-              {hits.length > 0 && (searchFocus || !sheetOpen) && (
+              {search.failed && <RequestFailed message={t("brain.search.failed")} onRetry={search.retry} />}
+              {!search.failed && hits.length > 0 && (searchFocus || !sheetOpen) && (
                 <ul className="bs-hits" aria-label={t("scene.brain.inContent")}>
                   {hits.map((h) => (
                     <li key={h.id}>
@@ -1673,6 +1692,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
                         }}
                       >
                         <span className="bs-link-name">{h.name}</span>
+                        <NatureBadge n={(h.natureza ?? null) as Natureza | null} dense />
                         <small className="mono">{h.rel}</small>
                       </button>
                     </li>
@@ -1737,6 +1757,15 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
               setMenuOpen(false);
             }}
             onBake={bake}
+            onCleanup={() => {
+              setMenuOpen(false);
+              openCleanup();
+            }}
+            reviewsDue={reviewsDue}
+            onReviews={() => {
+              setMenuOpen(false);
+              view.go("reviews");
+            }}
             onNote={(id) => {
               setMenuOpen(false);
               selectId(id);
@@ -1776,6 +1805,8 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
           trail={narrow ? trailNode : undefined}
           context={railGroups}
           nearby={nearby}
+          relatedFailed={relatedFailed}
+          onRelatedRetry={relatedFiles.retry}
           terms={noteTerms}
           pinned={pinned}
           kindOfId={kindOfId}

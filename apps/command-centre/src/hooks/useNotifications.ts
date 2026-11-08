@@ -34,7 +34,7 @@ import { notificationText } from "./notificationText";
 import { subscribeOsEvents } from "./useEventStream";
 import { showSystemNotification, speak } from "./systemNotify";
 
-export type NotificationKind = "approval" | "run" | "routine" | "index" | "system";
+export type NotificationKind = "approval" | "run" | "routine" | "index" | "system" | "reminder";
 export type NotificationTone = "ok" | "warn" | "danger" | "info";
 
 export interface NotificationItem {

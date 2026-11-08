@@ -31,7 +31,7 @@ const isZod = (value: unknown): value is z.ZodTypeAny => value instanceof z.ZodT
 
 describe("S1 the table", () => {
   it("C2 every entry has a schema or a raw kind for each success status", () => {
-    expect(entries).toHaveLength(132);
+    expect(entries).toHaveLength(164);
     const raw: string[] = [];
     for (const [id, entry] of entries) {
       const statuses = Object.keys(entry.responses).map(Number);
@@ -102,6 +102,10 @@ describe("S6 dependencies and tolerance", () => {
     "wire.ts payload": "what an approval is about: its keys depend on its kind",
     "connectors.ts args":
       "the arguments of a connector's tool call, and of its summary read: the connector's own",
+    "dashboards.ts data": "what a dashboard's widget draws: its shape is its source's and its kind's",
+    "memory.ts payload":
+      "what an agent proposed to write (cerebro-memoria-confiavel, door 5): its keys depend on the proposal's kind",
+    "memory.ts result": "what deciding a proposal wrote and asserted: its keys depend on the proposal's kind",
   };
 
   it("C38 schemas are tolerant and the checker is not", async () => {
@@ -135,6 +139,7 @@ describe("S6 dependencies and tolerance", () => {
       permissionProfile: null,
       startedBy: null,
       usage: null,
+      contextId: null,
     };
     const approval = {
       id: "a",
@@ -482,7 +487,7 @@ describe("S1 the table is a constant", () => {
     expect(() => {
       delete table["runs.get"];
     }).toThrow(TypeError);
-    expect(Object.keys(API)).toHaveLength(132);
+    expect(Object.keys(API)).toHaveLength(164);
 
     // The only route outside the table is a test's, bound to one server, and it cannot shadow an entry of the table.
     const tmp = makeTempHome("mordomo-synthetic-");

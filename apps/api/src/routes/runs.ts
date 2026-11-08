@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { FastifyInstance } from "fastify";
-import type { RunEvent } from "@mordomo/core";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { RunEvent, Settings } from "@mordomo/core";
 import {
   NotRegularFileError,
   inspectPath,
@@ -12,6 +12,7 @@ import {
   statWorkspacePath,
 } from "@mordomo/core/internal";
 import { currentRunFrameVersion, type RunFrameType } from "@mordomo/contracts";
+import { accessView, redactorFor } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { grantedRoots, httpError, startedByOf } from "./common.js";
@@ -29,17 +30,28 @@ function framed<T extends { type: RunFrameType }>(frame: T): T & { v: number } {
 }
 
 export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
-  bind(app, "runs.list", async ({ query: q }, _req, reply) => {
+  bind(app, "runs.list", async ({ query: q }, req, reply) => {
     // Body stays a plain array (other views depend on it); the total for pagination travels in a header.
     reply.header("x-total-count", String(ctx.runs.count(q)));
+    // A device is told of no run that ran in, or was handed, a folder hidden from devices (amendment 5).
+    const device = redactorFor(ctx, req.principal);
     // Complete requests may contain private context and are needed only on the
     // detail/retry path. Keep list payloads compact and summary-only.
-    return ctx.runs.list(q).map(({ request: _request, ...run }) => run);
+    return ctx.runs
+      .list(q)
+      .filter((run) => !device?.hiddenRun(run.id))
+      .map(({ request: _request, ...run }) => run);
   });
 
-  bind(app, "runs.get", async ({ params: { id } }) => {
+  /** `404` for a run a device is never told of, as for one that is not there (amendment 5). */
+  const visibleRun = (id: string, req: FastifyRequest) => {
     const run = ctx.runs.get(id);
-    if (!run) throw httpError(404, "Run not found");
+    if (!run || redactorFor(ctx, req.principal)?.hiddenRun(id)) throw httpError(404, "Run not found");
+    return run;
+  };
+
+  bind(app, "runs.get", async ({ params: { id } }, req) => {
+    const run = visibleRun(id, req);
     return { run, events: ctx.runs.eventsFor(id).map((e) => e.event) };
   });
 
@@ -98,9 +110,12 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   );
 
   /** The children of a run (a squad), newest first. */
-  bind(app, "runs.children.list", async ({ params: { id } }) => {
-    if (!ctx.runs.get(id)) throw httpError(404, "Run not found");
-    return ctx.runs.list({ parentRunId: id, limit: 50 }).filter((r) => r.id !== id);
+  bind(app, "runs.children.list", async ({ params: { id } }, req) => {
+    visibleRun(id, req);
+    const device = redactorFor(ctx, req.principal);
+    return ctx.runs
+      .list({ parentRunId: id, limit: 50 })
+      .filter((r) => r.id !== id && !device?.hiddenRun(r.id));
   });
 
   /**
@@ -110,16 +125,15 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
    * otherwise (or for untracked files) a containment-checked snapshot with the
    * same rules as `/api/memory/preview`.
    */
-  bind(app, "runs.diff", async ({ params: { id }, query: { file } }) => {
-    const run = ctx.runs.get(id);
-    if (!run) throw httpError(404, "Run not found");
+  bind(app, "runs.diff", async ({ params: { id }, query: { file } }, req) => {
+    const run = visibleRun(id, req);
     const cwd = run.cwd ?? ctx.paths.home;
     const target = path.isAbsolute(file) ? file : path.join(cwd, file);
     const roots = [...grantedRoots(ctx), ctx.paths.artifacts];
     // `file` comes from a run's record: it must lie in a granted root and outside the home's config/ and logs/ (403);
     // the rest of the filter (secret names, excludes) answers "unavailable" inside runFileDiff.
     const resolved = inspectPath(ctx.readScope([ctx.paths.artifacts]), target).real;
-    return runFileDiff(ctx, resolved, roots);
+    return runFileDiff(ctx, resolved, roots, accessView(ctx, req.principal).settings);
   });
 
   bind(app, "runs.cancel", async ({ params: { id } }) => {
@@ -144,9 +158,16 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
    * `Last-Event-ID` resumes after the last frame the client saw.
    */
   bind(app, "runs.stream", async ({ params: { id } }, req, reply) => {
-    if (!ctx.runs.get(id)) throw httpError(404, "Run not found");
-
-    const ch = openSse(req, reply);
+    visibleRun(id, req);
+    // A device's frames have hidden paths written as `(pasta oculta)` (amendment 5): the stream bypasses the hooks.
+    const device = redactorFor(ctx, req.principal);
+    const sse = openSse(req, reply);
+    const ch: typeof sse = device
+      ? Object.assign(Object.create(sse) as typeof sse, {
+          send: (frame: Parameters<typeof sse.send>[0]) =>
+            sse.send({ ...frame, data: device.value(frame.data) }),
+        })
+      : sse;
     let lastId = lastEventId(req) ?? 0;
     let finished = false;
     // Live events that arrive while the catch-up replay is still running are
@@ -214,9 +235,12 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
 
   bind(app, "metrics.get", async () => ctx.runs.metrics());
 
-  bind(app, "artifacts.recent", async ({ query: { limit } }) => {
+  bind(app, "artifacts.recent", async ({ query: { limit } }, req) => {
     const runs = ctx.runs.list({ limit: 200 });
-    const scope = ctx.scopeOf([ctx.paths.artifacts]);
+    // A device is never served `artifacts/exports/` (cerebro-memoria-confiavel, G11), nor a file hidden from it.
+    const scope = accessView(ctx, req.principal).scopeOf([ctx.paths.artifacts]);
+    // A device is told of no artifact of a run it is told does not exist (round 1, finding 2).
+    const device = redactorFor(ctx, req.principal);
     const artifacts: Array<{
       runId: string;
       file: string;
@@ -230,6 +254,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     for (const run of runs) {
       for (const rel of run.artifacts) {
         const abs = path.join(ctx.paths.artifacts, rel);
+        if (device?.hiddenArtifact(abs)) continue;
         let sizeBytes: number | null = null;
         try {
           sizeBytes = statWorkspacePath(scope, abs).stat.size;
@@ -253,11 +278,13 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   });
 
   /** Read one artifact (text) — strictly inside the artifacts dir. */
-  bind(app, "artifacts.file", async ({ query: { p } }) => {
+  bind(app, "artifacts.file", async ({ query: { p } }, req) => {
     let file: ReturnType<typeof openWorkspaceFile>;
+    // A device is answered `404` for what it is told is not there, as the run's own route does (round 1, findings 2, 3).
+    if (redactorFor(ctx, req.principal)?.hiddenArtifact(p)) throw httpError(404, "Artifact not found");
     try {
-      // PathAccessError → 403 (outside artifacts/, a link out of it, a secret name).
-      file = openWorkspaceFile(ctx.scopeOf([ctx.paths.artifacts]), p);
+      // PathAccessError → 403 (outside artifacts/, a link out of it, a secret name; for a device, `artifacts/exports/`).
+      file = openWorkspaceFile(accessView(ctx, req.principal).scopeOf([ctx.paths.artifacts]), p);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT" || err instanceof NotRegularFileError)
         throw httpError(404, "Artifact not found");
@@ -304,13 +331,19 @@ export function findGitRoot(start: string): string | null {
 const DIFF_MAX_CHARS = 512 * 1024;
 const ARTIFACT_TEXT_MAX_BYTES = 2 * 1024 * 1024;
 
-async function runFileDiff(ctx: AppContext, resolved: string, roots: string[]): Promise<RunDiffResult> {
+async function runFileDiff(
+  ctx: AppContext,
+  resolved: string,
+  roots: string[],
+  /** The caller's view of the settings (cerebro-memoria-confiavel, door 12): a file hidden from it is unavailable. */
+  settings: Settings,
+): Promise<RunDiffResult> {
   const filterOptions = { homeDir: ctx.paths.home };
   // The same filter as the preview, before git runs: a diff of a tracked secret
   // or of the home's config/ would otherwise bypass it.
   let access: ReturnType<typeof checkWorkspacePath>;
   try {
-    access = checkWorkspacePath(ctx.settings(), roots, resolved, filterOptions);
+    access = checkWorkspacePath(settings, roots, resolved, filterOptions);
   } catch (err) {
     throw httpError(403, (err as Error).message, "forbidden_path");
   }
@@ -321,7 +354,7 @@ async function runFileDiff(ctx: AppContext, resolved: string, roots: string[]): 
       return { kind: "unavailable", file: resolved, message: "File no longer exists." };
     let preview: ReturnType<typeof previewFile>;
     try {
-      preview = previewFile(ctx.settings(), roots, resolved, filterOptions);
+      preview = previewFile(settings, roots, resolved, filterOptions);
     } catch (err) {
       throw httpError(403, (err as Error).message, "forbidden_path");
     }
@@ -358,7 +391,7 @@ async function runFileDiff(ctx: AppContext, resolved: string, roots: string[]): 
     if (listed.truncated) return false; // a list cut short cannot be judged whole
     for (const name of listed.stdout.split("\0").filter(Boolean)) {
       try {
-        if (checkWorkspacePath(ctx.settings(), roots, path.join(repoRoot, name), filterOptions).blockedReason)
+        if (checkWorkspacePath(settings, roots, path.join(repoRoot, name), filterOptions).blockedReason)
           return false;
       } catch {
         return false; // outside every root, or the home's config/ and logs/: not shown either

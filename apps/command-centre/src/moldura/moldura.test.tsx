@@ -361,6 +361,8 @@ const before = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node
 
 const PT_ITEMS = [
   "Hoje",
+  // cerebro-paineis, C81 (amendment 25): "Painéis" is the second item of the main group.
+  "Painéis",
   "Execuções",
   "Skills",
   "Rotinas",
@@ -373,6 +375,7 @@ const PT_ITEMS = [
 ];
 const EN_ITEMS = [
   "Today",
+  "Dashboards",
   "Runs",
   "Skills",
   "Routines",
@@ -385,6 +388,7 @@ const EN_ITEMS = [
 ];
 const HREFS = [
   "#/",
+  "#/dashboards",
   "#/runs",
   "#/skills",
   "#/routines",
@@ -424,7 +428,7 @@ describe("S1 the frame and its regions", () => {
     expect(before(top(), main())).toBe(true);
   });
 
-  it("C3 the sidebar lists the ten items in order", async () => {
+  it("C3 the sidebar lists the eleven items in order", async () => {
     for (const [lang, labels] of [
       ["pt-BR", PT_ITEMS],
       ["en", EN_ITEMS],
@@ -444,12 +448,12 @@ describe("S1 the frame and its regions", () => {
     const [first, more, end] = lists;
     // The main group has no title; the second one is titled "Mais", visibly.
     expect(first!.getAttribute("aria-labelledby")).toBeNull();
-    expect(within(first!).getAllByRole("link").map(nameOf)).toEqual(PT_ITEMS.slice(0, 5));
+    expect(within(first!).getAllByRole("link").map(nameOf)).toEqual(PT_ITEMS.slice(0, 6));
     expect(within(nav()).getByRole("list", { name: "Mais" })).toBe(more);
     const title = within(nav()).getByText("Mais");
     expect(before(within(first!).getByRole("link", { name: "Memória" }), title)).toBe(true);
     expect(before(title, within(more!).getByRole("link", { name: "Conectores" }))).toBe(true);
-    expect(within(more!).getAllByRole("link").map(nameOf)).toEqual(PT_ITEMS.slice(5, 9));
+    expect(within(more!).getAllByRole("link").map(nameOf)).toEqual(PT_ITEMS.slice(6, 10));
     expect(within(end!).getAllByRole("link").map(nameOf)).toEqual(["Configurações"]);
 
     const current = navLinks().filter((a) => a.getAttribute("aria-current") === "page");
@@ -477,7 +481,7 @@ describe("S1 the frame and its regions", () => {
     await mountShell("/");
     fireEvent.click(within(nav()).getByRole("button", { name: "Barra lateral" }));
     const links = navLinks();
-    expect(links).toHaveLength(10);
+    expect(links).toHaveLength(11);
     links.forEach((link, i) => {
       // No label as visible text…
       expect(link.textContent ?? "").not.toContain(PT_ITEMS[i]!);
@@ -1332,7 +1336,7 @@ describe("R2.5 the frame is stable and holds in every theme", () => {
         document.documentElement.dataset.theme = theme;
         document.documentElement.dataset.preset = preset.id;
         await mountShell("/");
-        expect(within(nav()).getAllByRole("link")).toHaveLength(10);
+        expect(within(nav()).getAllByRole("link")).toHaveLength(11);
         expect(aside().hidden).toBe(false);
         cleanup();
       }
@@ -1361,6 +1365,7 @@ describe("V1.1 what the sidebar draws", () => {
 
     // Hoje is the sun; every other item carries the icon of the app it opens.
     const kinds: AppKind[] = [
+      "dashboards",
       "runs",
       "skills",
       "routines",
@@ -1374,9 +1379,9 @@ describe("V1.1 what the sidebar draws", () => {
     const expected = [Sun, ...kinds.map((kind) => APPS[kind].Icon)];
     const drawn = () => navLinks().map((a) => a.querySelector("svg.mold-link-i")?.innerHTML);
     expect(drawn()).toEqual(expected.map(iconMarkup));
-    expect(new Set(drawn()).size).toBe(10);
+    expect(new Set(drawn()).size).toBe(11);
 
-    // Folded: the same ten icons, and the name is only a tooltip and the first letter.
+    // Folded: the same eleven icons, and the name is only a tooltip and the first letter.
     fireEvent.click(within(nav()).getByRole("button", { name: "Barra lateral" }));
     expect(drawn()).toEqual(expected.map(iconMarkup));
     expect(brand().textContent).toBe("C");

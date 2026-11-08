@@ -31,7 +31,7 @@ const always = (): boolean => true;
  * The routes that can answer the refusals of the path filter (`403 forbidden_path`) and of the safe reader (`404
  * not_a_file`, `413 file_too_large`). They are not common errors: `GET /api/settings` never touches a path. The lists
  * are not an opinion about which routes "look like" they read files: `tests/api.refusals.test.ts` calls each of the
- * 132 routes, once for each kind of read the route makes (one kind refuses at a time: a hostile file is one file, and
+ * 155 routes, once for each kind of read the route makes (one kind refuses at a time: a hostile file is one file, and
  * a refusal that only exists after an earlier read succeeded is not seen when that read refuses too), and compares
  * the routes that answered the refusal with these lists in both directions. `404` and `413` have a list each: a route
  * can answer one and not the other. A route that gains a read, or loses one, fails there
@@ -45,6 +45,9 @@ const FORBIDDEN_PATH_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/connectors/:id/data",
   "GET /api/connectors/:id/setup",
   "GET /api/connectors/audit",
+  // cerebro-paineis, door 1: the list reads memory/dashboards/ through the safe reader, and a new dashboard is written
+  // there through the guarded writer.
+  "GET /api/dashboards",
   "GET /api/diagnostics/export",
   "GET /api/doctor",
   "GET /api/memory/hygiene",
@@ -60,7 +63,14 @@ const FORBIDDEN_PATH_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/skills/:slug/resource",
   "GET /api/skills/registry",
   "GET /api/sync/plan",
+  // cerebro-contextos, door 9: "Edit brief" writes memory/notes/<id>/_resumo.md through the guarded writer.
+  "PATCH /api/contexts/:id",
   "POST /api/connectors",
+  "POST /api/dashboards",
+  // cerebro-paineis, batch B: an export is written under artifacts/dashboards/ through the guarded writer.
+  "POST /api/dashboards/:id/export",
+  // cerebro-faxina-guiada, door 4: the undo reads the manifest it is given through the safe reader (strict).
+  "POST /api/memory/cleanup/undo",
   "POST /api/memory/journal/append",
   "POST /api/memory/open",
   "POST /api/memory/routers",
@@ -98,6 +108,11 @@ const NOT_A_FILE_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/skills/:slug/resource",
   "GET /api/sync/plan",
   "POST /api/connectors",
+  // cerebro-faxina-guiada, door 4: the undo reads the manifest it is given through the safe reader (strict).
+  "POST /api/memory/cleanup/undo",
+  // cerebro-memoria-confiavel, doors 14 and 15: the export and the import copy a folder through the safe reader.
+  "POST /api/memory/export",
+  "POST /api/memory/import",
   "POST /api/memory/journal/append",
   "POST /api/memory/routers",
   "POST /api/routines",
@@ -127,6 +142,8 @@ const TOO_LARGE_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/skills/:slug/resource",
   "GET /api/sync/plan",
   "POST /api/connectors",
+  // cerebro-faxina-guiada, door 4: the undo reads the manifest it is given through the safe reader (strict).
+  "POST /api/memory/cleanup/undo",
   "POST /api/memory/journal/append",
   "POST /api/memory/routers",
   "POST /api/routines",

@@ -124,9 +124,47 @@ export {
   type CreateObjectiveInput,
 } from "./objectives/objectiveStore.js";
 export { linksOf } from "./memory/links.js";
-export { classifyNotePath, createNote, readNote, saveNote } from "./memory/notes.js";
+export {
+  classifyNotePath,
+  createNote,
+  planNewNote,
+  readNote,
+  saveNote,
+  saveProperties,
+  saveTask,
+} from "./memory/notes.js";
+export { memoryTree } from "./memory/tree.js";
+export { cleanupInventory, resolveCleanupScope } from "./memory/cleanup.js";
+export { scanCleanupScope } from "./memory/cleanupScan.js";
+export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from "./memory/cleanupApply.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
+export { ESCOPOS, NATUREZAS, parseEscopoList, parseNaturezaList } from "./memory/natureza.js";
+export { reviewsDue } from "./memory/reviews.js";
+export { decideReview } from "./memory/reviewDecisions.js";
+export { getVersion, listVersions, recordFileVersion, recordMove, restoreVersion } from "./memory/history.js";
+export { visibleHistoryPaths } from "./memory/historyStore.js";
+export {
+  accessSettings,
+  deniedDirs,
+  exportsDir,
+  guardDir,
+  resolveFolderAccess,
+  type FolderAccess,
+} from "./memory/folderAccess.js";
+export { HIDDEN_PATH_TEXT, citationRedactor, type CitationRedactor } from "./memory/citations.js";
+export { exportFolder, importFolder } from "./memory/transfer.js";
+export {
+  ProposalValidationError,
+  decideProposal,
+  listProposals,
+  proposalPaths,
+  readProposal,
+  storeProposal,
+} from "./memory/proposals.js";
+export { DashboardService } from "./dashboards/service.js";
+export { DashboardStore } from "./dashboards/store.js";
+export { dashboardSources } from "./dashboards/sources.js";
 export { buildGraph, relatedFiles, type GraphData, type GraphNode, type GraphEdge } from "./memory/graph.js";
 export {
   relatedEdges,
@@ -136,6 +174,18 @@ export {
 } from "./memory/related.js";
 export { previewFile, type PreviewResult } from "./memory/preview.js";
 export { generateRouters, checkRouters, areaSlug, type RouterIssue } from "./memory/routers.js";
+export { folderDigests, runMapReach } from "./memory/maps.js";
+export {
+  changedContext,
+  contextMembership,
+  contextOkPaths,
+  contextSyncTarget,
+  describeContexts,
+  ensureContextBrief,
+  findContext,
+  newContext,
+  removeContextMap,
+} from "./memory/contexts.js";
 export { SkillCatalog, THICK_LINE_THRESHOLD } from "./skills/catalog.js";
 export {
   SkillFrontmatterSchema,
@@ -282,7 +332,7 @@ export {
   type ProcessProbe,
 } from "./ownerLock.js";
 export { pidAlive, processStartMarker, realProbeIo, type ProbeIo } from "./processIdentity.js";
-export { INDEX_CHUNK_SIZE, type IndexProgress } from "./memory/indexer.js"; // B3 exports
+export { INDEX_CHUNK_SIZE, storedRowFilter, type IndexProgress } from "./memory/indexer.js"; // B3 exports
 export {
   versionStatus,
   installedVersion,

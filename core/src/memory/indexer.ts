@@ -10,8 +10,34 @@ import { removeStaleSaveTemp } from "../security/safeWrite.js";
 import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
 import { parseFrontMatter } from "./frontMatter.js";
+import { parsePassages, type Passage } from "./natureza.js";
+import { parseTasks, type ParsedTask } from "./tasks.js";
 import { extractLinks, type ParsedLink } from "./linkParser.js";
 import { embedPending } from "./vectors.js";
+import {
+  AudienceMirror,
+  RELATED_DEVICES_TABLE,
+  dropStaleRelated,
+  allowOf,
+  ensureAudienceIndex,
+  readRelatedSpec,
+  readSpec,
+  relatedTableFor,
+  writeRelatedSpec,
+  type Audience,
+  type FtsTable,
+  type RelatedTable,
+} from "./audienceIndex.js";
+import {
+  DEFAULT_HISTORY_MAX_BYTES,
+  MAX_VERSIONED_BYTES,
+  isVersionedPath,
+  livePaths,
+  memoryRel,
+  recordIndexed,
+  recordVersion,
+  versionedPaths,
+} from "./historyStore.js";
 import type { IndexPhase, IndexProgress, IndexStats } from "@mordomo/contracts";
 
 export type { IndexProgress, IndexStats };
@@ -49,7 +75,6 @@ const RELATED_WRITE_ROWS = 500;
  * a waiting writer gets it at its first or second poll.
  */
 export const WRITE_REST_RATIO = 6;
-const PENDING_LINKS_KEY = "index.pending_links";
 const LAST_INDEX_KEY = "last_index";
 /**
  * Which version of the link extraction the stored `note_links` come from (the first full pass after migration 20, or
@@ -58,6 +83,19 @@ const LAST_INDEX_KEY = "last_index";
  */
 const NOTE_LINKS_KEY = "index.note_links";
 const NOTE_LINKS_VERSION = "2";
+/**
+ * Which version of the passage reading the stored `note_passages` come from (.specs/features/cerebro-natureza, door 2):
+ * the first full pass after migration 25 fills them from the stored text, opening no file, and then writes it.
+ */
+const NOTE_PASSAGES_KEY = "index.note_passages";
+const NOTE_PASSAGES_VERSION = "1";
+/**
+ * Which version of the task reading the stored `note_tasks` come from (.specs/features/cerebro-paineis, door 3): the
+ * first full pass after migration 26 fills them from the stored text, opening no file, adds `due` to the `fields` of
+ * the rows indexed before (amendment 2), and then writes it.
+ */
+const NOTE_TASKS_KEY = "index.note_tasks";
+const NOTE_TASKS_VERSION = "1";
 /** When the related-by-content edges were last refreshed: the files whose terms are newer than this still owe them. */
 const RELATED_AT_KEY = "index.related_at";
 
@@ -131,9 +169,62 @@ interface PreparedFile {
   fieldsJson: string;
   /** The JSON of the file's top terms, or null when the text is too short to carry any. */
   terms: string | null;
-  linkTargets: string[];
   noteLinks: ParsedLink[];
+  /** The `> [!natureza]` passages (Markdown only, door 2 of cerebro-natureza). */
+  passages: Passage[];
+  /** The `- [ ]` tasks (Markdown only, door 3 of cerebro-paineis). */
+  tasks: ParsedTask[];
   markdown: boolean;
+  /** The file's bytes when they were read whole (the history keeps them as the version, door 4 of cerebro-memoria-confiavel). */
+  whole: Buffer | null;
+}
+
+/**
+ * Today's policy over stored rows (`MemoryIndexer.rowFilter`), for a reader that has the settings and the home but no
+ * indexer (the routers): true when the row's file may still be shown.
+ */
+export function storedRowFilter(
+  excludes: readonly string[],
+  options: { homeDir: string; platform?: NodeJS.Platform },
+): (row: { root: string; rel: string }) => boolean {
+  const filter = makeWorkspaceFilter(excludes, options);
+  const realRoots = new Map<string, string>();
+  return (row) => {
+    let real = realRoots.get(row.root);
+    if (real === undefined) {
+      real = realpathLenient(row.root);
+      realRoots.set(row.root, real);
+    }
+    return !filter.isExcluded(row.rel, path.join(real, row.rel));
+  };
+}
+
+/** The whole bytes of a file through the safe reader, when it holds at most 1 MiB; null otherwise or when unreadable. */
+function readWhole(scope: ReadScope, full: string): Buffer | null {
+  try {
+    const file = openWorkspaceFile(scope, full);
+    try {
+      if (file.stat.size > MAX_VERSIONED_BYTES) return null;
+      return file.readBytes(MAX_VERSIONED_BYTES).bytes;
+    } finally {
+      file.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a file is at `rel` (`/`-separated) under `memory`: only a path that is not there (`ENOENT`), or that is not a
+ * file, is gone. One the policy refuses today is not taken for gone.
+ */
+function isFileAt(scope: ReadScope, memory: string, rel: string): boolean {
+  try {
+    return statWorkspacePath(scope, path.join(memory, ...rel.split("/"))).stat.isFile();
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    return !(code === "ENOENT" || code === "ENOTDIR");
+  }
 }
 
 /** Top terms of a file (first 20k chars), kept for the related-edge refresh. */
@@ -143,9 +234,6 @@ function termsOf(name: string, content: string): string | null {
   return JSON.stringify([...termFrequencies(`${name}\n${body}`, 80).entries()]);
 }
 
-/** Unresolved markdown links: target absolute path → ids of the source files pointing at it. */
-type PendingLinks = Map<string, number[]>;
-
 /**
  * Incremental workspace indexer.
  * - honours the exclusion policy (settings excludes, hard blocklist, secret
@@ -153,9 +241,9 @@ type PendingLinks = Map<string, number[]>;
  * - never moves, renames or rewrites indexed files;
  * - re-reads content only when size/mtime (or owning root/area) changed;
  * - binary detection is content-based (NUL byte in the first 8 KiB);
- * - markdown links are extracted per file when it is (re)indexed and stored
- *   in `file_links`; links to files not indexed yet wait in a pending map so
- *   they resolve as soon as the target appears — nothing is re-read wholesale;
+ * - links are extracted per Markdown file when it is (re)indexed and stored
+ *   in `note_links` with the target as text, resolved when somebody reads them,
+ *   so a file that appears later is linked without its sources being re-read;
  * - every chunk of upserts/removals runs in one transaction;
  * - nested indexed roots are deterministic: the longest root owns the file.
  *
@@ -173,9 +261,13 @@ export class MemoryIndexer {
   private readonly requested = new Set<string>();
   private requestedRun: Promise<void> | null = null;
   private runner: IndexRunner | null = null;
+  /** The writer of the audience indexes of the write transaction that runs (door 19): made on first use, dropped at its end. */
+  private mirror: AudienceMirror | null = null;
   private cancelRequested = false;
   /** How long the write transactions since the last `takeWriteMs` held the write lock. */
   private writeMs = 0;
+  /** Runs when a pass that changed rows ends, before `index.finished` is announced (`setAfterPass`). */
+  private afterPass: ((stats: IndexStats) => void) | null = null;
 
   constructor(
     private readonly db: Db,
@@ -192,16 +284,7 @@ export class MemoryIndexer {
    * written before a path became private (the home's `config/`, a new exclude).
    */
   rowFilter(): (row: { root: string; rel: string }) => boolean {
-    const filter = makeWorkspaceFilter(this.getSettings().excludes, this.filterOptions);
-    const realRoots = new Map<string, string>();
-    return (row) => {
-      let real = realRoots.get(row.root);
-      if (real === undefined) {
-        real = realpathLenient(row.root);
-        realRoots.set(row.root, real);
-      }
-      return !filter.isExcluded(row.rel, path.join(real, row.rel));
-    };
+    return storedRowFilter(this.getSettings().excludes, this.filterOptions);
   }
 
   /**
@@ -219,13 +302,11 @@ export class MemoryIndexer {
     }>;
     const doomed = rows.filter((row) => !allowed(row));
     if (doomed.length === 0) return 0;
-    const pending = this.loadPendingLinks();
     const stats: IndexStats = {
       scanned: 0, added: 0, updated: 0, removed: 0, skippedExcluded: 0, skippedBinary: 0, related: 0, durationMs: 0,
     };
     this.write(() => {
-      for (const row of doomed) this.removeFile(row.id, row.path, pending, stats);
-      this.savePendingLinks(pending);
+      for (const row of doomed) this.removeFile(row.id, stats);
     });
     return stats.removed;
   }
@@ -261,6 +342,7 @@ export class MemoryIndexer {
     try {
       return this.db.transaction(work).immediate();
     } finally {
+      this.mirror = null;
       this.writeMs += performance.now() - started;
     }
   }
@@ -296,6 +378,45 @@ export class MemoryIndexer {
       this.inFlight = null;
     });
     return this.inFlight;
+  }
+
+  /**
+   * What to do when a pass that added, updated or removed a row ends, before `index.finished` is announced: the engine
+   * regenerates the routers here (.specs/features/cerebro-correcoes, S5). A hook that throws never fails the pass.
+   */
+  setAfterPass(hook: ((stats: IndexStats) => void) | null): void {
+    this.afterPass = hook;
+  }
+
+  /** The end of a pass, wherever it ran (this thread or the worker host): the hook, then the caller announces. */
+  finishPass(stats: IndexStats): void {
+    if (!this.afterPass || stats.added + stats.updated + stats.removed === 0) return;
+    try {
+      this.afterPass(stats);
+    } catch {
+      // the hook reports its own failure; the pass stands
+    }
+  }
+
+  /**
+   * The history of `memory/` for this pass (door 4), when `memory/` is one of its roots and the database has the
+   * history's tables: the folder, the byte cap and the paths that have a version.
+   */
+  private historyOf(
+    settings: Settings,
+    roots: readonly string[],
+  ): { memory: string; maxBytes: number; known: Set<string> } | null {
+    const memory = path.join(path.resolve(this.filterOptions.homeDir), "memory");
+    if (!roots.includes(memory)) return null;
+    const table = this.db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memory_versions'")
+      .get();
+    if (!table) return null;
+    return {
+      memory,
+      maxBytes: settings.memory?.history?.maxBytes ?? DEFAULT_HISTORY_MAX_BYTES,
+      known: versionedPaths(this.db),
+    };
   }
 
   /** Hand the passes to a runner (the worker host) from now on. */
@@ -338,6 +459,7 @@ export class MemoryIndexer {
         this.cancelRequested = false;
         throw new IndexCancelledError();
       }
+      this.finishPass(stats);
       this.bus?.emit("index.finished", { stats, ...(runId ? { runId } : {}) });
       return stats;
     } catch (error) {
@@ -495,9 +617,12 @@ export class MemoryIndexer {
         if (!rootArea.has(r)) rootArea.set(r, f.area);
       }
       const roots = [...rootArea.keys()].sort();
+      // The audiences' indexes follow the settings of this pass (door 19): rebuilt first if they no longer match.
+      for (const audience of ["agents", "devices"] as const) ensureAudienceIndex(this.audienceEnv(settings, roots), audience);
       const rootSet = new Set(roots);
       // Every byte below is read through the safe-read primitive on the real path, under these roots.
       const scope = readScope({ ...this.filterOptions, roots, excludes: settings.excludes });
+      const history = this.historyOf(settings, roots);
 
       let announcedAt = 0;
       const emit = (total?: number, phase?: IndexPhase, force = true) => {
@@ -574,8 +699,8 @@ export class MemoryIndexer {
 
       // Phase 2: upserts, in waves. A wave is READ without any lock (the files, their parsing, the terms and the links:
       // most of the time of a file) and then WRITTEN in one short transaction.
-      const pending = this.loadPendingLinks();
       const seen = new Set<string>();
+      const versioned: Array<{ rel: string; bytes: Buffer }> = [];
       const total = candidates.length;
       emit(total, "index");
       let holdPerFileMs = 0.5;
@@ -583,7 +708,7 @@ export class MemoryIndexer {
         const wave: PreparedFile[] = [];
         let bytes = 0;
         const limit = Math.max(1, Math.min(INDEX_CHUNK_SIZE, Math.floor(WAVE_TARGET_HOLD_MS / holdPerFileMs)));
-        while (next < candidates.length && wave.length < limit && bytes < INDEX_WAVE_BYTES) {
+        while (next < candidates.length && wave.length < limit && versioned.length < limit && bytes < INDEX_WAVE_BYTES) {
           const c = candidates[next++]!;
           const prepared = this.prepareFile(c, scope, stats, maxBytes);
           // A file the policy refuses at read time (a link swapped in after the scan) is not "seen":
@@ -593,14 +718,30 @@ export class MemoryIndexer {
             continue;
           }
           seen.add(c.full);
+          // The history (door 4): a file that changed, or one it has no version of yet (the first pass after migration
+          // 29), is read once more, whole, for its version.
+          const rel = history ? memoryRel(history.memory, c.full) : null;
+          if (history && rel !== null && isVersionedPath(rel, 0) && (prepared !== "kept" || !history.known.has(rel))) {
+            const whole = prepared !== "kept" && prepared.whole ? prepared.whole : readWhole(scope, c.full);
+            if (whole) versioned.push({ rel, bytes: whole });
+          }
           if (prepared === "kept") continue;
           wave.push(prepared);
           bytes += prepared.content.length;
         }
-        if (wave.length > 0) {
+        if (wave.length > 0 || versioned.length > 0) {
           const began = performance.now();
-          this.write(() => wave.forEach((file) => this.applyFile(file, stats, pending)));
-          holdPerFileMs = 0.7 * holdPerFileMs + 0.3 * Math.max(0.01, (performance.now() - began) / wave.length);
+          const recorded = versioned.splice(0);
+          this.write(() => {
+            wave.forEach((file) => this.applyFile(file, stats));
+            for (const v of recorded) {
+              recordIndexed(this.db, v.rel, v.bytes, history!.maxBytes);
+              history!.known.add(v.rel);
+            }
+          });
+          if (wave.length > 0) {
+            holdPerFileMs = 0.7 * holdPerFileMs + 0.3 * Math.max(0.01, (performance.now() - began) / wave.length);
+          }
         }
         emit(total, "index", false);
         yield;
@@ -613,14 +754,33 @@ export class MemoryIndexer {
       emit(total, "prune");
       for (let i = 0; i < stale.length; i += INDEX_CHUNK_SIZE) {
         const rows = stale.slice(i, i + INDEX_CHUNK_SIZE);
-        this.write(() => rows.forEach((row) => this.removeFile(row.id, row.path, pending, stats)));
+        this.write(() => rows.forEach((row) => this.removeFile(row.id, stats)));
         emit(total, "prune", false);
         yield;
       }
       emit(total, "prune");
 
+      // A versioned path of memory/ whose newest version is not `removed` and that is not there any more (door 4).
+      if (history) {
+        const gonePaths = only
+          ? [...gone].map((g) => memoryRel(history.memory, g)).filter((r): r is string => r !== null)
+          : null;
+        const live = new Set(livePaths(this.db));
+        const removed = (gonePaths ?? [...live]).filter((rel) => live.has(rel) && !isFileAt(scope, history.memory, rel));
+        if (removed.length > 0) {
+          this.write(() => {
+            for (const rel of removed) {
+              recordVersion(this.db, { rel, bytes: null, author: "external", origin: "removed" }, history.maxBytes);
+            }
+          });
+        }
+        yield;
+      }
+
       // Files that did not change since migration 20 get their links from the stored text.
       if (!only) yield* this.backfillNoteLinks();
+      if (!only) yield* this.backfillNotePassages();
+      if (!only) yield* this.backfillNoteTasks();
 
       // Phase 4: related-by-content edges for what changed (IDF over the whole corpus).
       emit(total, "related");
@@ -635,11 +795,11 @@ export class MemoryIndexer {
       const owing = this.relatedOwed();
       for (const id of this.touched) owing.add(id);
       stats.related = yield* this.refreshRelatedSteps(owing);
+      yield* this.refreshDevicesRelatedSteps(owing);
       this.touched = new Set();
 
       stats.durationMs = Date.now() - started;
       this.write(() => {
-        this.savePendingLinks(pending);
         this.db
           .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
           .run(RELATED_AT_KEY, String(relatedFrom));
@@ -649,7 +809,10 @@ export class MemoryIndexer {
           .run(LAST_INDEX_KEY, JSON.stringify({ at: Date.now(), stats }));
       });
       emit(total, "related");
-      if (announce) this.bus?.emit("index.finished", { stats, ...(runId ? { runId } : {}) });
+      if (announce) {
+        this.finishPass(stats);
+        this.bus?.emit("index.finished", { stats, ...(runId ? { runId } : {}) });
+      }
       return stats;
     } catch (error) {
       if (announce)
@@ -738,11 +901,14 @@ export class MemoryIndexer {
     let title: string | null = null;
     let tags: string[] = [];
     let fields: Record<string, string> = {};
+    let whole: Buffer | null = null;
     if ((TEXT_EXTENSIONS.has(ext) || ext === "") && stat.size <= maxBytes) {
       try {
         const file = openWorkspaceFile(scope, full);
         try {
-          const buf = file.readBytes(maxBytes).bytes;
+          const read = file.readBytes(maxBytes);
+          const buf = read.bytes;
+          if (!read.truncated) whole = buf;
           if (isBinaryBuffer(buf)) stats.skippedBinary++;
           else content = buf.toString("utf8");
         } finally {
@@ -757,7 +923,8 @@ export class MemoryIndexer {
         title = header?.title ?? content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
         const inline = [...content.matchAll(/(?:^|\s)#([\p{L}\d_-]{2,30})\b/gu)].map((m) => m[1]!);
         tags = [...new Set([...(header?.tags ?? []), ...inline])].slice(0, 20);
-        fields = parseInlineFields(content);
+        // The vocabulary keys of the header (cerebro-organizar, door 6), then the inline fields, which win on a key.
+        fields = { ...header?.fields, ...parseInlineFields(content) };
       }
     }
     const name = path.basename(full);
@@ -773,14 +940,109 @@ export class MemoryIndexer {
       tagsJson: JSON.stringify(tags),
       fieldsJson: JSON.stringify(fields),
       terms: termsOf(name, content),
-      linkTargets: markdown ? this.markdownTargets(full, content) : [],
       noteLinks: markdown ? extractLinks(content, full) : [],
+      // From the text the index stores, as the backfill reads it: both give a file the same rows.
+      passages: markdown ? parsePassages(content.slice(0, 200_000)) : [],
+      tasks: markdown ? parseTasks(content.slice(0, 200_000)) : [],
       markdown,
+      whole,
+    };
+  }
+
+  /** The table of related edges `audience` reads (door 20): the owner's, unless a folder is hidden from the devices. */
+  relatedTable(audience: Audience): RelatedTable {
+    const table = relatedTableFor(audience, this.audienceTable(audience));
+    if (table === RELATED_DEVICES_TABLE) dropStaleRelated(this.db);
+    return table;
+  }
+
+  /**
+   * The edges the devices read, worked out over the files they may see (door 20): the same TF-IDF as `file_related`, so
+   * a percentage and the words it names come from nothing a device cannot read. Built whole when the `meta` row
+   * `rel.devices` does not name the view the index of the devices is for (a first pass, or a change of the access),
+   * and after that, for the files that changed, as the owner's are; the row is written last, so a pass cut short builds
+   * it whole again.
+   */
+  private *refreshDevicesRelatedSteps(changed: ReadonlySet<number>): Generator<void, void> {
+    const spec = readSpec(this.db, "devices");
+    const done = readRelatedSpec(this.db);
+    if (spec === null) return;
+    if (spec === "shared") {
+      if (done !== null) {
+        this.write(() => {
+          this.db.prepare(`DELETE FROM ${RELATED_DEVICES_TABLE}`).run();
+          writeRelatedSpec(this.db, null);
+        });
+      }
+      return;
+    }
+    const allow = allowOf(spec, this.filterOptions.platform);
+    const rows = this.db
+      .prepare("SELECT t.file_id, t.terms, f.root, f.rel FROM file_terms t JOIN files f ON f.id = t.file_id")
+      .all() as Array<{ file_id: number; terms: string; root: string; rel: string }>;
+    const visible = rows.filter((r) => allow(r));
+    const docs = visible.map((r) => ({ id: r.file_id, tf: new Map<string, number>(JSON.parse(r.terms) as Array<[string, number]>) }));
+    const whole = done !== spec;
+    const own = new Set(docs.map((d) => d.id));
+    const focus = whole ? new Set(own) : new Set([...changed].filter((id) => own.has(id)));
+    if (!whole && focus.size === 0) return;
+    const edges = docs.length < 2 ? [] : relatedFromTerms(docs, { topK: 3, minSim: 0.18 }, focus.size >= docs.length ? undefined : focus);
+    const now = Date.now();
+    // The access can change while this pass is between its steps (the edges above were worked out for `spec`), and a
+    // device's read then rebuilds the table for the new view: what is worked out for the old one must not be written
+    // after it (round 3 finding 3). Asked again each time the pass resumes, before it writes.
+    const stale = () => readSpec(this.db, "devices") !== spec;
+    yield;
+    if (stale()) return;
+    if (whole || focus.size >= docs.length) this.write(() => this.db.prepare(`DELETE FROM ${RELATED_DEVICES_TABLE}`).run());
+    else {
+      const ids = [...focus];
+      const del = this.db.prepare(`DELETE FROM ${RELATED_DEVICES_TABLE} WHERE src_id = ? OR dst_id = ?`);
+      for (let i = 0; i < ids.length; i += RELATED_WRITE_ROWS) {
+        this.write(() => ids.slice(i, i + RELATED_WRITE_ROWS).forEach((id) => del.run(id, id)));
+        yield;
+        if (stale()) return;
+      }
+    }
+    const ins = this.db.prepare(
+      `INSERT OR REPLACE INTO ${RELATED_DEVICES_TABLE} (src_id, dst_id, score, terms, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    );
+    for (let i = 0; i < edges.length; i += RELATED_WRITE_ROWS) {
+      this.write(() =>
+        edges.slice(i, i + RELATED_WRITE_ROWS).forEach((e) => ins.run(e.source, e.target, e.score, JSON.stringify(e.terms), now)),
+      );
+      yield;
+      if (stale()) return;
+    }
+    this.write(() => writeRelatedSpec(this.db, spec));
+  }
+
+  private audienceMirror(): AudienceMirror {
+    return (this.mirror ??= new AudienceMirror(this.db, this.filterOptions.platform));
+  }
+
+  /**
+   * The full-text table `audience` searches (door 19): the owner's `files_fts` when nothing is hidden from it, else its
+   * own, made (or rebuilt) first if the settings no longer match the one that exists.
+   */
+  audienceTable(audience: Audience): FtsTable {
+    return ensureAudienceIndex(this.audienceEnv(this.getSettings()), audience);
+  }
+
+  private audienceEnv(settings: Settings, roots?: readonly string[]) {
+    return {
+      db: this.db,
+      homeDir: this.filterOptions.homeDir,
+      settings,
+      roots:
+        roots ??
+        [...settings.indexedFolders, ...this.implicitRoots].filter((f) => f.enabled).map((f) => path.resolve(f.path)),
+      platform: this.filterOptions.platform,
     };
   }
 
   /** The rows of one prepared file, inside the wave's write transaction. */
-  private applyFile(file: PreparedFile, stats: IndexStats, pending: PendingLinks): void {
+  private applyFile(file: PreparedFile, stats: IndexStats): void {
     const { root, full, rel, area } = file.c;
     const now = Date.now();
     // Looked up again here: the row was read before the transaction, and the transaction is what decides.
@@ -797,6 +1059,7 @@ export class MemoryIndexer {
       this.db
         .prepare("INSERT INTO files_fts (rowid, name, rel, content) VALUES (?, ?, ?, ?)")
         .run(id, file.name, rel, file.content);
+      this.audienceMirror().upsert(id, { root, rel }, file.name, file.content);
       this.storeTerms(id, file.terms);
       stats.updated++;
     } else {
@@ -809,56 +1072,33 @@ export class MemoryIndexer {
       this.db
         .prepare("INSERT INTO files_fts (rowid, name, rel, content) VALUES (?, ?, ?, ?)")
         .run(id, file.name, rel, file.content);
+      this.audienceMirror().upsert(id, { root, rel }, file.name, file.content);
       this.storeTerms(id, file.terms);
       stats.added++;
-      // Markdown files indexed earlier that point at this path get their link now.
-      const waiting = pending.get(full);
-      if (waiting) {
-        for (const src of waiting) this.insertLink(src, id);
-        pending.delete(full);
-      }
     }
     if (file.markdown) {
-      this.refreshLinks(id, file.linkTargets, pending);
       this.writeNoteLinks(id, file.noteLinks);
+      this.writePassages(id, file.passages);
+      this.writeTasks(id, file.tasks);
     }
   }
 
-  /** The absolute paths a Markdown file links to (`[text](./other.md)`), without the ones that are not files. */
-  private markdownTargets(full: string, content: string): string[] {
-    const dir = path.dirname(full);
-    const targets = new Set<string>();
-    for (const match of content.matchAll(/\[[^\]]*\]\(([^)#?\s]+)\)/g)) {
-      const target = match[1]!;
-      if (/^[a-z]+:\/\//i.test(target)) continue;
-      let decoded: string;
-      try {
-        decoded = decodeURIComponent(target);
-      } catch {
-        continue;
-      }
-      const resolved = path.resolve(dir, decoded);
-      if (resolved === full) continue;
-      targets.add(resolved);
-    }
-    return [...targets];
+  /** Replace the tasks of one Markdown file (`note_tasks`): the rows of a file are replaced, never added to. */
+  private writeTasks(id: number, tasks: readonly ParsedTask[]): void {
+    this.db.prepare("DELETE FROM note_tasks WHERE src_id = ?").run(id);
+    const insert = this.db.prepare(
+      "INSERT OR IGNORE INTO note_tasks (src_id, line, done, text, due, priority) VALUES (?, ?, ?, ?, ?, ?)",
+    );
+    for (const t of tasks) insert.run(id, t.line, t.done, t.text, t.due, t.priority);
   }
 
-  /** Recompute the outgoing markdown links of one file (called only when it changed). */
-  private refreshLinks(id: number, targets: readonly string[], pending: PendingLinks): void {
-    this.db.prepare("DELETE FROM file_links WHERE src_id = ? AND kind = 'markdown-link'").run(id);
-    dropSource(pending, id);
-    const lookup = this.db.prepare("SELECT id FROM files WHERE path = ?");
-    for (const resolved of targets) {
-      const dst = lookup.get(resolved) as { id: number } | undefined;
-      if (dst) {
-        this.insertLink(id, dst.id);
-      } else {
-        const list = pending.get(resolved) ?? [];
-        if (!list.includes(id)) list.push(id);
-        pending.set(resolved, list);
-      }
-    }
+  /** Replace the passages of one Markdown file (`note_passages`): the rows of a file are replaced, never added to. */
+  private writePassages(id: number, passages: readonly Passage[]): void {
+    this.db.prepare("DELETE FROM note_passages WHERE file_id = ?").run(id);
+    const insert = this.db.prepare(
+      "INSERT OR IGNORE INTO note_passages (file_id, natureza, start_line, end_line) VALUES (?, ?, ?, ?)",
+    );
+    for (const p of passages) insert.run(id, p.natureza, p.startLine, p.endLine);
   }
 
   /** Replace what one Markdown file says about other files (`note_links`). */
@@ -897,6 +1137,74 @@ export class MemoryIndexer {
     );
   }
 
+  /**
+   * After migration 25 the Markdown files that did not change have no `note_passages` yet: they are filled from the
+   * text the index already stores, so no file is opened for it. A file that holds passages is written in its own
+   * short transaction, with a safe point after it and after every `INDEX_CHUNK_SIZE` rows read; the marker is written
+   * after the last one, so a pass that stops halfway does it again (its rows are replaced, never added to).
+   */
+  private *backfillNotePassages(): Generator<void> {
+    const stored = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(NOTE_PASSAGES_KEY) as
+      | { value: string }
+      | undefined;
+    if (stored?.value === NOTE_PASSAGES_VERSION) return;
+    const rows = this.db
+      .prepare("SELECT id FROM files WHERE ext IN ('.md', '.markdown') ORDER BY id")
+      .all() as Array<{ id: number }>;
+    const textOf = this.db.prepare("SELECT content FROM files_fts WHERE rowid = ?");
+    for (let i = 0; i < rows.length; i++) {
+      const id = rows[i]!.id;
+      const passages = parsePassages((textOf.get(id) as { content: string } | undefined)?.content ?? "");
+      if (passages.length > 0) {
+        this.write(() => this.writePassages(id, passages));
+        yield;
+      } else if ((i + 1) % INDEX_CHUNK_SIZE === 0) yield;
+    }
+    this.write(() =>
+      this.db
+        .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .run(NOTE_PASSAGES_KEY, NOTE_PASSAGES_VERSION),
+    );
+  }
+
+  /**
+   * After migration 26 the Markdown files that did not change have no `note_tasks` and no `due` in their `fields` yet:
+   * both come from the text the index already stores (`parseTasks`, and `parseFrontMatter` then `parseInlineFields`
+   * for `due`, the inline field winning), so no file is opened for it, and no other key of `fields` changes. A file
+   * that holds tasks or a `due` is written in its own short transaction, with a safe point after it and after every
+   * `INDEX_CHUNK_SIZE` rows read; the marker is written after the last one, so a pass that stops halfway does it again.
+   */
+  private *backfillNoteTasks(): Generator<void> {
+    const stored = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(NOTE_TASKS_KEY) as
+      | { value: string }
+      | undefined;
+    if (stored?.value === NOTE_TASKS_VERSION) return;
+    const rows = this.db
+      .prepare("SELECT id, fields FROM files WHERE ext IN ('.md', '.markdown') ORDER BY id")
+      .all() as Array<{ id: number; fields: string | null }>;
+    const textOf = this.db.prepare("SELECT content FROM files_fts WHERE rowid = ?");
+    for (let i = 0; i < rows.length; i++) {
+      const { id } = rows[i]!;
+      const text = (textOf.get(id) as { content: string } | undefined)?.content ?? "";
+      const tasks = parseTasks(text);
+      const due = parseInlineFields(text).due ?? parseFrontMatter(text)?.fields.due;
+      const fields = fieldsFromDb(rows[i]!.fields);
+      const fieldsChange = due !== undefined && fields.due !== due ? JSON.stringify({ ...fields, due }) : null;
+      if (tasks.length > 0 || fieldsChange !== null) {
+        this.write(() => {
+          this.writeTasks(id, tasks);
+          if (fieldsChange !== null) this.db.prepare("UPDATE files SET fields = ? WHERE id = ?").run(fieldsChange, id);
+        });
+        yield;
+      } else if ((i + 1) % INDEX_CHUNK_SIZE === 0) yield;
+    }
+    this.write(() =>
+      this.db
+        .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .run(NOTE_TASKS_KEY, NOTE_TASKS_VERSION),
+    );
+  }
+
   /** Ids of the files whose terms were stored after the last refresh of the related edges. */
   private relatedOwed(): Set<number> {
     const at = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(RELATED_AT_KEY) as { value: string } | undefined;
@@ -905,32 +1213,20 @@ export class MemoryIndexer {
     return new Set(rows.map((row) => row.file_id));
   }
 
-  private insertLink(src: number, dst: number): void {
-    if (src === dst) return;
-    this.db
-      .prepare("INSERT OR IGNORE INTO file_links (src_id, dst_id, kind) VALUES (?, ?, 'markdown-link')")
-      .run(src, dst);
-  }
-
-  private removeFile(id: number, filePath: string, pending: PendingLinks, stats: IndexStats): void {
-    // Remember who linked here so the edge comes back if the file reappears.
-    const inbound = this.db
-      .prepare("SELECT src_id FROM file_links WHERE dst_id = ? AND kind = 'markdown-link'")
-      .all(id) as Array<{ src_id: number }>;
-    if (inbound.length > 0) {
-      const list = pending.get(filePath) ?? [];
-      for (const { src_id } of inbound) if (!list.includes(src_id)) list.push(src_id);
-      pending.set(filePath, list);
-    }
+  private removeFile(id: number, stats: IndexStats): void {
     this.db.prepare("DELETE FROM files WHERE id = ?").run(id);
     this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(id);
-    this.db.prepare("DELETE FROM file_links WHERE src_id = ? OR dst_id = ?").run(id, id);
+    this.audienceMirror().remove(id);
     this.db.prepare("DELETE FROM note_links WHERE src_id = ?").run(id);
+    // The passages go with the file, in the same transaction; its `review_state` (keyed by path, door 6) stays.
+    this.db.prepare("DELETE FROM note_passages WHERE file_id = ?").run(id);
+    // The tasks go with the file too (door 3 of cerebro-paineis).
+    this.db.prepare("DELETE FROM note_tasks WHERE src_id = ?").run(id);
     this.db.prepare("DELETE FROM file_vectors WHERE file_id = ?").run(id);
+    this.db.prepare("DELETE FROM file_minhash WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_terms WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_related WHERE src_id = ? OR dst_id = ?").run(id, id);
     this.touched.delete(id);
-    dropSource(pending, id);
     stats.removed++;
   }
 
@@ -990,38 +1286,6 @@ export class MemoryIndexer {
       yield;
     }
     return edges.length;
-  }
-
-  private loadPendingLinks(): PendingLinks {
-    const row = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(PENDING_LINKS_KEY) as
-      | { value: string }
-      | undefined;
-    const out: PendingLinks = new Map();
-    if (!row) return out;
-    try {
-      for (const [target, srcs] of Object.entries(JSON.parse(row.value) as Record<string, number[]>)) {
-        if (Array.isArray(srcs) && srcs.length > 0) out.set(target, srcs.filter((n) => Number.isInteger(n)));
-      }
-    } catch {
-      /* corrupt map: start clean; links re-resolve as files change */
-    }
-    return out;
-  }
-
-  private savePendingLinks(pending: PendingLinks): void {
-    const obj: Record<string, number[]> = {};
-    for (const [target, srcs] of pending) if (srcs.length > 0) obj[target] = srcs;
-    this.db
-      .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-      .run(PENDING_LINKS_KEY, JSON.stringify(obj));
-  }
-}
-
-function dropSource(pending: PendingLinks, id: number): void {
-  for (const [target, srcs] of pending) {
-    const kept = srcs.filter((s) => s !== id);
-    if (kept.length === 0) pending.delete(target);
-    else if (kept.length !== srcs.length) pending.set(target, kept);
   }
 }
 

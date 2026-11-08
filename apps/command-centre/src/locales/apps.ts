@@ -194,6 +194,8 @@ export const en = {
   "apps.settings.sentinel.fsWatch": "Folder watch",
   "apps.settings.sentinel.fsWatchHint":
     "Re-index when the indexed folders change (off by default on big trees).",
+  "apps.settings.sentinel.reviewDue": "Reviews due",
+  "apps.settings.sentinel.reviewDueHint": "Once a day, the notes due for review.",
   "apps.settings.sentinel.triage": "Triage with a model",
   "apps.settings.sentinel.triageHint":
     "A short read-only run decides ignore / notify / propose, within its own daily budget.",
@@ -260,6 +262,8 @@ export const en = {
   "apps.pixel.shortcuts": "Shortcuts",
   "apps.pixel.shortcutsBody":
     "1-4 tools · [ ] frames · + - brush · x swap · o onion · ⌘Z undo · ⌘⇧Z / ⌘Y redo",
+  "apps.settings.sentinel.proposalsPending": "Agent proposals",
+  "apps.settings.sentinel.proposalsPendingHint": "Once a day, the agent proposals waiting for review.",
 } as const;
 
 export const ptBR = {
@@ -452,6 +456,8 @@ export const ptBR = {
   "apps.settings.sentinel.fsWatch": "Vigiar pastas",
   "apps.settings.sentinel.fsWatchHint":
     "Reindexa quando as pastas indexadas mudam (desligado por padrão em árvores grandes).",
+  "apps.settings.sentinel.reviewDue": "Revisões vencidas",
+  "apps.settings.sentinel.reviewDueHint": "Uma vez por dia, as notas que venceram a revisão.",
   "apps.settings.sentinel.triage": "Triagem com modelo",
   "apps.settings.sentinel.triageHint":
     "Uma execução curta somente leitura decide ignorar / notificar / propor, dentro do próprio orçamento diário.",
@@ -517,4 +523,6 @@ export const ptBR = {
   "apps.pixel.shortcuts": "Atalhos",
   "apps.pixel.shortcutsBody":
     "1-4 ferramentas · [ ] quadros · + - pincel · x trocar · o onion · ⌘Z desfazer · ⌘⇧Z / ⌘Y refazer",
+  "apps.settings.sentinel.proposalsPending": "Propostas do agente",
+  "apps.settings.sentinel.proposalsPendingHint": "Uma vez por dia, as propostas do agente esperando revisão.",
 } satisfies Record<keyof typeof en, string>;

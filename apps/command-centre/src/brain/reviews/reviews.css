@@ -1,0 +1,233 @@
+/* "Revisões" (.specs/features/cerebro-natureza, design.md "Tela - Revisões"): 12px floor, sentences at 13px, tokens only. */
+.rv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-height: 0;
+  padding: var(--s-4);
+  overflow: auto;
+  color: var(--text);
+  font-size: var(--fs-3);
+}
+
+.rv-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.rv-title {
+  margin: 0;
+  font-size: var(--fs-5);
+}
+
+.rv-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.rv-context {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+}
+
+.rv-line2 {
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+}
+
+.rv-status,
+.rv-next {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-3);
+}
+
+.rv-body {
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) 3fr;
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.rv-list,
+.rv-passages {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rv-item {
+  overflow: hidden;
+}
+
+.rv-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rv-pick[aria-current="true"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.rv-line1,
+.rv-line2,
+.rv-readonly,
+.rv-conflict,
+.rv-notice,
+.rv-state,
+.rv-error,
+.rv-suggest,
+.rv-passages li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.rv-name,
+.rv-detail-name {
+  margin: 0;
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+
+.rv-path {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.rv-conflict,
+.rv-error {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  color: var(--warn);
+}
+
+.rv-detail,
+.rv-classify,
+.rv-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.rv-excerpt {
+  max-height: 240px;
+  overflow: auto;
+  color: var(--text-dim);
+}
+
+.rv-readonly {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.rv-acts,
+.rv-natures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.rv-classify {
+  align-items: flex-start;
+}
+
+.rv-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-6) 0;
+  color: var(--ok);
+}
+
+.rv-prose,
+.rv-state,
+.rv-suggest {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-3);
+}
+
+.rv-notice {
+  position: sticky;
+  bottom: 0;
+  align-self: flex-start;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-raise);
+}
+
+.rv-line1 svg,
+.rv-readonly svg,
+.rv-conflict svg,
+.rv-notice svg,
+.rv-state svg,
+.rv-error svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.modal.rv-dialog {
+  width: min(480px, 100%);
+}
+
+.rv-record {
+  align-self: flex-start;
+}
+
+.rv-fact {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+@media (max-width: 760px) {
+  .rv-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rv-item[data-leaving] {
+    animation: rv-fold 150ms ease-out forwards;
+  }
+}
+
+@keyframes rv-fold {
+  from {
+    max-height: 120px;
+    opacity: 1;
+  }
+
+  to {
+    max-height: 0;
+    opacity: 0;
+  }
+}

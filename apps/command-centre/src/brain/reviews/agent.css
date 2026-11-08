@@ -1,0 +1,121 @@
+/* "Revisões", the tab "Do agente" (.specs/features/cerebro-memoria-confiavel, design.md): 12px floor, 13px prose, tokens only. */
+.ag-summary {
+  margin: 0;
+  font-size: var(--fs-3);
+  white-space: pre-wrap;
+}
+
+.ag-diff-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.ag-diff-title {
+  margin: 0;
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+
+.ag-diff {
+  max-height: 50%;
+  overflow: auto;
+}
+
+.ag-marks {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.ag-ops {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ag-op {
+  display: grid;
+  grid-template-columns: auto minmax(64px, auto) 1fr auto auto;
+  gap: var(--s-2);
+  align-items: start;
+  font-size: var(--fs-3);
+}
+
+.ag-section {
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+}
+
+.ag-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ag-effects {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ag-effect {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  color: var(--text-dim);
+  font-size: var(--fs-3);
+}
+
+.ag-effect svg {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  flex: none;
+}
+
+.ag-effect[data-effect="retract"] {
+  color: var(--danger);
+}
+
+.ag-effect[data-effect="refuses"],
+.ag-effect[data-effect="error"] {
+  color: var(--warn);
+}
+
+.ag-source {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+  overflow-wrap: anywhere;
+}
+
+.ag-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--warn);
+  font-size: var(--fs-3);
+}
+
+.ag-banner svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.rv-empty.ag-empty {
+  color: var(--text-dim);
+}

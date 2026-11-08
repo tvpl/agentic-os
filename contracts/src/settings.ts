@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONTEXT_LIMITS, WorkContextSchema } from "./workContext.js";
 
 /**
  * The shape of a provider id, not the list of providers: the providers are the
@@ -44,6 +45,36 @@ export const IndexedFolderSchema = z.object({
   enabled: z.boolean().default(true),
 });
 export type IndexedFolder = z.infer<typeof IndexedFolderSchema>;
+
+/**
+ * The access of a folder for one audience (.specs/features/cerebro-memoria-confiavel, door 12): `write` is what every
+ * folder has today, `read` keeps what an agent or a device may read and refuses what it would write, `hide` leaves the
+ * folder out of everything it reads. A level other than `write` only narrows; the owner's token is never bound by one.
+ */
+export const FOLDER_LEVELS = ["write", "read", "hide"] as const;
+export type FolderLevel = (typeof FOLDER_LEVELS)[number];
+/** The two audiences a folder's access is set for: the runs' agents and the paired devices. */
+export const FOLDER_AUDIENCES = ["agents", "devices"] as const;
+export type FolderAudience = (typeof FOLDER_AUDIENCES)[number];
+/** The most entries `settings.folderAccess` holds (door 12). */
+export const FOLDER_ACCESS_MAX = 200;
+/**
+ * What an unreadable `folderAccess` reads as (AC 90): one entry that covers every path (`"*"`, a path the API never
+ * accepts) with `hide` for devices and `read` for agents.
+ */
+export const FOLDER_ACCESS_UNREADABLE = Object.freeze({
+  path: "*",
+  agents: "read",
+  devices: "hide",
+} as const);
+
+/** One entry of `settings.folderAccess`: an absolute folder and its level for each audience (door 12). */
+export const FolderAccessEntrySchema = z.object({
+  path: z.string().min(1).max(4096),
+  agents: z.enum(FOLDER_LEVELS),
+  devices: z.enum(FOLDER_LEVELS),
+});
+export type FolderAccessEntry = z.infer<typeof FolderAccessEntrySchema>;
 
 export const DEFAULT_EXCLUDES = [
   ".git",
@@ -91,6 +122,27 @@ export const MicroAppSchema = z.object({
 export type MicroApp = z.infer<typeof MicroAppSchema>;
 
 /** Second Brain preferences: every field optional so older clients keep working; the frontend validates values. */
+/** At most this many tabs and open folders are kept (.specs/features/cerebro-vista-notas, door 4); the rest is cut on read. */
+const BRAIN_NOTES_MAX_TABS = 12;
+const BRAIN_NOTES_MAX_EXPANDED = 500;
+const firstOf = (max: number) => (v: unknown) => (Array.isArray(v) ? v.slice(0, max) : v);
+const NotePathSchema = z.string().min(1).max(4096);
+
+/**
+ * The notes view of the Second Brain (.specs/features/cerebro-vista-notas, door 4), per machine: the root, a Home per
+ * root, the open tabs in their order, the active tab, the sort and the open folders, all absolute paths. A field this
+ * version cannot read reads its default and the others are kept, like every presentation field.
+ */
+const BrainNotesSchema = z.object({
+  root: NotePathSchema.nullable().catch(null),
+  home: z.record(NotePathSchema).catch({}),
+  tabs: z.preprocess(firstOf(BRAIN_NOTES_MAX_TABS), z.array(NotePathSchema)).catch([]),
+  active: NotePathSchema.nullable().catch(null),
+  sort: z.enum(["name", "updated"]).catch("name"),
+  expanded: z.preprocess(firstOf(BRAIN_NOTES_MAX_EXPANDED), z.array(NotePathSchema)).catch([]),
+});
+export type BrainNotes = z.infer<typeof BrainNotesSchema>;
+
 export const BrainSettingsSchema = z.object({
   layout: z.string().optional(),
   view: z.string().optional(),
@@ -108,6 +160,7 @@ export const BrainSettingsSchema = z.object({
       collapsed: z.array(z.string()).default([]),
     })
     .optional(),
+  notes: BrainNotesSchema.optional().catch(undefined),
 });
 export type BrainSettings = z.infer<typeof BrainSettingsSchema>;
 
@@ -129,6 +182,12 @@ export function detectTimezone(): string {
  * Everything is optional with a default, so a settings file written before
  * this existed keeps working and gains the defaults on the next save.
  */
+/** A review cadence (.specs/features/cerebro-natureza, door 5): `<n>d` with `n` from 1 to 3650, or `never`. */
+const ReviewCadenceSchema = z
+  .string()
+  .regex(/^(?:[1-9][0-9]{0,3}d|never)$/, "a number of days from 1d to 3650d, or never")
+  .refine((value) => value === "never" || Number(value.slice(0, -1)) <= 3650, "at most 3650d");
+
 export const SentinelSettingsSchema = z.object({
   /** Watch the enabled indexed folders and re-index after a quiet period. Off by default (cost on big trees). */
   fsWatch: z
@@ -172,6 +231,24 @@ export const SentinelSettingsSchema = z.object({
       minRuns: z.number().int().min(2).max(20).default(2),
       /** Jaccard threshold on the normalized token sets. */
       similarity: z.number().min(0.1).max(1).default(0.6),
+    })
+    .default({}),
+  /**
+   * The notes whose review fell due (.specs/features/cerebro-natureza, door 5): once a day, from the hourly pass, at
+   * most one notification. On by default (owner question 2); no model and no network.
+   */
+  reviewDue: z
+    .object({
+      enabled: z.boolean().default(true),
+    })
+    .default({}),
+  /**
+   * The agent's proposals waiting for review (.specs/features/cerebro-memoria-confiavel, door 11): once a local day, from
+   * the hourly pass, one notification when at least one is pending. On by default; no model and no network.
+   */
+  proposalsPending: z
+    .object({
+      enabled: z.boolean().default(true),
     })
     .default({}),
   /** Short, cheap run that answers a `triage: true` sentinel with ignore/notify/propose. */
@@ -233,6 +310,9 @@ export type ChannelSettings = z.infer<typeof ChannelSettingsSchema>;
 export const EMBEDDINGS_KEY_ENV = /^(?!MORDOMO_)[A-Z][A-Z0-9_]{0,63}$/;
 
 export const CURRENT_SETTINGS_VERSION = 2;
+
+/** The work contexts (door 1 of cerebro-contextos): the id rule and the bounds are the package's; the schema is not. */
+export { CONTEXT_ID, CONTEXT_LIMITS, type WorkContext } from "./workContext.js";
 
 /** The engine's settings. What only the Command Centre reads lives in `UiPreferences` (preferences.ts). */
 export const SettingsSchema = z.object({
@@ -311,7 +391,32 @@ export const SettingsSchema = z.object({
     .default({}),
   indexedFolders: z.array(IndexedFolderSchema).default([]),
   excludes: z.array(z.string()).default(DEFAULT_EXCLUDES),
+  /**
+   * The access of folders for agents and devices (.specs/features/cerebro-memoria-confiavel, door 12), at most 200
+   * entries; a folder no entry covers is `write` for both. The most specific entry by real path decides. An entry
+   * with a level this version cannot read reads as `hide` for both audiences; a list this version cannot read reads as
+   * `FOLDER_ACCESS_UNREADABLE` (`core/src/config/failClosed.ts`).
+   */
+  folderAccess: z.array(FolderAccessEntrySchema).max(FOLDER_ACCESS_MAX).default([]),
   areas: z.array(z.string()).default(["Worker", "Documentos", "Finanças", "Projetos"]),
+  /**
+   * The work contexts (.specs/features/cerebro-contextos, door 1), at most 50, each `id` once. A duplicate `id` or an
+   * entry past the 50th is refused as that entry, so the tolerant read drops it and keeps the others.
+   */
+  contexts: z
+    .array(WorkContextSchema)
+    .superRefine((list, issues) => {
+      const seen = new Set<string>();
+      list.forEach((entry, index) => {
+        if (index >= CONTEXT_LIMITS.contexts) {
+          issues.addIssue({ code: "custom", path: [index], message: "at most 50 contexts" });
+        } else if (seen.has(entry.id)) {
+          issues.addIssue({ code: "custom", path: [index], message: `the id ${entry.id} is taken` });
+        }
+        seen.add(entry.id);
+      });
+    })
+    .default([]),
   limits: z
     .object({
       maxConcurrentRuns: z.number().int().min(1).max(16).default(3),
@@ -358,9 +463,13 @@ export const SettingsSchema = z.object({
   /**
    * Slugs of the skills that work on the second brain: a run of one is given `memory/` and a credential of its own
    * for the memory routes of the local API (AD-012). Only the owner changes it (`PUT /api/settings`); it is not a
-   * field of any SKILL.md, which anything that can write the file could set.
+   * field of any SKILL.md, which anything that can write the file could set. The default names the four built-in
+   * memory skills (`organize-brain` from cerebro-organizar, AC 9; `dashboard-answer` from cerebro-paineis, door 7); a
+   * home whose settings store another list keeps it.
    */
-  memorySkills: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]*$/)).default(["recall", "consolidate-memory"]),
+  memorySkills: z
+    .array(z.string().regex(/^[a-z0-9][a-z0-9-]*$/))
+    .default(["recall", "consolidate-memory", "organize-brain", "dashboard-answer"]),
   /** Routine engine defaults (F-BACKEND: routines v2). */
   routines: z
     .object({
@@ -395,6 +504,67 @@ export const SettingsSchema = z.object({
     .object({
       /** Token budget for today's + yesterday's journal inside memory/ROUTER.md (chars/4). */
       journalBudgetTokens: z.number().int().min(100).max(20_000).default(1200),
+      /**
+       * How a compiled AGENTS.md / CLAUDE.md asks an agent to treat a request against the owner's goals
+       * (.specs/features/cerebro-organizar, door 7): `neutral` says nothing; `contest-conflicts` adds the line that asks
+       * it to say so and propose the alternative first. Only the owner changes it; an unreadable value reads `neutral`.
+       */
+      agentStance: z.enum(["neutral", "contest-conflicts"]).default("neutral"),
+      /**
+       * The notes of `memory/notes/` (.specs/features/cerebro-vista-notas, door 5). `fixedStructure` on: a new note
+       * goes only into a folder that exists; one that would make a folder or go straight into `memory/notes/` is
+       * `409 structure_fixed`, from the API, the CLI and the MCP alike. Off by default; an unreadable value reads off.
+       */
+      notes: z
+        .object({
+          fixedStructure: z.boolean().default(false),
+        })
+        .default({}),
+      /**
+       * The guided cleanup of a context or a folder (.specs/features/cerebro-faxina-guiada, amendment 14): a file whose
+       * age (or `last_reviewed`) passes `staleDays` is `stale`, one past `largeBytes` is `large-file`. The scan reads
+       * them when it starts. `PUT /api/settings` replaces `memory.cleanup` whole, like the other fields of `memory`.
+       */
+      cleanup: z
+        .object({
+          staleDays: z.number().int().min(1).max(36_500).default(180),
+          largeBytes: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(5_242_880),
+        })
+        .default({}),
+      /**
+       * The periodic reviews (.specs/features/cerebro-natureza, door 5): how long each nature and each `type` holds
+       * before a note is due, and how many items the queue shows at a time. A note's own `review_every` wins over
+       * `byType`, which wins over `cadence`. `PUT /api/settings` replaces `memory.reviews` whole (amendment 17); the
+       * list reads it at each request.
+       */
+      reviews: z
+        .object({
+          cadence: z
+            .object({
+              opiniao: ReviewCadenceSchema.default("90d"),
+              plano: ReviewCadenceSchema.default("30d"),
+              hipotese: ReviewCadenceSchema.default("60d"),
+              relato: ReviewCadenceSchema.default("never"),
+              fato: ReviewCadenceSchema.default("never"),
+            })
+            .default({}),
+          /** By the note's `type`, compared after `normalizeFieldKey`. */
+          byType: z
+            .record(z.string().min(1).max(64), ReviewCadenceSchema)
+            .default({ status: "30d", conceito: "180d" }),
+          maxPerDay: z.number().int().min(1).max(200).default(20),
+        })
+        .default({}),
+      /**
+       * The internal history of `memory/` (.specs/features/cerebro-memoria-confiavel, door 4): above `maxBytes` of stored
+       * (deflated) blobs, the oldest versions that are not among the newest 5 of their path are dropped. It writes no
+       * file and opens nothing; an unreadable value reads its default.
+       */
+      history: z
+        .object({
+          maxBytes: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(268_435_456),
+        })
+        .default({}),
       /**
        * Semantic search over the notes (.specs/features/cerebro-v2, S4). OFF by default: nothing is embedded, no
        * extension is loaded and no connection is made until the owner turns it on. `hash` is computed in this
@@ -437,6 +607,24 @@ export const SettingsSchema = z.object({
   sentinels: SentinelSettingsSchema.default({}),
   /** External delivery channels (Onda 2, item 4). Tokens live in the environment, never here. */
   channels: ChannelSettingsSchema.default({}),
+  /**
+   * The dashboards (.specs/features/cerebro-paineis, door 5, amendment 16): a refresh from `reminders.at` local time
+   * on turns an overdue or due-today task, or a project behind, into a `reminder` in the inbox, once per item per local
+   * day and at most `maxPerDay` a day (0 turns them off). `PUT /api/settings` replaces `dashboards` whole.
+   */
+  dashboards: z
+    .object({
+      reminders: z
+        .object({
+          maxPerDay: z.number().int().min(0).max(20).default(3),
+          at: z
+            .string()
+            .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/, "at: HH:MM, 00:00 to 23:59")
+            .default("08:30"),
+        })
+        .default({}),
+    })
+    .default({}),
 });
 /** The settings document (`config/settings.json`). */
 export type Settings = z.infer<typeof SettingsSchema>;

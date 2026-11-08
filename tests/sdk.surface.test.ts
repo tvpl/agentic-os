@@ -117,6 +117,86 @@ describe("S5 the surface is a closed list", () => {
         "linksOf",
         "readNote",
         "saveNote",
+        // cerebro-contextos: the work contexts the routes define and read by
+        "changedContext",
+        "contextMembership",
+        // cerebro-contextos, batch B: what a run's credential reads (door 8)
+        "contextOkPaths",
+        "contextSyncTarget",
+        "describeContexts",
+        // cerebro-contextos, batch C: "Edit brief" makes the brief from the template (door 9)
+        "ensureContextBrief",
+        "findContext",
+        "newContext",
+        "removeContextMap",
+        // cerebro-organizar: the folder map the route answers, and what a run's credential sees on it (doors 4, 10)
+        "folderDigests",
+        "runMapReach",
+        // cerebro-vista-notas: the notes tree and the properties route (doors 1 and 2)
+        "memoryTree",
+        "saveProperties",
+        // cerebro-paineis, batch B: a task's box checked from a dashboard (amendment 17)
+        "saveTask",
+        // cerebro-faxina-guiada: the scope of a cleanup and its inventory (door 5)
+        "cleanupInventory",
+        "resolveCleanupScope",
+        // cerebro-faxina-guiada, batch B: the decisions, the apply and the undo (doors 1, 3, 4 and 5)
+        "applyCleanup",
+        "cleanupScanFor",
+        "saveCleanupDecisions",
+        "undoCleanup",
+        // cerebro-natureza: the closed lists of door 1 the search, the recall and the CLI read their filters by
+        "ESCOPOS",
+        "NATUREZAS",
+        "parseEscopoList",
+        "parseNaturezaList",
+        // cerebro-natureza, batch B: the review queue and the decisions on it (doors 4 to 6)
+        "decideReview",
+        "reviewsDue",
+        // cerebro-paineis: the dashboards of a service, their store and the eleven sources (doors 1, 2 and 4)
+        "DashboardService",
+        "DashboardStore",
+        "dashboardSources",
+        // cerebro-memoria-confiavel, batch A1: who wrote a fact and today's policy on its source (doors 2, 3, AC 20),
+        // and the history of memory/ the routes read, restore and record (doors 4 and 10)
+        "FactAuthor",
+        "factSourcePolicy",
+        "getVersion",
+        "listVersions",
+        "recordFileVersion",
+        "recordMove",
+        "restoreVersion",
+        // cerebro-memoria-confiavel, batch A2: the review inbox the routes store, list, read and decide (doors 5 to 7
+        // and 10), and the checks a new note's proposal is refused by when it is made (AC 47)
+        "ProposalValidationError",
+        "decideProposal",
+        "listProposals",
+        "planNewNote",
+        // cerebro-memoria-confiavel, round 3 part 1: the folders no audience is served (the guard's, the exports)
+        "deniedDirs",
+        "guardDir",
+        "readProposal",
+        "storeProposal",
+        // cerebro-memoria-confiavel, batch B1: the access of folders the routes read every request through (door 12),
+        // the stored-row filter of a caller's view, and the files a proposal names (G14)
+        "FolderAccess",
+        "accessSettings",
+        "exportsDir",
+        "proposalPaths",
+        "resolveFolderAccess",
+        // a finished cleanup scan, worked out again over a device's view (C115)
+        "scanCleanupScope",
+        // cerebro-memoria-confiavel, round 1 part 2: how a hidden folder is written in a citation, for a device's answer
+        // and for the triage prompt (finding 5, finding 10)
+        "HIDDEN_PATH_TEXT",
+        "CitationRedactor",
+        "citationRedactor",
+        "storedRowFilter",
+        // cerebro-memoria-confiavel, round 2 part B: the history paths a device may read (finding 6)
+        "visibleHistoryPaths",
+        // cerebro-memoria-confiavel batch B2: export and import a folder (doors 14 and 15)
+        "exportFolder",
+        "importFolder",
       ].sort(),
     );
   });

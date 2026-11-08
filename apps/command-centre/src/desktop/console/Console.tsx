@@ -61,6 +61,8 @@ import { ConsoleThread, type Reply } from "./ConsoleThread";
 import { ConsoleTray } from "./ConsoleTray";
 import { ConsoleControls, type Mode, type ModelChoice } from "./ConsoleControls";
 import { Tooltip } from "../../ui";
+import { ContextChip } from "../../contexts/ContextChip";
+import { useWorkContext } from "../../contexts/useWorkContext";
 
 /** Fired on every keystroke; the core ripples with it (mirrors nucleo/CoreOrb's TYPING_EVENT). */
 const TYPING_EVENT = "mordomo:typing";
@@ -169,6 +171,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
   const skills = useOsSkills();
   const settings = useOsSettings();
   const uiPreferences = useOsUiPreferences();
+  const work = useWorkContext();
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   /* ---- the draft --------------------------------------------------------- */
@@ -486,7 +489,9 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
     mutationFn: (): Promise<LaunchRunResponse> => {
       // The user writes `@plan.md`; the agent receives the path behind it.
       const { text } = resolveReferences(promptRef.current.trim(), actions.openPanels);
-      const fingerprint = JSON.stringify({ text, mode, sessionId, cwd, defaultProvider, choice });
+      // A new conversation runs in the active work context; a continued one keeps its own (door 4).
+      const contextId = sessionId ? undefined : work.query;
+      const fingerprint = JSON.stringify({ text, mode, sessionId, cwd, defaultProvider, choice, contextId });
       if (submission.current?.fingerprint !== fingerprint)
         submission.current = { fingerprint, id: crypto.randomUUID() };
       savePromptSubmission(submission.current);
@@ -509,6 +514,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
           mode,
           ...tuning,
           ...(cwd ? { cwd } : {}),
+          ...(contextId ? { contextId } : {}),
           ...(defaultProvider ? { provider: defaultProvider as ProviderId } : {}),
         },
       });
@@ -558,6 +564,8 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
     !launch.isPending &&
     enabled.length > 0 &&
     !active &&
+    // A new conversation waits until the work context it runs in is known.
+    (sessionId !== null || work.ready) &&
     !cwdUnavailable &&
     (!sessionId || (!session.isPending && !session.error));
   const canRun = runnable(prompt);
@@ -754,6 +762,11 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
               {interim || t("desktop.console.listening")}
             </p>
           )}
+          <ContextChip
+            session={
+              sessionId ? ((session.data?.runs ?? []).find((r) => r.contextId)?.contextId ?? null) : undefined
+            }
+          />
           <div className="cons-row">
             {lead}
             <textarea

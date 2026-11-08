@@ -27,7 +27,7 @@ export interface Approval {
   expiresAt: number;
 }
 
-export type NotificationKind = "approval" | "run" | "routine" | "index" | "system";
+export type NotificationKind = "approval" | "run" | "routine" | "index" | "system" | "reminder";
 export type NotificationTone = "ok" | "warn" | "danger" | "info";
 
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
@@ -36,6 +36,8 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "routine",
   "index",
   "system",
+  // cerebro-paineis (door 5, amendment 16): what a dashboard's refresh finds due; silenced apart from the system's.
+  "reminder",
 ];
 
 /** A row of the inbox: an approval, a failed run, an alert, a budget warning. */
@@ -131,6 +133,12 @@ export interface ProviderCapabilities {
    * token sits in a file the folder does not contain (`docs/security.md`, T3).
    */
   readConfinement: "workdir" | "none";
+  /**
+   * Whether the CLI can be handed a folder to read that it must not edit (`AgentRun.protectedDirs`), so a user's folder
+   * given to a memory skill stays read-only (.specs/features/cerebro-organizar, door 5). Absent reads as `false`: the
+   * engine refuses such a folder on the provider (`409 folder_protection_unsupported`).
+   */
+  protectsDirs?: boolean;
 }
 
 /** One hourly snapshot of the live numbers (Settings › Trends). */

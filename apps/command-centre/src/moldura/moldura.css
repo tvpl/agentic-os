@@ -570,6 +570,13 @@
   font-size: var(--fs-5);
   font-weight: 400;
 }
+/* "Ver a visão geral →" at the right of the header (cerebro-paineis, design.md "Tela Hoje"). */
+.mold-today-link {
+  margin-left: auto;
+  color: var(--accent-text);
+  font-size: var(--fs-2);
+  font-weight: 400;
+}
 .mold-cards {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

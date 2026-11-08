@@ -63,7 +63,7 @@ describe("contextOf", () => {
     { a: 2, b: 0, kind: "markdown-link", why: "" }, // 2 cites 0
     { a: 0, b: 3, kind: "related", why: "Similar content (40%): x." },
     { a: 0, b: 1, kind: "same-dir", why: "" }, // weaker than the citation
-    { a: 4, b: 0, kind: "same-area", why: "" },
+    { a: 4, b: 0, kind: "same-dir", why: "" },
     { a: 5, b: 6, kind: "markdown-link", why: "" }, // not ours
   ];
   it("groups neighbours by their strongest relation", () => {

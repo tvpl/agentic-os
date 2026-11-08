@@ -43,7 +43,11 @@ export const capabilities: Mutual<Out<"providers.list", 200>[number]["capabiliti
   true;
 export const sample: Mutual<Out<"metrics.history", 200>["samples"][number], MetricsSample> = true;
 export const device: Mutual<Out<"devices.list", 200>["devices"][number], DeviceRecord> = true;
-export const settings: Mutual<Out<"settings.get", 200>, Settings> = true;
+// cerebro-memoria-confiavel, AC 93: a paired device is answered without `folderAccess`, the rest is the settings.
+export const settings: Mutual<
+  Out<"settings.get", 200>,
+  Omit<Settings, "folderAccess"> & { folderAccess?: Settings["folderAccess"] }
+> = true;
 // The routine the core stores and the status the scheduler reports are the ones the table describes.
 export const routine: Mutual<Out<"routines.create", 200>, Routine> = true;
 export const routineStatus: Mutual<Out<"routines.list", 200>[number], RoutineStatus> = true;

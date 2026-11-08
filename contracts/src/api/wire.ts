@@ -51,6 +51,11 @@ export const RunFailureSchema = z.object({
     "interrupted",
     "provider",
     "unknown",
+    "folder_not_indexed",
+    "folder_protection_unsupported",
+    "folder_hidden",
+    "folder_read_only",
+    "folder_hide_unsupported",
   ]),
   message: z.string(),
   recoverable: z.boolean(),
@@ -87,6 +92,7 @@ export const RunRecordSchema = z.object({
   permissionProfile: SecurityProfile.nullable(),
   startedBy: z.string().nullable(),
   usage: RunUsageSchema.nullable(),
+  contextId: z.string().nullable(),
 });
 
 /** A row of `GET /api/runs`: the run without its complete request (needed only on the detail and retry path). */
@@ -174,7 +180,7 @@ export const ApprovalSchema = z.object({
 
 export const NotificationRecordSchema = z.object({
   id: z.string(),
-  kind: z.enum(["approval", "run", "routine", "index", "system"]),
+  kind: z.enum(["approval", "run", "routine", "index", "system", "reminder"]),
   tone: z.enum(["ok", "warn", "danger", "info"]).nullable(),
   messageKey: z.string().nullable().optional(),
   messageParams: z
@@ -215,6 +221,11 @@ export const ProviderCapabilitiesSchema = z.object({
   resume: z.enum(["flag", "subcommand", "none"]),
   writeConfinement: z.enum(["broker", "sandbox", "none"]),
   readConfinement: z.enum(["workdir", "none"]),
+  /**
+   * The provider keeps a folder handed to a run read-only (cerebro-organizar, door 5). Optional in a manifest (absent
+   * reads `false`); `GET /api/providers` always says it.
+   */
+  protectsDirs: z.boolean().optional(),
 });
 
 export const TestedVersionsSchema = z.object({ min: z.string(), max: z.string() });

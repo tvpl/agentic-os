@@ -50,6 +50,11 @@ streamed events (`started`, `assistant`, `tool_use`, `permission`, `text`,
    only on a `"workdir"` provider, because the owner token sits in a file under the home
    that a `"none"` provider would read on request (`docs/security.md`, T3). Claim
    `"workdir"` only for a behaviour you ran, not for one a README promises.
+   Declare `capabilities.protectsDirs: true` only if the adapter turns
+   `AgentRun.protectedDirs` into something the CLI enforces (Claude: a deny rule for
+   each edit tool under the folder). It is optional and absent reads `false`: a memory
+   skill handed a folder of the user (the input `folder`) is refused on that provider
+   with `409 folder_protection_unsupported`, because the folder must stay read-only.
 4. Map `effort` only if the provider supports it; otherwise ignore it and say
    so in `detect().notes`.
 5. Describe and register it. Declare the package's `ProviderManifest` in

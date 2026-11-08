@@ -1,0 +1,450 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { code, runWorld, type Json, type RunWorld } from "./helpers/memoriaWorld.js";
+import { FIXTURES, filler, order, seedFixture } from "./helpers/searchFixtures.js";
+import { triageSentinel } from "../core/src/sentinels/triage.js";
+
+/**
+ * .specs/features/cerebro-memoria-confiavel, round 1 of the verification, part 2: what a paired device reads of the
+ * output of runs (C160, C161) and of free text (C162), and the search index of each audience (C163). Over a real home
+ * with the fake Claude CLI (`runWorld`); `notes/fin` is `hide` for devices and `write` for agents unless a case says so.
+ */
+
+const opened: RunWorld[] = [];
+afterEach(async () => {
+  while (opened.length) await opened.pop()!.close();
+});
+
+const text = (body: unknown) => JSON.stringify(body);
+
+async function seeded(
+  prefix: string,
+): Promise<{ w: RunWorld; fin: string; outra: string; secret: string; visible: string }> {
+  const w = await runWorld(prefix);
+  opened.push(w);
+  const fin = path.join(w.memory, "notes", "fin");
+  const outra = path.join(w.memory, "notes", "outra");
+  const secret = w.put(path.join(fin, "segredo.md"), "# Segredo\n\nOrçamento sigiloso do cofre.\n");
+  const visible = w.put(path.join(outra, "visivel.md"), "# Visível\n\nOrçamento público.\n");
+  await w.index();
+  return { w, fin, outra, secret, visible };
+}
+
+const hide = async (w: RunWorld, entries: Array<[string, "hide" | "read" | "write"]>) => {
+  const res = await w.call("PUT", "/api/settings", {
+    folderAccess: entries.map(([p, devices]) => ({ path: p, agents: "write", devices })),
+  });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+};
+
+async function ownerRun(w: RunWorld, cwd: string, prompt: string): Promise<string> {
+  const res = await w.call("POST", "/api/runs", { prompt, mode: "read_only", cwd });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  await w.ctx.execution.wait(res.body.runId);
+  return res.body.runId as string;
+}
+
+/** A 1x1 PNG: the one type `GET /api/artifacts/raw` serves. */
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAHnOcQAAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+// ---- C160: the artifacts of a run a device is told does not exist ---------------------------------------------------
+
+describe("C160 the artifacts a device reads", () => {
+  it("C160 none of a hidden run, of a run that is gone (fail closed), none listed with its title; the others as before", async () => {
+    const { w, fin, outra } = await seeded("mordomo-round1-c160-");
+    const hiddenRun = await ownerRun(w, fin, "leia");
+    const visibleRun = await ownerRun(w, outra, "leia");
+    const goneRun = crypto.randomUUID();
+    const art = (...parts: string[]) => path.join(w.ctx.paths.artifacts, ...parts);
+    const hiddenMd = w.put(
+      art(hiddenRun, "relatorio.md"),
+      "# Relatório do cofre\n\nconteúdo sigiloso do cofre\n",
+    );
+    const hiddenPng = w.put(art(hiddenRun, "grafico.png"), PNG);
+    const visibleMd = w.put(art(visibleRun, "resumo.md"), "# Resumo aberto\n\nconteúdo público\n");
+    const visiblePng = w.put(art(visibleRun, "grafico.png"), PNG);
+    const goneMd = w.put(art(goneRun, "orfao.md"), "# Órfão\n\nconteúdo de uma execução podada\n");
+    const loose = w.put(art("corrida", "solta.md"), "# Solta\n\nnão é de nenhuma execução\n");
+    w.ctx.db
+      .prepare("UPDATE runs SET artifacts_json = ? WHERE id = ?")
+      .run(JSON.stringify([`${hiddenRun}/relatorio.md`, `${hiddenRun}/grafico.png`]), hiddenRun);
+    w.ctx.db
+      .prepare("UPDATE runs SET artifacts_json = ? WHERE id = ?")
+      .run(JSON.stringify([`${visibleRun}/resumo.md`, `${visibleRun}/grafico.png`]), visibleRun);
+
+    // the owner: all of them (the case is not empty)
+    const ownerList = await w.call("GET", "/api/artifacts/list");
+    expect(ownerList.body.items.map((i: Json) => i.path).sort()).toEqual(
+      [hiddenMd, hiddenPng, visibleMd, visiblePng, goneMd, loose].sort(),
+    );
+    expect((await w.call("GET", "/api/artifacts/recent")).body.map((a: Json) => a.path).sort()).toEqual(
+      [hiddenMd, hiddenPng, visibleMd, visiblePng].sort(),
+    );
+
+    await hide(w, [[fin, "hide"]]);
+    const device = w.device(["content"]);
+    const list = await w.call("GET", "/api/artifacts/list", undefined, device);
+    expect(list.status).toBe(200);
+    expect(list.body.items.map((i: Json) => i.path).sort()).toEqual([visibleMd, visiblePng, loose].sort());
+    expect(list.body.total).toBe(3);
+    expect(list.body.folders.sort()).toEqual(["corrida", visibleRun].sort());
+    expect(list.body.skills).toEqual(
+      (await w.call("GET", "/api/artifacts/list?folder=corrida", undefined, device)).body.skills,
+    );
+    for (const secret of [hiddenRun, goneRun, "Relatório do cofre", "Órfão"])
+      expect(text(list.body)).not.toContain(secret);
+    const recent = await w.call("GET", "/api/artifacts/recent", undefined, device);
+    expect(recent.body.map((a: Json) => a.path).sort()).toEqual([visibleMd, visiblePng].sort());
+    expect(text(recent.body)).not.toContain(hiddenRun);
+
+    const file = (p: string, headers: Record<string, string>) =>
+      w.call("GET", `/api/artifacts/file?p=${encodeURIComponent(p)}`, undefined, headers);
+    const raw = (p: string, headers: Record<string, string>) =>
+      w.app.inject({ method: "GET", url: `/api/artifacts/raw?p=${encodeURIComponent(p)}`, headers });
+    for (const hidden of [hiddenMd, goneMd]) {
+      expect(code(await file(hidden, device)), hidden).toEqual([404, "not_found"]);
+      expect((await file(hidden, w.owner())).status, `owner ${hidden}`).toBe(200);
+    }
+    expect((await raw(hiddenPng, device)).statusCode).toBe(404);
+    expect((await raw(hiddenPng, w.owner())).statusCode).toBe(200);
+    expect((await file(visibleMd, device)).body.content).toContain("público");
+    expect((await file(loose, device)).status).toBe(200);
+    const png = await raw(visiblePng, device);
+    expect(png.statusCode).toBe(200);
+    expect(png.headers["content-type"]).toBe("image/png");
+
+    // a run that is gone is hidden only while devices have a hidden folder (L-061)
+    await hide(w, []);
+    expect((await file(goneMd, device)).status).toBe(200);
+    expect((await file(hiddenMd, device)).status).toBe(200);
+    expect((await w.call("GET", "/api/artifacts/list", undefined, device)).body.total).toBe(6);
+  });
+});
+
+// ---- C161: the raw proposal.json ------------------------------------------------------------------------------------
+
+describe("C161 a run's proposal.json", () => {
+  it("C161 a device never reads one while a folder is hidden from it; a look-alike file and the default stay served", async () => {
+    const { w, fin, outra } = await seeded("mordomo-round1-c161-");
+    const visibleRun = await ownerRun(w, outra, "consolide");
+    const art = (...parts: string[]) => path.join(w.ctx.paths.artifacts, ...parts);
+    const proposal = {
+      v: 1,
+      summary: "revisão",
+      ops: [
+        {
+          op: "add",
+          section: "Facts",
+          text: "Orçamento sigiloso do cofre",
+          source: "notes/fin/segredo.md",
+          line: 3,
+        },
+      ],
+    };
+    const raw = w.put(art(visibleRun, "proposal.json"), JSON.stringify(proposal));
+    const nested = w.put(art(visibleRun, "extra", "proposal.json"), JSON.stringify(proposal));
+    const lookalike = w.put(art(visibleRun, "proposal.json.md"), "# Notas sobre a proposta\n");
+    const elsewhere = w.put(art("corrida", "proposal.json"), JSON.stringify({ not: "a run's" }));
+    w.ctx.db
+      .prepare("UPDATE runs SET artifacts_json = ? WHERE id = ?")
+      .run(JSON.stringify([`${visibleRun}/proposal.json`, `${visibleRun}/proposal.json.md`]), visibleRun);
+    const device = w.device(["content"]);
+    const file = (p: string, headers: Record<string, string>) =>
+      w.call("GET", `/api/artifacts/file?p=${encodeURIComponent(p)}`, undefined, headers);
+
+    // nothing hidden from devices: served as before
+    expect((await file(raw, device)).body.content).toContain("sigiloso");
+
+    await hide(w, [[fin, "hide"]]);
+    expect(code(await file(raw, device))).toEqual([404, "not_found"]);
+    expect(code(await file(nested, device))).toEqual([404, "not_found"]);
+    expect((await file(raw, w.owner())).body.content).toContain("sigiloso");
+    // the look-alikes: a file with another name in the run's folder, and one named so outside any run's folder
+    expect((await file(lookalike, device)).status).toBe(200);
+    expect((await file(elsewhere, device)).status).toBe(200);
+    const list = await w.call("GET", "/api/artifacts/list", undefined, device);
+    expect(list.body.items.map((i: Json) => i.path).sort()).toEqual([lookalike, elsewhere].sort());
+    const recent = await w.call("GET", "/api/artifacts/recent", undefined, device);
+    expect(recent.body.map((a: Json) => a.path)).toEqual([lookalike]);
+    expect(text(list.body) + text(recent.body)).not.toContain("sigiloso");
+    expect(fin).toBeTruthy();
+  });
+});
+
+// ---- C162: how a hidden folder is written in free text ------------------------------------------------------------
+
+describe("C162 a hidden folder in free text", () => {
+  it("C162 a name with a space, a path relative to memory/ or to the home and a ~/ one are written (pasta oculta); look-alikes are not", async () => {
+    const { w, outra } = await seeded("mordomo-round1-c162-");
+    const userHome = w.outside("userhome");
+    const documentos = path.join(userHome, "Documentos");
+    const pessoal = path.join(w.memory, "notes", "Fin Pessoal");
+    const ficha = path.join(documentos, "Fin Pessoal");
+    fs.mkdirSync(ficha, { recursive: true });
+    w.put(path.join(pessoal, "segredo.md"), "# Segredo\n\nficha pessoal\n");
+    w.put(path.join(ficha, "ficha.md"), "# Ficha\n");
+    w.update((s) => {
+      s.indexedFolders = [...s.indexedFolders, { path: documentos, area: null, enabled: true }];
+    });
+    await w.index();
+    const was = process.env.HOME;
+    process.env.HOME = userHome;
+    try {
+      const prompt = [
+        `a ${pessoal}/segredo.md`,
+        "b memory/notes/Fin Pessoal/segredo.md",
+        "c notes/Fin Pessoal/segredo.md",
+        "d ~/Documentos/Fin Pessoal/ficha.md",
+        "e notes/Fin Pessoal2/x.md",
+        "f notes/Fin/x.md",
+        "g outro/notes/Fin Pessoal/x.md",
+        `h ${outra}/visivel.md fim`,
+      ].join(", ");
+      const runId = await ownerRun(w, outra, prompt);
+      w.ctx.db
+        .prepare("UPDATE runs SET files_changed_json = ? WHERE id = ?")
+        .run(
+          JSON.stringify([`${pessoal}/segredo.md`, "notes/Fin Pessoal/segredo.md", `${outra}/visivel.md`]),
+          runId,
+        );
+      w.ctx.notifications.add({
+        kind: "system",
+        title: "cita",
+        body: "veja notes/Fin Pessoal/segredo.md.",
+        runId,
+      });
+      await hide(w, [
+        [pessoal, "hide"],
+        [ficha, "hide"],
+      ]);
+      const device = w.device(["monitor"]);
+      const detail = await w.call("GET", `/api/runs/${runId}`, undefined, device);
+      expect(detail.status, JSON.stringify(detail.body)).toBe(200);
+      expect(detail.body.run.promptSummary).toBe(
+        [
+          "a (pasta oculta)",
+          "b (pasta oculta)",
+          "c (pasta oculta)",
+          "d (pasta oculta)",
+          "e notes/Fin Pessoal2/x.md",
+          "f notes/Fin/x.md",
+          "g outro/notes/Fin Pessoal/x.md",
+          `h ${outra}/visivel.md fim`,
+        ].join(", "),
+      );
+      expect(detail.body.run.filesChanged).toEqual([`${outra}/visivel.md`]);
+      const notes = await w.call("GET", "/api/notifications", undefined, device);
+      expect(notes.body.items.find((n: Json) => n.title === "cita").body).toBe("veja (pasta oculta).");
+      // the owner's answers carry every spelling as written
+      const owner = await w.call("GET", `/api/runs/${runId}`);
+      expect(owner.body.run.promptSummary).toBe(prompt);
+      expect(owner.body.run.filesChanged).toEqual([
+        `${pessoal}/segredo.md`,
+        "notes/Fin Pessoal/segredo.md",
+        `${outra}/visivel.md`,
+      ]);
+    } finally {
+      if (was === undefined) delete process.env.HOME;
+      else process.env.HOME = was;
+    }
+  });
+});
+
+// ---- C163: the search index of each audience --------------------------------------------------------------------------
+
+describe("C163 the order a device and a run are given", () => {
+  for (const fixture of FIXTURES) {
+    it(`C163 ${fixture.name}: a device's and a run's search order equals the twin's, and the shared index would not`, async () => {
+      const w = await runWorld(`mordomo-round1-c163-${fixture.name}-`);
+      opened.push(w);
+      const { fin, outra } = await seedFixture(w, fixture);
+      const url = `/api/memory/search?q=${encodeURIComponent(fixture.query)}&limit=200`;
+      const owner = await w.call("GET", url);
+      // over the whole index the hidden notes change the order (the case is not empty)
+      const shared = order(owner.body, outra);
+      expect(shared).toEqual([fixture.twin[1], fixture.twin[0]]);
+
+      const res = await w.call("PUT", "/api/settings", {
+        folderAccess: [{ path: fin, agents: "hide", devices: "hide" }],
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const device = w.device(["content"]);
+      const run = w.run("write");
+      const seen = {
+        device: await w.call("GET", url, undefined, device),
+        run: await w.call("GET", url, undefined, run.headers),
+      };
+      const recallUrl = `/api/memory/recall?q=${encodeURIComponent(fixture.query)}&record=false&k=10`;
+      const recalled = {
+        device: await w.call("GET", recallUrl, undefined, device),
+        run: await w.call("GET", recallUrl, undefined, run.headers),
+      };
+
+      // the twin: the same home with `fin` taken out of the world
+      w.update((s) => {
+        s.folderAccess = [];
+        s.excludes = [...s.excludes, "fin"];
+      });
+      await w.index();
+      const twin = await w.call("GET", url);
+      expect(order(twin.body, outra)).toEqual(fixture.twin);
+      const twinRecall = await w.call("GET", recallUrl);
+      expect(twinRecall.body.candidates.length).toBeGreaterThan(1);
+      for (const [who, answer] of Object.entries(recalled)) {
+        // the recall is ranked over the same index: the candidates and the excerpts in the twin's order, by value
+        const ranked = (r: Json) => ({
+          candidates: r.candidates.map((c: Json) => c.path),
+          answerContext: r.answerContext.map((c: Json) => [c.path, c.section, c.excerpt]),
+        });
+        expect(ranked(answer.body), who).toEqual(ranked(twinRecall.body));
+      }
+      for (const [who, answer] of Object.entries(seen)) {
+        expect(order(answer.body, outra), who).toEqual(fixture.twin);
+        // the hits are the twin's, snippet and all, with the score by place (amendment 4)
+        const strip = (hits: Json[]) => hits.map(({ score: _s, ...rest }) => rest);
+        expect(strip(answer.body), who).toEqual(strip(twin.body));
+        expect(
+          (answer.body as Json[]).map((h) => h.score),
+          who,
+        ).toEqual((answer.body as Json[]).map((_, i) => 1 / (i + 1)));
+      }
+    });
+  }
+
+  it("C163 the table follows every pass, a change of the access or of the excludes, and is rebuilt if its record is lost", async () => {
+    const w = await runWorld("mordomo-round1-c163-follow-");
+    opened.push(w);
+    const fin = path.join(w.memory, "notes", "fin");
+    const outra = path.join(w.memory, "notes", "outra");
+    w.put(path.join(outra, "um.md"), "# Um\n\nzebra zebra ${filler}\n".replace("${filler}", filler(20)));
+    w.put(path.join(fin, "segredo.md"), `# Segredo\n\nzebra ${filler(20)}\n`);
+    await w.index();
+    const docs = (table: string) =>
+      (w.ctx.db.prepare(`SELECT COUNT(*) c FROM ${table}_docsize`).get() as { c: number }).c;
+    const url = "/api/memory/search?q=zebra&limit=50";
+    const device = w.device(["content"]);
+    const names = async () =>
+      ((await w.call("GET", url, undefined, device)).body as Json[]).map((hit) =>
+        path.relative(w.memory, hit.path as string),
+      );
+
+    // nothing hidden: the device reads the owner's index and no copy is made
+    expect((await names()).sort()).toEqual(["notes/fin/segredo.md", "notes/outra/um.md"]);
+    expect(docs("files_fts_devices")).toBe(0);
+    expect(w.ctx.indexer.audienceTable("devices")).toBe("files_fts");
+
+    // hidden: its own table holds the visible rows only
+    await w.call("PUT", "/api/settings", { folderAccess: [{ path: fin, agents: "write", devices: "hide" }] });
+    expect(await names()).toEqual(["notes/outra/um.md"]);
+    expect(w.ctx.indexer.audienceTable("devices")).toBe("files_fts_devices");
+    expect(docs("files_fts_devices")).toBe(1);
+    expect(w.ctx.indexer.audienceTable("agents")).toBe("files_fts");
+    expect(docs("files_fts_agents")).toBe(0);
+
+    // a pass keeps it current: a new visible note, a new hidden one, a changed one and a removed one
+    w.put(path.join(outra, "dois.md"), `# Dois\n\nzebra ${filler(20)}\n`);
+    w.put(path.join(fin, "novo.md"), `# Novo\n\nzebra ${filler(20)}\n`);
+    fs.writeFileSync(path.join(outra, "um.md"), `# Um\n\nsem a palavra ${filler(5)}\n`);
+    await w.index();
+    expect(await names()).toEqual(["notes/outra/dois.md"]);
+    expect(docs("files_fts_devices")).toBe(2);
+    fs.rmSync(path.join(outra, "dois.md"));
+    await w.index();
+    expect(await names()).toEqual([]);
+    expect(docs("files_fts_devices")).toBe(1);
+
+    // a file that leaves the hidden folder comes into the table; one that enters leaves it
+    fs.mkdirSync(path.join(outra, "movida"), { recursive: true });
+    fs.renameSync(path.join(fin, "novo.md"), path.join(outra, "movida", "novo.md"));
+    await w.index();
+    expect(await names()).toEqual(["notes/outra/movida/novo.md"]);
+
+    // an exclude of the owner is a change of the view: rebuilt
+    w.update((s) => {
+      s.excludes = [...s.excludes, "movida"];
+    });
+    expect(await names()).toEqual([]);
+    expect(docs("files_fts_devices")).toBe(1); // um.md alone: the rows of the folder are not copied
+    w.update((s) => {
+      s.excludes = s.excludes.filter((e) => e !== "movida");
+    });
+    expect(await names()).toEqual(["notes/outra/movida/novo.md"]);
+
+    // the record is lost (a restored backup, a hand edit) while the table holds a hidden row: nothing hidden is shown
+    const hiddenId = (
+      w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(path.join(fin, "segredo.md")) as {
+        id: number;
+      }
+    ).id;
+    w.ctx.db
+      .prepare(
+        "INSERT INTO files_fts_devices (rowid, name, rel, content) VALUES (?, 'segredo.md', 'notes/fin/segredo.md', 'zebra')",
+      )
+      .run(hiddenId);
+    w.ctx.db.prepare("DELETE FROM meta WHERE key = 'fts.devices'").run();
+    expect(await names()).toEqual(["notes/outra/movida/novo.md"]);
+    expect(docs("files_fts_devices")).toBe(2); // um.md and movida/novo.md: the planted row of segredo.md is gone
+
+    // the hidden folder is shown again: back to the owner's index, the copy emptied
+    await w.call("PUT", "/api/settings", { folderAccess: [] });
+    expect((await names()).sort()).toEqual(["notes/fin/segredo.md", "notes/outra/movida/novo.md"]);
+    expect(docs("files_fts_devices")).toBe(0);
+  });
+});
+
+// ---- C164: what the triage sentinel puts in a model's prompt ----------------------------------------------------------
+
+describe("C164 the prompt of the triage run", () => {
+  it("C164 names no folder hidden from agents, in any spelling; the same sentinel with nothing hidden is put in as it is", async () => {
+    const { w, fin } = await seeded("mordomo-round1-c164-");
+    w.update((s) => {
+      s.sentinels.triage.enabled = true;
+      s.sentinels.triage.dailyBudgetUsd = 1;
+    });
+    const prompts: string[] = [];
+    const deps = {
+      db: w.ctx.db,
+      bus: w.ctx.events,
+      runs: {
+        create: (input: { prompt: string }) => {
+          prompts.push(input.prompt);
+          return { id: "triagem" } as never;
+        },
+        execute: async () => ({}) as never,
+        lastAssistantText: () => null,
+      },
+      notifications: { add: () => ({ id: "unused" }) },
+      getSettings: () => w.ctx.settings(),
+      cwd: w.home,
+    };
+    const payload = {
+      sentinel: "repeatedFailure" as const,
+      severity: "warn" as const,
+      title: `falhou em ${fin}/segredo.md`,
+      body: `3 arquivos sob ${fin}/x.md; veja notes/fin/segredo.md e notes/fin2/ok.md`,
+      triage: true,
+    };
+    const detail = () => /Detail: (.*)/.exec(prompts.at(-1)!)![1];
+    await triageSentinel(deps, payload);
+    expect(detail()).toBe(payload.body);
+    expect(prompts.at(-1)).toContain(`Title: ${payload.title}`);
+
+    const set = await w.call("PUT", "/api/settings", {
+      folderAccess: [{ path: fin, agents: "hide", devices: "write" }],
+    });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    await triageSentinel(deps, payload);
+    expect(detail()).toBe("3 arquivos sob (pasta oculta); veja (pasta oculta) e notes/fin2/ok.md");
+    expect(prompts.at(-1)).toContain("Title: falhou em (pasta oculta)");
+    expect(prompts.at(-1)).not.toContain(fin);
+    // hidden from devices only: an agent may be told
+    await w.call("PUT", "/api/settings", { folderAccess: [{ path: fin, agents: "write", devices: "hide" }] });
+    await triageSentinel(deps, payload);
+    expect(detail()).toBe(payload.body);
+  });
+});

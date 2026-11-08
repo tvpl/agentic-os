@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { RoutineSchema } from "@mordomo/core/internal";
+import { redactorFor } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError, requireProvider } from "./common.js";
@@ -38,8 +39,14 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
   bind(app, "routines.summary", async () => ctx.scheduler.summary());
 
   /** Hygiene input: routines that never fired, went quiet, or keep failing inside the window. */
-  bind(app, "routines.silent", async ({ query: { days } }) => {
-    return { days, routines: ctx.scheduler.silent(days) };
+  bind(app, "routines.silent", async ({ query: { days } }, req) => {
+    const device = redactorFor(ctx, req.principal);
+    const hidden = (routineId: string) => {
+      if (!device) return false;
+      const dir = ctx.routines.get(routineId)?.workingDir;
+      return Boolean(dir && device.hiddenPath(dir));
+    };
+    return { days, routines: ctx.scheduler.silent(days).filter((r) => !hidden(r.id)) };
   });
 
   bind(app, "routines.create", async ({ body: routine }) => {
@@ -123,7 +130,11 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     return { runId, status };
   });
 
-  bind(app, "routines.history", async ({ params: { id } }) => {
-    return ctx.scheduler.history(id, 30);
+  bind(app, "routines.history", async ({ params: { id } }, req) => {
+    // A routine that works in a folder hidden from devices is not there for a device (amendment 5).
+    const device = redactorFor(ctx, req.principal);
+    const dir = device ? ctx.routines.get(id)?.workingDir : undefined;
+    if (device && dir && device.hiddenPath(dir)) throw httpError(404, "Routine not found");
+    return ctx.scheduler.history(id, 30).filter((h) => !device?.hiddenRun(h.runId ?? null));
   });
 }

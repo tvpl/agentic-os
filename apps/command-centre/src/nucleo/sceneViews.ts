@@ -15,4 +15,5 @@ export const SCENE_VIEWS: Partial<Record<SceneId, ComponentType<SceneViewProps>>
   runs: lazyRoute(() => import("./scenes/RunsScene")),
   skills: lazyRoute(() => import("./scenes/SkillsScene")),
   routines: lazyRoute(() => import("./scenes/RoutinesScene")),
+  dashboards: lazyRoute(() => import("../dashboards/DashboardsScene")),
 };

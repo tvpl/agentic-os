@@ -1,8 +1,13 @@
 import crypto from "node:crypto";
+import { DASHBOARD_ANSWER_SKILL } from "@mordomo/contracts";
 import type { HealthStatus, PermissionBroker, ProviderCapabilities, RunMode } from "@mordomo/core";
 import {
+  ConnectorDataCache,
+  DashboardService,
+  DashboardStore,
   MordomoEngine,
   ProviderSettingsSchema,
+  dashboardSources,
   budgetDedupeKey,
   localDay,
   installedVersion,
@@ -24,7 +29,8 @@ import { TicketStore } from "./tickets.js";
 export interface ProviderSnapshot {
   id: ProviderId;
   displayName: string;
-  capabilities: ProviderCapabilities;
+  /** The manifest's capabilities, `protectsDirs` always said (absent in a manifest reads `false`). */
+  capabilities: ProviderCapabilities & { protectsDirs: boolean };
   installHint: string;
   /** What a person runs in a terminal to sign the CLI in (from the manifest). */
   loginCommand: string;
@@ -81,6 +87,15 @@ export class AppContext extends MordomoEngine {
   /** The tickets that open the two SSE streams without a credential in the URL (`POST /api/stream-tickets`). */
   readonly streamTickets = new TicketStore();
 
+  /**
+   * The connectors' data cache of this service (.specs/features/cerebro-paineis, amendment 10): one, read by the
+   * connector data route and by the dashboards' evaluator, with the TTL of the settings.
+   */
+  readonly connectorCache: ConnectorDataCache;
+
+  /** The dashboards: their files, their snapshots, one refresh at a time each, and the clock's tick. */
+  readonly dashboards: DashboardService;
+
   private healthCache = new Map<ProviderId, { at: number; health: HealthStatus }>();
   private healthInFlight = new Map<ProviderId, Promise<HealthStatus>>();
 
@@ -93,6 +108,45 @@ export class AppContext extends MordomoEngine {
       applyPendingRestore: opts.applyPendingRestore === true,
       ...(opts.pushResolver ? { pushResolver: opts.pushResolver } : {}),
       ...(opts.restoreWaitMs !== undefined ? { restoreWaitMs: opts.restoreWaitMs } : {}),
+    });
+    this.connectorCache = new ConnectorDataCache(this.settings().connectors.dataCacheTtlMs);
+    const env = { paths: this.paths, settings: () => this.settings() };
+    this.dashboards = new DashboardService({
+      store: new DashboardStore(this.db, this.paths, env.settings),
+      sources: dashboardSources({
+        db: this.db,
+        paths: this.paths,
+        settings: env.settings,
+        metricsHistory: this.metricsHistory,
+        connectors: this.connectors,
+        connectorCache: this.connectorCache,
+      }),
+      env,
+      events: this.events,
+      db: this.db,
+      notifications: this.notifications,
+      // A question dashboard's skill (door 7, amendment 19): it runs only while it exists, is enabled and is a memory
+      // skill of the settings; it starts like any skill run, read-only, through the engine's own launch.
+      question: {
+        available: () => {
+          const skill = this.skills.load(DASHBOARD_ANSWER_SKILL);
+          return (
+            skill !== null && skill.enabled && this.settings().memorySkills.includes(DASHBOARD_ANSWER_SKILL)
+          );
+        },
+        start: ({ question, contextId }) =>
+          this.execution.startSkill(
+            {
+              slug: DASHBOARD_ANSWER_SKILL,
+              // The run's context is the dashboard's (none for a question dashboard today, amendment 6 e); the skill's
+              // input is `context_id` (amendment 29).
+              inputs: { question, ...(contextId !== undefined ? { context_id: contextId } : {}) },
+              ...(contextId !== undefined ? { contextId } : {}),
+              startedBy: "owner",
+            },
+            { folderCheck: "launch" },
+          ).runId,
+      },
     });
     this.unsubscribeCredentials = this.events.subscribe((e) => {
       if (e.type !== "run.finished") return;
@@ -232,7 +286,8 @@ export class AppContext extends MordomoEngine {
       out.push({
         id,
         displayName: manifest.displayName,
-        capabilities: manifest.capabilities,
+        // A manifest from before `protectsDirs` says nothing: it does not protect a folder (cerebro-organizar, door 5).
+        capabilities: { ...manifest.capabilities, protectsDirs: manifest.capabilities.protectsDirs === true },
         installHint: manifest.installHint,
         loginCommand: manifest.loginCommand,
         enabled: prefs.enabled,
@@ -342,6 +397,7 @@ export class AppContext extends MordomoEngine {
 
   override close(): void {
     this.unsubscribeCredentials();
+    this.dashboards.close();
     this.telegramPoller?.stop();
     super.close();
   }

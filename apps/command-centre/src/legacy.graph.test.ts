@@ -35,6 +35,18 @@ const UNREACHED: Record<string, string> = {
   "components/markdown.corpus.ts": "the text the Markdown renderer is held to: imported by specs only",
   "commands/testserver.ts": "test material: imported by specs only",
   "ui/testkit.tsx": "test material: imported by specs only",
+  // cerebro-contextos, batch C: the work-context specs' providers and their stub of the network
+  "contexts/testkit.tsx": "test material: imported by specs only",
+  "contexts/testnet.ts": "test material: imported by specs only",
+  // cerebro-vista-notas, batch B: the notes-view specs' stub of the network
+  "brain/notes/testnet.ts": "test material: imported by specs only",
+  // cerebro-faxina-guiada, batch C: the cleanup specs' routes over the notes-view stub, and their render helpers
+  "brain/cleanup/testkit.tsx": "test material: imported by specs only",
+  // cerebro-natureza, batch D: the reviews specs' routes over the notes-view stub, and their render helpers
+  "brain/reviews/testkit.tsx": "test material: imported by specs only",
+  // cerebro-paineis, batch D: the dashboards specs' routes over the notes-view stub, and their render helpers
+  "dashboards/testkit.tsx": "test material: imported by specs only",
+  "dashboards/testnet.ts": "test material: imported by specs only",
   "commands/listenersAllowlist.ts":
     "the list of key listeners outside the registry, read by the registry's source check and probe (C16)",
   "testing/canvasText.ts": "a reader of the design-system guards: specs only",

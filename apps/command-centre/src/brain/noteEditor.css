@@ -139,3 +139,7 @@ textarea.input.note-editor-field {
   font-size: var(--fs-3);
   color: var(--text-dim);
 }
+.note-folder {
+  display: flex;
+  gap: var(--s-2);
+}

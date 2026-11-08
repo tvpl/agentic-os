@@ -25,7 +25,7 @@ The version of an event is the `v` in its envelope (or its frame).
 The schemas are the contract: `EVENT_SCHEMAS[type][v]` for the bus and `RUN_FRAME_SCHEMAS[type][v]` for the run stream. The files
 `tests/fixtures/events/v1/` are frozen examples of version 1 of every type, and the tests fail if a change makes one stop parsing.
 
-## Events of the bus (25)
+## Events of the bus (29)
 
 ### `run.created`
 
@@ -205,6 +205,61 @@ Payload, version 1:
 | --- | --- | --- |
 | `runId` | string | yes |
 
+### `cleanup.progress`
+
+A cleanup scan of a scope advanced: `phase` is inventory, signatures, links or findings, in that order, with `done` of `total`.
+
+Versions: 1 (current 1).
+
+Payload, version 1:
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `scanId` | string | yes |
+| `phase` | "inventory" \| "signatures" \| "links" \| "findings" | yes |
+| `done` | integer | yes |
+| `total` | integer | yes |
+
+### `cleanup.finished`
+
+A cleanup scan finished; `findings` is how many it reports (`GET /api/memory/cleanup/scans/:id`).
+
+Versions: 1 (current 1).
+
+Payload, version 1:
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `scanId` | string | yes |
+| `findings` | integer | yes |
+
+### `cleanup.failed`
+
+A cleanup scan could not finish; the signatures it had stored stay.
+
+Versions: 1 (current 1).
+
+Payload, version 1:
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `scanId` | string | yes |
+| `code` | string | yes |
+
+### `dashboard.refreshed`
+
+A dashboard was refreshed and its snapshot stored (`GET /api/dashboards/:id`); `status` is ok, partial (a source failed) or error (every widget failed).
+
+Versions: 1 (current 1).
+
+Payload, version 1:
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `id` | string | yes |
+| `generatedAt` | integer | yes |
+| `status` | "ok" \| "partial" \| "error" | yes |
+
 ### `approval.requested`
 
 An approval is waiting for a human.
@@ -364,7 +419,7 @@ Payload, version 1:
 | Field | Type | Required |
 | --- | --- | --- |
 | `id` | string | yes |
-| `kind` | "approval" \| "run" \| "routine" \| "index" \| "system" | yes |
+| `kind` | "approval" \| "run" \| "routine" \| "index" \| "system" \| "reminder" | yes |
 | `tone` | "ok" \| "warn" \| "danger" \| "info" \| null | yes |
 | `messageKey` | string \| null | no |
 | `messageParams` | map of string \| number \| boolean \| null | no |
@@ -420,12 +475,13 @@ Payload, version 1:
 
 | Field | Type | Required |
 | --- | --- | --- |
-| `sentinel` | "fsWatch" \| "repeatedFailure" \| "silentRoutine" \| "connectorDelta" | yes |
+| `sentinel` | "fsWatch" \| "repeatedFailure" \| "silentRoutine" \| "connectorDelta" \| "reviewDue" \| "proposalsPending" | yes |
 | `messageParams` | map of string \| number \| boolean | no |
 | `title` | string | yes |
 | `body` | string | yes |
 | `severity` | "info" \| "warn" \| "danger" | yes |
 | `href` | string | no |
+| `count` | number | no |
 | `dedupeKey` | string | no |
 | `triage` | boolean | no |
 

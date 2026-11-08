@@ -4,6 +4,8 @@
  * not start with a route that has none, nor with an entry no route was bound to.
  */
 import { deepFreeze } from "../freeze.js";
+import { contextRoutes } from "./contexts.js";
+import { dashboardRoutes } from "./dashboards.js";
 import { deviceRoutes } from "./devices.js";
 import { memoryRoutes } from "./memory.js";
 import { routineRoutes } from "./routines.js";
@@ -20,6 +22,8 @@ export const API = deepFreeze({
   ...skillRoutes,
   ...routineRoutes,
   ...memoryRoutes,
+  ...contextRoutes,
+  ...dashboardRoutes,
   ...deviceRoutes,
   ...streamRoutes,
 } as const);
@@ -52,6 +56,42 @@ export { COMMON_ERRORS, ErrorEnvelope, commonErrorsFor, declaredErrors } from ".
 export { checkBody, checkResponse, toWire } from "./check.js";
 export { wireSchema } from "./wireSchema.js";
 export { SettingsPatchSchema, UiPreferencesPatchSchema, type SettingsPatch } from "./system.js";
-export { isJournalDate } from "./memory.js";
+export {
+  isJournalDate,
+  // cerebro-memoria-confiavel, doors 5 and 6: what the engine reads a proposal.json by and stores a proposal as, and
+  // the one-line rule of door 7 it applies ops by
+  LINE_BREAK,
+  PROPOSAL_FILE_MAX_BYTES,
+  PROPOSAL_KIND_VALUES,
+  PROPOSAL_STATUS_VALUES,
+  ProposalFileSchema,
+  type ProposalFile,
+  type ProposalOp,
+} from "./memory.js";
 export { QUERY_FLAG_TEXTS, QueryFlag, RUN_LIMITS } from "./common.js";
 export { NAMED_SCHEMAS } from "./schemas.js";
+export {
+  DASHBOARD_ANSWER_SKILL,
+  DASHBOARD_ID,
+  DASHBOARD_MAX_BYTES,
+  DashboardSnapshotSchema,
+  DashboardSpecSchema,
+  HIGHLIGHT_RULES,
+  QUESTION_MAX_WIDGETS,
+  QUESTION_RESULT_MAX_BYTES,
+  QuestionResultSchema,
+  serializeDashboard,
+  type DashboardKind,
+  type DashboardSnapshot,
+  type DashboardSource,
+  type DashboardSpec,
+  type DashboardWidget,
+  type Highlight,
+  type HighlightRule,
+  type QuestionResult,
+  type SnapshotSource,
+  type SnapshotWidget,
+  type SourceKind,
+  type WidgetKind,
+  type WidgetOptions,
+} from "./dashboards.js";

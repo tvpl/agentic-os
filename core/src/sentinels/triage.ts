@@ -1,3 +1,6 @@
+import { resolvePaths } from "../paths.js";
+import { citationRedactor } from "../memory/citations.js";
+import { resolveFolderAccess } from "../memory/folderAccess.js";
 import type { Db } from "../db/db.js";
 import type { EventBus, OsEvent } from "../events.js";
 import type { Settings } from "../config/schema.js";
@@ -178,7 +181,15 @@ export async function triageSentinel(
   const provider = settings.defaultProvider;
   if (!settings.providers[provider]?.enabled) return none("provider_unavailable");
 
-  const prompt = buildTriagePrompt(payload);
+  // The triage is an agent's run: what it is told does not name a folder hidden from agents (cerebro-memoria-confiavel,
+  // round 1 finding 10), as a run's prompt and the routers do not.
+  const paths = resolvePaths(deps.cwd);
+  const hide = citationRedactor(paths, resolveFolderAccess({ paths, settings }), "agents");
+  const prompt = buildTriagePrompt({
+    ...payload,
+    title: hide.text(payload.title),
+    body: hide.text(payload.body),
+  });
   let run: RunRecord;
   try {
     run = deps.runs.create({

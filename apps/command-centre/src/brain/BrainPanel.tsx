@@ -33,6 +33,8 @@ import {
 } from "./engine/world";
 import { GROUP_PALETTE, MODIFIED_RANGES, SIZE_RANGES, type BrainUi } from "./state";
 import { Switch, Tooltip } from "../ui";
+import { RequestFailed } from "./RequestFailed";
+import { NatureBadge, NatureSearchFilters, type Natureza } from "./natureza";
 
 export interface TimelineState {
   range: [number, number] | null;
@@ -44,7 +46,13 @@ export interface BrainPanelProps {
   ui: BrainUi;
   patch: (p: Partial<BrainUi>) => void;
   searchRef: RefObject<HTMLInputElement>;
-  hits: Array<{ id: number; name: string; rel: string }>;
+  hits: Array<{ id: number; name: string; rel: string; natureza?: string | null }>;
+  /** The search's nature filters (cerebro-natureza, design.md "Busca e preview"). */
+  natureza: readonly Natureza[];
+  onNatureza: (next: Natureza[]) => void;
+  /** The last search request failed: the hit list gives way to the error and its retry. */
+  searchFailed: boolean;
+  onSearchRetry: () => void;
   facets: { exts: Array<[string, number]>; tags: Array<[string, number]> };
   /** Edge kinds present in the loaded graph (with counts). */
   kindCounts: Map<EdgeKind, number>;
@@ -71,15 +79,15 @@ export interface BrainPanelProps {
 const KIND_KEYS: Record<
   EdgeKind,
   | "brain.kind.markdown-link"
+  | "brain.kind.wikilink"
   | "brain.kind.related"
   | "brain.kind.same-dir"
-  | "brain.kind.same-area"
   | "brain.kind.other"
 > = {
   "markdown-link": "brain.kind.markdown-link",
+  wikilink: "brain.kind.wikilink",
   related: "brain.kind.related",
   "same-dir": "brain.kind.same-dir",
-  "same-area": "brain.kind.same-area",
   other: "brain.kind.other",
 };
 const LAYOUT_KEYS: Record<
@@ -160,7 +168,9 @@ export function BrainPanel(p: BrainPanelProps) {
         onChange={(e) => patch({ query: e.target.value })}
         aria-label={t("common.search")}
       />
-      {p.hits.length > 0 && (
+      <NatureSearchFilters chosen={p.natureza} onChange={p.onNatureza} />
+      {p.searchFailed && <RequestFailed message={t("brain.search.failed")} onRetry={p.onSearchRetry} />}
+      {!p.searchFailed && p.hits.length > 0 && (
         <div className="brain-hits" role="list">
           {p.hits.map((h) => (
             <div key={h.id} role="listitem">
@@ -170,7 +180,10 @@ export function BrainPanel(p: BrainPanelProps) {
                 onClick={() => p.onSelectId(h.id, true)}
               >
                 <span className="ma-text">
-                  <span className="ma-name truncate">{h.name}</span>
+                  <span className="brain-hit-name">
+                    <span className="ma-name truncate">{h.name}</span>
+                    <NatureBadge n={(h.natureza ?? null) as Natureza | null} dense />
+                  </span>
                   <span className="ma-desc truncate">{h.rel}</span>
                 </span>
               </button>

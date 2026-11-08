@@ -272,6 +272,8 @@ const MICROCOPY: Record<string, string> = {
   ".approval-inline-cwd": "a working-directory path",
   ".brain-preview-path": "a file path",
   ".bs-sheet-path": "a file path",
+  ".notes-why":
+    "why a note is related, in 12px under its title (cerebro-vista-notas design.md, Painel da nota)",
   ".file-path": "a file path",
   ".microapp-row .ma-desc": "a file path (the row's `rel`)",
   ".run-id": "a run id",
