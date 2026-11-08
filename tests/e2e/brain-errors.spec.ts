@@ -71,11 +71,11 @@ for (const shell of ["moldura", "nucleo"] as const) {
       await expect(alert.locator("svg")).toHaveCount(1);
       await expect(alert.getByRole("button", { name: RETRY })).toBeVisible();
       await expect(page.getByText("achado-antes.md")).toHaveCount(0);
-      // in the place of the hits: right after the search box in the frame, inside the results in the Núcleo; the
-      // message comes before the button
+      // in the place of the hits: after the search box and its nature filter row in the frame (cerebro-natureza), inside
+      // the results in the Núcleo; the message comes before the button
       const placed =
         shell === "moldura"
-          ? page.locator(".brain2 input.input + .brain-request-failed")
+          ? page.locator(".brain2 input.input ~ .brain-request-failed")
           : page.locator(".bs-results .brain-request-failed");
       await expect(placed).toBeVisible();
       await expect(page.locator(shell === "moldura" ? ".brain-hits" : ".bs-hits")).toHaveCount(0);

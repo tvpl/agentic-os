@@ -92,7 +92,12 @@ describe("C132 an export and its manifest", () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const out = path.join(fs.realpathSync(w.home), "artifacts", "exports", `projetos-${minute(at)}`);
     const bytes = Object.values(files).reduce((n, t) => n + Buffer.byteLength(t), 0);
-    expect(res.body).toEqual({ path: out, files: 3, bytes });
+    // the path may name the home through a link (macOS: /var is /private/var); compare the directory it names
+    expect({ ...res.body, path: fs.realpathSync(res.body.path as string) }).toEqual({
+      path: out,
+      files: 3,
+      bytes,
+    });
     // the files byte for byte, the .env left behind
     expect(filesUnder(out)).toEqual(["anexo.txt", "mordomo-export.json", "plano.md", "sub/tarefa.md"]);
     for (const [rel, text] of Object.entries(files))
@@ -266,7 +271,11 @@ describe("C135 an import", () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const target = path.join(fs.realpathSync(w.memory), "notes", "vault-antigo");
     const bytes = [...Object.values(notes), "a,b\n1,2\n"].reduce((n, t) => n + Buffer.byteLength(t), 0);
-    expect({ ...res.body, skipped: (res.body.skipped as string[]).slice().sort() }).toEqual({
+    expect({
+      ...res.body,
+      folder: fs.realpathSync(res.body.folder as string),
+      skipped: (res.body.skipped as string[]).slice().sort(),
+    }).toEqual({
       folder: target,
       files: 3,
       bytes,
@@ -294,14 +303,16 @@ describe("C135 an import", () => {
     w.put(path.join(meu, "c.md"), "# C\n");
     const bare = await w.call("POST", "/api/memory/import", { sourceDir: meu });
     expect(bare.status, JSON.stringify(bare.body)).toBe(200);
-    expect(bare.body.folder).toBe(path.join(fs.realpathSync(w.memory), "notes", "meu-vault"));
+    expect(fs.realpathSync(bare.body.folder as string)).toBe(
+      path.join(fs.realpathSync(w.memory), "notes", "meu-vault"),
+    );
 
     // a one-file source imports one (L-050)
     const one = path.join(root, "uma");
     w.put(path.join(one, "so.md"), "# Só\n");
     const single = await w.call("POST", "/api/memory/import", { sourceDir: one, folder: "uma-nota" });
     expect(single.status, JSON.stringify(single.body)).toBe(200);
-    expect(single.body).toEqual({
+    expect({ ...single.body, folder: fs.realpathSync(single.body.folder as string) }).toEqual({
       folder: path.join(fs.realpathSync(w.memory), "notes", "uma-nota"),
       files: 1,
       bytes: 6,

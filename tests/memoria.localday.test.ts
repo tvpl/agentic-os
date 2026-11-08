@@ -374,7 +374,12 @@ describe("C132 the export folder's local minute", () => {
     const out = path.join(fs.realpathSync(w.home), "artifacts", "exports", "projetos-2026-10-31-2330");
     const first = await exportAt(NOW);
     expect(first.status, JSON.stringify(first.body)).toBe(200);
-    expect(first.body).toEqual({ path: out, files: 1, bytes: 8 });
+    // the path may name the home through a link (macOS: /var is /private/var); compare the directory it names
+    expect({ ...first.body, path: fs.realpathSync(first.body.path as string) }).toEqual({
+      path: out,
+      files: 1,
+      bytes: 8,
+    });
     const manifest = JSON.parse(fs.readFileSync(path.join(out, "mordomo-export.json"), "utf8")) as Json;
     expect(manifest.exportedAt).toBeGreaterThanOrEqual(window[0]);
     expect(manifest.exportedAt).toBeLessThanOrEqual(window[1]);

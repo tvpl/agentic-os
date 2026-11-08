@@ -17,8 +17,9 @@ test("the arrange event projects the intelligence instruments, two at a time, ea
   await expect(liveLaminas(page)).toHaveCount(2);
   expect(await laminaIds(page)).toEqual(["sentinels", "facts"]);
   const sentinels = lamina(page, "sentinels");
-  // Six rows: the four sentinels, the repeat detector and the triage run.
-  await expect(sentinels.locator(".sentinel-row")).toHaveCount(6);
+  // Eight rows: the six sentinels (the four from before, reviewDue and proposalsPending), the repeat detector and the
+  // triage run.
+  await expect(sentinels.locator(".sentinel-row")).toHaveCount(8);
   await expect(sentinels.locator(".nu-lamina-body")).not.toContainText(/not found/i);
   await expect(lamina(page, "facts").locator(".nu-lamina-body")).not.toContainText(/not found/i);
 

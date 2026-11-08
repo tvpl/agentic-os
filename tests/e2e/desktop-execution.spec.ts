@@ -92,13 +92,15 @@ test("a skill with required inputs asks in a lâmina, then runs; the form leaves
   await expect(trace.locator(".run-panel")).toHaveAttribute("data-run-status", "done", { timeout: 20_000 });
 });
 
+// consolidate-memory only reads since cerebro-memoria-confiavel (it proposes, the owner accepts), so the write-mode
+// skill here is gauntlet-loop.
 test("a write-mode skill waits in the approvals lâmina; approving projects its trace", async ({ page }) => {
   await openShell(page);
   await page.keyboard.press("ControlOrMeta+j");
-  await page.locator('.skill-deck .deck-skill[title^="/consolidate-memory"]').click();
+  await page.locator('.skill-deck .deck-skill[title^="/gauntlet-loop"]').click();
   const approvals = lamina(page, "approvals");
   await expect(approvals).toBeVisible();
-  await expect(approvals.locator(".nu-lamina-body")).toContainText(/consolidate-memory/);
+  await expect(approvals.locator(".nu-lamina-body")).toContainText(/gauntlet-loop/);
   // A pending decision is "waiting for you", not an alarm (refino item 21).
   await expect(page.locator(".nu-shell")).toHaveAttribute("data-core", "waiting");
   await approvals
@@ -107,9 +109,9 @@ test("a write-mode skill waits in the approvals lâmina; approving projects its 
     .click();
   const trace = lamina(page, "run:", "^=");
   await expect(trace).toHaveCount(1);
-  await expect(trace.locator(".nu-lamina-title")).toHaveText(/\/consolidate-memory$/);
+  await expect(trace.locator(".nu-lamina-title")).toHaveText(/\/gauntlet-loop$/);
   await expect(trace.locator(".run-panel")).toHaveAttribute("data-run-status", "done", { timeout: 20_000 });
-  await expect(approvals.locator(".nu-lamina-body")).not.toContainText(/consolidate-memory/);
+  await expect(approvals.locator(".nu-lamina-body")).not.toContainText(/gauntlet-loop/);
 });
 
 test("a run's route is a deep link into its trace, unfolded in the Runs scene", async ({ page }) => {
