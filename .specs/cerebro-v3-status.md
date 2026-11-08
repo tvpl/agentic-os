@@ -1,8 +1,9 @@
 # Roteiro do segundo cérebro: estado, o que falta, gaps e o que revisar
 
-> **Atualização de 07/11/2026:** a C7 fechou por escalonamento (AD-046) depois da quarta verificação; os itens da seção 3.1 e
-> os furos de 4.2 (1) foram tratados, e o que restou está nos limites escritos em `docs/security.md`. Faltam C8 a C11. O
-> resto deste arquivo descreve o estado de 01/11/2026.
+> **Atualização de 08/11/2026:** C1 a C7 estão construídas e fechadas (C7 por escalonamento depois de quatro verificações, AD-046),
+> as oito perguntas de maior efeito foram respondidas (AD-047) e o PR #11 abriu. Faltam C8 a C11, que só têm a linha do roteiro;
+> o próximo passo é planejar a **C8 `cerebro-rituais`** (seção 7). O resto deste arquivo descreve o estado de 01/11/2026; para o que
+> mudou depois, valem o `STATE.md` (AD-046, AD-047 e "Perguntas ao dono") e o `roadmap.md`.
 
 Escrito em 01/11/2026, a pedido do dono, quando a construção foi parada. Branch `chore/cerebro-v3-roteiro`, tudo empurrado até o
 commit `2cd2578`. A fonte de cada decisão é o `.specs/STATE.md` (AD-037 a AD-045 e "Perguntas ao dono"); o plano de cada
@@ -156,3 +157,34 @@ cerebro-natureza 1-10; cerebro-paineis 1-19; cerebro-memoria-confiavel 8-11, 15-
 4. Abrir o PR da branch do roteiro (ou fatiar por feature) e decidir quem revisa; hoje são ~200 commits numa branch.
 5. Responder as perguntas de 5.1 e as de maior efeito de 5.3; as demais seguem nos padrões.
 6. Só então planejar C8 a C11 (ordem sugerida: C8, C9, C10, C11; C9 e C10 dependem de a C7 fechar).
+
+## 7. Como continuar em outro chat: planejar a C8
+
+Abra o chat na branch `chore/cerebro-v3-roteiro` (PR #11) e comece com algo como:
+
+> Retome o roteiro do segundo cérebro. Leia `.specs/cerebro-v3-status.md`, o Handoff e "Perguntas ao dono" de `.specs/STATE.md`
+> e `.specs/roadmap.md`. Planeje a **C8 `cerebro-rituais`** com a skill `tlc-spec-lean` (fase de plano: `plan.md` e `design.md`
+> em `.specs/features/cerebro-rituais/`, sem checks nem código) e leve o plano a mim para aprovar. Perfil `ui`, orçamento 150k.
+
+O que o novo chat precisa saber:
+
+- **Escopo da C8** (linha do roteiro): revisão semanal GTD, Projetos e Arquivo, `last_reviewed` como prazo de revisão, menções não
+  linkadas. Fonte da pesquisa: `reports/Segundo cérebro para agentes.md` (M5) e `research_notes/Segundo cérebro para agentes/`.
+- **Reuso obrigatório, não recriar:** a fila de revisões e o sentinela `reviewDue` da C6 (`core/src/memory/reviews.ts`,
+  `reviewDecisions.ts`), a faxina da C5 (inventário, achados, arquivar com desfazer), os contextos da C2, a vista de notas da C4 e
+  os painéis da C6b (lembretes, destaques). A C8 deve dizer o que reaproveita e o que é novo.
+- **Peso:** política do dono (AD-047 h): um teto novo por feature, acima da anterior. O último é o da C7, em 17 152 B de JS gzip
+  acima de `cerebro-paineis`, com 44 B de folga; o plano da C8 deve propor o seu e a medição atual está em
+  `scripts/bundle-baseline.json`.
+- **Processo que funcionou:** plano aprovado pelo dono, depois checks (agente à parte), construção em lotes sequenciais, só em
+  verde, e verificação independente por agente novo, até 3 rodadas. Leia as lições L-044 a L-066 em `.specs/LESSONS.md`: quase toda
+  feature falhou nas rodadas 1 e 2 por mutantes que sobrevivem (limites sem a borda aceita, filtro testado por um só caminho, dia
+  local testado em UTC, prova que pula sem build). Elas valem para o plano e para os checks da C8.
+- **Convenções do repo:** a tabela `API` é a única fonte de rotas; cada rota, migração, configuração, evento ou exportação nova
+  move pinos de contagem (veja os commits da C6 e da C7 como modelo); `docs/events.md` se regenera com `UPDATE_EVENTS_DOC=1`;
+  trailers de commit `Co-Authored-By` e `Claude-Session`; commits pequenos, assunto até 72 caracteres.
+- **Antes de planejar:** a sessão de andar as telas com o dono nunca aconteceu (seção 4.1). Vale propor uma, curta, junto do plano.
+- **CI do PR #11:** os três pinos de e2e e os três caminhos de macOS foram corrigidos (`44cc859`). Os quatro jobs de Node ainda
+  falham no `npm audit --omit=dev --audit-level=high` por um aviso novo de severidade alta no `zod` (3.25.76, corrigido só na 4.6.6, uma
+  mudança maior); o `package.json` e o lockfile não mudaram nesta branch, então o `main` está igual. Decidir a atualização do `zod`
+  é um assunto à parte.
