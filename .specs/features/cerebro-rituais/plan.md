@@ -336,13 +336,13 @@ No painel de uma nota, o dono vê onde ela é citada sem link e liga num clique.
 | Rótulos da tela                                 | "Esvaziar", "Atualizar", "Algum dia", "Arquivar", "Pronto" (en: "Get clear", "Get current", "Someday", "Archive", "Done")                                                 | as três fases do GTD com nomes do dia a dia, mais as duas etapas de fechar                                                             | n          |
 | Teto de peso (AD-047 h)                         | 16 KB de JS gzip e 2 KB de CSS gzip acima de `cerebro-memoria-confiavel` (591 435 B e 81 852 B em `scripts/bundle-baseline.json`); a construção para e pergunta se passar | uma página de cinco etapas e uma dobra do painel; a faxina, com um assistente de cinco etapas, pediu 12 KB                             | n          |
 
-**Open questions:**
+**Open questions:** none - all resolved or logged above. As três do plano foram respondidas pelo dono em 09/11/2026, todas
+pelo padrão recomendado:
 
-| #   | Kind           | Question                                                                                                                                                                                                                                                  | Until answered                                                                                           |
-| --- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 1   | blocks go-live | O lembrete semanal vem ligado, na sexta às 16:00? Recomendo ligado, sexta 16:00, no máximo um por semana e nenhum depois da revisão concluída (o mesmo padrão da cobrança diária, AD-047 d). Alternativas: domingo à noite, ou desligado até o dono ligar | AC 55-60 valem com o padrão; trocar muda uma linha de `settings` e o AC 59 continua valendo              |
-| 2   | open           | A próxima ação de um projeto é a primeira tarefa `- [ ]` aberta da nota (door 3), ou um campo `next_action:` no cabeçalho? Recomendo a tarefa: o painel de tarefas, o prazo `📅` e o "feito" da C6b já a enxergam, e um campo seria uma segunda fonte     | AC 17, 23, 24 e 42 escritos com a tarefa; trocar é a door 3 e quatro critérios                           |
-| 3   | open           | Uma sessão curta de andar as telas com o dono (nunca aconteceu, `cerebro-v3-status.md` 4.1) antes da verificação desta feature: Revisões, faxina e a Revisão semanal nova, 30 minutos?                                                                    | a verificação roda sem ela, como nas anteriores; o passo 5 de `verify.md` fica registrado como não feito |
+1. Lembrete semanal ligado, sexta às 16:00, no máximo um por semana e nenhum depois da revisão concluída (door 4, AC 55-60).
+2. A próxima ação de um projeto é a primeira tarefa `- [ ]` aberta da nota (door 3, AC 17, 23, 24 e 42).
+3. Uma sessão de cerca de 30 minutos andando as telas com o dono (Revisões, faxina e Revisão semanal) depois da construção e
+   antes do verificador independente; o que o dono apontar vira correção ou emenda registrada.
 
 ## Observable
 
