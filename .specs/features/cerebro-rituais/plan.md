@@ -380,6 +380,24 @@ pelo padrão recomendado:
 | collection menções                            | duplicates, ordering, exception                           | AC 61, AC 64, AC 65; uma linha com dois termos é um item, com o primeiro termo que casa                                        |
 | command                                       | n/a - nenhum comando de terminal novo; `mordomo` não muda |
 
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+As linhas aprovadas da `Surface` ficam como estão; o acréscimo vale por esta seção. As quatro abaixo foram achadas ao escrever os checks
+(`checks.md`, "Lacunas do plano", G4, G20, G22 e G24) e confirmadas pelo dono em 10/11/2026. As outras 35 lacunas (G1-G3, G5-G19, G21,
+G23, G25-G39) ficam nos padrões que o `checks.md` afirma, cada uma com o check que a prova.
+
+1. **Emenda 1 (G4).** `POST /api/memory/weekly-review/loops` aceita `context?` (o id do contexto ativo que a tela envia). Com ele, o
+   projeto criado por `action: "project"` vai à pasta de notas desse contexto; sem ele, a `memory/notes/`. Checks C11 e C80.
+2. **Emenda 2 (G20).** Cada item de `projects`, `someday.projects` e `archive` de `GET /api/memory/weekly-review` leva `version` (a
+   versão da nota que a lista leu), que a tela envia como `baseVersion` e que sustenta o conflito do AC 46.
+3. **Emenda 3 (G22).** `GET /api/memory/weekly-review` responde também `counts` (`loops` · `projects` · `archived`): os da semana até
+   agora, ou os guardados quando a semana está concluída. A etapa "Pronto" os mostra sem outra chamada.
+4. **Emenda 4 (G24).** Cada item de `items` de `GET /api/memory/mentions` leva `version` (a versão da origem que a lista leu), que
+   "Linkar" envia como `baseVersion`.
+
+Conformidade com a regra da skill: são acréscimos de chaves de resposta e de um campo opcional de entrada; nenhuma linha aprovada foi
+reescrita e nenhuma chave aprovada mudou de nome ou de tipo.
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C8 - o escopo: revisão semanal GTD, Projetos e Arquivo, `last_reviewed` como prazo de revisão,

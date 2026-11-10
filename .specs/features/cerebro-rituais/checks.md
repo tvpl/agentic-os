@@ -965,7 +965,7 @@ its C88 "before the triage row").
 
 ## Handoff
 
-The estimate exceeds the 150k budget. Mechanism: handoff | one builder - pending owner choice
+The estimate exceeds the 150k budget. Mechanism chosen by the owner on 10/11/2026: **handoff, five batches A, B, C, D, E** (the cut below), sequential, each only on green.
 
 - Arithmetic (`wc -c` of the files each slice touches at the head of `claude/beautiful-volta-6xmhok`, / 4; new files
   estimated; a file read again in a later slice is counted again):
@@ -1030,4 +1030,4 @@ The estimate exceeds the 150k budget. Mechanism: handoff | one builder - pending
     `tests/e2e/weekly.spec.ts` and the C100 part of `tests/rituais.contract.test.ts` ≈ 79 KB → ≈ 20k = ≈ 80k; C93-C101
   - B + C ≈ 210k and D + E ≈ 184k are over the budget, so each batch stays apart; A lands first because B's finish counts
     read A's decisions and C's mentions share A's world, C asserts the routes of A, B and C, and D and E call them
-- Mechanism: handoff | one builder - pending owner choice
+- Mechanism: handoff — chosen by the owner on 10/11/2026 (five batches, sequential, only on green; the next builder reads `checks.md` and the diff of what landed)
