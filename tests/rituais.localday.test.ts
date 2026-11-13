@@ -3,6 +3,7 @@
 // daylight saving since 2019, so a week boundary there is a plain UTC-3 boundary.
 process.env.TZ = "America/Sao_Paulo";
 
+import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { collectLoops, hidesLoop } from "../core/src/memory/loops.js";
@@ -177,4 +178,168 @@ describe("C23 reviewBy and reviewDue on the local day", () => {
         await option(side, { projectEvery: "7d" });
       }
     });
+});
+
+// ---- batch B: the archive, the finish and the reminder -------------------------------------------------------------
+
+const proj = (file: string, fields: Record<string, string>) => w.note(file, { type: "project", ...fields });
+const notesOf = (...parts: string[]) => path.join(w.memory, "notes", ...parts);
+const reminderOn = (weekly: { enabled: boolean; weekday: number; hour: number }) =>
+  w.update((s) => {
+    s.sentinels.weeklyReview = weekly;
+  });
+/** The `weeklyReview` payloads the engine's hourly pass emits. */
+async function weeklyPass(): Promise<Json[]> {
+  const seen: Json[] = [];
+  const off = w.ctx.events.subscribe((e) => {
+    const payload = e.payload as Json;
+    if (e.type === "sentinel.fired" && payload.sentinel === "weeklyReview") seen.push(payload);
+  });
+  try {
+    await w.ctx.sentinels.hourly();
+  } finally {
+    off();
+  }
+  return seen;
+}
+
+describe("C34 doneSince is the local day of the mtime", () => {
+  it("C34 an mtime at 23:30 of 2026-11-03 local (2026-11-04 in UTC) gives doneSince 2026-11-03", async () => {
+    const file = proj(notesOf("feito.md"), { status: "done" });
+    const at = new Date(2026, 10, 3, 23, 30).getTime();
+    expect(new Date(at).toISOString().slice(0, 10)).toBe("2026-11-04");
+    w.touch(file, at);
+    await w.index();
+    expect((await w.review()).archive.items).toEqual([
+      { path: file, title: "Nota", editable: true, doneSince: "2026-11-03" },
+    ]);
+  });
+});
+
+describe("C39 the archive's week on the local day", () => {
+  it("C39 at 23:30 of Sunday 2026-11-15 local (Monday in UTC), 2026-11-16 answers 409 week_mismatch and 2026-11-09 is accepted", async () => {
+    const sunday = new Date(2026, 10, 15, 23, 30).getTime();
+    expect(new Date(sunday).toISOString().slice(0, 10)).toBe("2026-11-16");
+    w.at(sunday);
+    const file = w.put(path.join(w.memory, "inbox", "a.md"), "# A\n");
+    await w.index();
+    const refused = await w.archive({ week: "2026-11-16", paths: [file] });
+    expect([refused.status, refused.body.error?.code]).toEqual([409, "week_mismatch"]);
+    const accepted = await w.archive({ week: "2026-11-09", paths: [file] });
+    expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+    expect(accepted.body.moved.map((m: Json) => m.from)).toEqual([file]);
+  });
+});
+
+describe("C45 the finish on the local day", () => {
+  it("C45 at 23:30 of 2026-11-09 local (2026-11-10 in UTC): the week, the journal of 2026-11-09 with the 23:30 bullet, and the projects whose local review day falls in the week", async () => {
+    w.at(NIGHT);
+    w.journal("2026-11-04", ["09:15 Ligar para a Ana"]);
+    const before = proj(notesOf("antes.md"), { status: "active" });
+    const inside = proj(notesOf("dentro.md"), { status: "active" });
+    // 22:30 of 2026-11-08 local is 01:30 of 2026-11-09 in UTC: last week's, locally
+    w.touch(before, new Date(2026, 10, 8, 22, 30).getTime());
+    w.touch(inside, new Date(2026, 10, 9, 0, 30).getTime());
+    await w.index();
+    expect((await w.decide({ key: keyOf("ligar para a ana"), action: "close" })).status).toBe(200);
+    const res = await w.finish({ week: "2026-11-09" });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const line =
+      "- 23:30 Revisão semanal de 2026-11-09: 1 laços decididos, 1 projetos revisados, 0 arquivados.";
+    const journal = path.join(w.memory, "journal", "2026-11-09.md");
+    expect(res.body).toMatchObject({
+      week: "2026-11-09",
+      counts: { loops: 1, projects: 1, archived: 0 },
+      journal: { path: journal, line },
+    });
+    expect(fs.readFileSync(journal, "utf8").split("\n")).toContain(line);
+    expect(fs.existsSync(path.join(w.memory, "journal", "2026-11-10.md"))).toBe(false);
+    expect(w.weeks().map((r) => r.week)).toEqual(["2026-11-09"]);
+  });
+});
+
+describe("C48 the header's week and next reminder on the local day", () => {
+  it("C48 nextReminder is 16:00 local (19:00 UTC) of Friday 2026-11-13 on Monday, of 2026-11-20 after the finish and on Saturday unfinished, 23:00 of Sunday 2026-11-15 with weekday 0 hour 23, null when off", async () => {
+    reminderOn({ enabled: true, weekday: 5, hour: 16 });
+    w.at(MONDAY);
+    let review = await w.review();
+    expect(review.week).toBe("2026-11-09");
+    expect(review.nextReminder).toBe(Date.UTC(2026, 10, 13, 19, 0));
+    w.at(new Date(2026, 10, 14, 10, 0).getTime());
+    expect((await w.review()).nextReminder).toBe(Date.UTC(2026, 10, 20, 19, 0));
+    w.at(MONDAY);
+    reminderOn({ enabled: true, weekday: 0, hour: 23 });
+    expect((await w.review()).nextReminder).toBe(Date.UTC(2026, 10, 16, 2, 0));
+    reminderOn({ enabled: false, weekday: 5, hour: 16 });
+    expect((await w.review()).nextReminder).toBeNull();
+    reminderOn({ enabled: true, weekday: 5, hour: 16 });
+    w.at(NIGHT);
+    expect((await w.finish({ week: "2026-11-09" })).status).toBe(200);
+    review = await w.review();
+    expect(review.week).toBe("2026-11-09");
+    expect(review.nextReminder).toBe(Date.UTC(2026, 10, 20, 19, 0));
+  });
+});
+
+describe("C50 Friday 16:00 local", () => {
+  it("C50 with two open loops and one project due, 15:59 of Friday 2026-11-13 local emits none and 16:00 (19:00 UTC) exactly one with the payload", async () => {
+    reminderOn({ enabled: true, weekday: 5, hour: 16 });
+    w.at(new Date(2026, 10, 13, 15, 59).getTime());
+    w.journal("2026-11-10", ["09:00 Primeiro", "09:00 Segundo"]);
+    proj(notesOf("vencido.md"), { status: "active", last_reviewed: "2026-11-01" });
+    proj(notesOf("em-dia.md"), { status: "active", last_reviewed: "2026-11-12" });
+    await w.index();
+    expect(await weeklyPass()).toEqual([]);
+    const four = new Date(2026, 10, 13, 16, 0).getTime();
+    expect(new Date(four).toISOString().slice(0, 16)).toBe("2026-11-13T19:00");
+    w.at(four);
+    expect(await weeklyPass()).toEqual([
+      {
+        sentinel: "weeklyReview",
+        title: expect.stringMatching(/\S/),
+        body: expect.stringMatching(/\S/),
+        severity: "info",
+        href: "/brain/weekly",
+        dedupeKey: "sentinel:weeklyReview:2026-11-09:all",
+        messageParams: { loops: 2, projects: 1 },
+      },
+    ]);
+  });
+});
+
+describe("C51 the window of a week", () => {
+  for (const [label, at, emits] of [
+    ["the first pass at 10:00 of Saturday 2026-11-14 emits one", new Date(2026, 10, 14, 10, 0), 1],
+    ["the first pass at 23:00 of Sunday 2026-11-15 emits one", new Date(2026, 10, 15, 23, 0), 1],
+    [
+      "the first pass at 00:30 of Monday 2026-11-16 (the Friday before never ran) emits none",
+      new Date(2026, 10, 16, 0, 30),
+      0,
+    ],
+    ["a pass at 16:00 of Thursday 2026-11-12 emits none", new Date(2026, 10, 12, 16, 0), 0],
+  ] as const)
+    it(`C51 ${label}`, async () => {
+      reminderOn({ enabled: true, weekday: 5, hour: 16 });
+      w.at(at.getTime());
+      const fired = await weeklyPass();
+      expect(fired).toHaveLength(emits);
+      if (emits) expect(fired[0]!.dedupeKey).toBe("sentinel:weeklyReview:2026-11-09:all");
+    });
+});
+
+describe("C53 the settings reach the rule on the local day", () => {
+  it("C53 weekday 0 hour 23: none at 23:00 of Saturday 2026-11-14 local, one at 23:00 of Sunday 2026-11-15 (02:00 UTC Monday); weekday 1 hour 0: one at 00:00 of Monday 2026-11-09", async () => {
+    reminderOn({ enabled: true, weekday: 0, hour: 23 });
+    w.at(new Date(2026, 10, 14, 23, 0).getTime());
+    expect(await weeklyPass()).toEqual([]);
+    const sunday = new Date(2026, 10, 15, 23, 0).getTime();
+    expect(new Date(sunday).toISOString().slice(0, 13)).toBe("2026-11-16T02");
+    w.at(sunday);
+    expect((await weeklyPass()).map((p) => p.dedupeKey)).toEqual(["sentinel:weeklyReview:2026-11-09:all"]);
+    await w.reset();
+    reminderOn({ enabled: true, weekday: 1, hour: 0 });
+    w.at(new Date(2026, 10, 9, 0, 0).getTime());
+    expect((await weeklyPass()).map((p) => p.dedupeKey)).toEqual(["sentinel:weeklyReview:2026-11-09:all"]);
+    reminderOn({ enabled: true, weekday: 5, hour: 16 });
+  });
 });

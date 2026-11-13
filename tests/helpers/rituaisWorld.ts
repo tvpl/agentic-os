@@ -26,11 +26,20 @@ export interface RituaisWorld extends MemoriaWorld {
   review: (query?: string) => Promise<Json>;
   /** `POST /api/memory/weekly-review/loops` as the owner. */
   decide: (body: Json) => Promise<{ status: number; body: Json }>;
+  /** `POST /api/memory/weekly-review/archive` as the owner. */
+  archive: (body: Json) => Promise<{ status: number; body: Json }>;
+  /** `POST /api/memory/weekly-review/finish` as the owner. */
+  finish: (body: Json) => Promise<{ status: number; body: Json }>;
   /** The stored rows of `loop_decisions`, by key. */
   rows: () => Json[];
+  /** The stored rows of `weekly_reviews`, by week. */
+  weeks: () => Json[];
   /** A hash of every file under the home (path and bytes), but the database and its journal. */
   homeHash: () => string;
-  /** Remove the files the weekly review reads and every stored decision, for a test that starts clean. */
+  /**
+   * Remove the files the weekly review reads, every stored decision and week, the weekly reminder's record and the
+   * proposal lists, for a test that starts clean.
+   */
   reset: () => Promise<void>;
 }
 
@@ -85,7 +94,10 @@ export async function rituaisWorld(
       return res.body;
     },
     decide: (body: Json) => w.call("POST", "/api/memory/weekly-review/loops", body),
+    archive: (body: Json) => w.call("POST", "/api/memory/weekly-review/archive", body),
+    finish: (body: Json) => w.call("POST", "/api/memory/weekly-review/finish", body),
     rows: () => w.ctx.db.prepare("SELECT * FROM loop_decisions ORDER BY key").all() as Json[],
+    weeks: () => w.ctx.db.prepare("SELECT * FROM weekly_reviews ORDER BY week").all() as Json[],
     homeHash() {
       const hash = crypto.createHash("sha256");
       for (const file of walk(w.home, []).sort()) {
@@ -100,6 +112,9 @@ export async function rituaisWorld(
       fs.rmSync(path.join(w.memory, "MEMORY.md"), { force: true });
       w.ctx.db.prepare("DELETE FROM loop_decisions").run();
       w.ctx.db.prepare("DELETE FROM review_state").run();
+      w.ctx.db.prepare("DELETE FROM weekly_reviews").run();
+      w.ctx.db.prepare("DELETE FROM meta WHERE key = 'sentinel.weeklyReview.week'").run();
+      fs.rmSync(path.join(w.ctx.paths.artifacts, "cleanup"), { recursive: true, force: true });
       await w.index();
     },
     async close() {

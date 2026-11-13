@@ -17,19 +17,24 @@ import {
 import { appendTask, withTaskAppended } from "../core/src/memory/notes.js";
 import { parseTasks } from "../core/src/memory/tasks.js";
 import {
+  archiveWeek,
   compareProjects,
+  finishWeek,
   nextAction,
   projectList,
   projectReviewBy,
+  weekCounts,
   weeklyReview,
   type ProjectItem,
 } from "../core/src/memory/weeklyReview.js";
+import { checkWeeklyReview, weeklyReviewDue } from "../core/src/sentinels/weeklyReview.js";
 import { MONDAY, keyOf, rituaisWorld, sha, type Json, type RituaisWorld } from "./helpers/rituaisWorld.js";
 
 /**
  * The deciding code of .specs/features/cerebro-rituais at its own layer, with no HTTP (`Test policy` rows 1 and 2): the
  * loop collector and its key, the window, the decision rules, the project list's filter, `nextAction`, `reviewBy`, the
- * order, door 3's tails and migration 33. The world gives a real home and its index; no route is called.
+ * order, door 3's tails and migration 33, and (batch B) the archive's path check, the finish counts and the sentinel's
+ * rule. The world gives a real home and its index; no route is called.
  */
 
 const DAY = 86_400_000;
@@ -469,5 +474,147 @@ describe("C31 the context at the layer", () => {
     expect(all.projects.total).toBe(3);
     expect(narrowed.loops).toEqual(all.loops);
     expect(narrowed.inbox).toEqual(all.inbox);
+  });
+});
+
+// ---- batch B: the archive's path check, the finish counts and the sentinel's rule ----------------------------------
+
+describe("C38 the archive's path check at the layer", () => {
+  it("C38 archiveWeek takes only paths of archive or inbox of the uncontexted list, and refuses a week that is not the current one, moving nothing", async () => {
+    const done = w.note(path.join(w.memory, "notes", "feito.md"), { type: "project", status: "done" });
+    const active = w.note(path.join(w.memory, "notes", "ativo.md"), { type: "project", status: "active" });
+    const inbox = w.put(path.join(w.memory, "inbox", "a.md"), "# A\n");
+    await w.index();
+    const deps = { ...env(), indexer: w.ctx.indexer };
+    expect(() => archiveWeek(deps, { week: "2026-11-09", paths: [active] }, Date.now())).toThrow(
+      expect.objectContaining({ statusCode: 400, code: "validation" }),
+    );
+    expect(() => archiveWeek(deps, { week: "2026-11-02", paths: [done] }, Date.now())).toThrow(
+      expect.objectContaining({ statusCode: 409, code: "week_mismatch" }),
+    );
+    expect(fs.existsSync(done) && fs.existsSync(inbox)).toBe(true);
+    const result = archiveWeek(deps, { week: "2026-11-09", paths: [done, inbox] }, Date.now());
+    expect(result.moved.map((m) => m.from)).toEqual([done, inbox]);
+  });
+});
+
+describe("C45 the finish counts at the layer", () => {
+  const note = (name: string, fields: Record<string, string>) =>
+    w.note(path.join(w.memory, "notes", name), { type: "project", status: "active", ...fields });
+  it("C45 loops: the decisions stored with this week only; projects: by the local review day in the week, mtime included (G28), outside memory/archive/; archived: the row's", async () => {
+    const insert = w.ctx.db.prepare(
+      "INSERT INTO loop_decisions (key, text, action, week, target, decided_at) VALUES (?, ?, ?, ?, NULL, 1)",
+    );
+    insert.run("a", "a", "closed", "2026-11-09");
+    insert.run("b", "b", "keep", "2026-11-09");
+    insert.run("c", "c", "someday", "2026-11-02");
+    const old = MONDAY - 30 * DAY;
+    const counted = [
+      note("cabeca.md", { last_reviewed: "2026-11-15" }),
+      note("pausado.md", { status: "paused", last_reviewed: "2026-11-09" }),
+      note("mtime.md", {}),
+      note("estado.md", { last_reviewed: "2026-10-01" }),
+    ];
+    const notCounted = [
+      note("domingo.md", { last_reviewed: "2026-11-08" }),
+      note("depois.md", { last_reviewed: "2026-11-16" }),
+      note("velho.md", {}),
+      w.note(path.join(w.memory, "archive", "2026-11-09-ab12cd34", "notes", "arq.md"), {
+        type: "project",
+        status: "done",
+        last_reviewed: "2026-11-10",
+      }),
+      w.note(path.join(w.memory, "notes", "status.md"), { type: "status", last_reviewed: "2026-11-10" }),
+    ];
+    for (const f of [...counted, ...notCounted]) w.touch(f, old);
+    w.touch(counted[2]!, MONDAY + 2 * DAY);
+    await w.index();
+    w.ctx.db
+      .prepare(
+        "INSERT INTO review_state (path, last_reviewed, snooze_until, never, updated_at) VALUES (?, ?, NULL, 0, 1)",
+      )
+      .run(counted[3], MONDAY + DAY);
+    w.ctx.db.prepare("INSERT INTO weekly_reviews (week, archived) VALUES ('2026-11-09', 4)").run();
+    expect(weekCounts(env(), "2026-11-09")).toEqual({ loops: 2, projects: 4, archived: 4 });
+    expect(weekCounts(env(), "2026-11-02")).toEqual({ loops: 1, projects: 1, archived: 0 });
+  });
+
+  it("C45 finishWeek writes the bullet of now once and answers what was stored after; another week is week_mismatch", async () => {
+    const night = new Date(2026, 10, 9, 23, 30).getTime();
+    const first = finishWeek(env(), { week: "2026-11-09" }, night);
+    expect(first).toEqual({
+      week: "2026-11-09",
+      finishedAt: night,
+      counts: { loops: 0, projects: 0, archived: 0 },
+      journal: {
+        path: path.join(w.memory, "journal", "2026-11-09.md"),
+        line: "- 23:30 Revisão semanal de 2026-11-09: 0 laços decididos, 0 projetos revisados, 0 arquivados.",
+      },
+    });
+    expect(finishWeek(env(), { week: "2026-11-09" }, night + 60 * 60_000)).toEqual(first);
+    const text = fs.readFileSync(first.journal.path, "utf8");
+    expect(text.split(first.journal.line).length - 1).toBe(1);
+    expect(() => finishWeek(env(), { week: "2026-11-16" }, night)).toThrow(
+      expect.objectContaining({ statusCode: 409, code: "week_mismatch" }),
+    );
+  });
+});
+
+describe("C50 the sentinel's rule at the layer", () => {
+  const cfg = { enabled: true, weekday: 5, hour: 16 };
+  const at = (d: number, h: number, m = 0) => new Date(2026, 10, d, h, m).getTime();
+  it("C50 one row per case: before the hour, at the hour, later that week, the next Monday, the week recorded, the week finished", () => {
+    expect(weeklyReviewDue(w.ctx.db, cfg, at(13, 15, 59))).toBe(false);
+    expect(weeklyReviewDue(w.ctx.db, cfg, at(13, 16))).toBe(true);
+    expect(weeklyReviewDue(w.ctx.db, cfg, at(15, 23, 59))).toBe(true);
+    expect(weeklyReviewDue(w.ctx.db, cfg, at(16, 0, 30))).toBe(false);
+    w.ctx.db
+      .prepare("INSERT INTO meta (key, value) VALUES ('sentinel.weeklyReview.week', '\"2026-11-09\"')")
+      .run();
+    expect(weeklyReviewDue(w.ctx.db, cfg, at(14, 10))).toBe(false);
+    expect(weeklyReviewDue(w.ctx.db, cfg, at(20, 16))).toBe(true);
+    w.ctx.db.prepare("INSERT INTO weekly_reviews (week, finished_at) VALUES ('2026-11-16', 1)").run();
+    expect(weeklyReviewDue(w.ctx.db, cfg, at(20, 16))).toBe(false);
+  });
+
+  it("C50 checkWeeklyReview at 15:59 emits none and at 16:00 one payload with the counts, and records the week", async () => {
+    w.journal("2026-11-10", ["09:00 Primeiro", "09:00 Segundo"]);
+    w.note(path.join(w.memory, "notes", "vencido.md"), {
+      type: "project",
+      status: "active",
+      last_reviewed: "2026-11-01",
+    });
+    await w.index();
+    const seen: Json[] = [];
+    const off = w.ctx.events.subscribe((e) => {
+      if (e.type === "sentinel.fired" && (e.payload as Json).sentinel === "weeklyReview")
+        seen.push(e.payload as Json);
+    });
+    try {
+      const deps = (now: number) => ({
+        db: w.ctx.db,
+        paths: w.ctx.paths,
+        getSettings: () => w.ctx.settings(),
+        bus: w.ctx.events,
+        now: () => now,
+      });
+      expect(checkWeeklyReview(deps(at(13, 15, 59)))).toEqual([]);
+      const fired = checkWeeklyReview(deps(at(13, 16)));
+      expect(fired).toEqual([
+        {
+          sentinel: "weeklyReview",
+          title: expect.stringMatching(/\S/),
+          body: expect.stringMatching(/\S/),
+          severity: "info",
+          href: "/brain/weekly",
+          dedupeKey: "sentinel:weeklyReview:2026-11-09:all",
+          messageParams: { loops: 2, projects: 1 },
+        },
+      ]);
+      expect(seen).toEqual(fired);
+      expect(checkWeeklyReview(deps(at(13, 17)))).toEqual([]);
+    } finally {
+      off();
+    }
   });
 });

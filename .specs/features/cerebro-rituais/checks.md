@@ -1074,3 +1074,13 @@ Status of batch A (updated in the commit that closes each piece):
   `decided_at` is asserted under a frozen `Date`; C23's "review_state later" case seeds the row (its writer is C26's).
 - **Abandoned:** reading the loops through the dashboards' `generatedSections` (it reads only the current week);
   recording a `project` note's properties with a second write (two history versions where C11 asks for one).
+
+Status of batch B (updated in the commit that closes each piece):
+
+- the archive of the week (S4: C34-C44), the finish (S6: C45-C48) and the weekly reminder (S7: C49-C57), with the routes
+  `POST /api/memory/weekly-review/archive` and `POST /api/memory/weekly-review/finish`, the `GET`'s `counts` and
+  `nextReminder`, `settings.sentinels.weeklyReview` and the sentinel `weeklyReview`: closed, every proof green in
+  `tests/rituais.archive.test.ts`, `tests/rituais.finish.test.ts`, `tests/rituais.sentinel.test.ts`,
+  `tests/rituais.localday.test.ts`, `tests/rituais.layer.test.ts` and `tests/rituais.contract.test.ts` (C57), and in
+  `tests/cleanup.apply.test.ts` C41-C44 and C48, `tests/memoria.history.test.ts` C22 (C43), `tests/data.settings.test.ts`
+  C19 and C63 (C49), `tests/natureza.sentinel.test.ts` C40 (C55) and `tests/events.contract.test.ts` C27 and C29 (C57)
