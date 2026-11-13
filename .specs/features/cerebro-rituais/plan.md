@@ -398,6 +398,10 @@ G23, G25-G39) ficam nos padrões que o `checks.md` afirma, cada uma com o check 
 4. **Emenda 4 (G24).** Cada item de `items` de `GET /api/memory/mentions` leva `version` (a versão da origem que a lista leu), que
    "Linkar" envia como `baseVersion`.
 
+5. **Emenda 5 (achada no lote B).** `POST /api/memory/weekly-review/finish` pode responder também `403 forbidden_path`, `404 not_a_file` e
+   `413 file_too_large`, quando o arquivo do diário de hoje é hostil (um link no caminho, algo que não é arquivo, arquivo grande demais);
+   a rota os declara e nada é gravado. A linha aprovada da `Surface` (`200`, `400`, `403`, `409`) segue como está.
+
 Conformidade com a regra da skill: são acréscimos de chaves de resposta e de um campo opcional de entrada; nenhuma linha aprovada foi
 reescrita e nenhuma chave aprovada mudou de nome ou de tipo.
 
