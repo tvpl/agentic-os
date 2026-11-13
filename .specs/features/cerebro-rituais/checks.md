@@ -1040,3 +1040,37 @@ Status of batch A (updated in the commit that closes each piece):
   `tests/rituais.projects.test.ts`, `tests/rituais.tasks.test.ts`, `tests/rituais.localday.test.ts`,
   `tests/rituais.layer.test.ts` and `tests/rituais.contract.test.ts` (C29), and in `tests/paineis.localday.test.ts`
   C27 and `tests/paineis.tasks.test.ts` C47 and C50
+
+- **Boundary (batch A):** C1-C33 closed at `aa20017` (code and pins in `cf6f1f0`, proofs and this status in `aa20017`).
+  On that tree `npm run typecheck` and `npm run lint` exit 0, every `Proof:` line of C1-C33 passes and runs only its
+  check's tests, and `npx vitest run` at the root has one failure, `tests/paineis.refresh.test.ts` C13 (the `execucoes`
+  widget answers `empty`), which fails the same way on the untouched base `376013b` (a date-dependent proof, not this
+  batch). What batch A already moved, so that B and C add on top: routes 164 → 167 (`api.contract`, `contracts.api`,
+  `api.openapi`, the refusal and event scenarios), non-public 162 → 165 and `owner` 86 → 89 (`device-scopes` with its
+  chained amendments in `sdk.api-thin` C29, `docs/security.md`, `paineis.contract` C60, `memoria.contract` C82), raised
+  codes 86 → 87 (`404 loop_not_found`), migrations 32 → 33 (`rituais`, in every migration pin), the settings leaves
+  `memory.weeklyReview.*` (`data.settings` C46, the `settings.changed` v1 fixture) and `appendTask`, `decideLoop`,
+  `weeklyReview` in the internal barrel (`sdk.surface` C38). Not built: the `GET`'s `counts` and `nextReminder` (C48,
+  batch B adds them to the response schema), `settings.sentinels.weeklyReview`, the archive and finish routes; the
+  `GET` already answers `week`, `finishedAt` (read from `weekly_reviews`), `archive` (exactly `path`, `title`,
+  `editable`, `doneSince`), `inbox` and `reviewsDue`.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape, none a new one-way door:
+  (a) the core is `core/src/memory/loops.ts` (the collector, the key, `sectionBullets` extracted from the dashboards'
+  `sectionItems` and shared by both, the decisions) and `core/src/memory/weeklyReview.ts` (the list); the routes are
+  `apps/api/src/routes/weeklyReview.ts` and `memory.tasks.add` in `routes/memory.ts`; `Flow` hop 1 now says so; (b) the
+  route ids are `memory.weeklyReview.list`, `memory.weeklyReview.loops` and `memory.tasks.add`; (c) `previous` and
+  `restore` carry `{ action, week, target, decidedAt }`, `state` is the stored action or null; (d) the journal's agent
+  mark `(autor:: agente)` is stripped like G2's marks, so a loop an agent wrote keys as the owner's; (e) `keep` again in
+  a later week rewrites `week` and `decided_at`; an identical decision rewrites nothing (G8); (f) a `project` note is
+  made by `createNote` with a new optional `properties` input (bare `key: value` lines after `title`), in the folder
+  `memory/notes/<context id>` through `folder`; a project note gone since is made again; (g) a `task` whose project is
+  missing answers `403 note_not_editable` (the route's codes have no `note_missing`), and `appendTask` maps a folder
+  where the note was to `404 note_missing` (`POST /api/memory/tasks` declares no `not_a_file`); (h) an unknown `context`
+  is `400 validation` on both the `GET` and the loops `POST`; (i) `archive` is ordered by `doneSince` then path and
+  `inbox` by `mtime` then path; (j) the `API` table's type is now written as the intersection of its parts
+  (`contracts/src/api/index.ts`), because three more entries made the inferred type too long for a declaration file
+  (TS7056); (k) a review state with `never` stops a project's `reviewBy` as it stops C6's queue; (l) proof readings:
+  C2's and C23's layer side change the option in the store, the route side through `PUT /api/settings`; C7's
+  `decided_at` is asserted under a frozen `Date`; C23's "review_state later" case seeds the row (its writer is C26's).
+- **Abandoned:** reading the loops through the dashboards' `generatedSections` (it reads only the current week);
+  recording a `project` note's properties with a second write (two history versions where C11 asks for one).
