@@ -584,6 +584,13 @@ export const en = {
   "weekly.loading": "Loading…",
   "weekly.status": "{n} open loops",
   "weekly.finishedButton": "Finished on {day}",
+  "mentions.title": "Unlinked mentions ({n})",
+  "mentions.link": "Link",
+  "mentions.terms": "Looking for: {terms}",
+  "mentions.none": "No unlinked mention.",
+  "mentions.short": "This note's name is too short to look for mentions.",
+  "mentions.linked": "Linked in {note}.",
+  "mentions.gone": "The note changed; the mention is no longer on that line.",
 } as const;
 
 export const ptBR = {
@@ -1168,4 +1175,11 @@ export const ptBR = {
   "weekly.loading": "Carregando…",
   "weekly.status": "{n} laços abertos",
   "weekly.finishedButton": "Concluída em {day}",
+  "mentions.title": "Menções sem link ({n})",
+  "mentions.link": "Linkar",
+  "mentions.terms": "Procurando: {terms}",
+  "mentions.none": "Nenhuma menção sem link.",
+  "mentions.short": "O nome desta nota é curto demais para procurar menções.",
+  "mentions.linked": "Linkado em {note}.",
+  "mentions.gone": "A nota mudou; a menção não está mais nessa linha.",
 } satisfies Record<keyof typeof en, string>;

@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import postcss from "postcss";
+import stylelint from "stylelint";
 import type * as ApiModule from "../../api";
 import { installPage, motion } from "../../ui/testkit";
 import { resetNet } from "../notes/testnet";
@@ -40,6 +41,9 @@ beforeEach(() => {
 
 const FILE = join(__dirname, "weekly.css");
 const CSS = readFileSync(FILE, "utf8");
+/** The mention fold's stylesheet (design.md "Painel da nota - dobra Menções sem link"), the one its component imports. */
+const FOLD_FILE = join(__dirname, "..", "notes", "mentions.css");
+const FOLD_CSS = readFileSync(FOLD_FILE, "utf8");
 
 /** The `animation`/`transition` declarations not inside `@media (prefers-reduced-motion: no-preference)`. */
 function motionOutsideNoPreference(css: string): string[] {
@@ -91,6 +95,12 @@ describe("C92 nothing moves for someone who asked for less, and what moves is ti
   it("C92 every animation and transition of weekly.css is inside the no-preference block, and there are some", () => {
     expect(motionOutsideNoPreference(CSS)).toEqual([]);
     expect((CSS.match(/animation:/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("C92 every animation and transition of the fold's stylesheet, mentions.css, the one MentionsFold imports, is inside the no-preference block", () => {
+    const fold = readFileSync(join(__dirname, "..", "notes", "MentionsFold.tsx"), "utf8");
+    expect([...fold.matchAll(/^import "(.+\.css)";$/gm)].map((m) => m[1])).toEqual(["./mentions.css"]);
+    expect(motionOutsideNoPreference(FOLD_CSS)).toEqual([]);
   });
 
   it("C92 an item that leaves folds by height and opacity in 150 ms; a step slides 12px with opacity in 200 ms (back by -12px)", () => {
@@ -197,4 +207,19 @@ describe("C92 nothing moves for someone who asked for less, and what moves is ti
         // "Pronto" of an open week with nothing missing has no icon; every other state has some.
         if (!(step === 5 && name === "empty")) expect(reduced.icons).toBeGreaterThan(0);
       });
+});
+
+describe("C98 the new stylesheets and the repository's stylelint config", () => {
+  const config = join(__dirname, "..", "..", "..", "..", "..", "stylelint.config.mjs");
+  const warnings = async (code: string, codeFilename: string) => {
+    const { results } = await stylelint.lint({ code, codeFilename, configFile: config });
+    return results.flatMap((r) => r.warnings.map((w) => `${w.rule}: ${w.text}`));
+  };
+
+  it("C98 stylelint (tokens only) reports no warning on weekly.css and mentions.css, and does report a colour literal", async () => {
+    expect(await warnings(CSS, FILE)).toEqual([]);
+    expect(await warnings(FOLD_CSS, FOLD_FILE)).toEqual([]);
+    expect((await warnings(".wk-x { color: #fff; }\n", FILE)).join("\n")).toContain("color-no-hex");
+    expect((await warnings(".mf-x { color: #fff; }\n", FOLD_FILE)).join("\n")).toContain("color-no-hex");
+  });
 });

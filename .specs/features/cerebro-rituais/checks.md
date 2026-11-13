@@ -1213,3 +1213,9 @@ Status of batch D (updated in the commit that closes each piece):
   `/settings?tab=notifications`; (e) proof readings: C84's "Virar tarefa" opens the menu before the clock is frozen;
   C87's alert is looked for inside the page (the toast provider's live region is an alert too).
 - **Abandoned:** nothing.
+
+Status of batch E (updated in the commit that closes each piece):
+
+- the mention fold (C93, C94): closed, every proof green in `apps/command-centre/src/brain/notes/MentionsFold.test.tsx`;
+  C92's claim about the fold's stylesheet (`brain/notes/mentions.css`, the one `MentionsFold.tsx` imports) closed in
+  `weeklyMotion.test.ts`

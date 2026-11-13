@@ -15,6 +15,7 @@ export type TreeRoot = TreeLevel["roots"][number];
 export type NoteLinks = ApiCallResult<"GET /api/memory/links">;
 export type NoteDoc = ApiCallResult<"GET /api/memory/note">;
 export type NoteProperty = NoteDoc["properties"][number];
+export type Mentions = ApiCallResult<"GET /api/memory/mentions">;
 
 export interface TreeAsk {
   context?: string;
@@ -89,5 +90,22 @@ export function useNoteLinks(id: number | null) {
     {
       enabled: id !== null,
     },
+  );
+}
+
+/** The unlinked mentions of a note (`GET /api/memory/mentions`, cerebro-rituais door 6) in the active context. */
+export const mentionsKey = (id: number | null, context?: string) => [
+  "memory",
+  "mentions",
+  id,
+  context ?? null,
+];
+export function useMentions(id: number | null, context?: string) {
+  const query = { id: id ?? 0, ...(context ? { context } : {}) };
+  return useRouteQuery(
+    mentionsKey(id, context),
+    "GET /api/memory/mentions",
+    { query },
+    { enabled: id !== null },
   );
 }

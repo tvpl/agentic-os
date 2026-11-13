@@ -274,6 +274,8 @@ const MICROCOPY: Record<string, string> = {
   ".bs-sheet-path": "a file path",
   ".notes-why":
     "why a note is related, in 12px under its title (cerebro-vista-notas design.md, Painel da nota)",
+  ".mf-dim":
+    "what the unlinked mentions look for and how many are shown, in 12px under the list (cerebro-rituais design.md, Painel da nota - dobra Menções sem link)",
   ".file-path": "a file path",
   ".microapp-row .ma-desc": "a file path (the row's `rel`)",
   ".run-id": "a run id",

@@ -101,6 +101,11 @@ export const net = {
   /** The `access` of a folder of the tree, by `<root>|<rel>` (cerebro-memoria-confiavel, C123). */
   access: {} as Record<string, { agents: string; devices: string }>,
   writes: new Map<string, (body: unknown) => Promise<unknown>>(),
+  /**
+   * What `GET /api/memory/mentions` answers (cerebro-rituais, C93), by `<id>|<context>` (`<id>|` with no context): only
+   * that exact query is answered, any other query is a `400`; with no entry at all, every ask waits forever.
+   */
+  mentions: {} as Record<string, unknown>,
 };
 
 export function resetNet(): void {
@@ -127,6 +132,7 @@ export function resetNet(): void {
   net.folderAccess = [];
   net.access = {};
   net.writes.clear();
+  net.mentions = {};
 }
 
 /** A note of the table, its `content` defaulting to its title as a heading. */
@@ -301,6 +307,16 @@ function read(url: string): Promise<unknown> {
             .filter((f) => fold(f.title ?? f.rel).includes(q))
             .map((f) => ({ ...fileRow(f), snippet: null, score: 1, via: "text" })),
         );
+      }
+      case "/api/memory/mentions": {
+        const q = u.searchParams;
+        const key = `${q.get("id")}|${q.get("context") ?? ""}`;
+        if ([...q.keys()].some((k) => k !== "id" && k !== "context") || !(key in net.mentions)) {
+          if (Object.keys(net.mentions).length > 0)
+            return Promise.reject(new NetError(400, "validation", `not asked: ${q.toString()}`));
+          return new Promise(() => undefined);
+        }
+        return Promise.resolve(structuredClone(net.mentions[key]));
       }
       case "/api/memory/graph":
         return Promise.resolve({ nodes: [], edges: [], truncated: false, totalFiles: 0 });
