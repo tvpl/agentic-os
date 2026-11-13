@@ -1139,3 +1139,43 @@ Status of batch C (updated in the commit that closes each piece):
   archive's row of `Coverage` (5 pairs) does not hold; the route cannot drop it (C72: every error a handler raises is
   documented). Waiting for the owner: an amendment like amendment 5 that adds the pair to the archive, or another
   reading of C71
+
+- **Boundary (batch C):** C58-C70 and C72-C75 closed at `1b7004d` (the core, the routes and their pins in `4339a07`, the
+  proofs and the status in `f6c2864`, the event scenarios pin of `tests/events.contract.test.ts` C28 in `1b7004d`); C71
+  open (above), so batch C is not wholly green and D waits for the owner's answer on it. On that tree
+  `npm run typecheck` and `npm run lint` exit 0, every `Proof:` line of C58-C70 and C72-C75 passes and runs only its
+  check's tests, and `npx vitest run` at the root has one failure, `tests/paineis.refresh.test.ts` C13, the pre-existing
+  one batches A and B named (with C71's proof in the working tree, that one too). What batch C moved, so that D and E add
+  on top (they add no route): routes 169 → 171 (`api.contract`, `contracts.api`, `api.openapi` with its checked
+  answers 167 → 169, the refusal and event scenarios in `contractWorld`), non-public 167 → 169, `owner` 91 → 92 and
+  `content` 36 → 37, scoped 76 → 77 (`device-scopes` with its chained amendments in `sdk.api-thin` C29,
+  `docs/security.md`, `paineis.contract` C60, `memoria.contract` C82, `routeScopes`), raised codes 88 → 89
+  (`409 mention_gone`), `linkMention` and `mentionsOf` in the internal barrel (`sdk.surface` C38), and the device probe
+  of `memoria.access-paths` C159 gains `memory.mentions.list`. `EFFECT_ROUTES` stays 23; migrations stay 33.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape, none a new one-way door:
+  (a) the core is `core/src/memory/mentions.ts` (`mentionTerms`, `mentionLines`, `findMention`, `mentionExcerpt`,
+  `mentionsOf`, `linkMention`); the routes are `memory.mentions.list` and `memory.mentions.link` in
+  `routes/memory.ts`; `Flow` hop 7 now names the module; (b) `aliases` is read by `parseFrontMatter` (inline or block
+  list, like `tags`, without the `#` strip) and stored as the JSON of the list in `files.fields.aliases`, outside
+  `FRONT_MATTER_FIELDS` (no 64-character cap, C24's list unchanged), the header winning over an inline `aliases::`; so
+  every `FileRow.fields` the API answers now carries it for a note that has aliases; (c) the candidates are the rows a
+  full-text phrase `content : "<term>"` finds in the caller's table (`files_fts` for the owner, the audience's copy
+  otherwise), then a row lookup that fails closed, the caller's `storedRowFilter`, Markdown only, never the target, no
+  backlink to it (`linksOf` with the same filter), and the context through `reviews.ts`' `contextFilter` (its paths and
+  `memory/notes/<id>/`); the lines come from the text `files_fts` stores (its first 200 000 characters); a term with no
+  word the tokenizer reads finds nothing; (d) the matcher's word is `[\p{L}\p{N}_]`, and a combining mark right after a
+  match is part of it; `term` is the first entry of `terms`, in their order, that the line holds (not the leftmost in
+  the line: the proofs use lines where both readings agree); (e) the excerpt is the line when it has 160 characters or
+  fewer, else a window of 160 centred on the match, with no ellipsis; `version` is read by `readNote` for the answered
+  sources only; (f) the link checks the source (`403`), then the target (`404 not_found`), the read
+  (`404 note_missing`, `413`), the version (`409 edit_conflict`, G16), then the match (`409 mention_gone`); a link on the way
+  is `403 note_not_editable` and a folder in place of the note `404 note_missing` (the route's `Coverage` has no
+  `forbidden_path` nor `not_a_file`; the refusal probe agrees); the term sent is not checked against the target's terms;
+  the answer waits up to 2 s for the pass over the source; (g) an unknown `context` is `400 validation` over the
+  caller's view of the contexts (G26); (h) proof readings: C64's twin is the same world with `fin` excluded and the index
+  passed again (as `memoria.access` C113), and "two more folders" hold a note that mentions nothing and one that links
+  the target; C66's row of before is made by taking `aliases` out of the stored fields; C73's "before this feature" is
+  `dfe891e`.
+- **Abandoned:** reading every Markdown row's stored text with no full-text prefilter (it reads the whole index per
+  request and passes by the audience copies `Flow` names); checking the match before the version (G16 puts
+  `edit_conflict` first).
