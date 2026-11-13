@@ -1222,3 +1222,7 @@ Status of batch E (updated in the commit that closes each piece):
 - the sentinel row and the notification (C95, C96): closed, the proofs green in
   `apps/command-centre/src/views/settings/sentinels.test.tsx` (C95) and `hooks/notificationText.test.ts` (C96);
   `cerebro-natureza` C88's neighbour is now "Revisão semanal" (G25), and C76's inbox row is found by its pt-BR text
+- the copy (C97): closed, the proof green in `apps/command-centre/src/brain/weekly/weeklyCopy.test.ts` (the 41 rows of
+  design.md "Texto" read from the file, the journal line left out, the toast of G21, the parity of `brain.ts` and
+  `apps.ts`); design.md's en cell of the lock sentence now quotes the C6 key `reviews.readonly` as written ("…MordomoOS;
+  the file does not change.", `46405c4`)
