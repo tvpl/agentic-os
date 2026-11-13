@@ -1084,3 +1084,42 @@ Status of batch B (updated in the commit that closes each piece):
   `tests/rituais.localday.test.ts`, `tests/rituais.layer.test.ts` and `tests/rituais.contract.test.ts` (C57), and in
   `tests/cleanup.apply.test.ts` C41-C44 and C48, `tests/memoria.history.test.ts` C22 (C43), `tests/data.settings.test.ts`
   C19 and C63 (C49), `tests/natureza.sentinel.test.ts` C40 (C55) and `tests/events.contract.test.ts` C27 and C29 (C57)
+
+- **Boundary (batch B):** C34-C57 closed at `d85b165` (the mover taken out in `188e539`, the archive, the finish, the
+  `GET`'s `counts` and `nextReminder`, `settings.sentinels.weeklyReview` and their pins in `06600c7`, the sentinel in
+  `0184151`, proofs and the status in `d85b165`). On that tree `npm run typecheck` and `npm run lint` exit 0, every
+  `Proof:` line of C34-C57 passes and runs only its check's tests, and `npx vitest run` at the root has one failure,
+  `tests/paineis.refresh.test.ts` C13, the same pre-existing one batch A named. What batch B moved, so that C adds on top:
+  routes 167 → 169 (`api.contract`, `contracts.api`, `api.openapi` with its checked answers 165 → 167, the refusal and
+  event scenarios in `contractWorld`), non-public 165 → 167 and `owner` 89 → 91 (`device-scopes` with its chained
+  amendments in `sdk.api-thin` C29, `docs/security.md`, `paineis.contract` C60, `memoria.contract` C82, `routeScopes`),
+  raised codes 87 → 88 (`409 week_mismatch`), `SENTINEL_IDS` 6 → 7 and the v1 `sentinel.fired` enum (`docs/events.md`
+  regenerated, fixture `sentinel.fired.weeklyReview.json`), the default-on booleans and `CLOSED_WHEN_DROPPED` gain
+  `sentinels.weeklyReview.enabled` (`data.settings` C19, C63, C46 with `weekday` and `hour`, `failClosed.ts`, the
+  `settings.changed` v1 fixture), and `archiveWeek`, `finishWeek` in the internal barrel (`sdk.surface` C38). Not built:
+  the desktop sentinel row and the notification text (batch E); `OS_EVENT_TYPES` unchanged (29).
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape, none a new one-way door:
+  (a) the mover is `moveToArchive(deps, files, { now, scope, heading, extra })` in `cleanupApply.ts`, which now takes the
+  restore lock itself; `applyCleanup` reads its decisions and calls it with the same scope and heading; (b) the archive
+  and the finish are `archiveWeek` and `finishWeek` in `weeklyReview.ts` (with `weekCounts`, `nextReminder`,
+  `reminderIn`, `reminderCounts`), the list is built from one uncut `reviewLists` and fills `version` only for the items
+  it answers; route ids `memory.weeklyReview.archive` and `memory.weeklyReview.finish`; (c) the archive checks the week
+  (`409`) before the paths (`400`), de-duplicates `paths`, checks them against the uncut lists (so 100 inbox files pass
+  with `maxItems` 50), writes its proposal lines as `- [ ] <path> — arquivar — projeto concluído|caixa de entrada` under
+  `# Revisão semanal: propostas de <day>` and `Escopo: weekly:<week>`, records a history version per move as the cleanup,
+  and waits up to 2 s for the index of what moved after the synchronous part (so the next `GET` no longer lists it);
+  (d) `finish` writes the journal before the row, builds the bullet with the stamp of `now` itself (`appendJournal`
+  stamps with `new Date()`, so it is called with `timestamp: false`), and a repeat answers `journal` with the finish day's
+  path and the bullet rebuilt from the stored time and counts; the refusal probe found that a hostile journal answers
+  `403 forbidden_path`, `404 not_a_file` and `413 file_too_large`, so the finish route declares them; (e) `weekCounts`
+  counts every `type: project` note outside `memory/archive/` whatever its `status` (G28); the reminder's `projects` is
+  the `projects` list with `reviewDue` (G32); (f) the sentinel lives in `core/src/sentinels/weeklyReview.ts`, emits even
+  with zero counts, carries no `count`, title "Time for the weekly review" and body "N open loops, M projects to review."
+  (English like `reviewDue`; the screens' text is batch E), and `HourlyReport` gains `weeklyReview`; (g) `nextReminder`
+  is this week's instant when unfinished and later than now, else next week's; (h) proof readings: C45's "one stored and
+  restored to none" is the `project` decision whose note stays (otherwise the project made from a loop would be a fourth
+  decision this week); C55 drops `loop_decisions` and makes it again from migration 33's SQL; C49's fresh home deletes the
+  two keys from `settings.json`; "now" is asserted between the instants around the call under the moving clock; `PUT
+/api/settings` replaces `sentinels` whole (existing behaviour), so the proofs and the screen send the whole object.
+- **Abandoned:** deciding the sentinel's window through `nextReminder(now - 1)` (wrong once the hour has passed);
+  `vi.restoreAllMocks()` in the archive proofs (it also restores the world's clock).
