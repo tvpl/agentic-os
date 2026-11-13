@@ -44,7 +44,7 @@ laço horário dos sentinelas e o histórico da C7.
 ```mermaid
 flowchart TD
     UI["página /brain/weekly (door 2)"] --> GET["GET /api/memory/weekly-review (door 2)"]
-    GET --> RD["sectionBullets (extracted from the dashboards' sectionItems into loops.ts)"]
+    GET --> RD["sectionBullets (exists, loops.ts, shared with the dashboards' sectionItems)"]
     GET --> LR["lastReviewedDay (exists, reviews.ts)"]
     GET --> TK["note_tasks (exists)"]
     GET --> LD["loop_decisions (door 1)"]
