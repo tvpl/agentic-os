@@ -1183,3 +1183,33 @@ Status of batch D (updated in the commit that closes each piece):
   `weeklyMotion.test.ts` (C92) and `commands/commands.source.test.ts` (C77); C76's browser proof
   (`tests/e2e/weekly.spec.ts`) is batch E's, with the spec file, and C92's claim about the fold's stylesheet joins when
   batch E writes the fold (the page's `weekly.css` is the one read now)
+
+- **Boundary (batch D):** C76-C92 closed at `6c0268b` (the page, the entries, the `weekly.*` keys and the moved
+  placement pins in `127a1e0`, the proofs and the status in `6c0268b`). On that tree `npm run typecheck`, `npm run lint`
+  (with `lint:css`) exit 0, every component `Proof:` line of C76-C92 passes and runs only its check's tests,
+  `npm run test -w apps/command-centre` is green (192 files, 1788 tests), and `npx vitest run` at the root has one
+  failure, `tests/paineis.refresh.test.ts` C13, the pre-existing one batches A-C named. What batch D moved, so that E adds
+  on top: the toolbar row and the Núcleo menu gain "Revisão semanal" as their last entry (`cerebro-natureza` C70 now reads
+  "Revisões is the row before Revisão semanal" and its row of five buttons; `cerebro-faxina-guiada` C51 the same, G17),
+  primitivas C25's titles that stay gain two (`WORDS`), limpeza-legado C1's unreached list gains
+  `brain/weekly/testkit.tsx`, the registry gains `action:weekly-review` (global, palette) and the `view:weekly` keys
+  `j`, `k`, `f`, `m`, `r`; the listener allowlist does not grow. A fresh build reads JS gzip 600 936 B and CSS gzip about
+  83.1 KB (the page's chunk 6.9 KB JS and 1.3 KB CSS gzip), inside C100's ceiling before the fold. Not built (batch E):
+  the fold, the sentinel row, the notification text (the inbox row of C76 shows the server's English title until then),
+  the gallery entry, `weeklyCopy.test.ts` and `tests/e2e/weekly.spec.ts` (C76's browser proof).
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape, none a new one-way door:
+  (a) the page is `brain/weekly/WeeklyReview.tsx` (+ `weekly.css`), a lazy chunk (`WeeklyView` in `BrainViewSwitch.tsx`,
+  brain mode `weekly`, `WEEKLY_PATH` there); the list hook, `shortDay` (`d/MM`, G18) and the toolbar button are in
+  `brain/weeklyEntry.tsx`, and the list is read only once the preferences are (otherwise the first read would be the
+  whole brain's); (b) every design string is its own `weekly.*` key in `locales/brain.ts`, except the lock sentence
+  (`reviews.readonly`, "a chave da C6"), the context shortcut (`reviews.context`), the `j`/`k` titles
+  (`reviews.cmd.next`/`prev`) and the health texts (`dash.state.*`, "o selo dos painéis"); the four skip reasons are
+  `weekly.skip.*` ("mudou", not the faxina's "mudou depois da varredura"); the inbox "Arquivar" notice reads
+  "Arquivados: N." with "Desfazer"; (c) the notice is the screen's own `role="status"` line, as "Revisões" (not the
+  primitives' `Toast`); a decision updates a local version per path (from each answer) that the next write sends; the
+  list is asked again after `project`, on entering "Pronto" and after `finish` (G23's next reminder), never after other
+  decisions; (d) `m` on a someday loop is "Manter em algum dia"; every step's empty state carries its own "Próxima
+  etapa"; a finished week hides "Concluir revisão"; "Abrir" opens the note editor; "Ligar em Configurações" goes to
+  `/settings?tab=notifications`; (e) proof readings: C84's "Virar tarefa" opens the menu before the clock is frozen;
+  C87's alert is looked for inside the page (the toast provider's live region is an alert too).
+- **Abandoned:** nothing.
