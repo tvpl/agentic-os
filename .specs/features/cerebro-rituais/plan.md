@@ -88,8 +88,9 @@ flowchart TD
    `POST /api/memory/cleanup/undo` de sempre
 5. "Concluir revisão" vai a `POST /api/memory/weekly-review/finish`: grava `weekly_reviews` (door 1) e acrescenta uma linha
    ao `## Today` do diário por `appendJournal` (exists)
-6. o laço horário dos sentinelas (`core/src/sentinels/runner.ts`, exists) roda o sentinela `weeklyReview` (door 4), que vira
-   notificação `system` pelo recorder (exists)
+6. o laço horário dos sentinelas (`core/src/sentinels/runner.ts`, exists) roda o sentinela `weeklyReview` (door 4,
+   `core/src/sentinels/weeklyReview.ts`, que conta pelo núcleo da revisão semanal), que vira notificação `system` pelo
+   recorder (exists)
 7. o painel da nota (`NotePanel.tsx`, exists) pede `GET /api/memory/mentions` (door 6), que procura os termos da nota em
    `files_fts` e nas cópias por público da C7 (exists) e descarta quem já liga por `note_links` (exists); "Linkar" vai a
    `POST /api/memory/mentions/link` (door 7), que grava por `saveNote` com versão no histórico (exists)

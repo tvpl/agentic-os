@@ -1,0 +1,15 @@
+{
+  "id": 53,
+  "type": "sentinel.fired",
+  "ts": 1794596400000,
+  "v": 1,
+  "payload": {
+    "sentinel": "weeklyReview",
+    "title": "Time for the weekly review",
+    "body": "2 open loops, 1 projects to review.",
+    "severity": "info",
+    "href": "/brain/weekly",
+    "dedupeKey": "sentinel:weeklyReview:2026-11-09:all",
+    "messageParams": { "loops": 2, "projects": 1 }
+  }
+}
