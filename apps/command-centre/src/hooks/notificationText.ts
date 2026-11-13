@@ -32,6 +32,15 @@ export function notificationText(
           ? "O que os agentes propuseram gravar na memória espera em Revisões › Do agente: aceite tudo, parte ou nada."
           : body,
     };
+  // The weekly review (cerebro-rituais, AC 60): the server's English title and body become one sentence in either language.
+  if (message?.messageKey === "sentinel.weeklyReview")
+    return {
+      title: tf(lang, "weekly.notification", {
+        loops: String(message.messageParams?.loops ?? "?"),
+        projects: String(message.messageParams?.projects ?? "?"),
+      }),
+      body: undefined,
+    };
   if (message?.messageKey === "proposals.invalidNotice")
     return { title: tf(lang, "proposals.invalidNotice"), body };
   if (!locale.startsWith("pt")) return { title, body };

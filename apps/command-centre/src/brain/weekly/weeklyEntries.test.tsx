@@ -270,7 +270,10 @@ describe("C76 the entries, each in its place", () => {
     );
     await mountShell("/", "moldura", "pt-BR");
     fireEvent.click(document.querySelector(".mold-bell")!);
-    const rows = await screen.findAllByRole("button", { name: /weekly review/i });
+    // the row reads the localized text of C96 (it showed the server's English title until batch E)
+    const rows = await screen.findAllByRole("button", {
+      name: /Hora da revisão semanal: 3 laços abertos, 2 projetos para revisar\./,
+    });
     fireEvent.click(rows[0]!);
     await weeklyUp();
     expect(window.location.hash).toBe("#/brain/weekly");

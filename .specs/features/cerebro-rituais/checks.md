@@ -1219,3 +1219,6 @@ Status of batch E (updated in the commit that closes each piece):
 - the mention fold (C93, C94): closed, every proof green in `apps/command-centre/src/brain/notes/MentionsFold.test.tsx`;
   C92's claim about the fold's stylesheet (`brain/notes/mentions.css`, the one `MentionsFold.tsx` imports) closed in
   `weeklyMotion.test.ts`
+- the sentinel row and the notification (C95, C96): closed, the proofs green in
+  `apps/command-centre/src/views/settings/sentinels.test.tsx` (C95) and `hooks/notificationText.test.ts` (C96);
+  `cerebro-natureza` C88's neighbour is now "Revisão semanal" (G25), and C76's inbox row is found by its pt-BR text

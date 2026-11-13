@@ -89,3 +89,22 @@ describe("C91 the reminder row (cerebro-paineis, amendment 16)", () => {
       );
   });
 });
+
+describe("C96 the weeklyReview row (cerebro-rituais, AC 60)", () => {
+  const row = { messageKey: "sentinel.weeklyReview", messageParams: { loops: 3, projects: 2 } } as const;
+  const title = "Time for the weekly review";
+  const body = "3 open loops, 2 projects to review.";
+  it("C96 Hora da revisão semanal: 3 laços abertos, 2 projetos para revisar. in pt-BR, from the messageKey, whatever the stored English says", () => {
+    expect(notificationText(title, body, "pt-BR", row).title).toBe(
+      "Hora da revisão semanal: 3 laços abertos, 2 projetos para revisar.",
+    );
+  });
+  it("C96 Time for the weekly review: 3 open loops, 2 projects to review. in en", () => {
+    expect(notificationText(title, body, "en", row).title).toBe(
+      "Time for the weekly review: 3 open loops, 2 projects to review.",
+    );
+    expect(notificationText("x", undefined, "en-GB", row).title).toBe(
+      "Time for the weekly review: 3 open loops, 2 projects to review.",
+    );
+  });
+});
