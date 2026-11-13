@@ -187,6 +187,11 @@
         "proposalsPending": {
           "enabled": true
         },
+        "weeklyReview": {
+          "enabled": true,
+          "weekday": 5,
+          "hour": 16
+        },
         "triage": {
           "enabled": true,
           "model": "haiku",

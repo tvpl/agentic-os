@@ -201,6 +201,9 @@ describe("S5 the surface is a closed list", () => {
         "appendTask",
         "decideLoop",
         "weeklyReview",
+        // cerebro-rituais, batch B: the week's archive and its finish (doors 1 and 5)
+        "archiveWeek",
+        "finishWeek",
       ].sort(),
     );
   });

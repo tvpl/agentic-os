@@ -65,6 +65,7 @@ export const SETTINGS_FAIL_CLOSED: readonly FailClosedField[] = [
   { path: "sentinels.repeatDetector.enabled", closed: false },
   { path: "sentinels.reviewDue.enabled", closed: false },
   { path: "sentinels.proposalsPending.enabled", closed: false },
+  { path: "sentinels.weeklyReview.enabled", closed: false },
   // The access of folders (cerebro-memoria-confiavel, door 12, AC 89 and 90). An entry's level this version cannot
   // read makes that entry `hide` for both audiences, and the other entries stay as written; these two come before the
   // field's own rule, which the first matching rule wins over. Anything else unreadable in the list (a path that is not

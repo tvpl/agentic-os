@@ -1428,6 +1428,45 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ['        "audience-related-edges",', "      ]);"],
       head: ['        "audience-related-edges",', '        "rituais",', "      ]);"],
     },
+    // cerebro-rituais, batch B, added POST /api/memory/weekly-review/archive and POST /api/memory/weekly-review/finish
+    // (owner). Each amends the head of batch A's amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: the week's archive and finish under /api",
+      base: ["    expect(routes).toHaveLength(165);"],
+      head: ["    expect(routes).toHaveLength(167);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: owners and scoped routes, with the week's archive and finish",
+      base: ["    expect([owners, scoped]).toEqual([89, 76]);"],
+      head: ["    expect([owners, scoped]).toEqual([91, 76]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: the registered routes, with the week's archive and finish",
+      base: ["    expect(Object.keys(registered)).toHaveLength(165);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(167);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: the routes of each scope, with the week's archive and finish",
+      times: 2,
+      base: ["toEqual({ owner: 89, monitor: 33, content: 36, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 91, monitor: 33, content: 36, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: the routes after the pairing passes, with the week's archive and finish",
+      base: ["    expect(apiRoutes()).toHaveLength(165);"],
+      head: ["    expect(apiRoutes()).toHaveLength(167);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: the operations of the route document, with the week's archive and finish",
+      base: ["    expect(operations).toBe(167);"],
+      head: ["    expect(operations).toBe(169);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

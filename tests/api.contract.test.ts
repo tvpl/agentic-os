@@ -162,8 +162,9 @@ describe("S1 the route table and the registration", () => {
   });
 
   it("C53 the table holds the five routes of the second brain with scope, what they read, a schema per success status and their declared errors", () => {
-    // cerebro-rituais, batch A: the weekly review's list and loop decisions, and POST /api/memory/tasks (164 -> 167)
-    expect(entries).toHaveLength(167);
+    // cerebro-rituais, batch A: the weekly review's list and loop decisions, and POST /api/memory/tasks (164 -> 167);
+    // batch B: the week's archive and its finish (167 -> 169)
+    expect(entries).toHaveLength(169);
     for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
       const entry = API[want.id];
       expect(entry, key).toBeDefined();
@@ -215,10 +216,10 @@ describe("S1 the route table and the registration", () => {
     try {
       const router = app.apiRoutes.map((r) => `${r.method} ${r.url}`).sort();
       const table = entries.map(([, e]) => routeKey(e)).sort();
-      expect(router).toHaveLength(167);
+      expect(router).toHaveLength(169);
       expect(table).toEqual(router);
-      expect(new Set(table).size).toBe(167);
-      expect(new Set(entries.map(([id]) => id)).size).toBe(167);
+      expect(new Set(table).size).toBe(169);
+      expect(new Set(entries.map(([id]) => id)).size).toBe(169);
       for (const [id, entry] of entries) {
         expect(id, id).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)+$/);
         expect(entry.summary.length, `${id} summary`).toBeGreaterThan(8);
@@ -249,8 +250,9 @@ describe("S1 the route table and the registration", () => {
       }
       // cerebro-memoria-confiavel: the two reads of the history (content) and its restore (owner); batch A2, the two
       // reads of the review inbox (content) and its two writes (owner); batch B2, the export and the import of a folder
-      // (owner); cerebro-rituais batch A, the weekly review's list and loop decisions and POST /api/memory/tasks (owner)
-      expect(counts).toEqual({ owner: 89, monitor: 33, content: 36, run: 6, approve: 1, public: 2 });
+      // (owner); cerebro-rituais batch A, the weekly review's list and loop decisions and POST /api/memory/tasks (owner),
+      // and batch B, the week's archive and its finish (owner)
+      expect(counts).toEqual({ owner: 91, monitor: 33, content: 36, run: 6, approve: 1, public: 2 });
       expect(entries.filter(([, e]) => e.public && e.scope !== undefined)).toEqual([]);
 
       expect(
@@ -787,7 +789,7 @@ describe("S2 the real answer is checked", () => {
     // A route with no scenario, or a scenario for no route: both are a hole in this proof.
     expect(Object.keys(SCENARIOS).sort()).toEqual(router);
     expect(Object.keys(SCENARIOS).sort()).toEqual(tabled);
-    expect(results).toHaveLength(167);
+    expect(results).toHaveLength(169);
     const problems: string[] = [];
     for (const { key, entry, answer, id } of results) {
       const scenario = SCENARIOS[key]!;
@@ -1072,8 +1074,9 @@ describe("S2 the real answer is checked", () => {
     // (too_many_proposals, proposal_decided, memory_over_budget).
     // cerebro-memoria-confiavel, batch B1: `403 folder_hidden`, `403 folder_read_only`, `409 folder_hide_unsupported`
     // cerebro-memoria-confiavel, batch B2: `409 exists` (an export past -99, an import over a folder, G20, AC 110)
-    // cerebro-rituais, batch A: `404 loop_not_found` (a key in neither list with no stored decision, G7)
-    expect(raised.size).toBe(87);
+    // cerebro-rituais, batch A: `404 loop_not_found` (a key in neither list with no stored decision, G7), and batch B:
+    // `409 week_mismatch` (an archive or a finish of a week that is not the current one)
+    expect(raised.size).toBe(88);
     expect([...raised.keys()].filter((pair) => pair.includes("<unresolved>"))).toEqual([]);
     expect(raised.has("409 approval_resolved")).toBe(true);
     // The other way: every pair an entry lists as its own is raised somewhere in the tree. A documented answer no code

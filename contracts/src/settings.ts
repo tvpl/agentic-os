@@ -251,6 +251,18 @@ export const SentinelSettingsSchema = z.object({
       enabled: z.boolean().default(true),
     })
     .default({}),
+  /**
+   * The weekly review's reminder (.specs/features/cerebro-rituais, door 4): from the first hourly pass at or after
+   * `weekday` (0 Sunday to 6 Saturday) at `hour` local time until the week ends on Sunday, one notification a week while
+   * the review is not finished. On by default, Friday 16:00 (owner question 1); no model and no network.
+   */
+  weeklyReview: z
+    .object({
+      enabled: z.boolean().default(true),
+      weekday: z.number().int().min(0).max(6).default(5),
+      hour: z.number().int().min(0).max(23).default(16),
+    })
+    .default({}),
   /** Short, cheap run that answers a `triage: true` sentinel with ignore/notify/propose. */
   triage: z
     .object({

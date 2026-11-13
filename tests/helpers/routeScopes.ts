@@ -80,6 +80,8 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   // cerebro-rituais, door 2: the weekly review is the owner's ritual, its list included
   "GET /api/memory/weekly-review": "owner",
   "POST /api/memory/weekly-review/loops": "owner",
+  "POST /api/memory/weekly-review/archive": "owner",
+  "POST /api/memory/weekly-review/finish": "owner",
   "GET /api/dashboards": "content",
   "POST /api/dashboards": "owner",
   "GET /api/dashboards/:id": "content",

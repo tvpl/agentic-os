@@ -890,6 +890,19 @@ const WeeklyProjectSchema = z.object({
   version: NoteVersionSchema.nullable(),
 });
 
+/** The week's numbers (AC 51, G22): loop decisions stored, projects reviewed, files archived. */
+const WeekCountsSchema = z.object({
+  loops: z.number().int().min(0),
+  projects: z.number().int().min(0),
+  archived: z.number().int().min(0),
+});
+
+const weekMismatch = err(
+  409,
+  "week_mismatch",
+  "week is not the Monday of the current local week; nothing was written",
+);
+
 const TaskWrittenSchema = z.object({
   path: z.string(),
   version: NoteVersionSchema,
@@ -1436,6 +1449,10 @@ export const memoryRoutes = {
         week: DaySchema,
         /** When this week's review was finished, or null. */
         finishedAt: z.number().int().nullable(),
+        /** The week so far, or as stored when it was finished (G22). */
+        counts: WeekCountsSchema,
+        /** The epoch ms of the next weekly reminder, strictly after now (G23); null when it is off. */
+        nextReminder: z.number().int().nullable(),
         loops: z.object({ items: z.array(LoopItemSchema), total: z.number().int().min(0) }),
         projects: z.object({ items: z.array(WeeklyProjectSchema), total: z.number().int().min(0) }),
         someday: z.object({ loops: z.array(LoopItemSchema), projects: z.array(WeeklyProjectSchema) }),
@@ -1498,6 +1515,67 @@ export const memoryRoutes = {
         "edit_conflict",
         "task: the project note changed after it was read; nothing was written or stored",
       ),
+    ],
+  }),
+  "memory.weeklyReview.archive": route({
+    method: "POST",
+    path: "/api/memory/weekly-review/archive",
+    summary:
+      "Archive what the week's list shows in archive or inbox (.specs/features/cerebro-rituais, door 5): the cleanup's move to memory/archive/AAAA-MM-DD-<id>/ with a manifest of scope weekly:<week>, and a proposal for what lies outside memory/",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      /** The Monday of the current local week. */
+      week: DaySchema,
+      /** 1 to 100 paths, each listed in archive or inbox of the list with no context. */
+      paths: z.array(z.string().min(1).max(4096)).min(1).max(100),
+    }),
+    responses: {
+      200: z.object({
+        /** The manifest of the moves; null when nothing moved. */
+        manifest: z.string().nullable(),
+        moved: CleanupMovesSchema,
+        skipped: CleanupSkippedSchema,
+        /** The proposal list under artifacts/cleanup/; null when there is none. */
+        proposals: z.string().nullable(),
+      }),
+    },
+    errors: [weekMismatch, cleanupRestoreInProgress],
+  }),
+  "memory.weeklyReview.finish": route({
+    method: "POST",
+    path: "/api/memory/weekly-review/finish",
+    summary:
+      "Finish the week's review: store its counts and the time once, and add one line under ## Today of today's journal; again, it answers what was stored and writes nothing",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      /** The Monday of the current local week. */
+      week: DaySchema,
+    }),
+    responses: {
+      200: z.object({
+        week: DaySchema,
+        /** When the week was first finished. */
+        finishedAt: z.number().int(),
+        counts: WeekCountsSchema,
+        /** The journal file and the bullet written to it (as written the first time). */
+        journal: z.object({ path: z.string(), line: z.string() }),
+      }),
+    },
+    errors: [
+      weekMismatch,
+      err(
+        403,
+        "forbidden_path",
+        "Today's journal is reached through a link or is a private file; nothing was written",
+      ),
+      err(
+        404,
+        "not_a_file",
+        "Today's journal names something that is not a regular file; nothing was written",
+      ),
+      err(413, "file_too_large", "Today's journal is larger than what is read of it; nothing was written"),
     ],
   }),
   "memory.tasks.add": route({

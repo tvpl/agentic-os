@@ -422,6 +422,14 @@ async function cleanupReady(w: World, archive = false): Promise<{ scanId: string
   return { scanId, key };
 }
 
+/** The Monday (`AAAA-MM-DD`, local) of the current week: the `week` the weekly review's writes take. */
+function mondayOfNow(): string {
+  const d = new Date();
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${monday.getFullYear()}-${two(monday.getMonth() + 1)}-${two(monday.getDate())}`;
+}
+
 export const SCENARIOS: Record<string, Scenario> = {
   // ---- reads
   [key("GET", "/api/system/info")]: { run: (w) => w.call("GET", "/api/system/info") },
@@ -893,6 +901,19 @@ export const SCENARIOS: Record<string, Scenario> = {
         action: "close",
       });
     },
+  },
+  // cerebro-rituais, batch B: a file of memory/inbox/ archived in the current week, and the week finished.
+  [key("POST", "/api/memory/weekly-review/archive")]: {
+    run: async (w) => {
+      const file = path.join(w.ctx.paths.memory, "inbox", "cenario-do-arquivo.md");
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, "# Cenário do arquivo\n");
+      await w.ctx.indexer.requestIndexPaths([file]);
+      return w.call("POST", "/api/memory/weekly-review/archive", { week: mondayOfNow(), paths: [file] });
+    },
+  },
+  [key("POST", "/api/memory/weekly-review/finish")]: {
+    run: (w) => w.call("POST", "/api/memory/weekly-review/finish", { week: mondayOfNow() }),
   },
   [key("POST", "/api/contexts")]: {
     run: (w) => w.call("POST", "/api/contexts", { name: "Cenário de contexto", paths: [w.workspace] }),

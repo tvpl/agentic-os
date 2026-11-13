@@ -57,7 +57,7 @@ flowchart TD
     UI --> TA["POST /api/memory/tasks (door 3)"]
     TA --> AT
     UI --> AR["POST /api/memory/weekly-review/archive (door 5)"]
-    AR --> MV["mover de applyCleanup (exists, cleanupApply.ts)"]
+    AR --> MV["moveToArchive, o mover tirado de applyCleanup (exists, cleanupApply.ts)"]
     UI --> UN["POST /api/memory/cleanup/undo (exists)"]
     UI --> FN["POST /api/memory/weekly-review/finish (door 2)"]
     FN --> WR["weekly_reviews (door 1)"]
@@ -82,8 +82,9 @@ flowchart TD
    cria a nota por `createNote` (exists) e "virar tarefa" acrescenta a linha por `appendTask` (door 3)
 3. uma decisão de projeto usa rotas que já existem: `POST /api/memory/reviews` `keep` (C6) e
    `PUT /api/memory/notes/properties`; só "adicionar próxima ação" é rota nova, `POST /api/memory/tasks` (door 3)
-4. "Arquivar" vai a `POST /api/memory/weekly-review/archive` (door 5), que usa o mover que hoje está dentro de `applyCleanup`
-   (exists, extraído sem mudar comportamento) e escreve o manifesto da C5 com o escopo da semana (door 5); "Desfazer" é o
+4. "Arquivar" vai a `POST /api/memory/weekly-review/archive` (door 5), cuja checagem de caminhos (`archiveWeek`, em
+   `weeklyReview.ts`) usa o mover `moveToArchive` tirado de `applyCleanup` (exists, `cleanupApply.ts`, extraído sem mudar
+   comportamento), que escreve o manifesto da C5 com o escopo da semana (door 5); "Desfazer" é o
    `POST /api/memory/cleanup/undo` de sempre
 5. "Concluir revisão" vai a `POST /api/memory/weekly-review/finish`: grava `weekly_reviews` (door 1) e acrescenta uma linha
    ao `## Today` do diário por `appendJournal` (exists)

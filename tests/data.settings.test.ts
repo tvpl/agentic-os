@@ -108,6 +108,8 @@ const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
     reviewDue: { ...d.sentinels.reviewDue, enabled: false },
     // cerebro-memoria-confiavel, door 11: the sentinel of the agent's proposals, closed with the others
     proposalsPending: { ...d.sentinels.proposalsPending, enabled: false },
+    // cerebro-rituais, door 4: the weekly review's reminder, closed with the others
+    weeklyReview: { ...d.sentinels.weeklyReview, enabled: false },
     triage: { ...d.sentinels.triage, enabled: false, dailyBudgetUsd: 0 },
   },
   channels: {
@@ -495,6 +497,8 @@ describe("S3 settings tolerate an invalid field", () => {
       "sentinels.reviewDue.enabled",
       "sentinels.silentRoutine.enabled",
       "sentinels.triage.enabled",
+      // cerebro-rituais, door 4
+      "sentinels.weeklyReview.enabled",
     ]);
     for (const leaf of onByDefault) {
       for (const bad of ["false", 0, null, "off", {}, []]) {
@@ -622,6 +626,10 @@ describe("S3 settings tolerate an invalid field", () => {
       "sentinels.repeatDetector.days": "a window for a notification",
       "sentinels.repeatDetector.minRuns": "a count for a notification",
       "sentinels.repeatDetector.similarity": "a threshold for a notification",
+      "sentinels.weeklyReview.weekday":
+        "the local weekday of the weekly review's reminder, while it is on (its switch is closed) (cerebro-rituais door 4)",
+      "sentinels.weeklyReview.hour":
+        "the local hour of the weekly review's reminder, while it is on (its switch is closed) (cerebro-rituais door 4)",
       "sentinels.triage.model": "a model alias",
       "sentinels.triage.timeoutMs": "timeout",
       "channels.telegram.enabled": "default off; an unreadable value reads off",
