@@ -15,14 +15,18 @@ import { AppRouteContext } from "../desktop/appRoute";
 import { useCommands, type Command } from "../commands/registry";
 import { REVIEWS_PATH } from "./natureza";
 
-export type BrainMode = "graph" | "notes" | "reviews";
+export type BrainMode = "graph" | "notes" | "reviews" | "weekly";
 export const GRAPH_PATH = "/brain";
 export const NOTES_PATH = "/brain/notes";
+/** "Revisão semanal" (.specs/features/cerebro-rituais, S5): the page's route, in both shells. */
+export const WEEKLY_PATH = "/brain/weekly";
 
 /** The notes view, its own chunk: fetched the first time "Notas" is chosen (AC 51). */
 export const NotesView = lazyRoute(() => import("./notes/NotesView"));
 /** "Revisões" (.specs/features/cerebro-natureza, S5), its own chunk: fetched the first time it is opened (C92). */
 export const ReviewsView = lazyRoute(() => import("./reviews/ReviewsScreen"));
+/** "Revisão semanal" (.specs/features/cerebro-rituais, S5), its own chunk: fetched the first time it is opened. */
+export const WeeklyView = lazyRoute(() => import("./weekly/WeeklyReview"));
 
 export interface BrainModeState {
   mode: BrainMode;
@@ -40,11 +44,20 @@ export function useBrainMode(): BrainModeState {
     ? "notes"
     : pathname.startsWith(REVIEWS_PATH)
       ? "reviews"
-      : "graph";
+      : pathname.startsWith(WEEKLY_PATH)
+        ? "weekly"
+        : "graph";
   const setLocation = panel?.setLocation;
   const go = useCallback(
     (next: BrainMode, search = "") => {
-      const path = next === "notes" ? NOTES_PATH : next === "reviews" ? REVIEWS_PATH : GRAPH_PATH;
+      const path =
+        next === "notes"
+          ? NOTES_PATH
+          : next === "reviews"
+            ? REVIEWS_PATH
+            : next === "weekly"
+              ? WEEKLY_PATH
+              : GRAPH_PATH;
       if (setLocation) setLocation({ pathname: path, search });
       else navigate(`${path}${search}`);
     },

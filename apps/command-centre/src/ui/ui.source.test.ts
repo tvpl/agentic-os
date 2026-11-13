@@ -427,6 +427,11 @@ const TITLE_STAYS: Record<string, [reason: "DATA" | "WORDS" | "BINDING" | "DECK"
   'plugins/pixel/PixelStudio.tsx :: {t("pixel.onion")}': ["WORDS", 1],
   "views/RoutinesTimeline.tsx :: {`${fmtHour(h.firedAt)} · ${said}`}": ["DATA", 1],
   'views/Skills/SkillDetail.tsx :: {t("skills.notes.promoteHint")}': ["WORDS", 1],
+  // cerebro-rituais (design.md "Entradas" and "Etapa 1"): "Revisão semanal" says when the week was finished, and a
+  // disabled "Virar tarefa" says why.
+  'brain/weeklyEntry.tsx :: {at === null ? undefined : t("weekly.finishedButton", { day: shortDay(new Date(at)) })}':
+    ["WORDS", 1],
+  'brain/weekly/WeeklyReview.tsx :: {t("weekly.noProject")}': ["WORDS", 1],
 };
 
 describe("C25 an icon-only control names itself and hints with a Tooltip, not with title", () => {

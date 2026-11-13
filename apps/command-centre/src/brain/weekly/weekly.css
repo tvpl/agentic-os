@@ -1,0 +1,367 @@
+/* "Revisão semanal" (.specs/features/cerebro-rituais, design.md): colours are tokens, sentences are 13px, nothing is
+   under 12px, and everything that moves does so inside the no-preference block at the end. */
+.wk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-height: 0;
+  padding: var(--s-4);
+  overflow: auto;
+  color: var(--text);
+  font-size: var(--fs-3);
+}
+
+.wk-head,
+.wk-tools,
+.wk-row,
+.wk-line1,
+.wk-line2,
+.wk-acts,
+.wk-make,
+.wk-next,
+.wk-state,
+.wk-trouble,
+.wk-notice,
+.wk-reviews,
+.wk-lock,
+.wk-flag,
+.wk-finished,
+.wk-warn,
+.wk-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.wk-head {
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.wk-h1 {
+  margin: 0;
+  font-size: var(--fs-5);
+}
+
+.wk-week {
+  color: var(--text);
+}
+
+.wk-context {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+}
+
+.wk-steps {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wk-step {
+  position: relative;
+}
+
+/* the line that ties each circle to the one before it */
+.wk-step + .wk-step::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  right: calc(50% + 14px);
+  left: calc(-50% + 14px);
+  height: 1px;
+  background: var(--border);
+}
+
+.wk-step button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-1);
+  width: 100%;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-2);
+  cursor: pointer;
+}
+
+.wk-dot {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-step button[data-done] .wk-dot {
+  border-color: var(--accent);
+}
+
+.wk-step button[aria-current="step"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.wk-step button[aria-current="step"] .wk-dot {
+  border: 2px solid var(--accent);
+  color: var(--accent-text);
+}
+
+.wk-now,
+.wk-status,
+.wk-cut,
+.wk-hint,
+.wk-prose,
+.wk-reviews,
+.wk-finished,
+.wk-warn {
+  margin: 0;
+  font-size: var(--fs-3);
+}
+
+.wk-status,
+.wk-cut,
+.wk-hint,
+.wk-dim,
+.wk-line2,
+.wk-lock {
+  color: var(--text-dim);
+}
+
+.wk-line2,
+.wk-dim,
+.wk-mono,
+.wk-num-label {
+  font-size: var(--fs-2);
+}
+
+.wk-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.wk-block-title {
+  margin: 0;
+  font-size: var(--fs-4);
+}
+
+.wk-list,
+.wk-skips,
+.wk-numbers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wk-item {
+  overflow: hidden;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.wk-item[aria-current="true"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.wk-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.wk-row {
+  justify-content: space-between;
+}
+
+.wk-text {
+  display: flex;
+  flex: 1 1 240px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wk-loop {
+  font-size: var(--fs-3);
+}
+
+.wk-title {
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+
+.wk-mono {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.wk-make .input,
+.wk-next .input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.wk-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.wk-check-label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.wk .tone-warn {
+  color: var(--warn);
+}
+
+.wk .tone-ok {
+  color: var(--ok);
+}
+
+.wk-trouble {
+  margin-top: var(--s-2);
+  color: var(--warn);
+}
+
+.wk-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-6) 0;
+}
+
+.wk-empty > svg,
+.wk-finished > svg {
+  color: var(--ok);
+}
+
+.wk-state {
+  margin: 0;
+}
+
+.wk-numbers {
+  flex-direction: row;
+  gap: var(--s-6);
+}
+
+.wk-numbers li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wk-num {
+  font-size: var(--fs-6);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.wk-num-label {
+  color: var(--text-dim);
+}
+
+.wk-skips li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.wk-notice {
+  position: sticky;
+  bottom: 0;
+  align-self: flex-start;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-raise);
+}
+
+.wk-foot {
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--border);
+}
+
+.wk-gap {
+  flex: 1;
+}
+
+.wk-dot svg,
+.wk-line1 svg,
+.wk-flag svg,
+.wk-lock svg,
+.wk-trouble svg,
+.wk-notice svg,
+.wk-state svg,
+.wk-reviews svg,
+.wk-warn svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 760px) {
+  .wk-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .wk-item[data-leaving] {
+    animation: wk-fold 150ms ease-out forwards;
+  }
+
+  .wk-stage {
+    animation: wk-enter 200ms ease-out both;
+  }
+
+  .wk-stage[data-back] {
+    animation-name: wk-enter-back;
+  }
+
+  @keyframes wk-fold {
+    from {
+      max-height: 240px;
+      opacity: 1;
+    }
+
+    to {
+      max-height: 0;
+      opacity: 0;
+    }
+  }
+
+  @keyframes wk-enter {
+    from {
+      opacity: 0;
+      transform: translateX(12px);
+    }
+  }
+
+  @keyframes wk-enter-back {
+    from {
+      opacity: 0;
+      transform: translateX(-12px);
+    }
+  }
+}

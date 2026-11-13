@@ -28,6 +28,7 @@ import { IndexProgress } from "./IndexProgress";
 import { openCleanup } from "./cleanupEvents";
 import { useBrainMode } from "./BrainViewSwitch";
 import { useReviewsDue } from "./natureza";
+import { WeeklyButton } from "./weeklyEntry";
 import { APP_COLOR, EDGE_KINDS, ROUTINE_COLOR, SKILL_COLOR, type EdgeKind } from "./engine/world";
 import type { BrainUi } from "./state";
 import { Tooltip } from "../ui";
@@ -182,6 +183,8 @@ export function BrainChrome(p: BrainChromeProps) {
             </button>
             {/* "Revisões (N)" when something fell due (cerebro-natureza, amendment 10). */}
             <ReviewsButton />
+            {/* "Revisão semanal" (cerebro-rituais, G17): right after "Revisões (N)", or after "Faxina" with none. */}
+            <WeeklyButton />
             {/* On the stage the brain is a panel: the desktop is behind it, and
                 the palette is ⌘K — neither needs a chip inside the app (G2). */}
             {!inPanel && (

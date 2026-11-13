@@ -59,6 +59,8 @@ export interface BrainSceneMenuProps {
   /** "Revisões (N)" (cerebro-natureza, amendment 10): after "Faxina", only with N > 0 files due in the context. */
   reviewsDue?: number;
   onReviews?: () => void;
+  /** "Revisão semanal" (cerebro-rituais, G17): the last row, after "Revisões (N)" or after "Faxina" with none. */
+  onWeekly?: () => void;
   onNote: (id: number) => void;
 }
 
@@ -102,6 +104,9 @@ export function BrainSceneMenu(p: BrainSceneMenuProps) {
             {t("reviews.button", { n: due })}
           </button>
         )}
+        <button type="button" onClick={p.onWeekly}>
+          {t("weekly.title")}
+        </button>
       </section>
 
       <section aria-labelledby={`${ids}-view`}>
