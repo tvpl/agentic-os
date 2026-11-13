@@ -389,8 +389,8 @@ G23, G25-G39) ficam nos padrões que o `checks.md` afirma, cada uma com o check 
 
 1. **Emenda 1 (G4).** `POST /api/memory/weekly-review/loops` aceita `context?` (o id do contexto ativo que a tela envia). Com ele, o
    projeto criado por `action: "project"` vai à pasta de notas desse contexto; sem ele, a `memory/notes/`. Checks C11 e C80.
-2. **Emenda 2 (G20).** Cada item de `projects`, `someday.projects` e `archive` de `GET /api/memory/weekly-review` leva `version` (a
-   versão da nota que a lista leu), que a tela envia como `baseVersion` e que sustenta o conflito do AC 46.
+2. **Emenda 2 (G20).** Cada item de `projects` e de `someday.projects` de `GET /api/memory/weekly-review` leva `version` (a
+   versão da nota que a lista leu), que a tela envia como `baseVersion` e que sustenta o conflito do AC 46. Os itens de `archive` não levam `version`: a rota de arquivar não recebe `baseVersion` (corrigido em 13/11/2026 depois do lote A; o C34 afirma as quatro chaves do item).
 3. **Emenda 3 (G22).** `GET /api/memory/weekly-review` responde também `counts` (`loops` · `projects` · `archived`): os da semana até
    agora, ou os guardados quando a semana está concluída. A etapa "Pronto" os mostra sem outra chamada.
 4. **Emenda 4 (G24).** Cada item de `items` de `GET /api/memory/mentions` leva `version` (a versão da origem que a lista leu), que
