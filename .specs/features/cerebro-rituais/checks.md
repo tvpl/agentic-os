@@ -1226,3 +1226,7 @@ Status of batch E (updated in the commit that closes each piece):
   design.md "Texto" read from the file, the journal line left out, the toast of G21, the parity of `brain.ts` and
   `apps.ts`); design.md's en cell of the lock sentence now quotes the C6 key `reviews.readonly` as written ("…MordomoOS;
   the file does not change.", `46405c4`)
+- the weight (C100): closed, `tests/rituais.contract.test.ts` ("C100 ") and `tests/bundle-size.test.ts` C31 green, and on a
+  fresh build `npm run bundle:check` exits 0; the build reads JS gzip 604 832 B and CSS gzip 83 491 B, 13 397 B and
+  1 639 B above `cerebro-memoria-confiavel` (ceiling 16 384 B and 2 048 B), recorded as the `cerebro-rituais` entry of
+  `scripts/bundle-baseline.json`

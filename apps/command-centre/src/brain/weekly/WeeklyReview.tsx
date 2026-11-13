@@ -43,9 +43,9 @@ import { openNoteEditor } from "../noteEvents";
 import { shortDay, useWeeklyReview } from "../weeklyEntry";
 import "./weekly.css";
 
-type Data = ApiCallResult<"GET /api/memory/weekly-review">;
-type Loop = Data["loops"]["items"][number];
-type Project = Data["projects"]["items"][number];
+export type Data = ApiCallResult<"GET /api/memory/weekly-review">;
+export type Loop = Data["loops"]["items"][number];
+export type Project = Data["projects"]["items"][number];
 type Inbox = Data["inbox"]["items"][number];
 type Archived = ApiCallResult<"POST /api/memory/weekly-review/archive">;
 type Undone = ApiCallResult<"POST /api/memory/cleanup/undo">;
@@ -735,31 +735,12 @@ export default function WeeklyReview() {
       <section className="wk-block">
         <p className="wk-prose">{t("weekly.archiveNote")}</p>
         <h2 className="wk-block-title">{t("weekly.doneProjects", { n: data.archive.items.length })}</h2>
-        <ul className="wk-list">
-          {data.archive.items.map((i) => (
-            <li key={i.path} className="wk-item wk-check">
-              <label className="wk-check-label">
-                <input
-                  type="checkbox"
-                  checked={!unchecked.has(i.path)}
-                  onChange={() =>
-                    setUnchecked((u) => (u.has(i.path) ? without(u, i.path) : new Set(u).add(i.path)))
-                  }
-                />
-                <span className="wk-title">{i.title}</span>
-              </label>
-              {i.editable ? (
-                <span className="wk-mono">{rel(i.path)}</span>
-              ) : (
-                <span className="wk-lock">
-                  <Lock aria-hidden />
-                  {t("weekly.proposal")}
-                </span>
-              )}
-              <span className="wk-dim">{t("weekly.doneOn", { day: shortDay(dayDate(i.doneSince)) })}</span>
-            </li>
-          ))}
-        </ul>
+        <ArchiveList
+          items={data.archive.items}
+          unchecked={unchecked}
+          rel={rel}
+          onToggle={(path) => setUnchecked((u) => (u.has(path) ? without(u, path) : new Set(u).add(path)))}
+        />
         <TroubleLine trouble={trouble.get("archive")} onReload={reload} />
         <div className="wk-acts">
           <button
@@ -840,23 +821,7 @@ export default function WeeklyReview() {
           </button>
         </div>
       </header>
-      <ol className="wk-steps">
-        {STEPS.map((key, i) => (
-          <li key={key} className="wk-step">
-            <button
-              type="button"
-              aria-current={i + 1 === current ? "step" : undefined}
-              data-done={left.has(i + 1) ? "" : undefined}
-              onClick={() => go(i + 1)}
-            >
-              <span className="wk-dot" aria-hidden>
-                {left.has(i + 1) ? <Check /> : i + 1}
-              </span>
-              <span className="wk-step-name">{t(key)}</span>
-            </button>
-          </li>
-        ))}
-      </ol>
+      <StepBar current={current} left={left} onGo={go} />
       <p className="wk-now">{t("weekly.stepOf", { n: current, name: t(STEPS[current - 1]!) })}</p>
       <p className="wk-status" role="status">
         {data ? t("weekly.status", { n: openLoops }) : ""}
@@ -898,6 +863,74 @@ export default function WeeklyReview() {
         )}
       </footer>
     </section>
+  );
+}
+
+/** The step bar of the cleanup (cerebro-faxina-guiada): five buttons, the current one `aria-current="step"`. */
+export function StepBar({
+  current,
+  left,
+  onGo,
+}: {
+  current: number;
+  left: ReadonlySet<number>;
+  onGo: (step: number) => void;
+}) {
+  const t = useT();
+  return (
+    <ol className="wk-steps">
+      {STEPS.map((key, i) => (
+        <li key={key} className="wk-step">
+          <button
+            type="button"
+            aria-current={i + 1 === current ? "step" : undefined}
+            data-done={left.has(i + 1) ? "" : undefined}
+            onClick={() => onGo(i + 1)}
+          >
+            <span className="wk-dot" aria-hidden>
+              {left.has(i + 1) ? <Check /> : i + 1}
+            </span>
+            <span className="wk-step-name">{t(key)}</span>
+          </button>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Step 4's list: each done project with its box, its title, its path (or "vira proposta") and its day (AC 43). */
+export function ArchiveList({
+  items,
+  unchecked,
+  rel,
+  onToggle,
+}: {
+  items: Data["archive"]["items"];
+  unchecked: ReadonlySet<string>;
+  rel: (path: string) => string;
+  onToggle: (path: string) => void;
+}) {
+  const t = useT();
+  return (
+    <ul className="wk-list">
+      {items.map((i) => (
+        <li key={i.path} className="wk-item wk-check">
+          <label className="wk-check-label">
+            <input type="checkbox" checked={!unchecked.has(i.path)} onChange={() => onToggle(i.path)} />
+            <span className="wk-title">{i.title}</span>
+          </label>
+          {i.editable ? (
+            <span className="wk-mono">{rel(i.path)}</span>
+          ) : (
+            <span className="wk-lock">
+              <Lock aria-hidden />
+              {t("weekly.proposal")}
+            </span>
+          )}
+          <span className="wk-dim">{t("weekly.doneOn", { day: shortDay(dayDate(i.doneSince)) })}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

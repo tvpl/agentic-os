@@ -13,10 +13,12 @@ import {
 } from "@mordomo/contracts";
 import { eventsDocument } from "../apps/api/src/eventsDoc.js";
 import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
+import { ENTRIES, edgesOf, loadTree, reachable } from "../apps/command-centre/src/testing/sourceGraph.js";
 
 /**
  * The route table and the event contract of .specs/features/cerebro-rituais: what the feature leaves as it was (C29),
- * the sentinel `weeklyReview` on `sentinel.fired` (C57), and the seven routes as the Surface and the doors say (C71).
+ * the sentinel `weeklyReview` on `sentinel.fired` (C57), the seven routes as the Surface and the doors say (C71), and
+ * the weight of the screens (C100).
  */
 
 const entry = (id: string) => (API as unknown as Record<string, RouteDefinition>)[id]!;
@@ -178,5 +180,65 @@ describe("C71 the seven routes in the API table", () => {
       for (const other of ["monitor", "content", "run", "approve", "owner"].filter((s) => s !== scope))
         expect(rowOf(other), `${key} ${other}`).not.toContain(`\`${key}\``);
     }
+  });
+});
+
+// ---- C100: the weekly page's chunk and the weight of the screens --------------------------------------------------
+
+describe("C100 the weekly page's chunk and the bundle ceiling", () => {
+  const repoRoot = path.resolve(__dirname, "..");
+
+  it("C100 the weekly page is reached from both entries only by a dynamic import(); the baseline's cerebro-rituais entry follows cerebro-memoria-confiavel with a reason of more than 40 characters and the four numbers, at most 16 384 B of JS gzip and 2 048 B of CSS gzip above it (591 435 B and 81 852 B)", () => {
+    const tree = loadTree(path.join(repoRoot, "apps", "command-centre", "src"));
+    const page = "brain/weekly/WeeklyReview.tsx";
+    // What each page loads without anyone asking: its entry and what that imports statically.
+    expect([...ENTRIES].sort()).toEqual(["gallery/main.tsx", "main.tsx"]);
+    for (const entry of ENTRIES) {
+      const seen = new Set<string>([entry]);
+      const queue = [entry];
+      while (queue.length > 0)
+        for (const edge of edgesOf(tree, queue.pop()!)) {
+          if (edge.how === "dynamic" || edge.how === "url" || seen.has(edge.to)) continue;
+          seen.add(edge.to);
+          queue.push(edge.to);
+        }
+      expect(seen.has(page), entry).toBe(false);
+    }
+    expect(reachable(tree).has(page)).toBe(true);
+    // its ways in: the brain's lazy route and the gallery's story, each through an import()
+    const importers = (to: string) =>
+      [...tree.keys()]
+        // the tests and their kits are not shipped
+        .filter((f) => !/\.test\.|(^|\/)testkit\./.test(f) && edgesOf(tree, f).some((e) => e.to === to))
+        .sort();
+    const how = (from: string, to: string) => edgesOf(tree, from).find((e) => e.to === to)?.how;
+    expect(how("brain/BrainViewSwitch.tsx", page)).toBe("dynamic");
+    expect(how("gallery/main.tsx", "gallery/weeklyStory.tsx")).toBe("dynamic");
+    for (const from of importers(page).filter((f) => f !== "gallery/weeklyStory.tsx"))
+      expect(how(from, page), from).toBe("dynamic");
+
+    type Entry = {
+      feature: string;
+      reason: string;
+      jsRaw: number;
+      jsGzip: number;
+      cssRaw: number;
+      cssGzip: number;
+    };
+    const baseline = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, "scripts", "bundle-baseline.json"), "utf8"),
+    ) as { after: Entry[] };
+    const i = baseline.after.findIndex((e) => e.feature === "cerebro-rituais");
+    expect(i, "the entry exists").toBeGreaterThan(0);
+    const entry = baseline.after[i]!;
+    const before = baseline.after[i - 1]!;
+    expect(before.feature).toBe("cerebro-memoria-confiavel");
+    expect([before.jsGzip, before.cssGzip]).toEqual([591_435, 81_852]);
+    expect(entry.reason.length).toBeGreaterThan(40);
+    for (const k of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
+      expect(Number.isInteger(entry[k]) && entry[k] > 0, k).toBe(true);
+    // the ceiling of the plan's Assumptions ("Teto de peso", AD-047 h)
+    expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(16_384);
+    expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(2_048);
   });
 });

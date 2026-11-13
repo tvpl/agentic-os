@@ -103,6 +103,14 @@
       "jsGzip": 591435,
       "cssRaw": 372457,
       "cssGzip": 81852
+    },
+    {
+      "feature": "cerebro-rituais",
+      "reason": "the weekly review of the Second Brain as a chunk of its own (WeeklyReview, its five steps, the step bar, the loop, project and archive items and its stylesheet, fetched the first time /brain/weekly is opened; the gallery's weekly story loads that same chunk), its entries in both shells (the toolbar button, the scene menu row, the palette command and the view:weekly keys), the note panel's Menções sem link fold and its stylesheet in the notes view's chunk, the Settings row of the weeklyReview sentinel and its inbox text, and the strings in two languages; measured on the build of batch E: 13.1 KB JS gzip and 1.6 KB CSS gzip above cerebro-memoria-confiavel (C100)",
+      "jsRaw": 1851797,
+      "jsGzip": 604832,
+      "cssRaw": 377124,
+      "cssGzip": 83491
     }
   ]
 }
