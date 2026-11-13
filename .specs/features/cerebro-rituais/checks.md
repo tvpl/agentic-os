@@ -1235,3 +1235,36 @@ Status of batch E (updated in the commit that closes each piece):
   toolbar row and the scene menu that batch D's button moved (G17) move with it: `tests/e2e/reviews.spec.ts` C70
   ("Revisões (N)" the row before "Revisão semanal", five buttons) and `tests/e2e/cleanup.spec.ts` C51 (four buttons,
   "Faxina" the row before "Revisão semanal")
+
+- **Boundary (batch E):** C93-C101 closed at `63c0930` (the fold in `88484e5` and its fix in `194b08d`, the sentinel row and
+  the inbox text in `1b4e9ce`, the copy in `fd86175` after design.md's lock sentence in `46405c4`, the gallery and the
+  weight in `78e583e`, the browser in `63c0930`), and with them the parts batch D left waiting: C76's browser proof and
+  C92's claim about the fold's stylesheet. On that tree `npm run typecheck`, `npm run lint` (with `lint:css`) exit 0,
+  every `Proof:` line of C93-C101 passes (the component ones, `tests/rituais.contract.test.ts` C100, `bundle-size` C31,
+  `bundle:check` on a fresh build, and `tests/e2e/weekly.spec.ts` C76 2, C98 4, C99 2, C101 1), `npm run test -w
+apps/command-centre` is green (194 files, 1852 tests), and `npx vitest run` at the root has one failure,
+  `tests/paineis.refresh.test.ts` C13, the pre-existing one batches A-D named. Pins moved by exactly what the batch adds:
+  the panel's folds 4 → 5 (`cerebro-vista-notas` C52 in `NotePanel.test.tsx`, `cerebro-memoria-confiavel` C97 in
+  `HistoryFold.test.tsx`), `cerebro-natureza` C88's neighbour "Triagem com modelo" → "Revisão semanal" (G25), the
+  desktop sentinel rows 8 → 9 (C95), C76's inbox row found by its pt-BR text, typography C15's `MICROCOPY` gains
+  `.mf-dim` (the 12px "Procurando:" line design.md asks for), and the browser pins of batch D's button (G17):
+  `tests/e2e/reviews.spec.ts` C70 and `tests/e2e/cleanup.spec.ts` C51.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape, none a new one-way door:
+  (a) the fold is `brain/notes/MentionsFold.tsx` (+ `mentions.css`), the panel's `Fold` moved to `brain/notes/Fold.tsx`
+  with a `shut` default, and the hook `useMentions` is in `notesData.ts`; the fold is shut when the note has no mention
+  when shown and stays open once the person empties it with "Linkar"; its title reads "(…)" while the count loads;
+  (b) the term is marked in the excerpt by the matcher's rule (no case, no accents, whole word) on the client; a source
+  opens through the notes view's `?open=<path>&line=<n>`; "Linkar" takes the item out of the cached answer and asks the
+  links again; a failure other than `mention_gone`/`edit_conflict` reads "Não deu para salvar." with "Tentar de novo",
+  and the cut and the retry reuse `weekly.showing`, `weekly.reload`, `weekly.retry`, `weekly.saveFailed`; (c) the
+  sentinel row uses the same on/off button as the other rows ("a linha liga e desliga como a de `reviewDue`"); the inbox
+  row's title is the whole sentence (`weekly.notification`) and its body is dropped; (d) `StepBar`, `ArchiveList` and
+  `MentionItem` are exported for the gallery's story (`gallery/weeklyStory.tsx`, lazy); (e) design.md's en lock sentence
+  now quotes the C6 key; (f) proof readings: C98's actions that would leave a decision of the week (the archive) are
+  answered by the browser, so C101's "1, 1, 1" are the week's only decisions; C101 runs both shells in one test (the
+  week finishes once): the moldura closes, adds, archives, finishes and links one mention, the Núcleo opens the finished
+  week with the same numbers and links the other.
+- **Abandoned:** folding the mention fold whenever its count reaches 0 (it folded over the "Linkado em" notice).
+
+**Whole feature:** C1-C101 are all closed; batch E ran every proof line of C93-C101 and the touched browser specs
+(`weekly`, `reviews`, `cleanup`, `notes-view`, `memoria`), with the full UI suite and the root suite as above.

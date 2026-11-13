@@ -91,7 +91,7 @@ flowchart TD
 6. o laço horário dos sentinelas (`core/src/sentinels/runner.ts`, exists) roda o sentinela `weeklyReview` (door 4,
    `core/src/sentinels/weeklyReview.ts`, que conta pelo núcleo da revisão semanal), que vira notificação `system` pelo
    recorder (exists)
-7. o painel da nota (`NotePanel.tsx`, exists) pede `GET /api/memory/mentions` (door 6), que procura os termos da nota em
+7. o painel da nota (`NotePanel.tsx`, exists), pela dobra nova `MentionsFold.tsx`, pede `GET /api/memory/mentions` (door 6), que procura os termos da nota em
    `files_fts` e nas cópias por público da C7 (exists) e descarta quem já liga por `note_links` (exists); "Linkar" vai a
    `POST /api/memory/mentions/link` (door 7), que grava por `saveNote` com versão no histórico (exists); o núcleo das
    menções (novo, sem door) é `core/src/memory/mentions.ts`, e os `aliases` entram em `files.fields` pelo indexador
