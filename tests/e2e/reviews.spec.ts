@@ -118,7 +118,7 @@ async function palette(page: Page) {
 
 /* ---------------- C70: the entries ---------------- */
 
-test("C70 the moldura: Revisões (N) the fourth .btn.sm of the graph's row after Faxina and before the chips, the palette, and a reviewDue inbox row, each to /brain/reviews", async ({
+test("C70 the moldura: Revisões (N) the fourth .btn.sm of the graph's row after Faxina and before Revisão semanal and the chips, the palette, and a reviewDue inbox row, each to /brain/reviews", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -127,21 +127,24 @@ test("C70 the moldura: Revisões (N) the fourth .btn.sm of the graph's row after
   await page.reload();
   const row = page.locator(".brain-topbar-actions");
   const buttons = row.locator("button.btn.sm");
-  await expect(buttons).toHaveCount(4);
+  // cerebro-rituais G17: "Revisão semanal" follows "Revisões (N)"
+  await expect(buttons).toHaveCount(5);
   await expect(buttons.nth(2)).toHaveAccessibleName("Faxina");
   await expect(buttons.nth(3)).toHaveAccessibleName(`Revisões (${total})`);
+  await expect(buttons.nth(4)).toHaveAccessibleName("Revisão semanal");
   const order = await row.evaluate((el) =>
     [...el.querySelectorAll("button")].map((b) =>
       b.classList.contains("os-chip") ? "chip" : (b.getAttribute("aria-label") ?? b.textContent!.trim()),
     ),
   );
-  expect(order.slice(0, 4)).toEqual([
+  expect(order.slice(0, 5)).toEqual([
     "Atualizar índice",
     "Modo apresentação (p)",
     "Faxina",
     `Revisões (${total})`,
+    "Revisão semanal",
   ]);
-  expect(order.slice(4).every((x) => x === "chip")).toBe(true);
+  expect(order.slice(5).every((x) => x === "chip")).toBe(true);
   const boxes = await Promise.all([2, 3].map((i) => buttons.nth(i).boundingBox()));
   expect(boxes[0]!.x).toBeLessThan(boxes[1]!.x);
   await buttons.nth(3).click();
@@ -187,7 +190,7 @@ test("C70 the moldura: Revisões (N) the fourth .btn.sm of the graph's row after
   await expect(screenOf(page).locator("h1")).toHaveText("Revisões");
 });
 
-test("C70 the Núcleo: Revisões (N) the last row of bs-menu-acts after Faxina, and the palette, each to the brain's panel at /brain/reviews", async ({
+test("C70 the Núcleo: Revisões (N) the row of bs-menu-acts after Faxina and before Revisão semanal, and the palette, each to the brain's panel at /brain/reviews", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -197,9 +200,12 @@ test("C70 the Núcleo: Revisões (N) the last row of bs-menu-acts after Faxina, 
   await expect(page.locator(".bs canvas").first()).toBeVisible();
   await page.locator(".bs-more").click();
   const acts = page.locator(".bs-menu .bs-menu-acts > button");
-  await expect(acts.last()).toHaveText(`Revisões (${total})`);
-  expect((await acts.allTextContents()).at(-2)).toBe("Faxina");
-  await acts.last().click();
+  // cerebro-rituais G17: Revisões is the row before Revisão semanal
+  await expect(acts.last()).toHaveText("Revisão semanal");
+  const texts = await acts.allTextContents();
+  expect(texts.at(-2)).toBe(`Revisões (${total})`);
+  expect(texts.at(-3)).toBe("Faxina");
+  await acts.nth(texts.length - 2).click();
   await expect(page.locator(".nu-shell .bs-notes .rv h1")).toHaveText("Revisões");
   await expect(page).toHaveURL(/#\/brain\/reviews/);
   await page.goto("/#/");

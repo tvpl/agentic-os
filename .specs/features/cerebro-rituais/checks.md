@@ -1227,6 +1227,11 @@ Status of batch E (updated in the commit that closes each piece):
   `apps.ts`); design.md's en cell of the lock sentence now quotes the C6 key `reviews.readonly` as written ("…MordomoOS;
   the file does not change.", `46405c4`)
 - the weight (C100): closed, `tests/rituais.contract.test.ts` ("C100 ") and `tests/bundle-size.test.ts` C31 green, and on a
-  fresh build `npm run bundle:check` exits 0; the build reads JS gzip 604 832 B and CSS gzip 83 491 B, 13 397 B and
-  1 639 B above `cerebro-memoria-confiavel` (ceiling 16 384 B and 2 048 B), recorded as the `cerebro-rituais` entry of
-  `scripts/bundle-baseline.json`
+  fresh build `npm run bundle:check` exits 0; the last build of the batch reads JS gzip 604 839 B and CSS gzip 83 496 B,
+  13 404 B and 1 644 B above `cerebro-memoria-confiavel` (ceiling 16 384 B and 2 048 B), recorded as the
+  `cerebro-rituais` entry of `scripts/bundle-baseline.json`
+- the browser (C76's browser proof, C98, C99, C101): closed, every proof green in `tests/e2e/weekly.spec.ts` (C76 2, C98 4,
+  C99 2, C101 1) and `weeklyMotion.test.ts` C98 (stylelint on `weekly.css` and `mentions.css`); the browser pins of the
+  toolbar row and the scene menu that batch D's button moved (G17) move with it: `tests/e2e/reviews.spec.ts` C70
+  ("Revisões (N)" the row before "Revisão semanal", five buttons) and `tests/e2e/cleanup.spec.ts` C51 (four buttons,
+  "Faxina" the row before "Revisão semanal")
