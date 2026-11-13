@@ -204,6 +204,9 @@ describe("S5 the surface is a closed list", () => {
         // cerebro-rituais, batch B: the week's archive and its finish (doors 1 and 5)
         "archiveWeek",
         "finishWeek",
+        // cerebro-rituais, batch C: a note's unlinked mentions and "Linkar" (doors 6 and 7)
+        "linkMention",
+        "mentionsOf",
       ].sort(),
     );
   });

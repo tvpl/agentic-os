@@ -618,6 +618,13 @@ export const SCENARIOS: Record<string, Scenario> = {
       return w.call("GET", `/api/memory/links?id=${hits[0]?.id ?? 1}`);
     },
   },
+  // cerebro-rituais, batch C: the unlinked mentions of the file the links read (door 6).
+  [key("GET", "/api/memory/mentions")]: {
+    run: async (w) => {
+      const hits = (await w.call("GET", "/api/memory/search?q=Alfa")).body as Array<{ id: number }>;
+      return w.call("GET", `/api/memory/mentions?id=${hits[0]?.id ?? 1}`);
+    },
+  },
   [key("GET", "/api/memory/note")]: {
     run: (w) =>
       w.call("GET", `/api/memory/note?p=${encodeURIComponent(noteOf(w, "Cenário de leitura").path)}`),
@@ -883,6 +890,29 @@ export const SCENARIOS: Record<string, Scenario> = {
         path: note.path,
         text: "Ligar",
         baseVersion: note.version,
+      });
+    },
+  },
+  // cerebro-rituais, batch C: "Linkar" on a note that names another by its title (door 7).
+  [key("POST", "/api/memory/mentions/link")]: {
+    run: async (w) => {
+      const env = { paths: w.ctx.paths, settings: w.ctx.settings() };
+      const target = createNote(env, { title: "Cenário de menção", content: "O alvo" });
+      const source = createNote(env, { title: "Fonte da menção", content: "o cenario de mencao atrasou" });
+      await w.ctx.indexer.requestIndexPaths([target.path]);
+      const row = w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(target.path) as
+        { id: number } | undefined;
+      const line =
+        fs
+          .readFileSync(source.path, "utf8")
+          .split("\n")
+          .findIndex((l) => l.includes("atrasou")) + 1;
+      return w.call("POST", "/api/memory/mentions/link", {
+        source: source.path,
+        line,
+        term: "Cenário de menção",
+        target: row?.id ?? 0,
+        baseVersion: source.version,
       });
     },
   },

@@ -1604,6 +1604,87 @@ export const memoryRoutes = {
       err(413, "note_too_large", "The note is larger than the editing limit"),
     ],
   }),
+  "memory.mentions.list": route({
+    method: "GET",
+    path: "/api/memory/mentions",
+    summary:
+      "The unlinked mentions of an indexed note (.specs/features/cerebro-rituais, door 6): the lines of other notes that name it by its title, its file name or an alias, as a whole word outside code and links, from notes that do not link to it",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      id: z.coerce.number().int(),
+      /** Only sources inside this work context (`400 validation` for an id that names none). */
+      context: ContextQuery,
+      /** 1 to 50, 20 without it. */
+      limit: z.coerce.number().int().min(1).max(50).optional(),
+    }),
+    responses: {
+      200: z.object({
+        /** The note the mentions name. */
+        file: FileRowSchema,
+        /** Its terms: the title, the file name, the aliases, each of 4 characters or more, one per fold. */
+        terms: z.array(z.string()),
+        items: z.array(
+          z.object({
+            file: FileRowSchema,
+            line: z.number().int().min(1),
+            /** At most 160 characters of the line, around the term as written. */
+            excerpt: z.string(),
+            /** The entry of `terms` the line holds. */
+            term: z.string(),
+            editable: z.boolean(),
+            /** The source's version when it was read, for "Linkar"; null when it is not editable. */
+            version: NoteVersionSchema.nullable(),
+          }),
+        ),
+        /** Every mention, beyond the `limit` answered. */
+        total: z.number().int().min(0),
+      }),
+    },
+    errors: [notFound("The file")],
+  }),
+  "memory.mentions.link": route({
+    method: "POST",
+    path: "/api/memory/mentions/link",
+    summary:
+      "Turn the first match of a term on one line of a note into a wikilink to the target (.specs/features/cerebro-rituais, door 7), only if the note is still the version the caller read",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      /** The note under memory/ that names the target. */
+      source: z.string().min(1).max(4096),
+      /** 1-based. */
+      line: z.number().int().min(1),
+      term: z.string().min(1).max(2000),
+      /** The id of the indexed file the link leads to. */
+      target: z.number().int(),
+      baseVersion: NoteVersionSchema,
+    }),
+    responses: {
+      200: z.object({
+        path: z.string(),
+        version: NoteVersionSchema,
+        /** The wikilink written. */
+        link: z.string(),
+      }),
+    },
+    errors: [
+      err(
+        403,
+        "note_not_editable",
+        "Not a .md file under memory/, a file the engine generates (ROUTER.md, areas/, journal/, contexts/), or one reached through a link",
+      ),
+      err(404, "note_missing", "The note does not exist"),
+      err(404, "not_found", "The target is no indexed file"),
+      err(409, "edit_conflict", "The file changed after it was read; nothing was written"),
+      err(
+        409,
+        "mention_gone",
+        "The line no longer holds the term outside code and links; nothing was written",
+      ),
+      err(413, "note_too_large", "The note is larger than the editing limit"),
+    ],
+  }),
   "memory.routers": route({
     method: "POST",
     path: "/api/memory/routers",

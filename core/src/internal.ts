@@ -145,6 +145,7 @@ export { reviewsDue } from "./memory/reviews.js";
 export { decideReview } from "./memory/reviewDecisions.js";
 export { decideLoop } from "./memory/loops.js";
 export { archiveWeek, finishWeek, weeklyReview } from "./memory/weeklyReview.js";
+export { linkMention, mentionsOf } from "./memory/mentions.js";
 export { getVersion, listVersions, recordFileVersion, recordMove, restoreVersion } from "./memory/history.js";
 export { visibleHistoryPaths } from "./memory/historyStore.js";
 export {

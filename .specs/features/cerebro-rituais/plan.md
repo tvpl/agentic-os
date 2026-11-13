@@ -93,7 +93,9 @@ flowchart TD
    recorder (exists)
 7. o painel da nota (`NotePanel.tsx`, exists) pede `GET /api/memory/mentions` (door 6), que procura os termos da nota em
    `files_fts` e nas cópias por público da C7 (exists) e descarta quem já liga por `note_links` (exists); "Linkar" vai a
-   `POST /api/memory/mentions/link` (door 7), que grava por `saveNote` com versão no histórico (exists)
+   `POST /api/memory/mentions/link` (door 7), que grava por `saveNote` com versão no histórico (exists); o núcleo das
+   menções (novo, sem door) é `core/src/memory/mentions.ts`, e os `aliases` entram em `files.fields` pelo indexador
+   (exists) com o `frontMatter.ts` que agora os lê
 8. out: o `openLoopsSource` dos painéis (exists) passa a ler `loop_decisions` e deixa de contar o laço decidido
 
 ## Impact

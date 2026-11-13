@@ -925,6 +925,9 @@ export class MemoryIndexer {
         tags = [...new Set([...(header?.tags ?? []), ...inline])].slice(0, 20);
         // The vocabulary keys of the header (cerebro-organizar, door 6), then the inline fields, which win on a key.
         fields = { ...header?.fields, ...parseInlineFields(content) };
+        // The header's `aliases`, as the JSON of the list (.specs/features/cerebro-rituais, G33): the terms of the
+        // note's unlinked mentions. A row indexed before has none until its file is indexed again.
+        if (header && header.aliases.length > 0) fields.aliases = JSON.stringify(header.aliases);
       }
     }
     const name = path.basename(full);

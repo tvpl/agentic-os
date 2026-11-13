@@ -68,6 +68,8 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "POST /api/memory/index/cancel": "owner",
   "GET /api/memory/journal": "content",
   "GET /api/memory/links": "content",
+  // cerebro-rituais, door 6: the unlinked mentions of a note, read as its links are
+  "GET /api/memory/mentions": "content",
   "GET /api/memory/maps": "content",
   "GET /api/memory/cleanup/inventory": "content",
   "POST /api/memory/cleanup/scans": "owner",
@@ -96,6 +98,8 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "PUT /api/memory/tasks": "owner",
   // cerebro-rituais, door 3: a project's next action, added as the note's last line
   "POST /api/memory/tasks": "owner",
+  // cerebro-rituais, door 7: "Linkar" rewrites a line of a note
+  "POST /api/memory/mentions/link": "owner",
   "POST /api/memory/journal/append": "owner",
   "POST /api/memory/open": "owner",
   "GET /api/memory/preview": "content",

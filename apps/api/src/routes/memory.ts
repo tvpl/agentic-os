@@ -34,6 +34,9 @@ import {
   journalSections,
   listFacets,
   linksOf,
+  linkMention,
+  mentionsOf,
+  findContext,
   listJournalDates,
   memoryTree,
   localDateString,
@@ -373,6 +376,42 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   bind(app, "memory.tasks.add", async ({ body }) => {
     const written = appendTask(noteContext(), body);
     reindex(written.path);
+    return written;
+  });
+
+  /**
+   * The unlinked mentions of a note (.specs/features/cerebro-rituais, door 6): read as `GET /api/memory/links` is, by
+   * today's policy over the caller's view, and found through the caller's own full-text index (door 19).
+   */
+  bind(app, "memory.mentions.list", async ({ query: q }, req) => {
+    const view = accessView(ctx, req.principal);
+    const context = findContext(view.settings, q.context);
+    if (context === undefined) throw httpError(400, `No work context is called ${q.context}.`, "validation");
+    const mentions = mentionsOf(
+      {
+        db: ctx.db,
+        paths: ctx.paths,
+        settings: view.settings,
+        ...(view.audience ? { index: ctx.indexer.audienceTable(view.audience) } : {}),
+      },
+      { id: q.id, context, ...(q.limit !== undefined ? { limit: q.limit } : {}) },
+    );
+    if (!mentions) throw httpError(404, "File not found", "not_found");
+    return mentions;
+  });
+
+  /** "Linkar" (door 7): the next list reads the new link, so the answer waits for the pass over the note (up to 2 s). */
+  bind(app, "memory.mentions.link", async ({ body }) => {
+    const written = linkMention({ ...noteContext(), db: ctx.db }, body);
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      ctx.indexer.requestIndexPaths([written.path]).catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, 2_000);
+        timer.unref?.();
+      }),
+    ]);
+    clearTimeout(timer);
     return written;
   });
 
