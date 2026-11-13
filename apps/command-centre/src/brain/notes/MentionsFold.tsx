@@ -5,7 +5,7 @@
  * "Linkar" (`POST /api/memory/mentions/link`). Folded when there is none. Choosing a source opens it in the notes view
  * at its line (`?open=<path>&line=<n>`).
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, Link2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../api";
@@ -72,8 +72,13 @@ export function MentionsFold({ id, context }: { id: number | null; context?: str
   const t = useT();
   const mentions = useMentions(id, context);
   const total = mentions.data?.total;
+  // Folded when the note has none when it is shown; a fold the person emptied with "Linkar" stays open on its notice.
+  const [shut, setShut] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (shut === null && total !== undefined) setShut(total === 0);
+  }, [shut, total]);
   return (
-    <Fold title={t("mentions.title", { n: total ?? "…" })} shut={total === 0}>
+    <Fold title={t("mentions.title", { n: total ?? "…" })} shut={shut === true}>
       {id === null || mentions.isPending ? (
         <p className="notes-panel-state">
           <span className="spinner sm" aria-hidden /> {t("common.loading")}

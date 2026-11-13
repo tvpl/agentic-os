@@ -287,3 +287,24 @@ describe("C94 the fold's states and Linkar", () => {
       expect(asked("/api/memory/mentions").at(-1)!.toString()).toBe("id=1&context=alfa");
     });
 });
+
+describe("C94 the fold after the last Linkar", () => {
+  it("C94 linking the only mention leaves the fold open on Linkado em diario. and Menções sem link (0)", async () => {
+    answer({ ...TWO(), items: [TWO().items[0]], total: 1 });
+    net.writes.set("POST /api/memory/mentions/link", () =>
+      Promise.resolve({
+        path: pathOf(diario),
+        version: "sha256:d2",
+        link: "[[Curso de Março|curso de marco]]",
+      }),
+    );
+    panel();
+    await waitFor(() => expect(items()).toHaveLength(1));
+    await userEvent.setup().click(within(items()[0]!).getByRole("button", { name: "Linkar" }));
+    await waitFor(() => expect(items()).toHaveLength(0));
+    expect(heads()[1]!.textContent).toBe("Menções sem link (0)");
+    expect(heads()[1]!.getAttribute("aria-expanded")).toBe("true");
+    expect(within(foldOf()).getByRole("status").textContent).toBe("Linkado em diario.");
+    expect(within(foldOf()).getByText("Nenhuma menção sem link.")).toBeTruthy();
+  });
+});
