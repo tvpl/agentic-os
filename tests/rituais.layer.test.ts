@@ -28,13 +28,23 @@ import {
   type ProjectItem,
 } from "../core/src/memory/weeklyReview.js";
 import { checkWeeklyReview, weeklyReviewDue } from "../core/src/sentinels/weeklyReview.js";
+import { accessSettings, resolveFolderAccess } from "../core/src/memory/folderAccess.js";
+import { fileRowFromDb } from "../core/src/memory/indexer.js";
+import {
+  findMention,
+  linkMention,
+  mentionLines,
+  mentionTerms,
+  mentionsOf,
+} from "../core/src/memory/mentions.js";
 import { MONDAY, keyOf, rituaisWorld, sha, type Json, type RituaisWorld } from "./helpers/rituaisWorld.js";
 
 /**
  * The deciding code of .specs/features/cerebro-rituais at its own layer, with no HTTP (`Test policy` rows 1 and 2): the
  * loop collector and its key, the window, the decision rules, the project list's filter, `nextAction`, `reviewBy`, the
- * order, door 3's tails and migration 33, and (batch B) the archive's path check, the finish counts and the sentinel's
- * rule. The world gives a real home and its index; no route is called.
+ * order, door 3's tails and migration 33, (batch B) the archive's path check, the finish counts and the sentinel's
+ * rule, and (batch C) the mention terms, the matcher and its exclusion zones, the audience `agents` and the link
+ * rewrite. The world gives a real home and its index; no route is called.
  */
 
 const DAY = 86_400_000;
@@ -616,5 +626,219 @@ describe("C50 the sentinel's rule at the layer", () => {
     } finally {
       off();
     }
+  });
+});
+
+// ---- S8 (batch C) ------------------------------------------------------------------------------------------------
+
+const term = (name: string, title: string | null, fields: Record<string, string> = {}) =>
+  mentionTerms({ name, title, fields });
+/** The first term of `terms` that `text` (one line of prose) holds, as findMention reads it, or null. */
+const matched = (text: string, terms: string[]): string | null => {
+  const [line] = mentionLines(text);
+  return terms.find((t) => findMention(line!, t) !== null) ?? null;
+};
+
+describe("C59 the terms at the layer", () => {
+  it("C59 the title", () => {
+    expect(term("cm.md", "Curso de Março")).toEqual(["Curso de Março"]);
+  });
+  it("C59 the file name with - and _ as spaces", () => {
+    expect(term("plano_de-vendas.md", null)).toEqual(["plano de vendas"]);
+  });
+  it("C59 each aliases item", () => {
+    expect(term("cm.md", "Curso de Março", { aliases: JSON.stringify(["CM 2026", "Curso Março"]) })).toEqual([
+      "Curso de Março",
+      "CM 2026",
+      "Curso Março",
+    ]);
+  });
+  it("C59 a term of exactly 4 characters is kept and one of 3 dropped", () => {
+    expect(term("x.md", "Rede")).toEqual(["Rede"]);
+    expect(term("x.md", "Ana")).toEqual([]);
+  });
+  it("C59 terms that fold equal are one, the first of title, file name, aliases, in that order", () => {
+    expect(term("cafe.md", "Café", { aliases: JSON.stringify(["CAFÉ", "Cafezinho"]) })).toEqual([
+      "Café",
+      "Cafezinho",
+    ]);
+    expect(term("plano-beta.md", "Plano Alfa", { aliases: JSON.stringify(["Plano Gama"]) })).toEqual([
+      "Plano Alfa",
+      "plano beta",
+      "Plano Gama",
+    ]);
+  });
+});
+
+describe("C60 whole words after the fold at the layer", () => {
+  for (const line of ["a rede caiu", "Rede: ok", "caiu a REDE", "(rede)"])
+    it(`C60 '${line}' holds Rede`, () => {
+      expect(matched(line, ["Rede"])).toBe("Rede");
+    });
+  for (const line of ["as redes", "a parede", "Redenção"])
+    it(`C60 '${line}' does not hold Rede`, () => {
+      expect(matched(line, ["Rede"])).toBeNull();
+    });
+  for (const line of ["um cafe", "CAFÉ!"])
+    it(`C60 '${line}' holds Café`, () => {
+      expect(matched(line, ["Café"])).toBe("Café");
+    });
+  it("C60 'a cafeteria' does not hold Café", () => {
+    expect(matched("a cafeteria", ["Café"])).toBeNull();
+  });
+});
+
+describe("C61 the exclusion zones at the layer", () => {
+  const nothingIn = (text: string) => mentionLines(text).filter((line) => findMention(line, "Rede") !== null);
+  const cases: Array<[string, string]> = [
+    ["the front matter", "---\ntitle: Rede\n---\nnada\n"],
+    ["a ``` block", "```\na rede\n```\n"],
+    ["a ~~~ block", "~~~\na rede\n~~~\n"],
+    ["inline code", "o `rede` aqui\n"],
+    ["the text of a Markdown link", "[a rede](x.md)\n"],
+    ["the URL of a Markdown link", "[x](https://rede.example/rede)\n"],
+    ["a wikilink", "[[Rede]]\n"],
+    ["a wikilink alias", "[[x|rede]]\n"],
+  ];
+  for (const [name, text] of cases)
+    it(`C61 ${name} holds no match`, () => {
+      expect(nothingIn(text)).toEqual([]);
+    });
+  it("C61 '`rede` e a rede' matches the plain one", () => {
+    const [line] = mentionLines("`rede` e a rede");
+    expect(findMention(line!, "Rede")).toEqual({ start: 11, end: 15 });
+  });
+  it("C61 a line with Rede and Café is one match, the first term that matches", () => {
+    expect(matched("a rede e o café", ["Rede", "Café"])).toBe("Rede");
+  });
+});
+
+describe("C64 the audience agents at the layer", () => {
+  it("C64 the agents' answer equals the owner's with fin excluded; a target under fin is no answer; two more hidden folders change nothing", async () => {
+    const fin = path.join(w.memory, "notes", "fin");
+    const extra1 = path.join(w.memory, "notes", "extra1");
+    const extra2 = path.join(w.memory, "notes", "extra2");
+    const target = w.put(path.join(w.memory, "notes", "outra", "Rede.md"), "---\ntitle: Rede\n---\nx\n");
+    const hiddenTarget = w.put(path.join(fin, "Cofre.md"), "---\ntitle: Cofre\n---\nx\n");
+    w.put(path.join(fin, "segredo.md"), "a rede do segredo\no cofre\n");
+    w.put(path.join(w.memory, "notes", "outra", "v1.md"), "a rede visível\n");
+    w.put(path.join(w.memory, "notes", "outra", "v2.md"), "x\nde novo a Rede\n");
+    w.put(path.join(extra1, "nada.md"), "nada a ver\n");
+    w.put(path.join(extra2, "ligada.md"), "[[Rede]] e a rede\n");
+    await w.index();
+    const idOf = (file: string) =>
+      (w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(file) as { id: number }).id;
+    const id = idOf(target);
+    const hiddenId = idOf(hiddenTarget);
+    const asAgents = (ids: number) => {
+      const env = { paths: w.ctx.paths, settings: w.ctx.settings() };
+      const settings = accessSettings(env, "agents", resolveFolderAccess(env));
+      return mentionsOf(
+        { db: w.ctx.db, paths: w.ctx.paths, settings, index: w.ctx.indexer.audienceTable("agents") },
+        { id: ids },
+      );
+    };
+    const json = (v: unknown) => JSON.parse(JSON.stringify(v)) as unknown;
+
+    try {
+      w.update((s) => {
+        s.folderAccess = [{ path: fin, agents: "hide", devices: "write" }];
+      });
+      await w.index();
+      const agents = json(asAgents(id)) as Json;
+      expect((agents.items as Json[]).map((i) => i.file.path).sort()).toEqual(
+        [
+          path.join(w.memory, "notes", "outra", "v1.md"),
+          path.join(w.memory, "notes", "outra", "v2.md"),
+        ].sort(),
+      );
+      expect(JSON.stringify(agents)).not.toContain("segredo");
+      expect(asAgents(hiddenId)).toBeNull();
+      // the owner, before the twin, does see the hidden source (the case is not empty)
+      const owner = mentionsOf({ db: w.ctx.db, paths: w.ctx.paths, settings: w.ctx.settings() }, { id })!;
+      expect(owner.total).toBe(3);
+
+      // two more folders hidden from the agents, holding no visible item: every answer stays equal, total included
+      w.update((s) => {
+        s.folderAccess = [
+          { path: fin, agents: "hide", devices: "write" },
+          { path: extra1, agents: "hide", devices: "write" },
+          { path: extra2, agents: "hide", devices: "write" },
+        ];
+      });
+      await w.index();
+      expect(json(asAgents(id))).toEqual(agents);
+
+      // the twin: no access of folders, fin excluded, the index passed again
+      w.update((s) => {
+        s.folderAccess = [];
+        s.excludes = [...s.excludes, "fin"];
+      });
+      await w.index();
+      const twin = mentionsOf({ db: w.ctx.db, paths: w.ctx.paths, settings: w.ctx.settings() }, { id });
+      expect(json(twin)).toEqual(agents);
+    } finally {
+      w.update((s) => {
+        s.folderAccess = [];
+        s.excludes = s.excludes.filter((e) => e !== "fin");
+      });
+    }
+  });
+});
+
+describe("C67 the rewrite at the layer", () => {
+  const linkEnv = () => ({ db: w.ctx.db, paths: w.ctx.paths, settings: w.ctx.settings() });
+  async function rewrite(line: string): Promise<{ link: string; text: string }> {
+    const target = w.put(
+      path.join(w.memory, "notes", "Curso de Março.md"),
+      "---\ntitle: Curso de Março\n---\nx\n",
+    );
+    const before = `um\n${line}\ntrês\n`;
+    const source = w.put(path.join(w.memory, "notes", "fonte.md"), before);
+    await w.index();
+    const id = (w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(target) as { id: number }).id;
+    const done = linkMention(linkEnv(), {
+      source,
+      line: 2,
+      term: "Curso de Março",
+      target: id,
+      baseVersion: sha(before),
+    });
+    expect(done.version).toBe(sha(fs.readFileSync(source)));
+    return { link: done.link, text: fs.readFileSync(source, "utf8") };
+  }
+  it("C67 the alias form [[name|as written]] when the written text differs from the name after foldName", async () => {
+    expect(await rewrite("o curso de marco atrasou, o curso de marco")).toEqual({
+      link: "[[Curso de Março|curso de marco]]",
+      text: "um\no [[Curso de Março|curso de marco]] atrasou, o curso de marco\ntrês\n",
+    });
+  });
+  it("C67 the name form [[name]] when it is equal after foldName", async () => {
+    expect(await rewrite("o curso de março atrasou")).toEqual({
+      link: "[[Curso de Março]]",
+      text: "um\no [[Curso de Março]] atrasou\ntrês\n",
+    });
+  });
+});
+
+describe("C68 the first valid occurrence at the layer", () => {
+  it("C68 code and a link are skipped: only the third is rewritten", async () => {
+    const target = w.put(
+      path.join(w.memory, "notes", "Curso de Março.md"),
+      "---\ntitle: Curso de Março\n---\nx\n",
+    );
+    const before = "`curso de marco` e [curso de marco](x.md) e curso de marco\n";
+    const source = w.put(path.join(w.memory, "notes", "fonte.md"), before);
+    await w.index();
+    const row = fileRowFromDb(
+      w.ctx.db.prepare("SELECT * FROM files WHERE path = ?").get(target) as Record<string, unknown>,
+    );
+    linkMention(
+      { db: w.ctx.db, paths: w.ctx.paths, settings: w.ctx.settings() },
+      { source, line: 1, term: "Curso de Março", target: row.id, baseVersion: sha(before) },
+    );
+    expect(fs.readFileSync(source, "utf8")).toBe(
+      "`curso de marco` e [curso de marco](x.md) e [[Curso de Março|curso de marco]]\n",
+    );
   });
 });

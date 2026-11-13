@@ -1123,3 +1123,19 @@ Status of batch B (updated in the commit that closes each piece):
 /api/settings` replaces `sentinels` whole (existing behaviour), so the proofs and the screen send the whole object.
 - **Abandoned:** deciding the sentinel's window through `nextReminder(now - 1)` (wrong once the hour has passed);
   `vi.restoreAllMocks()` in the archive proofs (it also restores the world's clock).
+
+Status of batch C (updated in the commit that closes each piece):
+
+- the unlinked mentions (S8: C58-C70), with the routes `GET /api/memory/mentions` (`content`) and
+  `POST /api/memory/mentions/link` (`owner`), `aliases` read by the front matter and indexed in `files.fields`, and the
+  API's closing pins (C72-C75): closed, every proof green in `tests/rituais.mentions.test.ts`,
+  `tests/rituais.access.test.ts`, `tests/rituais.layer.test.ts`, and in `tests/api.contract.test.ts` C1, C12, C13,
+  `tests/api.refusals.test.ts` C45, `tests/device-scopes.test.ts` C3, C22, `tests/api.openapi.test.ts` C15, C21,
+  `tests/security-reads.test.ts` C55, `tests/sdk.instances.test.ts` C30, `tests/data.migration.test.ts` C7, C56,
+  `tests/contexts.runs.test.ts` C25, `tests/memoria.migration.test.ts` C39 and `tests/natureza.layer.test.ts` C7
+- C71: open. Its proof (`tests/rituais.contract.test.ts`, "C71 ", written and left out of the commits until this is
+  settled) fails on one route only: the archive (`POST /api/memory/weekly-review/archive`) declares
+  `409 restore_in_progress` (batch B, `06600c7`: the mover takes the restore lock, and the refusal is raised), which the
+  archive's row of `Coverage` (5 pairs) does not hold; the route cannot drop it (C72: every error a handler raises is
+  documented). Waiting for the owner: an amendment like amendment 5 that adds the pair to the archive, or another
+  reading of C71
