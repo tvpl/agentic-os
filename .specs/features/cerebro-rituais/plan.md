@@ -404,6 +404,10 @@ G23, G25-G39) ficam nos padrões que o `checks.md` afirma, cada uma com o check 
    `413 file_too_large`, quando o arquivo do diário de hoje é hostil (um link no caminho, algo que não é arquivo, arquivo grande demais);
    a rota os declara e nada é gravado. A linha aprovada da `Surface` (`200`, `400`, `403`, `409`) segue como está.
 
+6. **Emenda 6 (achada no lote C, confirmada pelo dono em 13/11/2026).** `POST /api/memory/weekly-review/archive` responde também
+   `409 restore_in_progress` quando uma restauração segura a casa, como a faxina (o mover toma o mesmo travão). A linha de `Coverage`
+   do `checks.md` passa de 5 para 6 pares; o código não muda.
+
 Conformidade com a regra da skill: são acréscimos de chaves de resposta e de um campo opcional de entrada; nenhuma linha aprovada foi
 reescrita e nenhuma chave aprovada mudou de nome ou de tipo.
 

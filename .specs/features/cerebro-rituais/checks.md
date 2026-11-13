@@ -781,7 +781,7 @@ Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | `GET /api/memory/weekly-review` statuses, as (status, code) (4)                     | 200 C1, C20, C48 · `400 validation` C31 · `403 owner_only` C73 · `403 forbidden` (run) C73                                                                                                                                                                                                                                | -        |
 | `POST /api/memory/weekly-review/loops` statuses (7)                                 | 200 C7, C11, C13, C14 · `400 validation` C16 · `403 note_not_editable` C17 · `403 owner_only` C73 · `403 forbidden` C73 · `404 loop_not_found` C15 · `409 edit_conflict` C17                                                                                                                                              | -        |
-| `POST /api/memory/weekly-review/archive` statuses (5)                               | 200 C36, C37, C40 · `400 validation` C38, C39 · `403 owner_only` C73 · `403 forbidden` C73 · `409 week_mismatch` C39                                                                                                                                                                                                      | -        |
+| `POST /api/memory/weekly-review/archive` statuses (6)                               | 200 C36, C37, C40 · `400 validation` C38, C39 · `403 owner_only` C73 · `403 forbidden` C73 · `409 week_mismatch` C39 · `409 restore_in_progress` C71                                                                                                                                                                      | -        |
 | `POST /api/memory/weekly-review/finish` statuses (5)                                | 200 C45, C46 · `400 validation` C47 · `403 owner_only` C73 · `403 forbidden` C73 · `409 week_mismatch` C47                                                                                                                                                                                                                | -        |
 | `POST /api/memory/tasks` statuses (9)                                               | 200 C27 · `400 validation` C28 · `403 note_not_editable` C28 · `403 forbidden_path` C28 · `403 owner_only` C73 · `403 forbidden` C73 · `404 note_missing` C28 · `409 edit_conflict` C28 · `413 note_too_large` C28                                                                                                        | -        |
 | `GET /api/memory/mentions` statuses (5)                                             | 200 C58, C63 · `400 validation` C63, C65 · `403 scope_required` C64 · `403 forbidden` (run, G13, G39) C64, C73 · `404 not_found` C63, C64                                                                                                                                                                                 | -        |
@@ -1133,16 +1133,12 @@ Status of batch C (updated in the commit that closes each piece):
   `tests/api.refusals.test.ts` C45, `tests/device-scopes.test.ts` C3, C22, `tests/api.openapi.test.ts` C15, C21,
   `tests/security-reads.test.ts` C55, `tests/sdk.instances.test.ts` C30, `tests/data.migration.test.ts` C7, C56,
   `tests/contexts.runs.test.ts` C25, `tests/memoria.migration.test.ts` C39 and `tests/natureza.layer.test.ts` C7
-- C71: open. Its proof (`tests/rituais.contract.test.ts`, "C71 ", written and left out of the commits until this is
-  settled) fails on one route only: the archive (`POST /api/memory/weekly-review/archive`) declares
-  `409 restore_in_progress` (batch B, `06600c7`: the mover takes the restore lock, and the refusal is raised), which the
-  archive's row of `Coverage` (5 pairs) does not hold; the route cannot drop it (C72: every error a handler raises is
-  documented). Waiting for the owner: an amendment like amendment 5 that adds the pair to the archive, or another
-  reading of C71
+- C71: closed after the owner's answer of 13/11/2026 (plan amendment 6): the archive's row of `Coverage` now holds six pairs,
+  `409 restore_in_progress` among them, and the proof in `tests/rituais.contract.test.ts` ("C71 ") passes with the same six
 
 - **Boundary (batch C):** C58-C70 and C72-C75 closed at `1b7004d` (the core, the routes and their pins in `4339a07`, the
   proofs and the status in `f6c2864`, the event scenarios pin of `tests/events.contract.test.ts` C28 in `1b7004d`); C71
-  open (above), so batch C is not wholly green and D waits for the owner's answer on it. On that tree
+  closed afterwards (above), so batch C is wholly green. On that tree
   `npm run typecheck` and `npm run lint` exit 0, every `Proof:` line of C58-C70 and C72-C75 passes and runs only its
   check's tests, and `npx vitest run` at the root has one failure, `tests/paineis.refresh.test.ts` C13, the pre-existing
   one batches A and B named (with C71's proof in the working tree, that one too). What batch C moved, so that D and E add
