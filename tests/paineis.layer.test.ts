@@ -340,8 +340,8 @@ describe("C19 migration 26", () => {
     ]);
     // batch B adds migration 27 (door 8, the reminder kind of the inbox) after it, and cerebro-memoria-confiavel 28,
     // 29 to 32 (the keys and provenance of facts, the history of memory/, the review inbox, the search indexes of the
-    // audiences)
-    expect(MIGRATIONS.slice(-7).map((m) => [m.version, m.name])).toEqual([
+    // audiences), and cerebro-rituais 33 (the loop decisions and the weekly reviews)
+    expect(MIGRATIONS.slice(-8).map((m) => [m.version, m.name])).toEqual([
       [26, "dashboards"],
       [27, "notification-reminder"],
       [28, "fact-keys-and-provenance"],
@@ -349,6 +349,7 @@ describe("C19 migration 26", () => {
       [30, "memory-proposals"],
       [31, "audience-search-indexes"],
       [32, "audience-related-edges"],
+      [33, "rituais"],
     ]);
   });
 
@@ -394,8 +395,8 @@ describe("C19 migration 26", () => {
       old.close();
       const { db, migration } = openDb(paths);
       try {
-        // to the latest, 30 (cerebro-memoria-confiavel), through 26 and 27 (batch B, door 8)
-        expect(migration).toMatchObject({ fromVersion: 25, toVersion: 32 });
+        // to the latest, 33 (cerebro-rituais), through 26 and 27 (batch B, door 8)
+        expect(migration).toMatchObject({ fromVersion: 25, toVersion: 33 });
         expect(rows(db)).toEqual(before);
         expect(db.prepare("SELECT COUNT(*) c FROM note_tasks").get()).toEqual({ c: 0 });
       } finally {
@@ -781,8 +782,8 @@ describe("C98 migration 27, the reminder kind of the inbox", () => {
       });
 
   it("C98 MIGRATIONS ends with 26 dashboards and 27 notification-reminder; a database migrated from 26 keeps its rows, columns and indexes, takes kind reminder and refuses lembrete; again leaves the same schema", () => {
-    // cerebro-memoria-confiavel appends 28 to 32 after them
-    expect(MIGRATIONS.slice(-7).map((m) => [m.version, m.name])).toEqual([
+    // cerebro-memoria-confiavel appends 28 to 32 after them, and cerebro-rituais 33
+    expect(MIGRATIONS.slice(-8).map((m) => [m.version, m.name])).toEqual([
       [26, "dashboards"],
       [27, "notification-reminder"],
       [28, "fact-keys-and-provenance"],
@@ -790,6 +791,7 @@ describe("C98 migration 27, the reminder kind of the inbox", () => {
       [30, "memory-proposals"],
       [31, "audience-search-indexes"],
       [32, "audience-related-edges"],
+      [33, "rituais"],
     ]);
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-paineis-m27-"));
     const paths = resolvePaths(home);
@@ -817,8 +819,8 @@ describe("C98 migration 27, the reminder kind of the inbox", () => {
       old.close();
       const { db, migration } = openDb(paths);
       try {
-        // through 27 to the latest, 30 (cerebro-memoria-confiavel)
-        expect(migration).toMatchObject({ fromVersion: 26, toVersion: 32 });
+        // through 27 to the latest, 33 (cerebro-rituais)
+        expect(migration).toMatchObject({ fromVersion: 26, toVersion: 33 });
         expect(rows(db)).toEqual(before.rows);
         expect(columns(db)).toEqual(before.columns);
         expect(indexes(db)).toEqual(

@@ -1374,6 +1374,60 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ['        "audience-search-indexes",', "      ]);"],
       head: ['        "audience-search-indexes",', '        "audience-related-edges",', "      ]);"],
     },
+    // cerebro-rituais, batch A, added GET /api/memory/weekly-review, POST /api/memory/weekly-review/loops and
+    // POST /api/memory/tasks (owner), and migration 33. Each amends the head of the amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: the weekly review's list and loop decisions and POST /api/memory/tasks under /api",
+      base: ["    expect(routes).toHaveLength(162);"],
+      head: ["    expect(routes).toHaveLength(165);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: owners and scoped routes, with the weekly review and the new task",
+      base: ["    expect([owners, scoped]).toEqual([86, 76]);"],
+      head: ["    expect([owners, scoped]).toEqual([89, 76]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: the registered routes, with the weekly review and the new task",
+      base: ["    expect(Object.keys(registered)).toHaveLength(162);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(165);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: the routes of each scope, with the weekly review and the new task",
+      times: 2,
+      base: ["toEqual({ owner: 86, monitor: 33, content: 36, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 89, monitor: 33, content: 36, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: the routes after the pairing passes, with the weekly review and the new task",
+      base: ["    expect(apiRoutes()).toHaveLength(162);"],
+      head: ["    expect(apiRoutes()).toHaveLength(165);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: the operations of the route document, with the weekly review and the new task",
+      base: ["    expect(operations).toBe(164);"],
+      head: ["    expect(operations).toBe(167);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: migration 33 after 32, in the comment",
+      base: ["      // of the audiences and their related edges (doors 19 and 20), three more."],
+      head: [
+        "      // of the audiences and their related edges (doors 19 and 20), three more, and the loop decisions and the weekly",
+        "      // reviews (cerebro-rituais), two more.",
+      ],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: rituais after audience-related-edges",
+      base: ['        "audience-related-edges",', "      ]);"],
+      head: ['        "audience-related-edges",', '        "rituais",', "      ]);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

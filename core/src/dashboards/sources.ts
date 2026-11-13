@@ -11,6 +11,7 @@ import { queryFacts } from "../memory/facts.js";
 import { fieldsFromDb, normalizeFieldKey } from "../memory/fields.js";
 import { storedRowFilter } from "../memory/indexer.js";
 import { parsePassages, readEscopo, readNatureza, type Natureza } from "../memory/natureza.js";
+import { decidedLoopKeys, loopKey, loopText, sectionBullets } from "../memory/loops.js";
 import { generatedFileKind } from "../memory/recall.js";
 import { addDays, localDay, reviewsDue } from "../memory/reviews.js";
 import { calendarDay } from "../memory/tasks.js";
@@ -297,22 +298,10 @@ function sectionItems(
   day: string,
   days: readonly string[],
 ) {
-  const lines = text.split(/\r?\n/);
   const passages = parsePassages(text);
   const out: SectionItem[] = [];
-  let inside = false;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    const h = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (h) {
-      // Only the level-2 section's own bullets: any heading ends them, a `### heading` never starts them.
-      inside = h[1]!.length === 2 && h[2] === heading;
-      continue;
-    }
-    if (!inside) continue;
-    const bullet = /^(?:>[ \t]*)?[-*][ \t]+(.+)$/.exec(line);
-    if (!bullet) continue;
-    let body = bullet[1]!.trim();
+  for (const { body: raw, line } of sectionBullets(text, heading)) {
+    let body = raw;
     let itemDay = day;
     if (kind === "journal") body = body.replace(/^\d{2}:\d{2}\s+/, "");
     else {
@@ -322,8 +311,8 @@ function sectionItems(
       body = body.slice(0, origin.index).trim();
     }
     if (body === "") continue;
-    const passage = passages.find((p) => p.startLine <= i + 1 && i + 1 <= p.endLine);
-    out.push({ text: body, day: itemDay, natureza: passage?.natureza ?? null, line: i + 1 });
+    const passage = passages.find((p) => p.startLine <= line && line <= p.endLine);
+    out.push({ text: body, day: itemDay, natureza: passage?.natureza ?? null, line });
   }
   return out;
 }
@@ -400,7 +389,10 @@ function openLoopsSource(deps: SourceDeps): DashboardSourceFn {
   return (source, call) => {
     if (source.kind !== "openLoops") throw new Error("not an openLoops source");
     const { items } = generatedSections(deps, call, "Open loops");
+    // A loop the weekly review decided closed, project, task or someday is no longer open (cerebro-rituais, AC 5).
+    const decided = decidedLoopKeys(deps.db);
     const all = items
+      .filter((i) => !decided.has(loopKey(loopText(i.text, "memory"))))
       .map((i) => ({
         text: i.text,
         natureza: "plano" as const,

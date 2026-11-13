@@ -125,6 +125,7 @@ export {
 } from "./objectives/objectiveStore.js";
 export { linksOf } from "./memory/links.js";
 export {
+  appendTask,
   classifyNotePath,
   createNote,
   planNewNote,
@@ -142,6 +143,8 @@ export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./m
 export { ESCOPOS, NATUREZAS, parseEscopoList, parseNaturezaList } from "./memory/natureza.js";
 export { reviewsDue } from "./memory/reviews.js";
 export { decideReview } from "./memory/reviewDecisions.js";
+export { decideLoop } from "./memory/loops.js";
+export { weeklyReview } from "./memory/weeklyReview.js";
 export { getVersion, listVersions, recordFileVersion, recordMove, restoreVersion } from "./memory/history.js";
 export { visibleHistoryPaths } from "./memory/historyStore.js";
 export {

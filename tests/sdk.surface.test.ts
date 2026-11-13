@@ -197,6 +197,10 @@ describe("S5 the surface is a closed list", () => {
         // cerebro-memoria-confiavel batch B2: export and import a folder (doors 14 and 15)
         "exportFolder",
         "importFolder",
+        // cerebro-rituais, batch A: the weekly review's list, a loop's decision and a project's next action (doors 1 to 3)
+        "appendTask",
+        "decideLoop",
+        "weeklyReview",
       ].sort(),
     );
   });

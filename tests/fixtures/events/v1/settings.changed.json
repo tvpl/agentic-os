@@ -143,6 +143,11 @@
           },
           "maxPerDay": 20
         },
+        "weeklyReview": {
+          "projectEvery": "7d",
+          "loopsWindowDays": 90,
+          "maxItems": 50
+        },
         "history": {
           "maxBytes": 268435456
         },

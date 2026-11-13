@@ -15,8 +15,22 @@ import { streamRoutes } from "./streams.js";
 import { systemRoutes } from "./system.js";
 import type { RouteCall, RouteDefinition, RouteInput, RouteResult, SuccessBodies } from "./route.js";
 
+/**
+ * The table's type, named by its parts: inferred whole, it grew past what the compiler writes into a declaration file
+ * (TS7056) when the weekly review's routes came in (.specs/features/cerebro-rituais).
+ */
+type Table = typeof systemRoutes &
+  typeof runRoutes &
+  typeof skillRoutes &
+  typeof routineRoutes &
+  typeof memoryRoutes &
+  typeof contextRoutes &
+  typeof dashboardRoutes &
+  typeof deviceRoutes &
+  typeof streamRoutes;
+
 /** A constant: the table itself is frozen like its entries, so no entry can be added, replaced or removed at run time. */
-export const API = deepFreeze({
+export const API: Table = deepFreeze({
   ...systemRoutes,
   ...runRoutes,
   ...skillRoutes,

@@ -845,6 +845,57 @@ const ReviewStateSchema = z.object({
 
 const REVIEW_ACTIONS = ["keep", "snooze", "never", "abandon", "became_fact", "classify", "restore"] as const;
 
+/** The weekly review (.specs/features/cerebro-rituais, doors 1 to 3). */
+const LOOP_ACTIONS = ["close", "keep", "someday", "project", "task", "restore"] as const;
+const LOOP_STATES = ["closed", "keep", "someday", "project", "task"] as const;
+
+/** An open loop: one per normalized text, with its oldest day and every place it is written. */
+const LoopItemSchema = z.object({
+  /** The SHA-256 hex of the normalized text (door 1). */
+  key: z.string(),
+  text: z.string(),
+  day: DaySchema,
+  ageDays: z.number().int(),
+  sources: z.array(z.object({ path: z.string(), line: z.number().int() })),
+});
+
+/** One stored loop decision, as a decision answers it in `previous` and `restore` takes it back. */
+const LoopDecisionSchema = z.object({
+  action: z.enum(LOOP_STATES),
+  /** The Monday of the local week it was stored in. */
+  week: DaySchema,
+  /** The note a `project` made or a `task` was added to. */
+  target: z.string().nullable(),
+  decidedAt: z.number().int(),
+});
+
+const ProjectHealthSchema = z.enum(["done", "paused", "behind", "due_today", "in_review", "on_track"]);
+
+/** A `type: project` note of the weekly review (AC 16, G20). */
+const WeeklyProjectSchema = z.object({
+  path: z.string(),
+  title: z.string(),
+  status: z.string().nullable(),
+  due: DaySchema.nullable(),
+  health: ProjectHealthSchema,
+  /** The first unchecked task of the note (door 3), or null. */
+  nextAction: z.object({ line: z.number().int(), text: z.string() }).nullable(),
+  lastReviewed: DaySchema.nullable(),
+  /** The last review day plus the cadence; null for `review_every: never`. */
+  reviewBy: DaySchema.nullable(),
+  reviewDue: z.boolean(),
+  /** A note of memory/ the screen may write; the others keep the decision in the database. */
+  editable: z.boolean(),
+  /** The version of the note when listed, which the screen sends as `baseVersion`; null when not editable. */
+  version: NoteVersionSchema.nullable(),
+});
+
+const TaskWrittenSchema = z.object({
+  path: z.string(),
+  version: NoteVersionSchema,
+  task: z.object({ line: z.number(), done: z.boolean(), text: z.string() }),
+});
+
 // ---- routes ----------------------------------------------------------------------------------------------------
 
 export const memoryRoutes = {
@@ -1368,6 +1419,110 @@ export const memoryRoutes = {
         "front_matter_unreadable",
         "The front matter is longer than 4 096 bytes or has no closing ---; nothing was written",
       ),
+      err(413, "note_too_large", "The note is larger than the editing limit"),
+    ],
+  }),
+  "memory.weeklyReview.list": route({
+    method: "GET",
+    path: "/api/memory/weekly-review",
+    summary:
+      "The weekly review (.specs/features/cerebro-rituais): the open loops of the journal window and MEMORY.md, the active projects with their next action and review day, someday, what ended and the inbox, from the index rows and the stored decisions",
+    tag: "memory",
+    scope: "owner",
+    query: z.object({ context: ContextQuery }),
+    responses: {
+      200: z.object({
+        /** The Monday of the current local week. */
+        week: DaySchema,
+        /** When this week's review was finished, or null. */
+        finishedAt: z.number().int().nullable(),
+        loops: z.object({ items: z.array(LoopItemSchema), total: z.number().int().min(0) }),
+        projects: z.object({ items: z.array(WeeklyProjectSchema), total: z.number().int().min(0) }),
+        someday: z.object({ loops: z.array(LoopItemSchema), projects: z.array(WeeklyProjectSchema) }),
+        archive: z.object({
+          items: z.array(
+            z.object({ path: z.string(), title: z.string(), editable: z.boolean(), doneSince: DaySchema }),
+          ),
+          total: z.number().int().min(0),
+        }),
+        inbox: z.object({
+          items: z.array(z.object({ path: z.string(), title: z.string(), ageDays: z.number().int() })),
+          total: z.number().int().min(0),
+        }),
+        /** How many notes the review queue of cerebro-natureza holds due today. */
+        reviewsDue: z.number().int().min(0),
+      }),
+    },
+  }),
+  "memory.weeklyReview.loops": route({
+    method: "POST",
+    path: "/api/memory/weekly-review/loops",
+    summary:
+      "Decide an open loop (close, keep this week, someday, make it a project, make it a task of a project, or restore what a decision answered); only a project or a task writes a file",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      key: z.string().regex(/^[0-9a-f]{64}$/, "expected the 64 hex digits of a loop's key"),
+      action: z.enum(LOOP_ACTIONS),
+      /** `project`: the note's title, 1 to 120 characters (the loop's text cut at 120 without it). */
+      name: z.string().max(2000).optional(),
+      /** `task`: the `type: project` note of memory/ the line is added to. */
+      project: z.string().min(1).max(4096).optional(),
+      /** `task`: the version of that note the caller read. */
+      baseVersion: NoteVersionSchema.optional(),
+      /** `restore`: the `previous` a decision answered (null removes the stored decision). */
+      previous: LoopDecisionSchema.nullable().optional(),
+      /** `project`: the active work context, whose notes folder the note goes to (memory/notes/ without it). */
+      context: ContextQuery,
+    }),
+    responses: {
+      200: z.object({
+        key: z.string(),
+        /** The stored decision after this one, or null. */
+        state: z.enum(LOOP_STATES).nullable(),
+        /** The stored decision before this one, or null: what `restore` takes to undo it. */
+        previous: LoopDecisionSchema.nullable(),
+        /** `project` and `task`: the note made or written, with its new version. */
+        created: z.object({ path: z.string(), version: NoteVersionSchema }).optional(),
+      }),
+    },
+    errors: [
+      err(
+        403,
+        "note_not_editable",
+        "task: the project is not a .md note of memory/ the engine does not generate, or has no type: project",
+      ),
+      err(404, "loop_not_found", "The key is in neither list and has no stored decision; nothing was stored"),
+      err(
+        409,
+        "edit_conflict",
+        "task: the project note changed after it was read; nothing was written or stored",
+      ),
+    ],
+  }),
+  "memory.tasks.add": route({
+    method: "POST",
+    path: "/api/memory/tasks",
+    summary:
+      "Add `- [ ] <text>` as the last line of a note under memory/ (.specs/features/cerebro-rituais, door 3), only if the note is still the version the caller read",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      path: z.string().min(1).max(4096),
+      /** 1 to 300 characters, with no line break. */
+      text: z.string().max(2000),
+      baseVersion: NoteVersionSchema,
+    }),
+    responses: { 200: TaskWrittenSchema },
+    errors: [
+      err(403, "forbidden_path", "A link on the way or a private file would be written through"),
+      err(
+        403,
+        "note_not_editable",
+        "Not a .md file under memory/, or a file the engine generates (ROUTER.md, areas/, journal/, contexts/)",
+      ),
+      err(404, "note_missing", "The note does not exist"),
+      err(409, "edit_conflict", "The file changed after it was read; nothing was written"),
       err(413, "note_too_large", "The note is larger than the editing limit"),
     ],
   }),

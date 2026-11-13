@@ -169,7 +169,7 @@ interface Row {
 }
 
 /** Whether a row is the context's: one of its `ok` paths, or its notes folder (amendment 5). */
-function contextFilter(env: ReviewsEnv, context: WorkContext): (row: Row) => boolean {
+export function contextFilter(env: Pick<ReviewsEnv, "paths" | "settings">, context: WorkContext): (row: { root: string; rel: string }) => boolean {
   const member = contextMembership(env, context);
   const notes = realpathLenient(path.resolve(contextNotesDir(env.paths, context.id)));
   const realRoots = new Map<string, string>();

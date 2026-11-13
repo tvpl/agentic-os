@@ -3,6 +3,7 @@ import path from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   appendJournal,
+  appendTask,
   assertFact,
   buildGraph,
   checkRouters,
@@ -364,6 +365,13 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   // A task checked from a dashboard (cerebro-paineis, amendment 17): the box of one line, then the index learns it.
   bind(app, "memory.tasks.save", async ({ body }) => {
     const written = saveTask(noteContext(), body);
+    reindex(written.path);
+    return written;
+  });
+
+  // The next action of a project (cerebro-rituais, door 3): `- [ ] <text>` as the note's last line.
+  bind(app, "memory.tasks.add", async ({ body }) => {
+    const written = appendTask(noteContext(), body);
     reindex(written.path);
     return written;
   });

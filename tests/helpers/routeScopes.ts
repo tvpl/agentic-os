@@ -77,6 +77,9 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "POST /api/memory/cleanup/undo": "owner",
   "GET /api/memory/reviews": "content",
   "POST /api/memory/reviews": "owner",
+  // cerebro-rituais, door 2: the weekly review is the owner's ritual, its list included
+  "GET /api/memory/weekly-review": "owner",
+  "POST /api/memory/weekly-review/loops": "owner",
   "GET /api/dashboards": "content",
   "POST /api/dashboards": "owner",
   "GET /api/dashboards/:id": "content",
@@ -89,6 +92,8 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "PUT /api/memory/notes": "owner",
   "PUT /api/memory/notes/properties": "owner",
   "PUT /api/memory/tasks": "owner",
+  // cerebro-rituais, door 3: a project's next action, added as the note's last line
+  "POST /api/memory/tasks": "owner",
   "POST /api/memory/journal/append": "owner",
   "POST /api/memory/open": "owner",
   "GET /api/memory/preview": "content",

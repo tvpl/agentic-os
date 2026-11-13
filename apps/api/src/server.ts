@@ -47,6 +47,7 @@ import { resolveApprovalForChat } from "./approvalActions.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerCleanupRoutes } from "./routes/cleanup.js";
 import { registerReviewRoutes } from "./routes/reviews.js";
+import { registerWeeklyReviewRoutes } from "./routes/weeklyReview.js";
 import { registerContextRoutes } from "./routes/contexts.js";
 import { registerDashboardRoutes } from "./routes/dashboards.js";
 import { registerRoutineRoutes } from "./routes/routines.js";
@@ -654,6 +655,7 @@ export async function buildServer(
   registerMemoryRoutes(app, ctx);
   registerCleanupRoutes(app, ctx);
   registerReviewRoutes(app, ctx);
+  registerWeeklyReviewRoutes(app, ctx);
   registerContextRoutes(app, ctx);
   registerDashboardRoutes(app, ctx);
   registerRoutineRoutes(app, ctx);

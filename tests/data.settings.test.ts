@@ -606,6 +606,12 @@ describe("S3 settings tolerate an invalid field", () => {
       "memory.reviews.byType.conceito":
         "how long a concept note holds before the review queue asks about it; it writes nothing (cerebro-natureza door 5)",
       "memory.reviews.maxPerDay": "how many items the review queue shows at a time (cerebro-natureza door 5)",
+      "memory.weeklyReview.projectEvery":
+        "how long a project holds before the weekly review asks about it; it writes nothing (cerebro-rituais door 4)",
+      "memory.weeklyReview.loopsWindowDays":
+        "how many days of the journal the weekly review reads open loops from; it writes nothing (cerebro-rituais door 4)",
+      "memory.weeklyReview.maxItems":
+        "how many items each list of the weekly review shows (cerebro-rituais door 4)",
       "sentinels.fsWatch.enabled": "default off; an unreadable value reads off",
       "sentinels.fsWatch.debounceMs": "timing",
       "sentinels.repeatedFailure.threshold": "a count for a notification",

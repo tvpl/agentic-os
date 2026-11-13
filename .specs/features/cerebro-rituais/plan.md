@@ -44,7 +44,7 @@ laço horário dos sentinelas e o histórico da C7.
 ```mermaid
 flowchart TD
     UI["página /brain/weekly (door 2)"] --> GET["GET /api/memory/weekly-review (door 2)"]
-    GET --> RD["generatedSections / sectionItems (exists, dashboards)"]
+    GET --> RD["sectionBullets (extracted from the dashboards' sectionItems into loops.ts)"]
     GET --> LR["lastReviewedDay (exists, reviews.ts)"]
     GET --> TK["note_tasks (exists)"]
     GET --> LD["loop_decisions (door 1)"]
@@ -73,8 +73,9 @@ flowchart TD
 ```
 
 1. a página `/brain/weekly` (door 2) pede `GET /api/memory/weekly-review`; o núcleo da revisão semanal (novo, sem door -
-   lugar pelas convenções de `core/src/memory/`) lê os laços pelas mesmas `generatedSections`/`sectionItems` dos painéis
-   (exists), os projetos pelas linhas de `files` e o cabeçalho indexado, a próxima ação por `note_tasks` (exists), o prazo
+   lugar pelas convenções de `core/src/memory/`: `loops.ts` e `weeklyReview.ts`) lê os laços pela mesma leitura de seção
+   de nível 2 dos painéis (`sectionBullets`, extraída de `sectionItems` para `loops.ts` e usada pelos dois; a janela de
+   dias e o `MEMORY.md` inteiro são lidos pelo núcleo, porque `generatedSections` só lê a semana corrente), os projetos pelas linhas de `files` e o cabeçalho indexado, a próxima ação por `note_tasks` (exists), o prazo
    de revisão por `lastReviewedDay` (exists), o contexto por `contextMembership` (exists) e as decisões em `loop_decisions`
    (door 1)
 2. uma decisão de laço vai a `POST /api/memory/weekly-review/loops`, grava em `loop_decisions` (door 1); "virar projeto"

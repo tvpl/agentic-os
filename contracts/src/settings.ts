@@ -556,6 +556,19 @@ export const SettingsSchema = z.object({
         })
         .default({}),
       /**
+       * The weekly review (.specs/features/cerebro-rituais, door 4): how long a project holds before its review is due
+       * (`projectEvery`, a note's own `review_every` wins), how many local days of the journal the open loops are read
+       * from, and how many items each list shows. `PUT /api/settings` replaces `memory.weeklyReview` whole, like the
+       * other fields of `memory`; the list reads it at each request.
+       */
+      weeklyReview: z
+        .object({
+          projectEvery: ReviewCadenceSchema.default("7d"),
+          loopsWindowDays: z.number().int().min(7).max(3650).default(90),
+          maxItems: z.number().int().min(1).max(200).default(50),
+        })
+        .default({}),
+      /**
        * The internal history of `memory/` (.specs/features/cerebro-memoria-confiavel, door 4): above `maxBytes` of stored
        * (deflated) blobs, the oldest versions that are not among the newest 5 of their path are dropped. It writes no
        * file and opens nothing; an unreadable value reads its default.

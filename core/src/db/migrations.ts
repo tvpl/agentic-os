@@ -781,4 +781,27 @@ CREATE TABLE IF NOT EXISTS file_related_devices (
 CREATE INDEX IF NOT EXISTS idx_file_related_devices_dst ON file_related_devices(dst_id);
 `,
   },
+  {
+    version: 33,
+    name: "rituais",
+    // cerebro-rituais, door 1: the owner's decision on each open loop, keyed by the loop's normalized text (one decision
+    // per loop; `keep` holds only for the `week` it was stored in), and one row per local week of the weekly review.
+    // Both created empty; nothing to migrate.
+    sql: `
+CREATE TABLE IF NOT EXISTS loop_decisions (
+  key TEXT PRIMARY KEY,
+  text TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('closed','keep','someday','project','task')),
+  week TEXT NOT NULL,
+  target TEXT,
+  decided_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS weekly_reviews (
+  week TEXT PRIMARY KEY,
+  archived INTEGER NOT NULL DEFAULT 0,
+  finished_at INTEGER,
+  counts TEXT
+);
+`,
+  },
 ];
