@@ -738,6 +738,38 @@ describe("C16 the migrated screens own no keydown listener", () => {
   );
 
   it(
+    "C77 the weekly review adds no key listener: the page's files and its entries own none, and the page's listeners are still exactly the allowlist (cerebro-rituais)",
+    { timeout: 60_000 },
+    () => {
+      const all = sources();
+      const page = all.filter((f) => f.startsWith("brain/weekly/") || f === "brain/weeklyEntry.tsx");
+      expect(page).toEqual(
+        expect.arrayContaining(["brain/weekly/WeeklyReview.tsx", "brain/weeklyEntry.tsx"]),
+      );
+      const entries = [
+        "brain/BrainChrome.tsx",
+        "brain/BrainViewSwitch.tsx",
+        "nucleo/scenes/BrainSceneMenu.tsx",
+        "views/SecondBrain.tsx",
+        "commands/global.ts",
+      ];
+      const perFile = new Map<string, number>();
+      for (const file of all) {
+        const path = join(SRC, file);
+        const here = readListeners(readFileSync(path, "utf8"), file, {
+          importConst: (from, name) => importedConst(path, from, name),
+        });
+        if (here.keydown.length > 0) perFile.set(file, here.keydown.length);
+      }
+      for (const file of [...page, ...entries]) expect(perFile.get(file) ?? 0, file).toBe(0);
+      // The Núcleo's brain scene keeps its two listed listeners (the allowlist below), and gains none.
+      expect(Object.fromEntries(perFile)).toEqual(
+        Object.fromEntries(Object.entries(OUTSIDE_THE_REGISTRY).map(([f, [n]]) => [f, n])),
+      );
+    },
+  );
+
+  it(
     "C96 trustworthy memory adds no key listener: its new files and its entries own none, the page's listeners are still exactly the allowlist, and the allowlist does not grow (cerebro-memoria-confiavel)",
     { timeout: 60_000 },
     () => {

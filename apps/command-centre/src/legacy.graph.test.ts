@@ -44,6 +44,8 @@ const UNREACHED: Record<string, string> = {
   "brain/cleanup/testkit.tsx": "test material: imported by specs only",
   // cerebro-natureza, batch D: the reviews specs' routes over the notes-view stub, and their render helpers
   "brain/reviews/testkit.tsx": "test material: imported by specs only",
+  // cerebro-rituais, batch D: the weekly review's specs' routes over the notes-view stub, and their render helpers
+  "brain/weekly/testkit.tsx": "test material: imported by specs only",
   // cerebro-paineis, batch D: the dashboards specs' routes over the notes-view stub, and their render helpers
   "dashboards/testkit.tsx": "test material: imported by specs only",
   "dashboards/testnet.ts": "test material: imported by specs only",

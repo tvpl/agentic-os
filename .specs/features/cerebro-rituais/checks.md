@@ -1175,3 +1175,11 @@ Status of batch C (updated in the commit that closes each piece):
 - **Abandoned:** reading every Markdown row's stored text with no full-text prefilter (it reads the whole index per
   request and passes by the audience copies `Flow` names); checking the match before the version (G16 puts
   `edit_conflict` first).
+
+Status of batch D (updated in the commit that closes each piece):
+
+- the weekly review page and its entries (S5: C76-C92): closed, every component proof green in
+  `apps/command-centre/src/brain/weekly/WeeklyReview.test.tsx` (C78-C91), `weeklyEntries.test.tsx` (C76, C77),
+  `weeklyMotion.test.ts` (C92) and `commands/commands.source.test.ts` (C77); C76's browser proof
+  (`tests/e2e/weekly.spec.ts`) is batch E's, with the spec file, and C92's claim about the fold's stylesheet joins when
+  batch E writes the fold (the page's `weekly.css` is the one read now)
