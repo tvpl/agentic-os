@@ -1031,3 +1031,12 @@ The estimate exceeds the 150k budget. Mechanism chosen by the owner on 10/11/202
   - B + C ≈ 210k and D + E ≈ 184k are over the budget, so each batch stays apart; A lands first because B's finish counts
     read A's decisions and C's mentions share A's world, C asserts the routes of A, B and C, and D and E call them
 - Mechanism: handoff — chosen by the owner on 10/11/2026 (five batches, sequential, only on green; the next builder reads `checks.md` and the diff of what landed)
+
+Status of batch A (updated in the commit that closes each piece):
+
+- the loops (S1: C1-C19), the projects (S2: C20-C31) and someday (S3: C32, C33), with migration 33, the three routes
+  `GET /api/memory/weekly-review`, `POST /api/memory/weekly-review/loops` and `POST /api/memory/tasks`, and
+  `settings.memory.weeklyReview`: closed, every proof green in `tests/rituais.loops.test.ts`,
+  `tests/rituais.projects.test.ts`, `tests/rituais.tasks.test.ts`, `tests/rituais.localday.test.ts`,
+  `tests/rituais.layer.test.ts` and `tests/rituais.contract.test.ts` (C29), and in `tests/paineis.localday.test.ts`
+  C27 and `tests/paineis.tasks.test.ts` C47 and C50
