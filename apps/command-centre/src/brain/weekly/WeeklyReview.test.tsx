@@ -1468,6 +1468,15 @@ describe("C104 the action buttons' class and icon, as design.md gives them", () 
     ]);
   });
 
+  it("C104 step Algum dia: Reativar is .btn with Play, as design.md gives it (the class and the icon of the same button)", async () => {
+    const app = project("App", { status: "paused", health: "paused" });
+    answer(weekly({ someday: { loops: [], projects: [app] } }));
+    mountWeekly();
+    await loaded();
+    await goTo("Algum dia");
+    expect(look(itemWith("App"), "Reativar")).toEqual(["Reativar", "btn", "lucide-play"]);
+  });
+
   it("C104 step Arquivar: Arquivar N (.btn.primary, Archive); the result's Desfazer is .btn", async () => {
     const p = { path: `${MEM}/notes/p.md`, title: "Projeto P", editable: true, doneSince: "2026-11-03" };
     answer(weekly({ archiveItems: [p] }));

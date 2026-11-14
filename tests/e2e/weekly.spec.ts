@@ -623,6 +623,13 @@ test("C106 the moldura: an item's actions are a row to the right of its text at 
   await page.setViewportSize({ width: 600, height: 900 });
   for (const text of [w.loops[0]!, w.inbox])
     await expect.poll(async () => below(await boxes(page, text)), text).toBe(true);
+  // moldura-app's narrow screen is under 900 px: one pixel under is a column, 900 px is a row
+  await page.setViewportSize({ width: 899, height: 900 });
+  for (const text of [w.loops[0]!, w.inbox])
+    await expect.poll(async () => below(await boxes(page, text)), `${text} at 899`).toBe(true);
+  await page.setViewportSize({ width: 900, height: 900 });
+  for (const text of [w.loops[0]!, w.inbox])
+    await expect.poll(async () => right(await boxes(page, text)), `${text} at 900`).toBe(true);
   await page.setViewportSize({ width: 1440, height: 900 });
   await step(page, "Atualizar", 2);
   await expect(week(page).locator(".wk-item", { hasText: w.app })).toBeVisible();

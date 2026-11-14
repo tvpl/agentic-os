@@ -836,8 +836,8 @@ Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.
 | steps (5)                                                                           | Esvaziar C78, C79 · Atualizar C78, C81 · Algum dia C78, C88 · Arquivar C78, C89 · Pronto C78, C90, C91                                                                                                                                                                                                                                                                                                                                                                                           | -        |
 | empty texts per step (4)                                                            | step 1 C87 · step 2 C87 · step 3 C87 · step 4 C87                                                                                                                                                                                                                                                                                                                                                                                                                                                | -        |
 | screen states (6)                                                                   | list C79 · empty C87 · loading C87 · read error C87 · action error C86 · conflict C86                                                                                                                                                                                                                                                                                                                                                                                                            | -        |
-| toasts (9)                                                                          | `close` C84 · `keep` C84 · `someday` C84 · Concluído C84 · Pausar C84 · Reativar C84 · `project` C84 · `task` C84 · loop gone C84                                                                                                                                                                                                                                                                                                                                                                |
-| the notice as the page's own `role="status"` line, 8 s, design.md amendment 1 (10)  | `close` C102 · `keep` C102 · `someday` C102 · Concluído C102 · Pausar C102 · Reativar C102 · `project` C102 · `task` C102 · inbox Arquivar C102 · loop gone C102                                                                                                                                                                                                                                                                                                                                 |
+| toasts (9)                                                                          | `close` C84 · `keep` C84 · `someday` C84 · Concluído C84 · Pausar C84 · Reativar C84 · `project` C84 · `task` C84 · loop gone C84                                                                                                                                                                                                                                                                                                                                                                | -        |
+| the notice as the page's own `role="status"` line, 8 s, design.md amendment 1 (10)  | `close` C102 · `keep` C102 · `someday` C102 · Concluído C102 · Pausar C102 · Reativar C102 · `project` C102 · `task` C102 · inbox Arquivar C102 · loop gone C102                                                                                                                                                                                                                                                                                                                                 | -        |
 | action buttons with the class and icon design.md gives (19)                         | Fechar C79, C104 · Manter C104 · Algum dia C104 · Virar projeto C104 · Virar tarefa C104 · inbox Abrir C104 · inbox Arquivar C104 · Adicionar C81, C104 · Revisado C104 · Concluído C104 · Pausar C104 · project Abrir C81, C104 · Manter em algum dia C88 · Reativar C88 · Arquivar N C104 · result Desfazer C104 · Voltar C104 · Próxima etapa C78, C104 · Concluir revisão C78                                                                                                                | -        |
 | undo sides (3)                                                                      | loop restore C85 · properties C85 · manifest C85, C89                                                                                                                                                                                                                                                                                                                                                                                                                                            | -        |
 | arrangements design.md draws (15)                                                   | button after Revisões C76 · last menu row C76 · header then step bar C78 · footer order C78 · step 1 block order C79 · loop actions order C79 · project item lines C81 · project actions order C81 · lock above actions C82 · archive list order C89 · Pronto numbers order C90 · fold between links and Relacionadas C93 · step 4 title between the sentence and the list C103 · context shortcut after the week C105 · item actions to the right of the text, below it on a narrow screen C106 | -        |
@@ -856,17 +856,17 @@ Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.
 
 ## Binding sources
 
-| Source                                                                                                                           | Checked by          |
-| -------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| `cerebro-rituais/design.md` (the page, its five steps, states, entries, the fold, the sentinel row, motion, the copy)            | C76-C106            |
-| `design-system/design.md` (12px floor, 13px prose, tokens, state never by colour alone, axe, the gallery)                        | C81, C98, C99       |
-| `primitivas/design.md` (`Menu` for "Virar tarefa", the toast with an action, motion inside `no-preference`)                      | C80, C84, C92, C102 |
-| `comandos-atalhos/design.md` (the registry, `view:weekly` keys, no listener outside it, no bare key in a field)                  | C77                 |
-| `moldura-app/design.md` (the brain's toolbar, `.btn.sm`, next to "Revisões (N)")                                                 | C76                 |
-| `cerebro-natureza/design.md` (the leaving item, the 8 s toast with "Desfazer", the conflict, the lock sentence, `role="status"`) | C78, C82, C84, C86  |
-| `cerebro-faxina-guiada/design.md` (the step bar and its text, "Desfeito: N arquivos voltaram.")                                  | C78, C89            |
-| `cerebro-vista-notas/design.md` (the note panel's `Fold`, its header and density)                                                | C93                 |
-| `limpeza-legado/design.md` (one Markdown renderer, no unused CSS or key)                                                         | C97                 |
+| Source                                                                                                                                                               | Checked by          |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| `cerebro-rituais/design.md` (the page, its five steps, states, entries, the fold, the sentinel row, motion, the copy)                                                | C76-C106            |
+| `design-system/design.md` (12px floor, 13px prose, tokens, state never by colour alone, axe, the gallery)                                                            | C81, C98, C99       |
+| `primitivas/design.md` (`Menu` for "Virar tarefa", motion inside `no-preference`; the action notice is the page's own `role="status"` line by design.md amendment 1) | C80, C84, C92, C102 |
+| `comandos-atalhos/design.md` (the registry, `view:weekly` keys, no listener outside it, no bare key in a field)                                                      | C77                 |
+| `moldura-app/design.md` (the brain's toolbar, `.btn.sm`, next to "Revisões (N)")                                                                                     | C76                 |
+| `cerebro-natureza/design.md` (the leaving item, the 8 s notice line with "Desfazer", the conflict, the lock sentence, `role="status"`)                               | C78, C82, C84, C86  |
+| `cerebro-faxina-guiada/design.md` (the step bar and its text, "Desfeito: N arquivos voltaram.")                                                                      | C78, C89            |
+| `cerebro-vista-notas/design.md` (the note panel's `Fold`, its header and density)                                                                                    | C93                 |
+| `limpeza-legado/design.md` (one Markdown renderer, no unused CSS or key)                                                                                             | C97                 |
 
 ## Test policy
 
@@ -1106,6 +1106,16 @@ source's `mtime`, newest first, then by `path` for the same `mtime`, then by `li
 sources, no `limit` gives 20 items and `total` 25, `limit` 1 gives the newest and 50 gives 25; the query refuses `limit`
 0 and 51 and takes 1, 50 and none (round 1 finding 3)
 Proof: `npx vitest run tests/rituais.layer.test.ts -t "C111 "`
+
+### Round 2 of the verification (gaps 1 and 2 of `verification.md`, 14/11/2026)
+
+- **C106, the narrow-screen boundary.** The moldura case now also measures 899 px (the actions below the text) and 900 px
+  (to the right of it), for a loop and an inbox file, so any breakpoint other than moldura-app's "under 900 px" fails; the
+  old 760 px rule fails at 899 px (shown by rebuilding with it). Proof: the same two C106 Proof lines.
+- **C104, `Reativar`.** One more case reads the button of a paused project in step "Algum dia": class `btn`, icon `Play`,
+  both of the same button. Proof: the same C104 Proof line (changing the class to `btn ghost` fails it).
+- **Coverage.** The rows "toasts (9)" and "the notice (10)" now carry their `Unproven` cell (`-`), and the binding-sources
+  table no longer says "toast" for the notice: the notice is the page's own `role="status"` line (design.md amendment 1).
 
 ## Handoff
 
