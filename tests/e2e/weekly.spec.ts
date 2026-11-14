@@ -587,3 +587,62 @@ test("C101 both shells: the palette opens Revisão semanal; Fechar takes a loop 
   await expect(nwk.locator(".wk-num")).toHaveText(["1", "1", "1"]);
   await linkIn(1, ".nu-shell");
 });
+
+/* ---------------- C106: where an item's actions sit (round 1) ---------------- */
+
+/** The text and the actions of the item holding `text`: their boxes. */
+async function boxes(page: Page, text: string) {
+  return week(page)
+    .locator(".wk-item", { hasText: text })
+    .first()
+    .evaluate((li) => {
+      const box = (sel: string) => {
+        const r = li.querySelector(sel)!.getBoundingClientRect();
+        return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+      };
+      return { text: box(".wk-text"), acts: box(".wk-acts") };
+    });
+}
+const right = (b: Awaited<ReturnType<typeof boxes>>) =>
+  b.acts.left >= b.text.right - 1 && b.acts.top < b.text.bottom && b.acts.bottom > b.text.top;
+const below = (b: Awaited<ReturnType<typeof boxes>>) => b.acts.top >= b.text.bottom - 1;
+
+test("C106 the moldura: an item's actions are a row to the right of its text at 1 440 px (a loop, an inbox file, a project) and below the text at 600 px", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await open(page, "moldura", "light", "/brain");
+  const w = await makeWeek(page, "c106", 2);
+  await page.route(/\/api\/v1\/memory\/weekly-review\/(loops|archive)$/, (route) => route.abort());
+  await page.goto("/#/brain/weekly");
+  // a week finished by an earlier test opens on "Pronto"
+  await expect(week(page).locator("h1")).toHaveText("Revisão semanal");
+  await step(page, "Esvaziar", 1);
+  await expect(week(page).locator(".wk-item", { hasText: w.loops[0]! })).toBeVisible();
+  for (const text of [w.loops[0]!, w.inbox]) expect(right(await boxes(page, text)), text).toBe(true);
+  await page.setViewportSize({ width: 600, height: 900 });
+  for (const text of [w.loops[0]!, w.inbox])
+    await expect.poll(async () => below(await boxes(page, text)), text).toBe(true);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await step(page, "Atualizar", 2);
+  await expect(week(page).locator(".wk-item", { hasText: w.app })).toBeVisible();
+  await expect.poll(async () => right(await boxes(page, w.app))).toBe(true);
+  await page.setViewportSize({ width: 600, height: 900 });
+  await expect.poll(async () => below(await boxes(page, w.app))).toBe(true);
+});
+
+test("C106 the Núcleo: in the brain's panel at 1 440 px an item's actions are a row to the right of its text", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await open(page, "nucleo", "dark", "/brain");
+  const w = await makeWeek(page, "c106n", 2);
+  await page.route(/\/api\/v1\/memory\/weekly-review\/(loops|archive)$/, (route) => route.abort());
+  await page.goto("/#/brain/weekly");
+  // a week finished by an earlier test opens on "Pronto"
+  await expect(week(page).locator("h1")).toHaveText("Revisão semanal");
+  await step(page, "Esvaziar", 1);
+  await expect(week(page).locator(".wk-item", { hasText: w.loops[0]! })).toBeVisible();
+  for (const text of [w.loops[0]!, w.inbox])
+    await expect.poll(async () => right(await boxes(page, text)), text).toBe(true);
+});

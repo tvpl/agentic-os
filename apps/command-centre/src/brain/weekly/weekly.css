@@ -13,7 +13,6 @@
 
 .wk-head,
 .wk-tools,
-.wk-row,
 .wk-line1,
 .wk-line2,
 .wk-acts,
@@ -184,8 +183,23 @@
   outline-offset: 1px;
 }
 
+/* the item's text on the left, its actions in one row on the right (a locked project's sentence above them); on a
+   narrow screen (moldura-app: under 900 px) the actions go below the text (design.md "Lista") */
 .wk-row {
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px var(--s-3);
+}
+
+.wk-row > .wk-text {
+  grid-row: span 2;
+}
+
+.wk-row > .wk-lock,
+.wk-row > .wk-acts {
+  grid-column: 2;
+  justify-self: end;
 }
 
 .wk-text {
@@ -319,10 +333,19 @@
   height: 14px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 899px) {
   .wk-row {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wk-row > .wk-text {
+    grid-row: auto;
+  }
+
+  .wk-row > .wk-lock,
+  .wk-row > .wk-acts {
+    grid-column: 1;
+    justify-self: start;
   }
 }
 
