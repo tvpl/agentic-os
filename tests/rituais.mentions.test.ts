@@ -196,6 +196,19 @@ describe("C61 no item where the term is not prose", () => {
     expect(body.total).toBe(1);
     expect((body.items as Json[])[0]).toMatchObject({ line: 1, term: "Rede" });
   });
+  it("C61 a line holding Café left of Rede, with terms [Rede, Café], is one item whose term is Rede: the first entry of terms, not the leftmost in the line (round 1, G35)", async () => {
+    const target = w.put(notes("Rede.md"), "---\ntitle: Rede\naliases: [Café]\n---\nx\n");
+    w.put(notes("fonte.md"), "o café antes e a rede depois\n");
+    await w.index();
+    const body = await mentions(idOf(target));
+    expect(body.terms).toEqual(["Rede", "Café"]);
+    expect(body.total).toBe(1);
+    expect((body.items as Json[])[0]).toMatchObject({
+      line: 1,
+      term: "Rede",
+      excerpt: "o café antes e a rede depois",
+    });
+  });
 });
 
 // ---- C62 ----------------------------------------------------------------------------------------------------------

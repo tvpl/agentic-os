@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { RestoreLock } from "../core/src/restoreLock.js";
 import { MONDAY, code, rituaisWorld, sha, type Json, type RituaisWorld } from "./helpers/rituaisWorld.js";
 
 /**
@@ -480,5 +481,32 @@ describe("C44 two archives of one file at once", () => {
     expect(copies).toHaveLength(1);
     expect(w.weeks().map((r) => r.archived)).toEqual([1]);
     expect(code(await w.archive({ week: WEEK, paths: [a] }))).toEqual([400, "validation"]);
+  });
+});
+
+// ---- C107 (round 1 of the verification) --------------------------------------------------------------------------
+
+describe("C107 the archive under a restore", () => {
+  it("C107 while a restore holds the exclusive lock, POST /api/memory/weekly-review/archive answers 409 restore_in_progress and moves nothing: the files where they were, no folder under memory/archive/, no manifest, no proposal, archived unchanged; after the lock is released the same call moves them", async () => {
+    const project = done(notes("p.md"));
+    const file = w.put(inbox("a.md"), "# A\n");
+    await w.index();
+    const review = await w.review();
+    expect(review.archive.items.map((i: Json) => i.path)).toEqual([project]);
+    expect(review.inbox.items.map((i: Json) => i.path)).toEqual([file]);
+    const state = () => [snapshot(w.memory), snapshot(path.join(w.home, "artifacts", "cleanup"))];
+    const before = state();
+    const held = RestoreLock.acquire(w.ctx.paths, 0, "exclusive");
+    try {
+      const res = await w.archive({ week: WEEK, paths: [project, file] });
+      expect(code(res)).toEqual([409, "restore_in_progress"]);
+    } finally {
+      held.release();
+    }
+    expect(state()).toEqual(before);
+    expect(w.weeks()).toEqual([]);
+    const after = await w.archive({ week: WEEK, paths: [project, file] });
+    expect(after.status, JSON.stringify(after.body)).toBe(200);
+    expect(after.body.moved.map((m: Json) => m.from)).toEqual([project, file]);
   });
 });

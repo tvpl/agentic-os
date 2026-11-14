@@ -237,6 +237,26 @@ describe("C48 the header of the list", () => {
     expect((await w.review()).reviewsDue).toBe(3);
   });
 
+  it("C48 reviewsDue with a context: only the due notes under the context's paths and memory/notes/<id>/ count, never the look-alike folder, equal to GET /api/memory/reviews?kind=due with that context; none counts all four (round 1)", async () => {
+    const root = w.indexedRoot("r");
+    const app = path.join(root, "projetos", "app");
+    fs.mkdirSync(app, { recursive: true });
+    w.update((s) => {
+      s.contexts = [{ id: "app", name: "App", paths: [app] }];
+    });
+    const due = (file: string) => w.note(file, { natureza: "opiniao", last_reviewed: "2025-01-01" }, "# n\n");
+    due(path.join(app, "a.md"));
+    due(notes("app", "b.md"));
+    due(path.join(root, "projetos", "app-antigo", "c.md"));
+    due(notes("d.md"));
+    await w.index();
+    const reviews = async (q: string) => (await w.call("GET", `/api/memory/reviews?kind=due${q}`)).body.total;
+    expect(await reviews("&context=app")).toBe(2);
+    expect(await reviews("")).toBe(4);
+    expect((await w.review("context=app")).reviewsDue).toBe(2);
+    expect((await w.review()).reviewsDue).toBe(4);
+  });
+
   it("C48 nextReminder: Friday 16:00 on Monday, the next Friday after the finish and on Saturday unfinished, Sunday 23:00 with weekday 0 hour 23, null when off", async () => {
     const friday = new Date(2026, 10, 13, 16, 0).getTime();
     const nextFriday = new Date(2026, 10, 20, 16, 0).getTime();
@@ -257,4 +277,74 @@ describe("C48 the header of the list", () => {
     expect((await w.finish({ week: WEEK })).status).toBe(200);
     expect((await w.review()).nextReminder).toBe(nextFriday);
   });
+});
+
+// ---- C108 (round 1 of the verification, plan amendment 5) --------------------------------------------------------
+
+describe("C108 finish over a hostile journal", () => {
+  /** Every name under the journal folder with its bytes (a folder as "dir", a link as its target). */
+  const journals = (): Record<string, string> => {
+    const dir = path.join(w.memory, "journal");
+    const out: Record<string, string> = {};
+    const walk = (at: string) => {
+      for (const e of fs.readdirSync(at, { withFileTypes: true })) {
+        const full = path.join(at, e.name);
+        if (e.isSymbolicLink()) out[full] = `link:${fs.readlinkSync(full)}`;
+        else if (e.isDirectory()) {
+          out[full] = "dir";
+          walk(full);
+        } else out[full] = sha(fs.readFileSync(full));
+      }
+    };
+    if (fs.existsSync(dir)) walk(dir);
+    return out;
+  };
+  const cases: Array<[string, number, string, () => string | null]> = [
+    [
+      "a link to a file outside memory/",
+      403,
+      "forbidden_path",
+      () => {
+        const outside = path.join(w.home, "fora-do-diario.md");
+        fs.writeFileSync(outside, "# fora\n");
+        fs.mkdirSync(path.dirname(journalOf(WEEK)), { recursive: true });
+        fs.symlinkSync(outside, journalOf(WEEK));
+        return outside;
+      },
+    ],
+    [
+      "a folder in its place",
+      404,
+      "not_a_file",
+      () => {
+        fs.mkdirSync(journalOf(WEEK), { recursive: true });
+        return null;
+      },
+    ],
+    [
+      "a file larger than what is read of it (2 MiB + 1)",
+      413,
+      "file_too_large",
+      () => {
+        w.put(journalOf(WEEK), "x".repeat(2 * 1024 * 1024 + 1));
+        return null;
+      },
+    ],
+  ];
+  for (const [name, status, error, make] of cases)
+    it(`C108 today's journal as ${name}: finish answers ${status} ${error} and writes nothing (no weekly_reviews row, the journal folder and the link's target as they were)`, async () => {
+      w.journal("2026-11-04", ["09:00 Um laço"]);
+      await w.index();
+      expect((await w.decide({ key: keyOf("um laco"), action: "close" })).status).toBe(200);
+      const target = make();
+      const targetBytes = target ? fs.readFileSync(target) : null;
+      const before = journals();
+      const res = await w.finish({ week: WEEK });
+      expect(code(res)).toEqual([status, error]);
+      expect(w.weeks()).toEqual([]);
+      expect(journals()).toEqual(before);
+      if (target) expect(fs.readFileSync(target).equals(targetBytes!)).toBe(true);
+      // the next GET still reads the week as open
+      expect((await w.review()).finishedAt).toBeNull();
+    });
 });
