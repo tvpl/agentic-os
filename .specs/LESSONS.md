@@ -474,6 +474,34 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C176 doctor.ts:189 (security)
 - last seen: 2026-11-07T02:12:12Z
 
+### L-067 - A layout claim with a breakpoint needs a browser case on each side of the boundary, one pixel under and exactly on it, or any breakpoint between the two measured widths passes.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `layout` · harmful: 0
+- features: cerebro-rituais
+- evidence: tests/e2e/weekly.spec.ts:622 C106 round 2 gap 1 (layout)
+- last seen: 2026-11-14T02:44:30Z
+
+### L-068 - A Coverage row that names two attributes of a member, such as class and icon, needs a proof of each attribute for each member, not an icon assertion standing for both.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `screens` · harmful: 0
+- features: cerebro-rituais
+- evidence: WeeklyReview.test.tsx:933 C88 round 2 gap 2 (screens)
+- last seen: 2026-11-14T02:44:30Z
+
+### L-069 - A check that says an element sits to the right of another needs a rendered-geometry assertion in a browser, because an element-order assertion passes while the layout wraps below.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `layout` · harmful: 0
+- features: cerebro-rituais
+- evidence: C106 round 2, WeeklyReview.test.tsx item actions (layout)
+- last seen: 2026-11-14T02:44:30Z
+
+### L-070 - When the built screen differs from a binding design on a component choice, the owner decides which one yields and the design is amended in a dated list, never silently.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `design` · harmful: 0
+- features: cerebro-rituais
+- evidence: verification.md round 1 gap 1, C84/C85 notice vs primitivas row (design)
+- last seen: 2026-11-14T02:44:30Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

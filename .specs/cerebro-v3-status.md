@@ -1,5 +1,8 @@
 # Roteiro do segundo cérebro: estado, o que falta, gaps e o que revisar
 
+> **Atualização de 14/11/2026:** a **C8 `cerebro-rituais`** está construída e fechada (101 checks mais 10 de correção, verificação PASS na
+> rodada 3, AD-048 e AD-049). Faltam C9 a C11, que só têm a linha do roteiro, e a sessão de andar as telas com o dono.
+>
 > **Atualização de 08/11/2026:** C1 a C7 estão construídas e fechadas (C7 por escalonamento depois de quatro verificações, AD-046),
 > as oito perguntas de maior efeito foram respondidas (AD-047) e o PR #11 abriu. Faltam C8 a C11, que só têm a linha do roteiro;
 > o próximo passo é planejar a **C8 `cerebro-rituais`** (seção 7). O resto deste arquivo descreve o estado de 01/11/2026; para o que
@@ -30,7 +33,7 @@ empurrada. A **parte B foi interrompida** pelo dono no meio da construção:
 | C6  | `cerebro-natureza`          | construída e fechada                                                     | 94     | rodada 3 FAIL, testes escritos depois, sem nova verificação (AD-043) |
 | C6b | `cerebro-paineis`           | construída e fechada                                                     | 104    | rodada 3 FAIL, testes escritos depois, sem nova verificação (AD-044) |
 | C7  | `cerebro-memoria-confiavel` | **construída (A1-B2, com B1b), em correção depois de 2 rodadas em FAIL** | 171    | aberta: rodada 3, a última, ainda não rodou                          |
-| C8  | `cerebro-rituais`           | **só linha no roteiro**                                                  | -      | sem plano, sem checks                                                |
+| C8  | `cerebro-rituais`           | construída e fechada (111 checks)                                        | 111    | rodada 3 PASS (AD-049)                                               |
 | C9  | `cerebro-busca-significado` | **só linha no roteiro**                                                  | -      | sem plano, sem checks                                                |
 | C10 | `cerebro-perguntar`         | **só linha no roteiro**                                                  | -      | sem plano, sem checks                                                |
 | C11 | `cerebro-entidades-resumos` | **só linha no roteiro**                                                  | -      | sem plano, sem checks                                                |
