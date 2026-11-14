@@ -386,3 +386,37 @@ describe("C77 the command and the keys", () => {
     expect(net.calls.filter((c) => c.method !== "GET")).toEqual([]);
   });
 });
+
+describe("C105 the header's context shortcut (round 1)", () => {
+  for (const shell of ["moldura", "nucleo"] as const)
+    it(`C105 in the ${shell}, the header's "Contexto: Projeto X", after the week, is a button that runs action:switch-context once and the shell's context menu opens`, async () => {
+      withContext();
+      answer(weekly(), { context: "proj-x" });
+      if (shell === "nucleo") {
+        net.prefs.shell = "nucleo";
+        window.sessionStorage.removeItem("mordomo.brainScene.classic");
+      }
+      const registry = new CommandRegistry();
+      await mountShell("/brain/weekly", shell, "pt-BR", registry);
+      await weeklyUp();
+      const tools = document.querySelector(".wk-head .wk-tools")!;
+      const button = await waitFor(() => {
+        const b = [...tools.children].at(-1) as HTMLButtonElement;
+        expect(b.textContent).toBe("Contexto: Projeto X");
+        return b;
+      });
+      expect(button.tagName).toBe("BUTTON");
+      const week = tools.querySelector(".wk-week")!;
+      expect(week.textContent).toBe("Semana de 9 a 15/11");
+      expect(before(week, button)).toBe(true);
+      const command = registry.list().find((c) => c.id === "action:switch-context")!;
+      expect(command, "the shell registers the switch").toBeDefined();
+      const run = vi.spyOn(command, "run");
+      expect(screen.queryByRole("menuitem", { name: "Novo contexto…" })).toBeNull();
+      await userEvent.setup().click(button);
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(
+        await screen.findByRole("menuitem", { name: "Novo contexto…" }, { timeout: 5_000 }),
+      ).toBeTruthy();
+    });
+});

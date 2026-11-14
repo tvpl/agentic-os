@@ -10,6 +10,7 @@ process.env.TZ = "America/Sao_Paulo";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { isDeepStrictEqual } from "node:util";
 import type * as ApiModule from "../../api";
 import { installPage, motion } from "../../ui/testkit";
 import { resetNet } from "../notes/testnet";
@@ -1181,5 +1182,360 @@ describe("C91 a week already finished", () => {
     fireEvent.click(stepButtons()[0]!);
     expect(stepNow()).toBe("Etapa 1 de 5 · Esvaziar");
     expect(loopTexts()).toEqual(["Ligar para a Ana"]);
+  });
+});
+
+// ---- round 1 of the verification (C102-C104, C106) ---------------------------------------------------------------
+
+describe("C102 the notice is the page's own role=status line (design.md amendment 1)", () => {
+  type Case = {
+    name: string;
+    step?: string;
+    setup: () => string;
+    act: (li: HTMLElement) => void | Promise<void>;
+    text: string;
+    action: "Desfazer" | "Abrir" | null;
+  };
+  const loopCase = (label: string, action: string, text: string): Case => ({
+    name: action,
+    setup: () => {
+      const a = loop("Ligar para a Ana");
+      answer(weekly({ loopItems: [a, loop("Pagar o boleto")] }));
+      on(
+        "loops",
+        only(
+          { key: a.key, action },
+          { key: a.key, state: action === "close" ? "closed" : action, previous: null },
+        ),
+      );
+      return "Ligar para a Ana";
+    },
+    act: (li) => void fireEvent.click(button(li, label)),
+    text,
+    action: "Desfazer",
+  });
+  const statusCase = (label: string, status: string, text: string, step = "Atualizar"): Case => ({
+    name: label,
+    step,
+    setup: () => {
+      const st = step === "Algum dia" ? "paused" : "active";
+      const app = project("App", { status: st });
+      const site = project("Site", { status: st });
+      answer(
+        step === "Algum dia"
+          ? weekly({ someday: { loops: [], projects: [app, site] } })
+          : weekly({ projectItems: [app, site] }),
+      );
+      on(
+        "props",
+        only(
+          { path: app.path, baseVersion: "sha256:app", set: { status } },
+          { path: app.path, name: "app.md", version: "sha256:app2", size: 10, mtime: 1, properties: [] },
+        ),
+      );
+      return "App";
+    },
+    act: (li) => void fireEvent.click(button(li, label)),
+    text,
+    action: "Desfazer",
+  });
+  const cases: Case[] = [
+    loopCase("Fechar", "close", "Fechado."),
+    loopCase("Manter", "keep", "Mantido até segunda."),
+    loopCase("Algum dia", "someday", "Foi para algum dia."),
+    statusCase("Concluído", "done", "Concluído: App."),
+    statusCase("Pausar", "paused", "Pausado: App."),
+    statusCase("Reativar", "active", "Reativado: App.", "Algum dia"),
+    {
+      name: "project",
+      setup: () => {
+        const a = loop("Ligar para a Ana");
+        answer(weekly({ loopItems: [a, loop("Pagar o boleto")] }));
+        on(
+          "loops",
+          only(
+            { key: a.key, action: "project", name: "Ligar para a Ana" },
+            {
+              key: a.key,
+              state: "project",
+              previous: null,
+              created: { path: `${MEM}/notes/l.md`, version: "sha256:l" },
+            },
+          ),
+        );
+        return "Ligar para a Ana";
+      },
+      act: async (li) => {
+        fireEvent.click(button(li, "Virar projeto"));
+        await flush();
+        fireEvent.click(within(li).getByRole("button", { name: "Criar" }));
+      },
+      text: "Projeto criado: Ligar para a Ana.",
+      action: "Abrir",
+    },
+    {
+      name: "task",
+      setup: () => {
+        const a = loop("Ligar para a Ana");
+        const app = project("App");
+        answer(weekly({ loopItems: [a, loop("Pagar o boleto")], projectItems: [app] }));
+        on(
+          "loops",
+          only(
+            { key: a.key, action: "task", project: app.path, baseVersion: "sha256:app" },
+            {
+              key: a.key,
+              state: "task",
+              previous: null,
+              created: { path: app.path, version: "sha256:app2" },
+            },
+          ),
+        );
+        return "Ligar para a Ana";
+      },
+      act: () => void fireEvent.click(screen.getByRole("menuitem", { name: "App" })),
+      text: "Tarefa adicionada em App.",
+      action: "Abrir",
+    },
+    {
+      name: "Arquivar of an inbox file",
+      setup: () => {
+        const ideia = { path: `${MEM}/inbox/ideia.md`, title: "Ideia", ageDays: 4 };
+        answer(weekly({ inboxItems: [ideia, { path: `${MEM}/inbox/link.md`, title: "Link", ageDays: 2 }] }));
+        on(
+          "archive",
+          only(
+            { week: "2026-11-09", paths: [ideia.path] },
+            {
+              manifest: `${MEM}/archive/2026-11-09-a1b2c3d4/manifest.json`,
+              moved: [{ from: ideia.path, to: `${MEM}/archive/2026-11-09-a1b2c3d4/inbox/ideia.md` }],
+              skipped: [],
+              proposals: null,
+            },
+          ),
+        );
+        return "Ideia";
+      },
+      act: (li) => void fireEvent.click(button(li, "Arquivar")),
+      text: "Arquivados: 1.",
+      action: "Desfazer",
+    },
+    {
+      name: "a loop gone (404 loop_not_found)",
+      setup: () => {
+        const a = loop("Ligar para a Ana");
+        answer(weekly({ loopItems: [a, loop("Pagar o boleto")] }));
+        on("loops", (b) =>
+          isDeepStrictEqual(b, { key: a.key, action: "close" })
+            ? Promise.reject(new NetError(404, "loop_not_found"))
+            : Promise.reject(new NetError(400, "unexpected_body")),
+        );
+        return "Ligar para a Ana";
+      },
+      act: (li) => void fireEvent.click(button(li, "Fechar")),
+      text: "Este laço já tinha decisão.",
+      action: null,
+    },
+  ];
+
+  for (const c of cases)
+    it(`C102 ${c.name}: "${c.text}"${c.action ? ` with ${c.action}` : ""} is the page's own role=status line between the step's content and the footer (not the primitives' Toast), on screen at 7 999 ms and gone at 8 000 ms`, async () => {
+      const target = c.setup();
+      mountWeekly();
+      await loaded();
+      if (c.step) await goTo(c.step);
+      await waitFor(() => expect(itemWith(target)).toBeDefined());
+      if (c.name === "task") await userEvent.setup().click(button(itemWith(target), "Virar tarefa"));
+      await screen.findAllByRole("button");
+      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: NOW });
+      await c.act(itemWith(target));
+      await flush();
+      const line = notice()!;
+      expect(line.getAttribute("role")).toBe("status");
+      expect(line.parentElement).toBe(page());
+      expect(before(page().querySelector(".wk-stage")!, line)).toBe(true);
+      expect(before(line, page().querySelector(".wk-foot")!)).toBe(true);
+      expect(line.querySelector("span")!.textContent).toBe(c.text);
+      expect([...line.querySelectorAll("button")].map((b) => b.textContent)).toEqual(
+        c.action ? [c.action] : [],
+      );
+      // the primitives' toast region holds nothing of it
+      expect(document.querySelector(".toast-wrap")?.textContent ?? "").not.toContain(c.text);
+      act(() => void vi.advanceTimersByTime(7_999));
+      expect(notice()?.querySelector("span")?.textContent).toBe(c.text);
+      expect(notice()?.getAttribute("role")).toBe("status");
+      act(() => void vi.advanceTimersByTime(1));
+      expect(notice()).toBeNull();
+    });
+});
+
+describe("C103 the title of step Arquivar", () => {
+  it("C103 Projetos concluídos (2) sits after the sentence and before the list, with N the done projects listed; Projetos concluídos (1) with one", async () => {
+    const items = [
+      { path: `${MEM}/notes/p.md`, title: "Projeto P", editable: true, doneSince: "2026-11-03" },
+      { path: `${WORK}/q.md`, title: "Projeto Q", editable: false, doneSince: "2026-11-03" },
+    ];
+    answer(weekly({ archiveItems: items }));
+    const r = mountWeekly();
+    await loaded();
+    await goTo("Arquivar");
+    const block = page().querySelector(".wk-stage .wk-block")!;
+    const title = block.querySelector("h2.wk-block-title")!;
+    expect(title.textContent).toBe("Projetos concluídos (2)");
+    expect(
+      before(
+        within(block as HTMLElement).getByText("Vão para memory/archive/ com desfazer. Nada é apagado."),
+        title,
+      ),
+    ).toBe(true);
+    expect(before(title, block.querySelector(".wk-list")!)).toBe(true);
+    // unchecking one changes the button, not the title
+    fireEvent.click(within(block as HTMLElement).getByRole("checkbox", { name: "Projeto P" }));
+    expect(title.textContent).toBe("Projetos concluídos (2)");
+    r.unmount();
+    resetNet();
+    resetWeekly();
+    answer(weekly({ archiveItems: [items[0]] }));
+    mountWeekly();
+    await loaded();
+    await goTo("Arquivar");
+    expect(page().querySelector(".wk-block-title")!.textContent).toBe("Projetos concluídos (1)");
+  });
+});
+
+describe("C104 the action buttons' class and icon, as design.md gives them", () => {
+  /** [label, the class, the lucide icon or null] of each button, read in the item. */
+  const look = (li: Element, label: string) => {
+    const b = button(li, label);
+    const svg = b.querySelector("svg");
+    return [
+      label,
+      b.className,
+      svg ? ([...svg.classList].find((c) => c.startsWith("lucide-") && c !== "lucide-icon") ?? null) : null,
+    ];
+  };
+
+  it("C104 step Esvaziar: Manter (.btn, Clock), Algum dia (.btn, CloudMoon), Virar projeto (.btn, FolderPlus), Virar tarefa (.btn, ListPlus); the inbox's Abrir (.btn, FileText) and Arquivar (.btn, Archive)", async () => {
+    answer(
+      weekly({
+        loopItems: [loop("Ligar para a Ana")],
+        projectItems: [project("App")],
+        inboxItems: [{ path: `${MEM}/inbox/ideia.md`, title: "Ideia", ageDays: 4 }],
+      }),
+    );
+    mountWeekly();
+    await waitFor(() => expect(itemsOn()).toHaveLength(2));
+    const li = itemWith("Ligar para a Ana");
+    expect(
+      ["Fechar", "Manter", "Algum dia", "Virar projeto", "Virar tarefa"].map((l) => look(li, l)),
+    ).toEqual([
+      ["Fechar", "btn primary", "lucide-check"],
+      ["Manter", "btn", "lucide-clock"],
+      ["Algum dia", "btn", "lucide-cloud-moon"],
+      ["Virar projeto", "btn", "lucide-folder-plus"],
+      ["Virar tarefa", "btn", "lucide-list-plus"],
+    ]);
+    expect(["Abrir", "Arquivar"].map((l) => look(itemWith("Ideia"), l))).toEqual([
+      ["Abrir", "btn", "lucide-file-text"],
+      ["Arquivar", "btn", "lucide-archive"],
+    ]);
+  });
+
+  it("C104 Virar tarefa with no editable project is still .btn with ListPlus, disabled", async () => {
+    answer(weekly({ loopItems: [loop("Ligar para a Ana")] }));
+    mountWeekly();
+    await waitFor(() => expect(itemsOn()).toHaveLength(1));
+    expect(look(itemWith("Ligar para a Ana"), "Virar tarefa")).toEqual([
+      "Virar tarefa",
+      "btn",
+      "lucide-list-plus",
+    ]);
+    expect(button(itemWith("Ligar para a Ana"), "Virar tarefa").disabled).toBe(true);
+  });
+
+  it("C104 step Atualizar: Revisado (.btn.primary, Check), Concluído (.btn, CircleCheck), Pausar (.btn, Pause), Abrir (.btn.ghost, FileText), and Adicionar .btn.sm", async () => {
+    answer(weekly({ projectItems: [project("App")] }));
+    mountWeekly();
+    await loaded();
+    await goTo("Atualizar");
+    const li = itemWith("App");
+    expect(["Revisado", "Concluído", "Pausar", "Abrir", "Adicionar"].map((l) => look(li, l))).toEqual([
+      ["Revisado", "btn primary", "lucide-check"],
+      ["Concluído", "btn", "lucide-circle-check"],
+      ["Pausar", "btn", "lucide-pause"],
+      ["Abrir", "btn ghost", "lucide-file-text"],
+      ["Adicionar", "btn sm", null],
+    ]);
+  });
+
+  it("C104 step Arquivar: Arquivar N (.btn.primary, Archive); the result's Desfazer is .btn", async () => {
+    const p = { path: `${MEM}/notes/p.md`, title: "Projeto P", editable: true, doneSince: "2026-11-03" };
+    answer(weekly({ archiveItems: [p] }));
+    const manifest = `${MEM}/archive/2026-11-09-a1b2c3d4/manifest.json`;
+    on(
+      "archive",
+      only(
+        { week: "2026-11-09", paths: [p.path] },
+        {
+          manifest,
+          moved: [{ from: p.path, to: `${MEM}/archive/2026-11-09-a1b2c3d4/notes/p.md` }],
+          skipped: [],
+          proposals: null,
+        },
+      ),
+    );
+    mountWeekly();
+    await loaded();
+    await goTo("Arquivar");
+    const stage = page().querySelector(".wk-stage")!;
+    expect(look(stage, "Arquivar 1")).toEqual(["Arquivar 1", "btn primary", "lucide-archive"]);
+    fireEvent.click(button(stage, "Arquivar 1"));
+    await waitFor(() => expect(within(stage as HTMLElement).getByText("Arquivados: 1.")).toBeTruthy());
+    expect(button(page().querySelector(".wk-stage")!, "Desfazer").className).toBe("btn");
+  });
+
+  it("C104 the footer: Voltar .btn, Próxima etapa .btn.primary", async () => {
+    answer(weekly({ loopItems: [loop("Ligar para a Ana")] }));
+    mountWeekly();
+    await loaded();
+    const foot = page().querySelector(".wk-foot")!;
+    expect([...foot.querySelectorAll("button")].map((b) => [b.textContent, b.className])).toEqual([
+      ["Voltar", "btn"],
+      ["Próxima etapa", "btn primary"],
+    ]);
+  });
+});
+
+describe("C106 an item's actions sit after its text, in one row of their own", () => {
+  it("C106 in every kind of item (a loop, an inbox file, a project, a locked project, a someday loop, a paused project) the row holds the text first and the actions last, all the item's buttons in .wk-acts", async () => {
+    const fora = project("Fora", { path: `${WORK}/fora.md`, editable: false, version: null });
+    answer(
+      weekly({
+        loopItems: [loop("Ligar para a Ana")],
+        inboxItems: [{ path: `${MEM}/inbox/ideia.md`, title: "Ideia", ageDays: 4 }],
+        projectItems: [project("App"), fora],
+        someday: { loops: [loop("Aprender piano")], projects: [project("Pausa", { status: "paused" })] },
+      }),
+    );
+    mountWeekly();
+    await waitFor(() => expect(itemsOn()).toHaveLength(2));
+    const shape = (text: string) => {
+      const li = itemWith(text);
+      const row = li.querySelector(":scope > .wk-row")!;
+      const kids = [...row.children].map((e) => e.className);
+      const acts = row.querySelector(":scope > .wk-acts")!;
+      const outside = [...row.querySelectorAll("button")].filter(
+        (b) => !acts.contains(b) && !b.closest("form"),
+      );
+      return [kids[0], kids.at(-1), outside.length];
+    };
+    expect(shape("Ligar para a Ana")).toEqual(["wk-text", "wk-acts", 0]);
+    expect(shape("Ideia")).toEqual(["wk-text", "wk-acts", 0]);
+    await goTo("Atualizar");
+    expect(shape("App")).toEqual(["wk-text", "wk-acts", 0]);
+    expect(shape("Fora")).toEqual(["wk-text", "wk-acts", 0]);
+    await goTo("Algum dia");
+    expect(shape("Aprender piano")).toEqual(["wk-text", "wk-acts", 0]);
+    expect(shape("Pausa")).toEqual(["wk-text", "wk-acts", 0]);
   });
 });
