@@ -1,7 +1,8 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type Database from "better-sqlite3";
 import { MIGRATIONS } from "../core/src/db/migrations.js";
 import { openDb } from "../core/src/db/db.js";
@@ -11,6 +12,7 @@ import {
   decideLoop,
   hidesLoop,
   loopKey,
+  loopLists,
   sectionBullets,
   type LoopDecisionInput,
 } from "../core/src/memory/loops.js";
@@ -37,6 +39,9 @@ import {
   mentionTerms,
   mentionsOf,
 } from "../core/src/memory/mentions.js";
+import { API } from "@mordomo/contracts";
+import { RestoreInProgressError } from "../core/src/errors.js";
+import { RestoreLock } from "../core/src/restoreLock.js";
 import { MONDAY, keyOf, rituaisWorld, sha, type Json, type RituaisWorld } from "./helpers/rituaisWorld.js";
 
 /**
@@ -840,5 +845,331 @@ describe("C68 the first valid occurrence at the layer", () => {
     expect(fs.readFileSync(source, "utf8")).toBe(
       "`curso de marco` e [curso de marco](x.md) e [[Curso de Março|curso de marco]]\n",
     );
+  });
+});
+
+// ---- round 1 of the verification: Test policy row 1 at its own layer ----------------------------------------------
+
+describe("C109 the loop decision rules at the layer", () => {
+  const rows = () => w.ctx.db.prepare("SELECT * FROM loop_decisions ORDER BY key").all() as Json[];
+  const row = (key: string) => rows().find((r) => r.key === key);
+  async function appNote(fields: Record<string, string> = { type: "project" }) {
+    const file = w.note(path.join(w.memory, "notes", "app.md"), fields, "# App\n");
+    await w.index();
+    return { file, version: sha(fs.readFileSync(file)) };
+  }
+
+  it("C109 each action stores its own state: close closed, keep keep, someday someday, project and task with their target, restore the previous", async () => {
+    const app = await appNote();
+    w.journal("2026-11-04", ["09:00 Um", "09:01 Dois", "09:02 Três", "09:03 Quatro", "09:04 Cinco"]);
+    await w.index();
+    const [um, dois, tres, quatro, cinco] = ["um", "dois", "três", "quatro", "cinco"].map((t) => loopKey(t));
+    expect(decide({ key: um!, action: "close" }).state).toBe("closed");
+    expect(decide({ key: dois!, action: "keep" }).state).toBe("keep");
+    expect(decide({ key: tres!, action: "someday" }).state).toBe("someday");
+    const made = decide({ key: quatro!, action: "project" });
+    const task = decide({ key: cinco!, action: "task", project: app.file, baseVersion: app.version });
+    expect(
+      [um, dois, tres, quatro, cinco].map((k) => [row(k!)!.action, row(k!)!.week, row(k!)!.target]),
+    ).toEqual([
+      ["closed", "2026-11-09", null],
+      ["keep", "2026-11-09", null],
+      ["someday", "2026-11-09", null],
+      ["project", "2026-11-09", made.created!.path],
+      ["task", "2026-11-09", app.file],
+    ]);
+    expect(task.created!.path).toBe(app.file);
+    expect(decide({ key: um!, action: "restore", previous: null })).toEqual({
+      key: um,
+      state: null,
+      previous: expect.objectContaining({ action: "closed" }),
+    });
+    expect(row(um!)).toBeUndefined();
+  });
+
+  it("C109 G7: a key listed nowhere but stored (closed) is accepted by a repeated close and by restore", async () => {
+    w.journal("2026-11-04", ["09:15 Ligar para a Ana"]);
+    await w.index();
+    decide({ key: ANA, action: "close" });
+    const stored = rows();
+    // the decision took it out of both lists; the stored row is what makes it known
+    const lists = loopLists(env(), Date.now());
+    expect([...lists.open, ...lists.someday].map((l) => l.key)).toEqual([]);
+    expect(decide({ key: ANA, action: "close" })).toMatchObject({ key: ANA, state: "closed" });
+    expect(rows()).toEqual(stored);
+    expect(decide({ key: ANA, action: "restore", previous: null }).state).toBeNull();
+    expect(rows()).toEqual([]);
+  });
+
+  it("C109 G7: a key in neither list and with no row is 404 loop_not_found, one case each: 64 hex of no loop, and the key of a non-generated note's ## Open loops bullet; nothing is stored", async () => {
+    w.put(path.join(w.memory, "notes", "x.md"), "# X\n\n## Open loops\n\n- Laço de nota\n");
+    await w.index();
+    for (const key of ["f".repeat(64), loopKey("Laço de nota")])
+      expect(() => decide({ key, action: "close" }), key).toThrow(
+        expect.objectContaining({ statusCode: 404, code: "loop_not_found" }),
+      );
+    expect(rows()).toEqual([]);
+  });
+
+  for (const action of ["close", "keep", "someday"] as const)
+    it(`C109 G8: ${action} twice leaves the row as it was, the first decided_at kept, and the second answers the first's row as previous`, async () => {
+      w.journal("2026-11-04", ["09:15 Ligar para a Ana"]);
+      await w.index();
+      const t0 = Date.now();
+      const first = decide({ key: ANA, action });
+      const t1 = Date.now();
+      expect(first.previous).toBeNull();
+      const stored = rows();
+      w.at(MONDAY + 60 * 60_000);
+      const again = decide({ key: ANA, action });
+      expect(again.state).toBe(first.state);
+      expect(rows()).toEqual(stored);
+      expect(again.previous).toEqual({
+        action: stored[0]!.action,
+        week: stored[0]!.week,
+        target: stored[0]!.target,
+        decidedAt: stored[0]!.decided_at,
+      });
+      // the clock moves: the first decision's instant, not the second's (an hour later)
+      expect(stored[0]!.decided_at).toBeGreaterThanOrEqual(t0);
+      expect(stored[0]!.decided_at).toBeLessThanOrEqual(t1);
+    });
+
+  it("C109 G8: keep stored last week and keep again this week updates week (and decided_at)", async () => {
+    w.journal("2026-11-04", ["09:15 Ligar para a Ana"]);
+    await w.index();
+    w.at(MONDAY - 7 * DAY);
+    w.journal("2026-10-30", ["09:15 Ligar para a Ana"]);
+    await w.index();
+    decide({ key: ANA, action: "keep" });
+    expect(row(ANA)).toMatchObject({ action: "keep", week: "2026-11-02" });
+    const before = row(ANA)!.decided_at as number;
+    w.at(MONDAY);
+    decide({ key: ANA, action: "keep" });
+    expect(row(ANA)).toMatchObject({ action: "keep", week: "2026-11-09" });
+    expect(row(ANA)!.decided_at).toBeGreaterThanOrEqual(MONDAY);
+    expect(before).toBeLessThan(MONDAY - 6 * DAY);
+  });
+
+  it("C109 the four refusals, each storing nothing and writing nothing: 400 validation, 404 loop_not_found, 403 note_not_editable, 409 edit_conflict", async () => {
+    const status = w.note(path.join(w.memory, "notes", "estado.md"), { type: "status" }, "# Estado\n");
+    const app = await appNote();
+    w.journal("2026-11-04", ["09:15 Ligar para a Ana"]);
+    await w.index();
+    const bytes = () => [fs.readFileSync(status, "utf8"), fs.readFileSync(app.file, "utf8")];
+    const before = bytes();
+    const refused: Array<[string, LoopDecisionInput, number, string]> = [
+      ["an action it does not take", { key: ANA, action: "delete" as never }, 400, "validation"],
+      ["task without baseVersion", { key: ANA, action: "task", project: app.file }, 400, "validation"],
+      ["restore without previous", { key: ANA, action: "restore" }, 400, "validation"],
+      ["a key of no loop", { key: "0".repeat(64), action: "close" }, 404, "loop_not_found"],
+      [
+        "a task to a type: status note",
+        { key: ANA, action: "task", project: status, baseVersion: sha(fs.readFileSync(status)) },
+        403,
+        "note_not_editable",
+      ],
+      [
+        "a task with a stale baseVersion",
+        { key: ANA, action: "task", project: app.file, baseVersion: sha("antes") },
+        409,
+        "edit_conflict",
+      ],
+    ];
+    for (const [name, input, statusCode, code] of refused)
+      expect(() => decide(input), name).toThrow(expect.objectContaining({ statusCode, code }));
+    expect(rows()).toEqual([]);
+    expect(bytes()).toEqual(before);
+  });
+});
+
+describe("C110 the archive's check at the layer", () => {
+  const deps = () => ({ ...env(), indexer: w.ctx.indexer });
+  const archive = (paths: string[]) => archiveWeek(deps(), { week: "2026-11-09", paths }, Date.now());
+  const done = (file: string) => w.note(file, { type: "project", status: "done" }, "# Feito\n");
+  const body = API["memory.weeklyReview.archive"].body!;
+  const weeks = () => w.ctx.db.prepare("SELECT week, archived FROM weekly_reviews").all() as Json[];
+  let spy: { mockRestore(): void } | null = null;
+  afterEach(() => {
+    spy?.mockRestore();
+    spy = null;
+  });
+
+  it("C110 the seven path kinds: a listed done project and a listed inbox file move; one of projects, one of someday.projects, one listed nowhere and one under memory/archive/ are 400 validation alone and move nothing; a done project outside memory/ is a proposal and stays", async () => {
+    const root = w.indexedRoot("fora");
+    const feito = done(path.join(w.memory, "notes", "feito.md"));
+    const caixa = w.put(path.join(w.memory, "inbox", "a.md"), "# A\n");
+    const ativo = w.note(path.join(w.memory, "notes", "ativo.md"), { type: "project", status: "active" });
+    const pausado = w.note(path.join(w.memory, "notes", "pausado.md"), { type: "project", status: "paused" });
+    const solto = w.put(path.join(w.memory, "notes", "solto.md"), "# Solto\n");
+    const arquivado = done(path.join(w.memory, "archive", "2026-10-01-ab12cd34", "notes", "velho.md"));
+    const fora = done(path.join(root, "fora.md"));
+    await w.index();
+    for (const p of [ativo, pausado, solto, arquivado])
+      expect(() => archive([feito, p]), p).toThrow(
+        expect.objectContaining({ statusCode: 400, code: "validation" }),
+      );
+    expect([feito, caixa, ativo, pausado, solto, arquivado, fora].every((p) => fs.existsSync(p))).toBe(true);
+    expect(weeks()).toEqual([]);
+    const outside = archive([fora]);
+    expect(outside).toMatchObject({ manifest: null, moved: [], skipped: [] });
+    expect(fs.readFileSync(outside.proposals!, "utf8")).toContain(fora);
+    expect(fs.existsSync(fora)).toBe(true);
+    const res = archive([feito, caixa]);
+    expect(res.moved.map((m) => m.from)).toEqual([feito, caixa]);
+    expect([feito, caixa].some((p) => fs.existsSync(p))).toBe(false);
+    expect(weeks()).toEqual([{ week: "2026-11-09", archived: 2 }]);
+  });
+
+  it("C110 the paths edges at the body the route parses: none and 101 refused, 1 and exactly 100 accepted; 100 listed inbox files all move", async () => {
+    const files = Array.from({ length: 100 }, (_, i) =>
+      w.put(path.join(w.memory, "inbox", `f${String(i).padStart(3, "0")}.md`), `# ${i}\n`),
+    );
+    await w.index();
+    const ok = (n: number) =>
+      body.safeParse({ week: "2026-11-09", paths: files.concat("x").slice(0, n) }).success;
+    expect([ok(0), ok(1), ok(100), ok(101)]).toEqual([false, true, true, false]);
+    expect(archive(files).moved).toHaveLength(100);
+  });
+
+  it("C110 the week: another Monday is 409 week_mismatch and moves nothing", async () => {
+    const feito = done(path.join(w.memory, "notes", "feito.md"));
+    await w.index();
+    expect(() => archiveWeek(deps(), { week: "2026-11-16", paths: [feito] }, Date.now())).toThrow(
+      expect.objectContaining({ statusCode: 409, code: "week_mismatch" }),
+    );
+    expect(fs.existsSync(feito)).toBe(true);
+  });
+
+  it("C110 under the exclusive restore lock it is 409 restore_in_progress and moves nothing", async () => {
+    const feito = done(path.join(w.memory, "notes", "feito.md"));
+    await w.index();
+    const held = RestoreLock.acquire(w.ctx.paths, 0, "exclusive");
+    try {
+      expect(() => archive([feito])).toThrow(RestoreInProgressError);
+    } finally {
+      held.release();
+    }
+    expect(fs.existsSync(feito)).toBe(true);
+    expect(weeks()).toEqual([]);
+  });
+
+  /** One listed file skipped for `reason` while the other moves. */
+  const skips: Array<[string, (a: string) => void]> = [
+    ["missing", (a) => fs.rmSync(a)],
+    [
+      "exists",
+      (a) => {
+        const real = crypto.randomBytes.bind(crypto);
+        spy = vi
+          .spyOn(crypto, "randomBytes")
+          .mockImplementation(((n: number, ...rest: unknown[]) =>
+            n === 4
+              ? Buffer.from("c110c110", "hex")
+              : (real as (...x: unknown[]) => Buffer)(n, ...rest)) as typeof crypto.randomBytes);
+        w.put(
+          path.join(w.memory, "archive", "2026-11-09-c110c110", "inbox", "sub", path.basename(a)),
+          "já\n",
+        );
+      },
+    ],
+    [
+      "forbidden_path",
+      () => {
+        const sub = path.join(w.memory, "inbox", "sub");
+        fs.renameSync(sub, `${sub}-real`);
+        fs.symlinkSync(`${sub}-real`, sub);
+      },
+    ],
+    [
+      "changed",
+      (a) => {
+        fs.rmSync(a);
+        fs.mkdirSync(a);
+      },
+    ],
+  ];
+  for (const [reason, make] of skips)
+    it(`C110 the skip ${reason}: that file is skipped with its reason and the other moves`, async () => {
+      const a = w.put(path.join(w.memory, "inbox", "sub", "a.md"), "# A\n");
+      const b = w.put(path.join(w.memory, "inbox", "b.md"), "# B\n");
+      await w.index();
+      make(a);
+      const res = archive([a, b]);
+      expect(res.skipped).toEqual([{ path: a, reason }]);
+      expect(res.moved.map((m) => m.from)).toEqual([b]);
+      expect(fs.existsSync(b)).toBe(false);
+    });
+});
+
+describe("C111 the mentions' order and limit at the layer", () => {
+  const owner = () => ({ db: w.ctx.db, paths: w.ctx.paths, settings: w.ctx.settings() });
+  async function world(sources: number): Promise<{ id: number; files: string[] }> {
+    const target = w.put(path.join(w.memory, "notes", "Rede.md"), "---\ntitle: Rede\n---\nx\n");
+    const files = Array.from({ length: sources }, (_, i) =>
+      w.put(path.join(w.memory, "notes", "fontes", `s${String(i).padStart(2, "0")}.md`), `a rede ${i}\n`),
+    );
+    files.forEach((f, i) => w.touch(f, MONDAY - (i + 1) * DAY));
+    await w.index();
+    const id = (w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(target) as { id: number }).id;
+    return { id, files };
+  }
+
+  it("C111 newest source first, then by path for the same mtime, then by line within a source (G12)", async () => {
+    const target = w.put(path.join(w.memory, "notes", "Rede.md"), "---\ntitle: Rede\n---\nx\n");
+    const old = w.put(path.join(w.memory, "notes", "a-velha.md"), "a rede\n");
+    const zeta = w.put(path.join(w.memory, "notes", "z.md"), "a rede\n");
+    const beta = w.put(path.join(w.memory, "notes", "b.md"), "x\na rede\ny\nde novo a rede\n");
+    w.touch(old, MONDAY - 9 * DAY);
+    w.touch(zeta, MONDAY - DAY);
+    w.touch(beta, MONDAY - DAY);
+    await w.index();
+    const id = (w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(target) as { id: number }).id;
+    const got = mentionsOf(owner(), { id })!;
+    expect(got.items.map((i) => [i.file.path, i.line])).toEqual([
+      [beta, 2],
+      [beta, 4],
+      [zeta, 1],
+      [old, 1],
+    ]);
+  });
+
+  it("C111 the limit: 25 sources and none gives 20 items and total 25; 1 gives the newest; 50 gives 25", async () => {
+    const { id, files } = await world(25);
+    const of = (limit?: number) => {
+      const got = mentionsOf(owner(), limit === undefined ? { id } : { id, limit })!;
+      return [got.items.length, got.total, got.items[0]!.file.path];
+    };
+    expect(of()).toEqual([20, 25, files[0]]);
+    expect(of(1)).toEqual([1, 25, files[0]]);
+    expect(of(50)).toEqual([25, 25, files[0]]);
+  });
+
+  it("C111 the limit edges at the query the route parses: 0 and 51 refused, 1 and 50 accepted, none accepted", () => {
+    const query = API["memory.mentions.list"].query!;
+    const ok = (q: Record<string, string>) => query.safeParse({ id: "1", ...q }).success;
+    expect([
+      ok({}),
+      ok({ limit: "0" }),
+      ok({ limit: "1" }),
+      ok({ limit: "50" }),
+      ok({ limit: "51" }),
+    ]).toEqual([true, false, true, true, false]);
+  });
+});
+
+describe("C61 the matched term is the first of terms, not the leftmost in the line (round 1)", () => {
+  it("C61 a line holding Café before Rede, with terms [Rede, Café], is one item whose term is Rede (G35: the entry of terms, in their order)", async () => {
+    const target = w.put(
+      path.join(w.memory, "notes", "rede.md"),
+      `---\ntitle: Rede\naliases: [Café]\n---\nx\n`,
+    );
+    const source = w.put(path.join(w.memory, "notes", "fonte.md"), "o café antes e a rede depois\n");
+    await w.index();
+    const id = (w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(target) as { id: number }).id;
+    const got = mentionsOf({ db: w.ctx.db, paths: w.ctx.paths, settings: w.ctx.settings() }, { id })!;
+    expect(got.terms).toEqual(["Rede", "Café"]);
+    expect(got.items.map((i) => [i.file.path, i.line, i.term])).toEqual([[source, 1, "Rede"]]);
+    expect(got.total).toBe(1);
   });
 });
