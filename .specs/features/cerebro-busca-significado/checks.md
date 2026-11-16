@@ -696,4 +696,4 @@ The estimate exceeds the 150k budget.
   - **D** (the hybrid recall, the reranker and the API's closing pins): S5 + S6 + C97-C108 ≈ 31k + 7k + 76k = ≈ 114k, plus `tests/busca.recall.test.ts`, `tests/busca.abstain.test.ts`, `tests/busca.rerank.test.ts`, `tests/busca.contract.test.ts` and the rest of `tests/busca.access.test.ts` ≈ 90 KB → ≈ 23k = ≈ 137k; C69-C108, C95 (C97 and C98 need every route, so they close after S4)
   - **E** (the screen, the copy, the browser and the weight): S7 ≈ 92k, plus the three UI files, `tests/e2e/busca.spec.ts` and the C135 part of `tests/busca.contract.test.ts` ≈ 95 KB → ≈ 24k = ≈ 116k; C109-C136
   - A + B ≈ 147k is at the edge with no room for a fix round, and every other pair is over the budget, so each batch stays apart; A lands first because B's sections reuse S2's search, C's routes and the stub need B's table, D's recall fuses B's sections and C's provider, and E calls C's routes and D's settings
-- Mechanism: handoff | one builder - pending owner choice
+- Mechanism: handoff - chosen by the owner on 16/11/2026 (five batches, sequential, only on green; the next builder reads `checks.md` and the diff of what landed)
