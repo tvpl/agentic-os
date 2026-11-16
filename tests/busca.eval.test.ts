@@ -16,7 +16,7 @@ import {
   type EvalQuery,
   type EvalRankings,
 } from "../core/src/memory/eval.js";
-import { recall } from "../core/src/memory/recall.js";
+import { hybridRecall, recall } from "../core/src/memory/recall.js";
 import { RERANKER, stubCatalog, stubChild, stubHost } from "./helpers/buscaStubs.js";
 import { PT_CORPUS, PT_QUERIES, corpusHome, type CorpusHome } from "./helpers/buscaWorld.js";
 
@@ -307,4 +307,62 @@ describe("S1 a run over the index", () => {
       expect(rankings.semantic[i], query.q).toEqual([]);
     });
   });
+});
+
+describe("C95 the eval's rerank row", () => {
+  it("C95 the candidate lists the stub receives during the eval equal a recall's of each question, and a reranker that always times out gives a rerank row equal to hybrid", async () => {
+    const stubs = await stubHost();
+    const child = stubChild();
+    const h = await corpusHome("hash", undefined, {
+      localModels: {
+        catalog: stubCatalog(stubs),
+        childEntry: child.entry,
+        platform: "linux",
+        arch: "x64",
+        runtimeAvailable: () => true,
+      },
+    });
+    homes.push(h);
+    try {
+      h.ctx.localModels.downloads.install(RERANKER, true, true);
+      await h.ctx.localModels.downloads.settled();
+      const settings = (rerank: { enabled: boolean; candidates: number; timeoutMs: number }) => {
+        const s = h.ctx.settings();
+        s.memory.recall = { ...s.memory.recall, rerank };
+        h.ctx.settingsStore.save(s);
+      };
+      settings({ enabled: true, candidates: 20, timeoutMs: 15000 });
+      const sent = () =>
+        child
+          .log()
+          .filter((m) => m.t === "rerank")
+          .map((m) => [m.query, m.texts]);
+      const queries = readEvalFile(PT_QUERIES);
+      const source = { ...sourceOf(h), local: h.ctx.localModels };
+      const report = evalReport(await evalRankings(source, queries), queries);
+      expect(Object.keys(report.modes)).toContain("rerank");
+      const byEval = sent();
+      expect(byEval.length).toBeGreaterThan(0);
+      // the recall of each question, as GET /api/memory/recall runs it
+      for (const query of queries)
+        await hybridRecall(h.ctx.db, h.ctx.paths, h.ctx.settings(), query.q, {
+          semantic: h.ctx.semantic,
+          local: h.ctx.localModels,
+        });
+      expect(sent().slice(byEval.length)).toEqual(byEval);
+      // a reranker that always times out: the rerank row is the hybrid row, by value
+      settings({ enabled: true, candidates: 20, timeoutMs: 1000 });
+      child.control({ rerankDelayMs: 1500 });
+      const few = queries.filter((q) => q.kind !== "abstain").slice(0, 3);
+      const before = sent().length;
+      const late = evalReport(await evalRankings({ ...sourceOf(h), local: h.ctx.localModels }, few), few);
+      expect(late.modes.rerank).toEqual(late.modes.hybrid);
+      expect(sent().length - before).toBe(3); // each was sent, and each answer came too late
+      expect(late.modes.hybrid["1-recall@20"]).toBeGreaterThan(0);
+    } finally {
+      h.close();
+      await stubs.close();
+      child.cleanup();
+    }
+  }, 60_000);
 });

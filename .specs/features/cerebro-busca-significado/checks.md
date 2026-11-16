@@ -875,3 +875,10 @@ Status of batch D (updated in the commit that closes each piece):
   order) and `abstainCorrect=2/12` (was 5/12, an empty answer; now the recall's own abstention)
 - the closing checks so far (C97, C102, C106, C108): closed, their proofs green in `tests/busca.contract.test.ts`,
   `tests/busca.cli.test.ts` (C106, built CLI) and the existing pin files their proof lines name
+- the reranker (S6: C89-C96): closed, every proof green in `tests/busca.rerank.test.ts`, `tests/busca.access.test.ts`
+  (C93) and `tests/busca.eval.test.ts` (C95: the eval's `rerank` row is now the recall's own reranked order, the
+  candidate lists the stub receives during an eval equal those of a recall of each question)
+- the rest of the closing checks (C98-C101, C103-C105, C107): closed; C104 and C105 in
+  `tests/busca.localprovider.test.ts`, the others by the existing pin files their proof lines name, green at the values
+  batches A-C moved them to (batch D adds no route, setting, migration, event or `fs` row; the internal barrel gains
+  `hybridRecall`, listed in `sdk.surface` C38)

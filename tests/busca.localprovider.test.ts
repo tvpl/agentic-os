@@ -1,4 +1,12 @@
 import fs from "node:fs";
+import os from "node:os";
+import { pathToFileURL } from "node:url";
+import { AppContext } from "../apps/api/src/context.js";
+import { MODEL_CATALOG } from "../core/src/models/catalog.js";
+import { resolveChildEntry } from "../core/src/models/localHost.js";
+import { localModelsOptions } from "../core/src/models/localModels.js";
+import { makeTempHome } from "./helpers.js";
+import { bundleIndexWorker } from "./helpers/indexWorkerBundle.js";
 import Module from "node:module";
 import path from "node:path";
 import ts from "typescript";
@@ -538,4 +546,75 @@ describe("C61 the prefixes of the catalog", () => {
     expect(sent).toHaveLength(2000);
     expect(sent).toBe(`D: ${text}`.slice(0, 2000));
   });
+});
+
+// ---------------------------------------------------------------------------------------------- C104, C105
+
+describe("C104 the service's assembly of the local models", () => {
+  it("C104 the AppContext behind the routes gets the real catalog, <home>/models/ and the real child's entry; the harness passes its stubs through the same option and nothing else differs", async () => {
+    // the service builds its context with no `localModels`: the defaults of `localModelsOptions` are the real ones
+    const server = fs.readFileSync(path.join(repoRoot, "apps", "api", "src", "server.ts"), "utf8");
+    expect(server).toContain("new AppContext(homeOverride, { applyPendingRestore: true })");
+    const service = new AppContext(makeTempHome("mordomo-busca-c104-").paths.home);
+    try {
+      const real = service.localModels.options;
+      expect(real.catalog).toBe(MODEL_CATALOG);
+      expect(real.modelsDir).toBe(path.join(service.paths.home, "models"));
+      expect(real.childEntry).toBe(
+        resolveChildEntry(pathToFileURL(path.join(repoRoot, "core/src/models/localModels.ts")).href),
+      );
+      expect([real.platform, real.arch]).toEqual([process.platform, process.arch]);
+      // the real child's entry is the compiled `localChild.js` (or the installer's `.mjs`) next to the module
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-busca-c104-entry-"));
+      fs.writeFileSync(path.join(dir, "localChild.js"), "");
+      expect(resolveChildEntry(pathToFileURL(path.join(dir, "localModels.js")).href)).toBe(
+        path.join(dir, "localChild.js"),
+      );
+      fs.rmSync(dir, { recursive: true, force: true });
+      // the harness: the same option, its stubs, and nothing else differs
+      const w = await world();
+      const harness = w.ctx.localModels.options;
+      const differs = (Object.keys({ ...real, ...harness }) as Array<keyof typeof real>).filter(
+        (key) => key !== "modelsDir" && real[key] !== harness[key],
+      );
+      // every difference is a key the harness gives (its platform and arch may happen to equal this machine's)
+      expect(
+        differs.every((key) => key in w.options),
+        differs.join(),
+      ).toBe(true);
+      expect(differs).toEqual(expect.arrayContaining(["catalog", "childEntry", "runtimeAvailable"]));
+      expect(harness.modelsDir).toBe(path.join(w.home, "models"));
+      expect(harness).toEqual(localModelsOptions(w.home, w.options));
+      expect(harness.childEntry).toBe(w.child.entry);
+    } finally {
+      service.close();
+    }
+  });
+});
+
+describe("C105 the index worker reaches the service's child", () => {
+  it("C105 a pass in the worker thread with the local provider fills section_vectors from the stub, and with a search at the same time exactly one child exists", async () => {
+    const entry = await bundleIndexWorker();
+    const w = await world();
+    await w.install(QWEN);
+    for (let i = 0; i < 12; i++) w.note(`nota-${i}`, sections(`Nota ${i}`, 2));
+    w.localOn(QWEN);
+    w.ctx.indexHost.setWorkerEntry(entry);
+    w.child.control({ delayMs: 30 });
+    const [, search] = await Promise.all([
+      w.index(),
+      (async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return w.search("Corpo de Nota", "auto");
+      })(),
+    ]);
+    expect(search.status).toBe(200);
+    expect(w.allRows().length).toBe(24);
+    expect(new Set(w.allRows().map((r) => r.provider))).toEqual(new Set([`local:${QWEN}:6`]));
+    expect(w.child.pids()).toHaveLength(1);
+    const pids = new Set(w.child.log().map((m) => m.pid));
+    expect(pids.size).toBe(1);
+    // the search's question and the pass's sections both went to that one child
+    expect(w.child.embeds().length).toBeGreaterThan(1);
+  }, 120_000);
 });
