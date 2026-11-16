@@ -882,3 +882,35 @@ Status of batch D (updated in the commit that closes each piece):
   `tests/busca.localprovider.test.ts`, the others by the existing pin files their proof lines name, green at the values
   batches A-C moved them to (batch D adds no route, setting, migration, event or `fs` row; the internal barrel gains
   `hybridRecall`, listed in `sdk.surface` C38)
+
+- **Boundary (batch D):** C69-C76, C78-C108 and C95 closed at `29fdc3d` (S5 and C97, C102, C106, C108 in `72017ac`;
+  S6, C95, C104, C105 and the remaining pins in `29fdc3d`), with C77 OPEN: its clause "the corpus's `abstain`
+  questions answer `abstained: true`" cannot hold under AC 47 on `tests/fixtures/pt-corpus/` (with `hash` 2 of 12
+  abstain, with the search off 8: "quem fornece o chocolate?" has a section matching half of its keywords, and ten
+  have a `hash` cosine at or above 0.2); its other two clauses are proven in `tests/busca.recall.test.ts` C77, and the
+  owner decides whether the clause goes or the rule changes. C69's text gives B's score as 1/61 + 1/61; RRF gives
+  1/62 + 1/61 (B is second in the text list) and the proof asserts that, with the claim's order. On that tree, after
+  `npm run build`, `npm run typecheck` and `npm run lint` exit 0, every `Proof:` line of the closed checks passes, and
+  `npx vitest run` has one failure, `tests/paineis.refresh.test.ts` C13 (date-dependent, as on the base). Pins batch D
+  moved: C10's baseline (`hybrid` 0.938/0.735/0.875, `abstainCorrect=2/12`), the internal barrel (`hybridRecall`,
+  `sdk.surface` C38), and `natureza.contract` C65's mock, which wraps `hybridRecall` too now that the route calls it
+  (its asserted fact unchanged). No route, setting, migration, event, `fs` row or door added.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) `recall` stays
+  synchronous (words only: the many callers and tests that read it at once), with door 4's abstention, the hops and
+  the budget; `hybridRecall` (the route, `mordomo recall`) and `runRecall` (the eval: the fused order and the reranked
+  one) add the vectors and the reranker; (b) the vector candidates are the 50 nearest admitted sections at or above
+  the provider's `minSimilarity` (as the search's), while the abstention's cosine is the nearest admitted section's with
+  no floor; (c) what a section "matches" for AC 47 is `scoreSection` over the section with its heading path (door 1's
+  name of a section, `Banco financeiro > Pagamento`), over every section with a body of every file the recall opens,
+  links included: with the section's own heading alone, `tests/api.recall-quality.test.ts`'s second question matches
+  2 of 5 and would abstain, against G31; (d) the reranker gets each of the first `candidates` fused files' section (the
+  one the answer would take, its body cut at 2 000 characters), and when it is `used` the answer keeps the reranked
+  order instead of today's order by score; a head with no section is `skipped`; (e) the hops: a link is followed from
+  each taken section up to `hops` levels, `via` the file that pointed, a link's score the candidate's plus the section's
+  (as the first level today); (f) `SemanticSearch.nearestSections` embeds the question through the same private
+  `embedQuestion` as the search (the one `provider.embed([question]` of C67); `VectorIndex.sections` is `rank` without
+  the floor and the one-per-file cut, and `rank` is built on it; (g) the MCP tool and the CLI print
+  `abstentionText(reason)` from `apps/api/src/mcp/mordomo.ts`.
+- **Abandoned:** making `recall` asynchronous (it would change every synchronous caller and test); fusing every
+  admitted section with no floor (with `hash`, a noise file at the vectors' rank 1 ties the words' first hit and beats
+  their second); counting a section's own heading alone for AC 47 (see (c)).
