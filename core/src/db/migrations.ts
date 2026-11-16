@@ -804,4 +804,28 @@ CREATE TABLE IF NOT EXISTS weekly_reviews (
 );
 `,
   },
+  {
+    version: 34,
+    name: "section-vectors",
+    // cerebro-busca-significado, door 1: one vector per section of a file, keyed by the file and the section's place in
+    // reading order, with its heading path and lines, the provider and length that made it, and the size and mtime of
+    // the file it was made from. The per-file table of migration 21 goes: its vectors are derived data, and the first
+    // pass after this migration computes every section's. Not a `vec0` table, for the reason of migration 21.
+    sql: `
+CREATE TABLE IF NOT EXISTS section_vectors (
+  file_id INTEGER NOT NULL,
+  ord INTEGER NOT NULL,
+  heading TEXT NOT NULL,
+  start_line INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  dim INTEGER NOT NULL,
+  vec BLOB NOT NULL,
+  mtime INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  PRIMARY KEY (file_id, ord)
+);
+DROP TABLE IF EXISTS file_vectors;
+`,
+  },
 ];

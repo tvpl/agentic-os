@@ -1506,6 +1506,23 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(169);"],
       head: ["    expect(operations).toBe(171);"],
     },
+    // cerebro-busca-significado, batch B, added migration 34 (one vector per section, door 1). It amends the head of
+    // cerebro-rituais A's migration amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado B: migration 34 after 33, in the comment",
+      base: ["      // reviews (cerebro-rituais), two more."],
+      head: [
+        "      // reviews (cerebro-rituais), two more, and one vector per section in place of the old vector table",
+        "      // (cerebro-busca-significado), one more.",
+      ],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado B: section-vectors after rituais",
+      base: ['        "rituais",', "      ]);"],
+      head: ['        "rituais",', '        "section-vectors",', "      ]);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

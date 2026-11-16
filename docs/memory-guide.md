@@ -316,7 +316,8 @@ out before the page is cut, so a page is never short because of them.
 
 **Semantic search (optional, off by default).** `GET /api/memory/search` ranks by words (BM25 over the
 full-text index; NUL bytes in `q` are ignored, so a `q` made only of them lists the recent files like an empty one). With `memory.embeddings.enabled` on (`PUT /api/settings`, owner only) the index also keeps one
-vector per Markdown or text file, and a search fuses the two orders (reciprocal rank fusion, k = 60): each hit says
+vector per section of each Markdown or text file (the text between two headings, or a block of 40 lines outside
+Markdown, at most 64 per file), and a search fuses the two orders (reciprocal rank fusion, k = 60): each hit says
 `via` `text`, `semantic` or `both`, and `mode` is `auto` (the default), `text` or `semantic` (`409 semantic_disabled`
 while the search is off). Nothing is embedded, no extension is loaded and no connection is opened while it is off;
 turning it off deletes the vectors at the next index pass.

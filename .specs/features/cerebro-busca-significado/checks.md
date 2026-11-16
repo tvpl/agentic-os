@@ -754,3 +754,12 @@ Status of batch B (updated in the commit that closes each piece):
 - the shared splitter (S3: C19): closed, its proof green in `tests/busca.sections.test.ts`; `splitSections` moved
   unchanged from `recall.ts` to `core/src/memory/sections.ts` (the recall re-exports it), with `sectionRows` (the rows,
   the heading path, the 64 limit) and `embeddedText` (door 1's text) beside it
+- one vector per section (S3: C17, C20-C24, C26-C30, C32-C40; C25 and C31 in part): closed, every proof green in
+  `tests/busca.sections.test.ts`, `tests/busca.vectors.test.ts`, `tests/busca.migration.test.ts`,
+  `tests/busca.access.test.ts`, `tests/busca.stem.test.ts` (C17) and `tests/busca.cli.test.ts` (C34, built CLI);
+  migration 34 creates `section_vectors` and drops `file_vectors`; `embedPending` embeds the sections of a file that
+  owes them, one transaction per batch; the search names a hit's best section (`section`, `line`) and the status adds
+  `sections` and `model` (`null` until batch C). C25's `local.model` A → B case and C31's "with the stub catalog's
+  model active, `model` is its id" stay open for batch C: both need the stub catalog and the `local` provider of S4,
+  which this batch does not build; every other case of the two is green. The sections moved C10's `semantic` row:
+  mrr 0.613 → 0.632, hit@3 0.646 → 0.667 (recall@20 0.729 unchanged), re-pinned with a comment

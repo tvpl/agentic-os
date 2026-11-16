@@ -53,7 +53,7 @@ Os registros passam por uma redação de segredos reconhecíveis (chaves de API,
 
 As notas que você escreve no MordomoOS são arquivos Markdown em `memory/notes/`, na casa. O índice de busca
 guarda no banco o texto delas e os links entre elas; se você ligar a busca semântica (`memory.embeddings`,
-desligada por padrão), guarda também um vetor numérico por nota, calculado na própria máquina pelo provedor
+desligada por padrão), guarda também um vetor numérico por seção de cada nota (o trecho entre dois títulos), calculado na própria máquina pelo provedor
 `hash` ou por um endereço que você configurou (veja a linha "Embeddings da busca semântica" na seção 4.1).
 Desligar a busca semântica apaga os vetores na próxima indexação.
 

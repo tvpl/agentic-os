@@ -436,7 +436,7 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   or `guard/`, is given no count of the index pass
   (`lastIndex.stats`, the progress of a pass, the `index.*` events, the inbox row "Index finished" are zero or absent;
   the doctor report prints no "files scanned" and counts and names only the indexed folders the device sees;
-  `semantic.vectors` counts the vectors of the files it sees), and a row or event about a hidden folder (an `fsWatch` sentinel's, `messageParams.folder`) does not exist for it:
+  `semantic.vectors` and `semantic.sections` count the files with vectors and the section vectors it sees), and a row or event about a hidden folder (an `fsWatch` sentinel's, `messageParams.folder`) does not exist for it:
   dropped, not renamed, since a renamed row would still say that files changed, how many and when. Changing
   `folderAccess` starts an index pass. What a device is not spared: that a pass ran and when (`lastIndex.at`, the doctor's
   time of the last pass, the order of the event ids), which a change to a file it can see shows as well; the differential

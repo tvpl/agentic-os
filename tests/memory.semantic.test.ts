@@ -71,9 +71,11 @@ function setEmbeddings(ctx: AppContext, embeddings: Partial<EmbeddingSettings>):
   settings.memory.embeddings = { ...settings.memory.embeddings, ...embeddings } as EmbeddingSettings;
   ctx.settingsStore.save(settings);
 }
+// One row per section since cerebro-busca-significado (door 1); every note of these corpora is one section, so one row
+// per note.
 const vectorRows = (ctx: AppContext) =>
   ctx.db
-    .prepare("SELECT file_id, provider, dim, mtime, size FROM file_vectors ORDER BY file_id")
+    .prepare("SELECT file_id, provider, dim, mtime, size FROM section_vectors ORDER BY file_id, ord")
     .all() as Array<{
     file_id: number;
     provider: string;
@@ -153,6 +155,8 @@ describe("S4 semantic search, off by default", () => {
       provider: null,
       backend: null,
       vectors: 0,
+      sections: 0,
+      model: null,
       blocked: null,
       error: null,
     });
@@ -224,10 +228,13 @@ describe("S4 semantic search, off by default", () => {
     // cerebro-busca-significado S2 gave the words the other number (its C12): it is found by both now. The file only
     // the vectors find is a question shaped like a file name, which the words read whole, as one phrase, and the
     // hash provider word by word: "pauta-ata.md" against the "pauta" and the "ata" of reuniao-semanal.
+    // Since cerebro-busca-significado (door 1) the vector is a section's, of `<título> > <caminho>\n<corpo>`: the note's
+    // title and its H1 add "reunião semanal" twice, and "ação" falls from 0.219 to 0.199 of it, under the 0.2 the hash
+    // provider keeps; the words alone find it now.
     const pt = rig({ enabled: true, provider: "hash" }, morphology.notes);
     await pt.ctx.indexer.indexAllAsync();
     const otherNumber = (await pt.ctx.semantic.search({ query: "ação" }, "auto"))[0]!;
-    expect([otherNumber.name, otherNumber.via]).toEqual(["reuniao-semanal.md", "both"]);
+    expect([otherNumber.name, otherNumber.via]).toEqual(["reuniao-semanal.md", "text"]);
     const semanticOnly = (await pt.ctx.semantic.search({ query: "pauta-ata.md" }, "auto"))[0]!;
     expect([semanticOnly.name, semanticOnly.via]).toEqual(["reuniao-semanal.md", "semantic"]);
     const textOnly = (await r.ctx.semantic.search({ query: "damaged" }, "auto")).find(
@@ -794,8 +801,17 @@ describe("S4 the http provider", () => {
 
     // an edited file: its vector, and only its vector, is recomputed
     const file = path.join(r.dir, "refund-policy.md");
+    // a file's vectors: those of its sections, in order (cerebro-busca-significado, door 1)
     const blobOf = (id: number) =>
-      (r.ctx.db.prepare("SELECT vec FROM file_vectors WHERE file_id = ?").get(id) as { vec: Buffer }).vec;
+      Buffer.concat(
+        (
+          r.ctx.db
+            .prepare("SELECT vec FROM section_vectors WHERE file_id = ? ORDER BY ord")
+            .all(id) as Array<{
+            vec: Buffer;
+          }>
+        ).map((x) => x.vec),
+      );
     const id = (r.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(file) as { id: number }).id;
     const oldBlob = blobOf(id);
     const other = [...before.keys()].find((k) => k !== id)!;
@@ -845,7 +861,7 @@ describe("S4 the http provider", () => {
     expect(
       (
         r.ctx.db
-          .prepare("SELECT COUNT(*) AS c FROM file_vectors WHERE file_id NOT IN (SELECT id FROM files)")
+          .prepare("SELECT COUNT(*) AS c FROM section_vectors WHERE file_id NOT IN (SELECT id FROM files)")
           .get() as { c: number }
       ).c,
     ).toBe(0);
@@ -869,7 +885,7 @@ describe("S4 the http provider", () => {
     const dump = (ctx: AppContext) =>
       ctx.db
         .prepare(
-          "SELECT f.name AS name, v.provider AS provider, v.vec AS vec FROM file_vectors v JOIN files f ON f.id = v.file_id ORDER BY f.name",
+          "SELECT f.name AS name, v.provider AS provider, v.vec AS vec FROM section_vectors v JOIN files f ON f.id = v.file_id ORDER BY f.name, v.ord",
         )
         .all()
         .map((x: any) => `${x.name}|${x.provider}|${x.vec.toString("hex")}`);

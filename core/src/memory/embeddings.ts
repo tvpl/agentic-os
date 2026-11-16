@@ -11,12 +11,12 @@ import { STOPWORDS, stemLite } from "./recall.js";
  */
 
 export interface EmbeddingProvider {
-  /** What `file_vectors.provider` records: a change of this string recomputes every vector. */
+  /** What `section_vectors.provider` records: a change of this string recomputes every vector. */
   readonly id: string;
   readonly dim: number;
   /** True when the text never leaves this process. */
   readonly local: boolean;
-  /** Most characters of one note the provider is given. */
+  /** Most characters of one section's text the provider is given. */
   readonly maxChars: number;
   /** Cosine similarity under which a file is not a semantic hit at all (noise of a 256-slot hash, say). */
   readonly minSimilarity?: number;

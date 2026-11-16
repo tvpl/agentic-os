@@ -67,6 +67,10 @@ const SearchHitSchema = FileRowSchema.extend({
   /** The file's nature and scope (cerebro-natureza, AC 10): null when it has none, or a value outside the lists. */
   natureza: NaturezaSchema,
   escopo: EscopoSchema,
+  /** A hit the vectors ranked: the heading path of the file's best section (joined by " > "); absent on a text hit. */
+  section: z.string().optional(),
+  /** That section's first body line (1-based); absent on a text hit. */
+  line: z.number().int().optional(),
 });
 
 const SemanticStatusSchema = z.object({
@@ -74,7 +78,12 @@ const SemanticStatusSchema = z.object({
   provider: z.string().nullable(),
   /** Where the cosine is computed; null while the search is off (nothing is loaded then). */
   backend: z.enum(["sqlite-vec", "js"]).nullable(),
+  /** The files with at least one section vector the caller may see. */
   vectors: z.number(),
+  /** The section vectors the caller may see (one per section, cerebro-busca-significado door 1). */
+  sections: z.number(),
+  /** The id of the local model in use; null for `hash` and `http`. */
+  model: z.string().nullable(),
   /** Why an enabled search has no endpoint it may use. */
   blocked: z.string().nullable(),
   error: z.string().nullable(),

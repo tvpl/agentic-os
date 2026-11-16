@@ -37,6 +37,12 @@ export interface SearchHit extends FileRow {
   /** The file's nature and scope read through the closed lists (cerebro-natureza, AC 10); null when it has none. */
   natureza: Natureza | null;
   escopo: Escopo | null;
+  /**
+   * A hit the vectors ranked (cerebro-busca-significado, AC 21, G13): the heading path of the file's best section and
+   * its first body line. Absent on a hit of the words alone.
+   */
+  section?: string;
+  line?: number;
 }
 
 /** A file row as a hit: with its nature and its scope read through the closed lists. */

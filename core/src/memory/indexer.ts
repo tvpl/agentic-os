@@ -489,10 +489,17 @@ export class MemoryIndexer {
       runId?: string | undefined;
     } = {},
   ): Promise<void> {
-    const config = this.getSettings().memory.embeddings;
+    const settings = this.getSettings();
+    const config = settings.memory.embeddings;
     let announced = false;
+    // What may be sent is what today's policy admits (G17 of cerebro-busca-significado) under a root granted today: a
+    // folder whose grant was revoked keeps its rows until a full pass prunes them, and a pass over a few paths does not.
+    const policy = this.rowFilter();
+    const granted = new Set(
+      [...settings.indexedFolders, ...this.implicitRoots].filter((f) => f.enabled).map((f) => path.resolve(f.path)),
+    );
     const { embedded } = await embedPending(this.db, config, {
-      allow: this.rowFilter(),
+      allow: (row) => granted.has(path.resolve(row.root)) && policy(row),
       ...(options.signal ? { signal: options.signal } : {}),
       ...(options.shouldStop ? { shouldStop: options.shouldStop } : {}),
       onProgress: (done, total) => {
@@ -1225,7 +1232,7 @@ export class MemoryIndexer {
     this.db.prepare("DELETE FROM note_passages WHERE file_id = ?").run(id);
     // The tasks go with the file too (door 3 of cerebro-paineis).
     this.db.prepare("DELETE FROM note_tasks WHERE src_id = ?").run(id);
-    this.db.prepare("DELETE FROM file_vectors WHERE file_id = ?").run(id);
+    this.db.prepare("DELETE FROM section_vectors WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_minhash WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_terms WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_related WHERE src_id = ? OR dst_id = ?").run(id, id);

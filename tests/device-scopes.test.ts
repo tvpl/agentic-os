@@ -1102,7 +1102,8 @@ describe("S3 who asked does not approve", () => {
       // batch B), a table made again with the same rows, and the keys and provenance of facts, the history of memory/
       // and the review inbox (cerebro-memoria-confiavel), columns on facts and three new tables, and the search indexes
       // of the audiences and their related edges (doors 19 and 20), three more, and the loop decisions and the weekly
-      // reviews (cerebro-rituais), two more.
+      // reviews (cerebro-rituais), two more, and one vector per section in place of the old vector table
+      // (cerebro-busca-significado), one more.
       expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([
         "push-subscription-device",
         "run-action-receipt-requester",
@@ -1120,6 +1121,7 @@ describe("S3 who asked does not approve", () => {
         "audience-search-indexes",
         "audience-related-edges",
         "rituais",
+        "section-vectors",
       ]);
       const raw = new Database(tmp.paths.dbFile);
       for (const m of MIGRATIONS.filter((x) => x.version < target)) {

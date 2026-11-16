@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FAKE_BIN } from "./helpers.js";
-import { PT_QUERIES, corpusHome, type CorpusHome } from "./helpers/buscaWorld.js";
+import { PT_QUERIES, corpusHome, embeddingsServer, type CorpusHome } from "./helpers/buscaWorld.js";
 
 /**
  * .specs/features/cerebro-busca-significado, S1: `mordomo eval` through the BUILT cli, over a real home and a real index
@@ -204,7 +204,9 @@ describe.skipIf(!distReady)("S1 mordomo eval over the Portuguese corpus", () => 
     expect(res.stderr).toBe("");
     expect(res.status).toBe(0);
     // recorded once by the builder of batch A from this run (G11): a change to the search moves a number here
-    // (moved once already: C138 put the word itself in the OR, and `or` mrr went 0.800 → 0.799, one question 5th → 6th)
+    // (moved once already: C138 put the word itself in the OR, and `or` mrr went 0.800 → 0.799, one question 5th → 6th;
+    // moved again by batch B: one vector per section with its heading path (door 1) took `semantic` mrr 0.613 → 0.632 and
+    // hit@3 0.646 → 0.667, recall@20 unchanged at 0.729)
     expect(res.stdout).toBe(BASELINE);
   });
 });
@@ -212,8 +214,78 @@ describe.skipIf(!distReady)("S1 mordomo eval over the Portuguese corpus", () => 
 const BASELINE = [
   "and 1-recall@20=0.146 mrr=0.146 hit@3=0.146",
   "or 1-recall@20=0.938 mrr=0.799 hit@3=0.896",
-  "semantic 1-recall@20=0.729 mrr=0.613 hit@3=0.646",
+  "semantic 1-recall@20=0.729 mrr=0.632 hit@3=0.667",
   "hybrid 1-recall@20=0.938 mrr=0.784 hit@3=0.896",
   "abstainCorrect=5/12",
   "",
 ].join("\n");
+
+describe.skipIf(!distReady)("S3 mordomo eval while a pass runs", () => {
+  it("C34 an eval spawned while a pass is held in its vectors phase exits 0 with its five lines", async () => {
+    const home = await corpusHome("off", {
+      "jardim.md": "# Jardim\n\nAs roseiras do jardim são podadas em julho.\n",
+      "cozinha.md": "# Cozinha\n\nA geladeira da cozinha foi trocada em maio.\n",
+    });
+    const server = await embeddingsServer(8);
+    const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-busca-c34-")));
+    try {
+      const queries = path.join(work, "queries.json");
+      fs.writeFileSync(
+        queries,
+        JSON.stringify({
+          v: 1,
+          queries: [{ q: "roseiras do jardim", kind: "single", expect: ["jardim.md"] }],
+        }),
+      );
+      const settings = home.ctx.settings();
+      settings.memory.embeddings = {
+        ...settings.memory.embeddings,
+        enabled: true,
+        provider: "http",
+        endpoint: server.url,
+        model: "modelo",
+        dimensions: 8,
+      } as typeof settings.memory.embeddings;
+      home.ctx.settingsStore.save(settings);
+      // the pass's first batch is held until the eval has ended
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      let reached!: () => void;
+      const inVectors = new Promise<void>((resolve) => (reached = resolve));
+      server.hold = (n) => (n === 1 ? (reached(), held) : undefined);
+      const pass = home.ctx.indexer.indexAllAsync();
+      await inVectors;
+      expect(home.ctx.indexer.isIndexing()).toBe(true);
+      const res = await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
+        const child = spawn(process.execPath, [CLI, "eval", queries], {
+          cwd: repoRoot,
+          env: { ...process.env, MORDOMO_HOME: home.home, NO_COLOR: "1", FORCE_COLOR: "0" },
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (c: Buffer) => (stdout += c.toString("utf8")));
+        child.stderr.on("data", (c: Buffer) => (stderr += c.toString("utf8")));
+        child.on("close", (status) => resolve({ status, stdout, stderr }));
+      });
+      expect(home.ctx.indexer.isIndexing()).toBe(true);
+      release();
+      const stats = await pass;
+      expect(res.stderr).toBe("");
+      expect(res.status).toBe(0);
+      const lines = res.stdout.split("\n");
+      expect(lines.map((l) => l.split(" ")[0]!.split("=")[0])).toEqual([
+        "and",
+        "or",
+        "semantic",
+        "hybrid",
+        "abstainCorrect",
+        "",
+      ]);
+      expect(stats.embedded).toBe(2);
+    } finally {
+      await server.close();
+      home.cleanup();
+      fs.rmSync(work, { recursive: true, force: true });
+    }
+  });
+});

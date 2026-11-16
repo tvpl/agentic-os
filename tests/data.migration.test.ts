@@ -516,9 +516,13 @@ describe("C30 migration 20 on a database that already holds an index", () => {
     }
   });
 
-  it("C56 file_vectors has exactly the shape of door 2, and the database ends at the last migration (23 since cerebro-contextos)", () => {
+  it("C56 file_vectors has exactly the shape of door 2 until migration 34 drops it (G45 of cerebro-busca-significado), and the database ends at the last migration", () => {
     const home = tempHome();
-    const { db } = openDb(home.paths);
+    // up to 33 the table is migration 21's; migration 34 (cerebro-busca-significado, door 1) drops it
+    const { db } = openDb(
+      home.paths,
+      MIGRATIONS.filter((m) => m.version <= 33),
+    );
     try {
       const columns = (
         db.pragma("table_info(file_vectors)") as Array<{
@@ -547,10 +551,11 @@ describe("C30 migration 20 on a database that already holds an index", () => {
       // 26 (the tasks of a note, the snapshots and the series of the dashboards) and 27 (the reminder kind of the inbox),
       // and cerebro-memoria-confiavel 28 (the keys and provenance of facts), 29 (the history of memory/), 30 (the
       // review inbox), 31 (the search indexes of the audiences) and 32 (their related edges), and cerebro-rituais 33 (the
-      // loop decisions and the weekly reviews)
+      // loop decisions and the weekly reviews), and cerebro-busca-significado 34 (one vector per section, in place of
+      // this table)
       expect(db.pragma("user_version", { simple: true })).toBe(33);
-      expect(MIGRATIONS.at(-1)!.version).toBe(33);
-      expect(MIGRATIONS.slice(-14).map((m) => m.name)).toEqual([
+      expect(MIGRATIONS.at(-1)!.version).toBe(34);
+      expect(MIGRATIONS.slice(-15).map((m) => m.name)).toEqual([
         "note-links",
         "file-vectors",
         "drop-file-links",
@@ -565,6 +570,7 @@ describe("C30 migration 20 on a database that already holds an index", () => {
         "audience-search-indexes",
         "audience-related-edges",
         "rituais",
+        "section-vectors",
       ]);
       // the migration SQL twice leaves the table as it was
       const sql = MIGRATIONS.find((m) => m.version === 21)!.sql!;
@@ -573,6 +579,16 @@ describe("C30 migration 20 on a database that already holds an index", () => {
       expect((db.pragma("table_info(file_vectors)") as unknown[]).length).toBe(6);
     } finally {
       db.close();
+    }
+    // at the last migration the table is absent
+    const latest = openDb(home.paths).db;
+    try {
+      expect(latest.pragma("user_version", { simple: true })).toBe(34);
+      expect(
+        latest.prepare("SELECT name FROM sqlite_master WHERE name = 'file_vectors'").get(),
+      ).toBeUndefined();
+    } finally {
+      latest.close();
     }
   });
 });

@@ -11,7 +11,14 @@ import {
   type SearchHit,
   type SearchVia,
 } from "./search.js";
-import { VectorIndex, countVectors, storedSemanticError, type VectorBackend, type VectorLoader } from "./vectors.js";
+import {
+  VectorIndex,
+  countVectors,
+  storedSemanticError,
+  type Ranked,
+  type VectorBackend,
+  type VectorLoader,
+} from "./vectors.js";
 
 /**
  * The semantic half of the search and its fusion with the words (.specs/features/cerebro-v2, S4): reciprocal rank
@@ -42,7 +49,12 @@ export interface SemanticStatus {
   provider: string | null;
   /** Where the cosine is computed; null while the search is off (nothing is loaded then). */
   backend: VectorBackend | null;
+  /** The files with at least one section vector (G14). */
   vectors: number;
+  /** The section vectors (door 1, AC 23). */
+  sections: number;
+  /** The id of the local model in use; null for `hash` and `http`. */
+  model: string | null;
   /** Why an enabled search has no provider it may use (the endpoint policy), or null. */
   blocked: string | null;
   /** How the last attempt to embed failed, or null. */
@@ -81,11 +93,14 @@ export class SemanticSearch {
   status(allow?: (row: { root: string; rel: string }) => boolean): SemanticStatus {
     const config = this.getSettings().memory.embeddings;
     const choice = chooseProvider(config);
+    const counted = choice.state === "ready" ? countVectors(this.db, allow) : { files: 0, sections: 0 };
     return {
       enabled: config.enabled,
       provider: choice.state === "ready" ? choice.provider.id : null,
       backend: choice.state === "ready" ? this.vectors.backend() : null,
-      vectors: choice.state === "ready" ? countVectors(this.db, allow) : 0,
+      vectors: counted.files,
+      sections: counted.sections,
+      model: null,
       blocked: choice.state === "blocked" ? choice.reason : null,
       error: this.queryError ?? storedSemanticError(this.db)?.message ?? null,
     };
@@ -109,13 +124,13 @@ export class SemanticSearch {
     const provider = choice.provider;
     const question = filters.query.trim();
     const text = question === "" ? [] : searchFiles(this.db, { ...filters, limit: DEPTH });
-    if (question === "" || countVectors(this.db) === 0) return mode === "semantic" ? [] : searchFiles(this.db, filters);
+    if (question === "" || countVectors(this.db).sections === 0) return mode === "semantic" ? [] : searchFiles(this.db, filters);
 
     // Every file the vector list names, the rows the filters admit being the hits (the text list's first).
     const byId = new Map<number, SearchHit>();
     for (const hit of text) byId.set(hit.id, hit);
     const refused = new Set<number>();
-    let ranked: Array<{ id: number; similarity: number }> = [];
+    let ranked: Ranked[] = [];
     try {
       const [vector] = await provider.embed([question], new AbortController().signal);
       this.queryError = null;
@@ -159,14 +174,16 @@ export class SemanticSearch {
     const textIds = text.map((hit) => hit.id);
     const lists = mode === "semantic" ? [semanticIds] : [textIds, semanticIds];
     const inText = new Set(mode === "semantic" ? [] : textIds);
-    const inSemantic = new Set(semanticIds);
+    const best = new Map(ranked.map((r) => [r.id, r]));
     return fuse(lists)
       .filter(({ id }) => byId.has(id))
       .slice(0, limit)
       .map(({ id, score }) => {
         const hit = byId.get(id)!;
-        const via: SearchVia = inText.has(id) && inSemantic.has(id) ? "both" : inSemantic.has(id) ? "semantic" : "text";
-        return { ...hit, score, via };
+        const section = best.get(id);
+        const via: SearchVia = inText.has(id) && section ? "both" : section ? "semantic" : "text";
+        // A hit the vectors ranked names its best section and that section's first body line (AC 21, G13).
+        return section ? { ...hit, score, via, section: section.section, line: section.line } : { ...hit, score, via };
       });
   }
 }

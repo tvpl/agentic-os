@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { HASH_PROVIDER_ID, hashEmbed, vectorToBlob } from "../core/src/memory/embeddings.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { HASH_PROVIDER_ID, hashEmbed, hashProvider, vectorToBlob } from "../core/src/memory/embeddings.js";
 import { extractKeywords, ftsTerm, recall, stemLite } from "../core/src/memory/recall.js";
 import {
   anyWordQuery,
@@ -12,7 +12,7 @@ import {
   strictWordsSearch,
 } from "../core/src/memory/search.js";
 import { counterparts } from "../core/src/memory/stem.js";
-import { buscaWorld, type BuscaWorld } from "./helpers/buscaWorld.js";
+import { buscaWorld, corpusHome, type BuscaWorld } from "./helpers/buscaWorld.js";
 
 /**
  * .specs/features/cerebro-busca-significado, S2: the other number of a Portuguese word in the search's text query.
@@ -220,6 +220,28 @@ describe("S2 the hash provider is unchanged", () => {
     expect(stemLite("jornais")).toBe("jornai");
     expect(stemLite("flores")).toBe("flor");
     expect(stemLite("homem")).toBe("homem");
+  });
+
+  it("C17 a second pass over an unchanged corpus with hash calls embed 0 times and every section_vectors.vec reads back byte-identical", async () => {
+    const home = await corpusHome("hash");
+    try {
+      const rows = () =>
+        home.ctx.db
+          .prepare("SELECT file_id, ord, vec FROM section_vectors ORDER BY file_id, ord")
+          .all() as Array<{ file_id: number; ord: number; vec: Buffer }>;
+      const first = rows();
+      expect(first.length).toBeGreaterThanOrEqual(40);
+      const embed = vi.spyOn(hashProvider, "embed");
+      const second = await home.ctx.indexer.indexAllAsync();
+      expect(embed).toHaveBeenCalledTimes(0);
+      expect(second.embedded).toBe(0);
+      const again = rows();
+      expect(again.map((r) => [r.file_id, r.ord])).toEqual(first.map((r) => [r.file_id, r.ord]));
+      again.forEach((r, i) => expect(r.vec.equals(first[i]!.vec), `${r.file_id}:${r.ord}`).toBe(true));
+    } finally {
+      vi.restoreAllMocks();
+      home.cleanup();
+    }
   });
 });
 

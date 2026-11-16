@@ -1,10 +1,28 @@
-import { describe, expect, it } from "vitest";
-import { EMBEDDED_EXTENSIONS, MAX_SECTIONS, embeddedText, sectionRows } from "../core/src/memory/sections.js";
+import fs from "node:fs";
+import path from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+import { splitSections as recallSplit } from "../core/src/memory/recall.js";
+import {
+  EMBEDDED_EXTENSIONS,
+  MAX_SECTIONS,
+  embeddedText,
+  sectionRows,
+  splitSections,
+} from "../core/src/memory/sections.js";
+import { embedPending } from "../core/src/memory/vectors.js";
+import type { EmbeddingProvider } from "../core/src/memory/embeddings.js";
+import { buscaWorld, type BuscaWorld } from "./helpers/buscaWorld.js";
 
 /**
  * .specs/features/cerebro-busca-significado, S3, at its own layer: the section splitter shared by the recall and the
  * vectors phase (`core/src/memory/sections.ts`) and the text each section's vector is computed from.
  */
+
+const repoRoot = path.resolve(import.meta.dirname, "..");
+const worlds: BuscaWorld[] = [];
+afterAll(async () => {
+  for (const w of worlds) await w.close();
+});
 
 const headings = (text: string, ext = ".md") => sectionRows(text, ext).map((r) => r.heading);
 
@@ -110,6 +128,22 @@ describe("C20 blocks of 40 lines outside Markdown", () => {
   });
 });
 
+/** A provider that records what it is given and answers a vector per text (never all zeros). */
+function recording(maxChars: number): EmbeddingProvider & { texts: string[] } {
+  const texts: string[] = [];
+  return {
+    id: "recording:4",
+    dim: 4,
+    local: true,
+    maxChars,
+    texts,
+    async embed(batch) {
+      texts.push(...batch);
+      return batch.map(() => new Float32Array([0.5, 0.5, 0.5, 0.5]));
+    },
+  };
+}
+
 describe("C23 the embedded text", () => {
   it("C23 at its own layer: area, title, heading path and body; a missing part is left out with its separator", () => {
     const body = "Até 30 dias.";
@@ -137,5 +171,86 @@ describe("C23 the embedded text", () => {
     const exactly = "x".repeat(100);
     expect(embeddedText({ area: null, title: null, path: [] }, exactly, 100)).toBe(exactly);
     expect(embeddedText({ area: null, title: null, path: [] }, `${exactly}y`, 100)).toBe(exactly);
+  });
+
+  it("C23 through a pass: what a recording provider is sent", async () => {
+    const w = await buscaWorld("mordomo-busca-c23-");
+    worlds.push(w);
+    const vendas = w.outside("vendas");
+    const solta = w.outside("solta");
+    w.update((s) => {
+      s.indexedFolders = [
+        { path: vendas, area: "Vendas", enabled: true },
+        { path: solta, area: null, enabled: true },
+      ];
+    });
+    const note = "---\ntitle: Política de devolução\n---\n# Prazos\n## Exceções\nAté 30 dias.\n";
+    w.put(path.join(vendas, "devolucao.md"), note);
+    w.put(path.join(solta, "devolucao.md"), note);
+    // the maxChars edge: no area, no title (no H1), the path "S" and a body of 98 and 99 characters
+    w.put(path.join(solta, "cem.md"), `## S\n${"a".repeat(98)}\n`);
+    w.put(path.join(solta, "cento-e-um.md"), `## S\n${"b".repeat(99)}\n`);
+    await w.index();
+    w.hashOn();
+    const provider = recording(100);
+    await embedPending(w.ctx.db, w.ctx.settings().memory.embeddings, { provider });
+    const sent = provider.texts;
+    expect(sent).toContain("Vendas > Política de devolução > Prazos > Exceções\nAté 30 dias.");
+    expect(sent).toContain("Política de devolução > Prazos > Exceções\nAté 30 dias.");
+    // the preamble (the header of the note) has no path part
+    expect(sent).toContain("Vendas > Política de devolução\n---\ntitle: Política de devolução\n---");
+    expect(sent).toContain(`S\n${"a".repeat(98)}`);
+    expect(`S\n${"a".repeat(98)}`).toHaveLength(100);
+    expect(sent).toContain(`S\n${"b".repeat(98)}`);
+    expect(sent.every((t) => t.length <= 100)).toBe(true);
+    expect(sent).toHaveLength(6);
+  });
+});
+
+describe("C36 one splitter for the recall and the vectors", () => {
+  it("C36 the recall's splitSections is the shared one, defined once, and the vectors phase reads it", () => {
+    expect(recallSplit).toBe(splitSections);
+    const memoryDir = path.join(repoRoot, "core", "src", "memory");
+    const defining = fs
+      .readdirSync(memoryDir)
+      .filter((f) => f.endsWith(".ts"))
+      .filter((f) =>
+        /export function splitSections\(/.test(fs.readFileSync(path.join(memoryDir, f), "utf8")),
+      );
+    expect(defining).toEqual(["sections.ts"]);
+    expect(fs.readFileSync(path.join(memoryDir, "vectors.ts"), "utf8")).toMatch(
+      /import \{[^}]*\bsectionRows\b[^}]*\} from "\.\/sections\.js"/,
+    );
+    expect(fs.readFileSync(path.join(memoryDir, "recall.ts"), "utf8")).toMatch(
+      /import \{ splitSections, type Section \} from "\.\/sections\.js"/,
+    );
+  });
+
+  it("C36 the recall's sections of a note equal what splitSections gave on the base", () => {
+    const md =
+      "Intro da nota.\n\n# Nota\n\nCorpo um.\n\n## Segunda\n\nCorpo dois\ncom duas linhas.\n\n```\n# não é título\n```\n\n### Vazia\n\n## Terceira ##\n\nfim.\n";
+    const txt = Array.from({ length: 45 }, (_, i) => `linha ${i + 1}`).join("\n") + "\n";
+    // recorded from `splitSections` of `core/src/memory/recall.ts` at 2835feb, before it moved
+    expect(recallSplit(md, true)).toEqual([
+      { heading: "(top)", body: "Intro da nota.", level: 0, startLine: 1, endLine: 1 },
+      { heading: "Nota", body: "Corpo um.", level: 1, startLine: 5, endLine: 5 },
+      {
+        heading: "Segunda",
+        body: "Corpo dois\ncom duas linhas.\n\n```\n# não é título\n```",
+        level: 2,
+        startLine: 9,
+        endLine: 14,
+      },
+      { heading: "Vazia", body: "", level: 3 },
+      { heading: "Terceira", body: "fim.", level: 2, startLine: 20, endLine: 20 },
+    ]);
+    expect(recallSplit(txt, false)).toEqual([
+      {
+        heading: "lines 1-40",
+        body: Array.from({ length: 40 }, (_, i) => `linha ${i + 1}`).join("\n"),
+        level: 0,
+      },
+      { heading: "lines 41-46", body: "linha 41\nlinha 42\nlinha 43\nlinha 44\nlinha 45\n", level: 0 },
+    ]);
   });
 });
