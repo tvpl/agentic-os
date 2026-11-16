@@ -23,7 +23,7 @@ import {
   generateRouters,
   isStartupServiceInstalled,
   planStartupService,
-  recall,
+  hybridRecall,
   recordRecall,
   runEval,
   formatEvalText,
@@ -64,7 +64,7 @@ import {
 } from "./instances.js";
 import { PKG_VERSION } from "./routes/system.js";
 import { servePermissionTool } from "./mcp/permission.js";
-import { httpApi, serveMordomoMcp } from "./mcp/mordomo.js";
+import { abstentionText, httpApi, serveMordomoMcp } from "./mcp/mordomo.js";
 import {
   LAUNCH_SECRET_MIN_LENGTH,
   PortInUseError,
@@ -1581,10 +1581,13 @@ async function cmdRecall(args: CliArgs): Promise<void> {
     const chosen = chosenContext(ctx, args);
     if (chosen === undefined) return;
     const within = chosen ? contextMembership({ paths: ctx.paths, settings }, chosen) : undefined;
-    const result = recall(ctx.db, ctx.paths, settings, question, {
+    // The same recall as GET /api/memory/recall: with the engine's vectors and reranker when they are ready here.
+    const result = await hybridRecall(ctx.db, ctx.paths, settings, question, {
       ...(within ? { within } : {}),
       ...(natureza ? { natureza } : {}),
       ...(escopo ? { escopo } : {}),
+      semantic: ctx.semantic,
+      local: ctx.localModels,
     });
     recordRecall(ctx.db, result);
     if (args.json) {
@@ -1594,6 +1597,10 @@ async function cmdRecall(args: CliArgs): Promise<void> {
     console.log(
       `${pc.bold("recall")} keywords: ${result.keywords.join(", ") || "(none)"} · ${result.candidatesConsidered} candidates scored, ${result.opened} opened, ~${result.tokensEstimate} tokens`,
     );
+    if (result.abstained) {
+      console.log(abstentionText(result.abstainReason ?? "no_match"));
+      return;
+    }
     if (result.answerContext.length === 0)
       console.log(pc.dim("No indexed section matched. Run `mordomo index` if the workspace changed."));
     for (const c of result.answerContext) {

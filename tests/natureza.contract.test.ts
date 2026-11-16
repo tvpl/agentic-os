@@ -40,7 +40,14 @@ vi.mock("@mordomo/core/internal", async (importOriginal) => {
     if (key) for (const item of result.answerContext) delete (item as Partial<typeof item>)[key];
     return result;
   };
-  return { ...actual, recall };
+  // Since cerebro-busca-significado the route calls `hybridRecall` (S5): it is wrapped the same way.
+  const hybridRecall: typeof actual.hybridRecall = async (...args) => {
+    const result = await actual.hybridRecall(...args);
+    const key = drop.recallKey;
+    if (key) for (const item of result.answerContext) delete (item as Partial<typeof item>)[key];
+    return result;
+  };
+  return { ...actual, recall, hybridRecall };
 });
 
 const repoRoot = path.resolve(import.meta.dirname, "..");

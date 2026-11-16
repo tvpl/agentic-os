@@ -53,6 +53,10 @@ const optional = (v: unknown, name: string): string | undefined => {
   return v.trim() || undefined;
 };
 
+/** What the recall's tool and `mordomo recall` say when the recall abstains (AC 52). */
+export const abstentionText = (reason: string): string =>
+  `Nothing found: no indexed section answers this (${reason}).`;
+
 export function mordomoTools(api: McpApi): McpTool[] {
   return [
     {
@@ -71,7 +75,11 @@ export function mordomoTools(api: McpApi): McpTool[] {
         const c = context !== undefined ? `&context=${encodeURIComponent(context)}` : "";
         const r = await api.get<{
           answerContext: Array<{ path: string; section: string; excerpt?: string; score: number }>;
+          abstained?: boolean;
+          abstainReason?: string | null;
         }>(`/api/v1/memory/recall?q=${q}${k}${c}`);
+        // The recall's abstention (cerebro-busca-significado, AC 52): the agent is told nothing answers, and why.
+        if (r.abstained) return abstentionText(r.abstainReason ?? "no_match");
         if (r.answerContext.length === 0) return "No indexed section matched.";
         return r.answerContext
           .map((c) => `## ${c.path} § ${c.section} (score ${c.score})\n${c.excerpt ?? ""}`)

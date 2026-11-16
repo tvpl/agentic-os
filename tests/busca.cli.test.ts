@@ -206,7 +206,10 @@ describe.skipIf(!distReady)("S1 mordomo eval over the Portuguese corpus", () => 
     // recorded once by the builder of batch A from this run (G11): a change to the search moves a number here
     // (moved once already: C138 put the word itself in the OR, and `or` mrr went 0.800 → 0.799, one question 5th → 6th;
     // moved again by batch B: one vector per section with its heading path (door 1) took `semantic` mrr 0.613 → 0.632 and
-    // hit@3 0.646 → 0.667, recall@20 unchanged at 0.729)
+    // hit@3 0.646 → 0.667, recall@20 unchanged at 0.729; moved by batch D: `hybrid` is the recall's fused order (the
+    // words and the 50 sections nearest by hash, RRF) and `abstainCorrect` the recall's own abstention (door 4) instead
+    // of an empty answer: hybrid mrr 0.784 → 0.735 and hit@3 0.896 → 0.875, abstainCorrect 5/12 → 2/12 (hash's cosine of
+    // ten abstain questions is at or above its 0.2, so only the two with no candidate abstain)
     expect(res.stdout).toBe(BASELINE);
   });
 });
@@ -215,8 +218,8 @@ const BASELINE = [
   "and 1-recall@20=0.146 mrr=0.146 hit@3=0.146",
   "or 1-recall@20=0.938 mrr=0.799 hit@3=0.896",
   "semantic 1-recall@20=0.729 mrr=0.632 hit@3=0.667",
-  "hybrid 1-recall@20=0.938 mrr=0.784 hit@3=0.896",
-  "abstainCorrect=5/12",
+  "hybrid 1-recall@20=0.938 mrr=0.735 hit@3=0.875",
+  "abstainCorrect=2/12",
   "",
 ].join("\n");
 
@@ -287,5 +290,80 @@ describe.skipIf(!distReady)("S3 mordomo eval while a pass runs", () => {
       home.cleanup();
       fs.rmSync(work, { recursive: true, force: true });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------- S5 and the CLI assembly
+
+/** C77's question over C77's notes (tests/busca.recall.test.ts): its best section matches 1 of its 4 keywords. */
+const WEAK_Q = "jardim xablau yyzzq wwqqp";
+const WEAK_NOTES = {
+  "jardim.md":
+    "## Plantas\n\nO jardim tem rosas cravos lírios tulipas orquídeas margaridas violetas begônias azaleias hortênsias.\n",
+  "cozinha.md": "## Cozinha\n\nA geladeira foi trocada em maio.\n",
+};
+
+describe.skipIf(!distReady)("S5 mordomo recall abstains", () => {
+  it("C84 mordomo recall prints the abstention line last, no 'No indexed section matched.', exits 0; --json reads abstained true and weak", async () => {
+    const h = await corpusHome("off", WEAK_NOTES);
+    try {
+      h.close();
+      const text = mordomo(h.home, ["recall", WEAK_Q]);
+      expect(text.status, text.stderr).toBe(0);
+      const lines = text.stdout.trimEnd().split("\n");
+      expect(lines.at(-1)).toBe("Nothing found: no indexed section answers this (weak).");
+      expect(text.stdout).not.toContain("No indexed section matched.");
+      const json = mordomo(h.home, ["recall", WEAK_Q, "--json"]);
+      expect(json.status, json.stderr).toBe(0);
+      const body = JSON.parse(json.stdout) as Record<string, unknown>;
+      expect([body.abstained, body.abstainReason, body.answerContext]).toEqual([true, "weak", []]);
+    } finally {
+      h.cleanup();
+    }
+  });
+});
+
+describe.skipIf(!distReady)("Cross-cutting the CLI's offline assembly", () => {
+  it("C106 mordomo recall with the local provider and its model absent answers by words, and --json reads abstained and rerank off", async () => {
+    const h = await corpusHome("off", {
+      ...WEAK_NOTES,
+      "garagem.md": "## Garagem\n\nA bicicleta azul fica pendurada na parede da garagem.\n",
+    });
+    try {
+      const question = "bicicleta azul garagem";
+      h.close();
+      const words = mordomo(h.home, ["recall", question, "--json"]);
+      expect(words.status, words.stderr).toBe(0);
+      // the local provider with a catalog model that was never downloaded (door 7: blocked, `model_missing`)
+      const file = path.join(h.home, "config", "settings.json");
+      const settings = JSON.parse(fs.readFileSync(file, "utf8"));
+      settings.memory.embeddings = {
+        ...settings.memory.embeddings,
+        enabled: true,
+        provider: "local",
+        local: { model: "embeddinggemma-300m-q4" },
+      };
+      fs.writeFileSync(file, JSON.stringify(settings, null, 2));
+      const local = mordomo(h.home, ["recall", question, "--json"]);
+      expect(local.status, local.stderr).toBe(0);
+      const a = JSON.parse(words.stdout) as Record<string, any>;
+      const b = JSON.parse(local.stdout) as Record<string, any>;
+      expect(b.answerContext.length).toBeGreaterThan(0);
+      expect(b.answerContext).toEqual(a.answerContext);
+      expect(b.candidates).toEqual(a.candidates);
+      expect([b.abstained, b.abstainReason, b.rerank]).toEqual([false, null, "off"]);
+    } finally {
+      h.cleanup();
+    }
+  });
+  it("C106 mordomo eval with hash runs with no service, and the CLI builds the AppContext the service does, with its vectors and its reranker", () => {
+    // `mordomo eval` with hash and no service: C4 above, over the same built CLI
+    const source = fs.readFileSync(path.join(repoRoot, "apps", "api", "src", "cli.ts"), "utf8");
+    const cmd = (name: string) => source.slice(source.indexOf(`async function ${name}(`)).split("\n}\n")[0]!;
+    for (const name of ["cmdRecall", "cmdEval"]) expect(cmd(name), name).toContain("new AppContext()");
+    expect(cmd("cmdRecall")).toMatch(
+      /hybridRecall\([\s\S]*semantic: ctx\.semantic,[\s\S]*local: ctx\.localModels/,
+    );
+    expect(cmd("cmdEval")).toMatch(/semantic: ctx\.semantic,[\s\S]*local: ctx\.localModels/);
   });
 });

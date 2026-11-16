@@ -217,6 +217,8 @@ describe("S5 the surface is a closed list", () => {
         "LocalModelsOptions",
         "ModelRefusal",
         "testProvider",
+        // cerebro-busca-significado, batch D: the recall with vectors, abstention and the reranker (doors 4 and 5)
+        "hybridRecall",
       ].sort(),
     );
   });

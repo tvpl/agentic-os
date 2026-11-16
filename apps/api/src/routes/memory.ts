@@ -46,7 +46,7 @@ import {
   queryFacts,
   queryFilesByField,
   readNote,
-  recall,
+  hybridRecall,
   recallStats,
   recentJournals,
   recordRecall,
@@ -525,7 +525,8 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     const view = accessView(ctx, req.principal);
     const reach = runReach(ctx, req, view);
     const within = contextFilter(ctx, q.context ?? reach?.context, view.settings);
-    const result = recall(ctx.db, ctx.paths, view.settings, q.q, {
+    // The sections nearest to the question and the reranker are judged by the same filters as the words (AC 43, AC 58).
+    const result = await hybridRecall(ctx.db, ctx.paths, view.settings, q.q, {
       k: q.k,
       area: q.area,
       excerptChars: q.excerptChars,
@@ -533,6 +534,9 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       ...(within ? { within } : {}),
       ...(view.audience ? { index: ctx.indexer.audienceTable(view.audience) } : {}),
       ...natureFilters(q),
+      semantic: ctx.semantic,
+      local: ctx.localModels,
+      ...(q.rerank === false ? { rerank: false } : {}),
     });
     if (q.record !== false) recordRecall(ctx.db, result);
     // Anyone but the owner is given scores by place in each list (amendment 4).

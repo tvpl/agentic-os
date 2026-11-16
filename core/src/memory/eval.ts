@@ -4,7 +4,7 @@ import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
 import { readScope, readWorkspaceText } from "../security/safeFs.js";
 import type { FileRow } from "./indexer.js";
-import { recall, recallOrder } from "./recall.js";
+import { runRecall } from "./recall.js";
 import { anyWordSearch, everyWordSearch } from "./search.js";
 import { SemanticDisabledError, type SemanticSearch } from "./semantic.js";
 import type { LocalModels } from "../models/localModels.js";
@@ -180,23 +180,19 @@ export interface EvalSource {
   local?: Pick<LocalModels, "reranker" | "rerank">;
 }
 
-/** How much of a candidate file the reranker reads. */
-const RERANK_CHARS = 2000;
-
 const relsOf = (files: readonly FileRow[]): string[] => files.map((file) => normalPath(file.rel));
 
 /**
  * Each question through each mode (G6): `and` and `or` are the every-word and any-word queries of `searchFiles`,
- * `semantic` is `SemanticSearch` in `semantic` (nothing while the search is off), `hybrid` is the recall's file order
- * before opening; the recall abstains when it answers nothing.
+ * `semantic` is `SemanticSearch` in `semantic` (nothing while the search is off), `hybrid` is the recall's fused file
+ * order before opening and `rerank` that order as the recall's reranker left it (the fused order when it timed out or
+ * failed, C95); `abstained` is the recall's own answer.
  */
 export async function evalRankings(source: EvalSource, queries: readonly EvalQuery[]): Promise<EvalRankings> {
   const { db, paths, settings, semantic, allow } = source;
   const out: EvalRankings = { and: [], or: [], semantic: [], hybrid: [], abstained: [] };
-  const rerank = settings.memory.recall.rerank;
-  const reranker = rerank.enabled ? (source.local?.reranker() ?? null) : null;
+  const reranker = settings.memory.recall.rerank.enabled ? (source.local?.reranker() ?? null) : null;
   if (reranker) out.rerank = [];
-  const textOf = db.prepare("SELECT content FROM files_fts WHERE rowid = ?");
   for (const { q } of queries) {
     const filters = { query: q, limit: EVAL_DEPTH, ...(allow ? { allow } : {}) };
     out.and.push(relsOf(everyWordSearch(db, filters)));
@@ -207,26 +203,14 @@ export async function evalRankings(source: EvalSource, queries: readonly EvalQue
       if (!(error instanceof SemanticDisabledError)) throw error;
       out.semantic.push([]);
     }
-    const order = recallOrder(db, paths, settings, q, EVAL_DEPTH);
-    out.hybrid.push(relsOf(order));
-    if (reranker && out.rerank) {
-      // The best `candidates` of the fused order, reordered by the reranker's "yes" probability; the rest after them.
-      // A reranker that fails or is late leaves the fused order (door 5).
-      const head = order.slice(0, rerank.candidates);
-      const texts = head.map((file) =>
-        ((textOf.get(file.id) as { content: string } | undefined)?.content ?? "").slice(0, RERANK_CHARS),
-      );
-      let ranked = order;
-      try {
-        const scores = await source.local!.rerank(reranker, q, texts, rerank.timeoutMs);
-        const sorted = head.map((file, i) => ({ file, score: scores[i]!, i })).sort((a, b) => b.score - a.score || a.i - b.i);
-        ranked = [...sorted.map((s) => s.file), ...order.slice(head.length)];
-      } catch {
-        ranked = order;
-      }
-      out.rerank.push(relsOf(ranked));
-    }
-    out.abstained.push(recall(db, paths, settings, q).answerContext.length === 0);
+    // The recall a question to GET /api/memory/recall runs, with the engine's vectors and, when on, its reranker.
+    const run = await runRecall(db, paths, settings, q, {
+      semantic,
+      ...(reranker && source.local ? { local: source.local } : {}),
+    });
+    out.hybrid.push(relsOf(run.fused.slice(0, EVAL_DEPTH)));
+    out.rerank?.push(relsOf((run.reranked ?? run.fused).slice(0, EVAL_DEPTH)));
+    out.abstained.push(run.result.abstained);
   }
   return out;
 }

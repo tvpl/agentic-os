@@ -1,6 +1,7 @@
 /** Memory layer v2 barrel: recall, journal, hygiene, facts, inline fields. */
 export {
   recall,
+  hybridRecall,
   extractKeywords,
   stemLite,
   splitSections,

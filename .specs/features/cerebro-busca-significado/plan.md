@@ -80,7 +80,7 @@ flowchart TD
 5. o recall (`GET /api/memory/recall`, exists) soma aos candidatos de texto (`scoreCandidates`, exists) os arquivos das 50
    seções mais próximas, funde por RRF, decide a abstenção (door 4), opcionalmente reordena os melhores com o reranker (door
    5), abre as seções e segue links até `hops` saltos dentro do teto de tokens (`pointerTargets`, exists)
-6. `mordomo eval <arquivo>` (door 6) roda as perguntas do dono contra o índice local, chamando direto as funções que as rotas de busca e de recall usam (`searchFiles`/`SemanticSearch` e `scoreCandidates`, sem passar pelas rotas, como `mordomo recall`), e imprime as métricas por modo
+6. `mordomo eval <arquivo>` (door 6) roda as perguntas do dono contra o índice local, chamando direto as funções que as rotas de busca e de recall usam (`searchFiles`/`SemanticSearch` e o próprio recall, `runRecall`, cuja ordem fundida antes de abrir é o `hybrid` e cuja ordem depois do reranker é o `rerank`, sem passar pelas rotas, como `mordomo recall`), e imprime as métricas por modo
 7. a tela de Configurações (door 7) escolhe o provedor, baixa e remove modelos e testa a conexão
 
 ## Impact

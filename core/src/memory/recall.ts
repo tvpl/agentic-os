@@ -17,6 +17,9 @@ import { resolveWikilink } from "./links.js";
 import { readEscopo, readNatureza, type Escopo, type Natureza, type Passage } from "./natureza.js";
 import { areaSlug } from "./routers.js";
 import { splitSections, type Section } from "./sections.js";
+import { fuse, type NearSection, type NearSections, type SemanticSearch } from "./semantic.js";
+import { EmbeddingError } from "./embeddings.js";
+import type { LocalModels } from "../models/localModels.js";
 
 export { splitSections, type Section };
 
@@ -70,6 +73,19 @@ export interface RecallOptions {
   index?: FtsTable;
 }
 
+/** What `hybridRecall` adds (cerebro-busca-significado, S5 and S6). */
+export interface HybridRecallOptions extends RecallOptions {
+  /** The engine's semantic search: the sections nearest to the question join the candidates (AC 43). */
+  semantic?: Pick<SemanticSearch, "nearestSections">;
+  /** The engine's local models: the reranker, when it is on and ready (door 5). */
+  local?: Pick<LocalModels, "reranker" | "rerank">;
+  /** `rerank=false` in the query: the reranker is not called (it can only turn it off, G27). */
+  rerank?: boolean;
+}
+
+export type AbstainReason = "no_match" | "weak";
+export type RerankOutcome = "off" | "used" | "skipped" | "timeout" | "failed";
+
 export interface RecallContext {
   path: string;
   /** Heading of the section (or "(top)" / "(file)"). */
@@ -101,6 +117,11 @@ export interface RecallResult {
   /** Top candidates and their pre-open scores (for the metrics panel). */
   candidates: RecallCandidate[];
   durationMs: number;
+  /** Door 4: the recall says it found nothing that answers, and why; `answerContext` is then empty. */
+  abstained: boolean;
+  abstainReason: AbstainReason | null;
+  /** What the reranker did (door 5). */
+  rerank: RerankOutcome;
 }
 
 // ------------------------------------------------------------ keywords ----
@@ -470,6 +491,21 @@ interface OpenedFile {
   file: FileRow;
   sections: Section[];
   best: { section: Section; score: number; matched: string[]; index: number; natureza: Natureza | null } | null;
+  /** The most keywords one section with a body matches (AC 47, G29). */
+  matched: number;
+}
+
+/**
+ * AC 44: a fused file's vector-nearest section is taken when it scores no lower than its best text section (equal
+ * counts as no lower).
+ */
+export function prefersVectorSection(textScore: number, vectorScore: number): boolean {
+  return vectorScore >= textScore;
+}
+
+/** Whether a section of `splitSections` is the section a vector row names (its first body line; a block by its name). */
+function isRowOf(section: Section, near: { heading: string; line: number }, markdown: boolean): boolean {
+  return markdown ? section.startLine === near.line : section.heading === near.heading;
 }
 
 /** How a file's sections are labelled, and which labels a recall keeps (all of them without a filter). */
@@ -484,6 +520,7 @@ function openFile(
   keywords: string[],
   maxBytes: number,
   labels: Labelling,
+  near?: { heading: string; line: number },
 ): OpenedFile | null {
   let content: string;
   try {
@@ -496,17 +533,31 @@ function openFile(
   const md = file.ext === ".md" || file.ext === ".markdown";
   const sections = splitSections(content, md);
   let best: OpenedFile["best"] = null;
+  let vector: OpenedFile["best"] = null;
+  let matched = 0;
+  const titles: Array<{ level: number; title: string }> = [];
   sections.forEach((section, index) => {
+    if (md && section.level > 0) {
+      while (titles.length > 0 && titles[titles.length - 1]!.level >= section.level) titles.pop();
+      titles.push({ level: section.level, title: section.heading });
+    }
     // A matching title is navigation metadata, not usable answer context.
     // Keep sections intact for pointers, but select excerpts with actual text.
     if (!section.body.trim()) return;
+    const s = scoreSection(section, keywords);
+    // AC 47: what a section matches is read with its heading path (door 1's name of a section, `Banco > Pagamento`).
+    const named = titles.length > 0 && section.level > 0 ? titles.map((t) => t.title).join(" > ") : section.heading;
+    matched = Math.max(matched, scoreSection({ ...section, heading: named }, keywords).matched.length);
     const natureza = excerptNature(labels.source, section);
     // With a nature asked, the best section is the best of those natures (an excerpt with none is never one).
     if (labels.wanted && !(natureza !== null && labels.wanted.includes(natureza))) return;
-    const s = scoreSection(section, keywords);
-    if (!best || s.score > best.score) best = { section, score: s.score, matched: s.matched, index, natureza };
+    const candidate = { section, score: s.score, matched: s.matched, index, natureza };
+    if (!best || s.score > best.score) best = candidate;
+    if (near && !vector && isRowOf(section, near, md)) vector = candidate;
   });
-  return { file, sections, best };
+  if (vector && best && prefersVectorSection((best as { score: number }).score, (vector as { score: number }).score))
+    best = vector;
+  return { file, sections, best, matched };
 }
 
 function excerptOf(section: Section, max: number): string {
@@ -534,9 +585,352 @@ function pointerTargets(db: Db, scope: ReadScope, section: Section, from: FileRo
 
 // ---------------------------------------------------------------- recall ----
 
+/** How many sections nearest to the question join the candidates (AC 43). */
+export const RECALL_VECTOR_DEPTH = 50;
+/** How much of a section the reranker reads. */
+const RERANK_CHARS = 2000;
+
 /**
- * The files the recall would open for a question, in its order before opening, at most `depth` deep: the `hybrid` row
- * of `mordomo eval` (cerebro-busca-significado, G6). The same candidates and scores as `recall`, with no file read.
+ * Door 4's abstention, at its own layer (AC 46-48, G29, G30): no keyword or no candidate is `no_match`, whatever
+ * `abstain` says; else, with `abstain` on, `weak` when no section matches at least half of the keywords (exactly half
+ * counts) and the nearest section's cosine is below the provider's `minSimilarity` (equal is not below) or there are no
+ * vectors (`cosine` null).
+ */
+export function decideAbstention(input: {
+  keywords: number;
+  candidates: number;
+  /** The most keywords one section of the opened files matches. */
+  matched: number;
+  cosine: number | null;
+  minSimilarity: number;
+  abstain: boolean;
+}): AbstainReason | null {
+  if (input.keywords === 0 || input.candidates === 0) return "no_match";
+  if (!input.abstain) return null;
+  if (input.matched * 2 >= input.keywords) return null;
+  if (input.cosine !== null && input.cosine >= input.minSimilarity) return null;
+  return "weak";
+}
+
+/**
+ * AC 51, G33: the excerpts in the answer's order, each kept while the sum of their tokens (characters / 4, rounded up)
+ * stays within `budget`; one that does not fit is dropped and the next ones are still tried.
+ */
+export function withinTokenBudget<T extends { excerpt: string }>(
+  answer: readonly T[],
+  budget: number,
+): { kept: T[]; tokensEstimate: number } {
+  const kept: T[] = [];
+  let tokensEstimate = 0;
+  for (const entry of answer) {
+    const tokens = Math.ceil(entry.excerpt.length / 4);
+    if (tokensEstimate + tokens > budget) continue;
+    kept.push(entry);
+    tokensEstimate += tokens;
+  }
+  return { kept, tokensEstimate };
+}
+
+/**
+ * Door 5, AC 55-56, G26, G27, at its own layer: whether the reranker is called, or the outcome when it is not. Off when
+ * the setting is off or the query says `rerank=false` (the query can only turn it off); skipped when the answer
+ * abstained or no reranker is ready (or the platform has no runtime).
+ */
+export function rerankPlan(input: {
+  enabled: boolean;
+  query: boolean | undefined;
+  abstained: boolean;
+  ready: boolean;
+}): "call" | "off" | "skipped" {
+  if (!input.enabled || input.query === false) return "off";
+  if (input.abstained || !input.ready) return "skipped";
+  return "call";
+}
+
+/** The outcome of a reranker call that failed: past `timeoutMs` it is `timeout`, anything else (the child ended) `failed`. */
+export function rerankFailure(error: unknown): "timeout" | "failed" {
+  return error instanceof EmbeddingError && error.kind === "timeout" ? "timeout" : "failed";
+}
+
+/** A fused candidate: its text score and reasons (0 and none when only the vectors found it) and its nearest section. */
+interface Fused extends Scored {
+  near?: NearSection;
+}
+
+/** What one recall works from, before any file is opened. */
+interface Prepared {
+  db: Db;
+  paths: MordomoPaths;
+  settings: Settings;
+  question: string;
+  keywords: string[];
+  opts: RecallOptions;
+  started: number;
+  k: number;
+  excerptChars: number;
+  pointerLimit: number;
+  scope: ReadScope;
+  /** The text candidates, filtered. */
+  scored: Scored[];
+  /** Whether a file of the index is one this recall may name (every filter of the text candidates). */
+  admit: (file: FileRow) => boolean;
+  open: (file: FileRow, near?: NearSection) => OpenedFile | null;
+  fits: (file: FileRow) => boolean;
+}
+
+function prepare(db: Db, paths: MordomoPaths, settings: Settings, question: string, opts: RecallOptions): Prepared {
+  const started = Date.now();
+  const keywords = extractKeywords(question);
+  const scope = opts.scope ?? grantedReadScope(settings, paths.home);
+  const passagesOf = db.prepare(
+    "SELECT natureza, start_line AS startLine, end_line AS endLine FROM note_passages WHERE file_id = ? ORDER BY start_line",
+  );
+  const sources = new Map<number, NatureSource>();
+  const sourceOf = (file: FileRow): NatureSource => {
+    let source = sources.get(file.id);
+    if (!source) {
+      source = {
+        passages: passagesOf.all(file.id) as Passage[],
+        natureza: readNatureza(file.fields),
+        generated: generatedFileKind(paths, file.path),
+      };
+      sources.set(file.id, source);
+    }
+    return source;
+  };
+  // A file the filters cannot be met in is neither opened nor counted (AC 12): its scope, then whether it could give
+  // an excerpt of a nature asked.
+  const fits = (file: FileRow): boolean =>
+    (!opts.natureza && !opts.escopo) ||
+    ((!opts.escopo || opts.escopo.includes(readEscopo(file.fields) as Escopo)) &&
+      (!opts.natureza || couldGive(sourceOf(file), opts.natureza)));
+  const scored = keywords.length === 0 ? [] : scoreCandidates(db, paths, settings, scope, keywords, opts).filter((cand) => fits(cand.file));
+  const maxBytes = settings.limits.maxIndexedFileBytes;
+  const openedFiles = new Map<string, OpenedFile | null>();
+  return {
+    db,
+    paths,
+    settings,
+    question,
+    keywords,
+    opts,
+    started,
+    k: Math.min(Math.max(opts.k ?? 3, 1), 10),
+    excerptChars: Math.min(Math.max(opts.excerptChars ?? 1500, 200), 20_000),
+    pointerLimit: Math.min(Math.max(opts.pointerLimit ?? 2, 0), 5),
+    scope,
+    scored,
+    // The vector candidates pass the same filters as the text ones (AC 43): today's policy on the real path, the work
+    // context, the area, the nature and the scope; the generated routers are never candidates.
+    admit: (file) =>
+      !isGeneratedRouter(paths, file.path) &&
+      isReadable(scope, file.path) &&
+      (!opts.within || opts.within(file)) &&
+      (!opts.area || file.area === opts.area) &&
+      fits(file),
+    // A file is read once per recall, whichever list or link reaches it.
+    open: (file, near) => {
+      const key = `${file.path}\0${near ? near.ord : ""}`;
+      if (!openedFiles.has(key))
+        openedFiles.set(
+          key,
+          openFile(scope, file, keywords, maxBytes, { source: sourceOf(file), wanted: opts.natureza }, near),
+        );
+      return openedFiles.get(key)!;
+    },
+    fits,
+  };
+}
+
+/**
+ * The text candidates and the files of the nearest sections, fused by RRF (k 60, a tie to the lower file id); a file is
+ * in the list once, with its nearest section. Without vectors the text order, unchanged.
+ */
+function fuseCandidates(prep: Prepared, near: NearSections | null): Fused[] {
+  if (!near || near.sections.length === 0) return prep.scored;
+  const nearest = new Map<number, NearSection>();
+  for (const section of near.sections) if (!nearest.has(section.file.id)) nearest.set(section.file.id, section);
+  const byId = new Map<number, Fused>(prep.scored.map((cand) => [cand.file.id, cand]));
+  const vectorIds = [...nearest.keys()];
+  return fuse([prep.scored.map((cand) => cand.file.id), vectorIds]).map(({ id }) => {
+    const section = nearest.get(id);
+    const cand: Fused = byId.get(id) ?? { file: section!.file, score: 0, reasons: [], matched: new Set<string>() };
+    return section ? { ...cand, near: section } : cand;
+  });
+}
+
+/** The answer read from the first `k` candidates of `order` and the links of their sections, up to `hops` levels. */
+function answerFrom(prep: Prepared, order: readonly Fused[]): { answer: RecallContext[]; opened: number; matched: number } {
+  const { db, scope, opts } = prep;
+  const hops = prep.settings.memory.recall.hops;
+  const answer: RecallContext[] = [];
+  const openedPaths = new Set<string>();
+  let opened = 0;
+  let matched = 0;
+  const lookup = db.prepare("SELECT * FROM files WHERE path = ?");
+  // AC 50, G32: a link is followed to an indexed file the caller may read, and its best section is taken only when it
+  // scores higher than the section that pointed to it; `via` is the file that pointed, and a section not taken ends
+  // that branch.
+  const follow = (section: Section, from: FileRow, fromScore: number, base: number, level: number): void => {
+    if (level > hops) return;
+    for (const target of pointerTargets(db, scope, section, from, prep.pointerLimit)) {
+      if (openedPaths.has(target)) continue;
+      const row = lookup.get(target) as Record<string, unknown> | undefined;
+      if (!row) continue; // only indexed files — same exclusion policy as the index
+      const pointedRow = fileRowFromDb(row);
+      if (opts.within && !opts.within(pointedRow)) continue; // a pointer out of the work context is not followed
+      if (!prep.fits(pointedRow)) continue;
+      openedPaths.add(target);
+      const pointed = prep.open(pointedRow);
+      opened++;
+      if (!pointed) continue;
+      matched = Math.max(matched, pointed.matched);
+      if (!pointed.best || pointed.best.score <= fromScore) continue;
+      answer.push({
+        path: target,
+        section: pointed.best.section.heading,
+        excerpt: excerptOf(pointed.best.section, prep.excerptChars),
+        score: Math.round((base + pointed.best.score) * 100) / 100,
+        why: `pointer from ${path.basename(from.path)} § "${section.heading}"; section "${pointed.best.section.heading}" matches ${pointed.best.matched.join(", ")}`,
+        via: from.path,
+        natureza: pointed.best.natureza,
+        escopo: readEscopo(pointedRow.fields),
+      });
+      follow(pointed.best.section, pointedRow, pointed.best.score, base, level + 1);
+    }
+  };
+  for (const cand of order.slice(0, prep.k)) {
+    if (openedPaths.has(cand.file.path)) continue; // already reached by a pointer — never read a file twice
+    openedPaths.add(cand.file.path);
+    const file = prep.open(cand.file, cand.near);
+    opened++;
+    if (!file) continue;
+    matched = Math.max(matched, file.matched);
+    if (!file.best) continue;
+    const best = file.best;
+    const why = [...cand.reasons, `section "${best.section.heading}" matches ${best.matched.join(", ") || "nothing directly"}`].join("; ");
+    answer.push({
+      path: cand.file.path,
+      section: best.section.heading,
+      excerpt: excerptOf(best.section, prep.excerptChars),
+      score: Math.round((cand.score + best.score) * 100) / 100,
+      why,
+      natureza: best.natureza,
+      escopo: readEscopo(cand.file.fields),
+    });
+    follow(best.section, cand.file, best.score, cand.score, 1);
+  }
+  return { answer, opened, matched };
+}
+
+/** The result of one recall, and the fused order before opening (the eval's `hybrid`) and after the reranker. */
+export interface RecallRun {
+  result: RecallResult;
+  fused: FileRow[];
+  /** The fused order as the reranker left it; null when it was not called. */
+  reranked: FileRow[] | null;
+}
+
+function candidateWhy(cand: Fused): string {
+  const reasons = cand.near ? [...cand.reasons, `section "${cand.near.heading}" is near the question`] : cand.reasons;
+  return reasons.join("; ");
+}
+
+export async function runRecall(
+  db: Db,
+  paths: MordomoPaths,
+  settings: Settings,
+  question: string,
+  opts: HybridRecallOptions,
+): Promise<RecallRun> {
+  const prep = prepare(db, paths, settings, question, opts);
+  const config = settings.memory.recall;
+  const near =
+    prep.keywords.length > 0 && opts.semantic
+      ? await opts.semantic.nearestSections(question, prep.admit, RECALL_VECTOR_DEPTH)
+      : null;
+  const fused = fuseCandidates(prep, near);
+  const first = answerFrom(prep, fused);
+  const reason = decideAbstention({
+    keywords: prep.keywords.length,
+    candidates: fused.length,
+    matched: first.matched,
+    cosine: near?.best ?? null,
+    minSimilarity: near?.minSimilarity ?? 0,
+    abstain: config.abstain,
+  });
+  const reranker = opts.local?.reranker() ?? null;
+  const plan = rerankPlan({
+    enabled: config.rerank.enabled,
+    query: opts.rerank,
+    abstained: reason !== null,
+    ready: reranker !== null,
+  });
+  let outcome: RerankOutcome = plan === "call" ? "used" : plan;
+  let answered = first;
+  let reranked: Fused[] | null = null;
+  if (plan === "call") {
+    // Door 5: the best `candidates` sections of the fused order (each fused file's section, as the answer would take
+    // it), every one of a file this caller may read; reordered by the reranker's "yes", the rest after them.
+    const head: Array<{ cand: Fused; text: string }> = [];
+    for (const cand of fused) {
+      if (head.length >= config.rerank.candidates) break;
+      const best = prep.open(cand.file, cand.near)?.best;
+      if (best) head.push({ cand, text: best.section.body.trim().slice(0, RERANK_CHARS) });
+    }
+    if (head.length === 0) outcome = "skipped";
+    else
+      try {
+      const scores = await opts.local!.rerank(reranker!, question, head.map((h) => h.text), config.rerank.timeoutMs);
+      const sorted = head
+        .map((h, i) => ({ cand: h.cand, score: scores[i]!, i }))
+        .sort((a, b) => b.score - a.score || a.i - b.i)
+        .map((s) => s.cand);
+      const taken = new Set(sorted);
+      reranked = [...sorted, ...fused.filter((cand) => !taken.has(cand))];
+      answered = answerFrom(prep, reranked);
+    } catch (error) {
+      outcome = rerankFailure(error);
+    }
+  }
+  return {
+    result: resultOf(prep, fused, answered, reason, outcome, reranked !== null),
+    fused: fused.map((c) => c.file),
+    reranked: reranked ? reranked.map((c) => c.file) : null,
+  };
+}
+
+/** The answer as returned: today's order (by score) unless the reranker ordered it, empty when abstained, within the budget. */
+function resultOf(
+  prep: Prepared,
+  fused: readonly Fused[],
+  answered: { answer: RecallContext[]; opened: number },
+  reason: AbstainReason | null,
+  rerank: RerankOutcome,
+  rerankOrdered: boolean,
+): RecallResult {
+  const answer = rerankOrdered
+    ? answered.answer
+    : [...answered.answer].sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
+  const budgeted = reason === null ? withinTokenBudget(answer, prep.settings.memory.recall.tokenBudget) : { kept: [], tokensEstimate: 0 };
+  return {
+    question: prep.question,
+    keywords: prep.keywords,
+    answerContext: budgeted.kept,
+    tokensEstimate: budgeted.tokensEstimate,
+    candidatesConsidered: fused.length,
+    opened: answered.opened,
+    candidates: fused.slice(0, 10).map((c) => ({ path: c.file.path, score: c.score, why: candidateWhy(c) })),
+    durationMs: Date.now() - prep.started,
+    abstained: reason !== null,
+    abstainReason: reason,
+    rerank,
+  };
+}
+
+/**
+ * The files the recall would open for a question, in its order before opening, at most `depth` deep, by words alone:
+ * the same candidates and scores as `recall`, with no file read.
  */
 export function recallOrder(db: Db, paths: MordomoPaths, settings: Settings, question: string, depth: number): FileRow[] {
   const keywords = extractKeywords(question);
@@ -547,111 +941,42 @@ export function recallOrder(db: Db, paths: MordomoPaths, settings: Settings, que
     .map((cand) => cand.file);
 }
 
+/**
+ * The recall by words alone, with door 4's abstention, the links up to `memory.recall.hops` and the token budget: what
+ * `hybridRecall` answers with no vectors and no reranker ready. Synchronous: nothing is embedded.
+ */
 export function recall(db: Db, paths: MordomoPaths, settings: Settings, question: string, opts: RecallOptions = {}): RecallResult {
-  const started = Date.now();
-  const k = Math.min(Math.max(opts.k ?? 3, 1), 10);
-  const excerptChars = Math.min(Math.max(opts.excerptChars ?? 1500, 200), 20_000);
-  const pointerLimit = Math.min(Math.max(opts.pointerLimit ?? 2, 0), 5);
-  const keywords = extractKeywords(question);
-  const empty: RecallResult = {
-    question,
-    keywords,
-    answerContext: [],
-    tokensEstimate: 0,
-    candidatesConsidered: 0,
-    opened: 0,
-    candidates: [],
-    durationMs: 0,
-  };
-  if (keywords.length === 0) return { ...empty, durationMs: Date.now() - started };
-
-  const scope = opts.scope ?? grantedReadScope(settings, paths.home);
-  const passagesOf = db.prepare(
-    "SELECT natureza, start_line AS startLine, end_line AS endLine FROM note_passages WHERE file_id = ? ORDER BY start_line",
-  );
-  const sourceOf = (file: FileRow): NatureSource => ({
-    passages: passagesOf.all(file.id) as Passage[],
-    natureza: readNatureza(file.fields),
-    generated: generatedFileKind(paths, file.path),
+  const prep = prepare(db, paths, settings, question, opts);
+  const config = settings.memory.recall;
+  const fused = fuseCandidates(prep, null);
+  const answered = answerFrom(prep, fused);
+  const reason = decideAbstention({
+    keywords: prep.keywords.length,
+    candidates: fused.length,
+    matched: answered.matched,
+    cosine: null,
+    minSimilarity: 0,
+    abstain: config.abstain,
   });
-  // A file the filters cannot be met in is neither opened nor counted (AC 12): its scope, then whether it could give
-  // an excerpt of a nature asked.
-  const fits = (file: FileRow, source: NatureSource): boolean =>
-    (!opts.escopo || opts.escopo.includes(readEscopo(file.fields) as Escopo)) &&
-    (!opts.natureza || couldGive(source, opts.natureza));
-  const sources = new Map<number, NatureSource>();
-  const scored = scoreCandidates(db, paths, settings, scope, keywords, opts).filter((cand) => {
-    if (!opts.natureza && !opts.escopo) return true;
-    const source = sourceOf(cand.file);
-    sources.set(cand.file.id, source);
-    return fits(cand.file, source);
-  });
-  const labelsOf = (file: FileRow): Labelling => ({
-    source: sources.get(file.id) ?? sourceOf(file),
-    wanted: opts.natureza,
-  });
-  const maxBytes = settings.limits.maxIndexedFileBytes;
-  const answer: RecallContext[] = [];
-  const openedPaths = new Set<string>();
-  let opened = 0;
-  const lookup = db.prepare("SELECT * FROM files WHERE path = ?");
-
-  for (const cand of scored.slice(0, k)) {
-    if (openedPaths.has(cand.file.path)) continue; // already reached by a pointer — never read a file twice
-    openedPaths.add(cand.file.path);
-    const file = openFile(scope, cand.file, keywords, maxBytes, labelsOf(cand.file));
-    opened++;
-    if (!file || !file.best) continue;
-    const best = file.best;
-    const why = [...cand.reasons, `section "${best.section.heading}" matches ${best.matched.join(", ") || "nothing directly"}`].join("; ");
-    answer.push({
-      path: cand.file.path,
-      section: best.section.heading,
-      excerpt: excerptOf(best.section, excerptChars),
-      score: Math.round((cand.score + best.score) * 100) / 100,
-      why,
-      natureza: best.natureza,
-      escopo: readEscopo(cand.file.fields),
-    });
-    // (d) one level of pointers out of the chosen section.
-    for (const target of pointerTargets(db, scope, best.section, cand.file, pointerLimit)) {
-      if (openedPaths.has(target)) continue;
-      const row = lookup.get(target) as Record<string, unknown> | undefined;
-      if (!row) continue; // only indexed files — same exclusion policy as the index
-      const pointedRow = fileRowFromDb(row);
-      if (opts.within && !opts.within(pointedRow)) continue; // a pointer out of the work context is not followed
-      if ((opts.natureza || opts.escopo) && !fits(pointedRow, sourceOf(pointedRow))) continue;
-      openedPaths.add(target);
-      const pointed = openFile(scope, pointedRow, keywords, maxBytes, labelsOf(pointedRow));
-      opened++;
-      if (!pointed || !pointed.best) continue;
-      if (pointed.best.score > best.score) {
-        answer.push({
-          path: target,
-          section: pointed.best.section.heading,
-          excerpt: excerptOf(pointed.best.section, excerptChars),
-          score: Math.round((cand.score + pointed.best.score) * 100) / 100,
-          why: `pointer from ${path.basename(cand.file.path)} § "${best.section.heading}"; section "${pointed.best.section.heading}" matches ${pointed.best.matched.join(", ")}`,
-          via: cand.file.path,
-          natureza: pointed.best.natureza,
-          escopo: readEscopo(pointedRow.fields),
-        });
-      }
-    }
-  }
-  answer.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
-  const tokensEstimate = answer.reduce((sum, c) => sum + Math.ceil(c.excerpt.length / 4), 0);
-  return {
-    question,
-    keywords,
-    answerContext: answer,
-    tokensEstimate,
-    candidatesConsidered: scored.length,
-    opened,
-    candidates: scored.slice(0, 10).map((c) => ({ path: c.file.path, score: c.score, why: c.reasons.join("; ") })),
-    durationMs: Date.now() - started,
-  };
+  const rerank = rerankPlan({ enabled: config.rerank.enabled, query: undefined, abstained: reason !== null, ready: false });
+  return resultOf(prep, fused, answered, reason, rerank === "call" ? "skipped" : rerank, false);
 }
+
+/**
+ * The recall of `GET /api/memory/recall`, `mordomo recall` and `mordomo eval` (cerebro-busca-significado, S5 and S6):
+ * the text candidates and the files of the 50 sections nearest to the question, fused by RRF; door 4's abstention; the
+ * reranker over the best fused sections when it is on and ready; the links up to `hops`; the token budget.
+ */
+export async function hybridRecall(
+  db: Db,
+  paths: MordomoPaths,
+  settings: Settings,
+  question: string,
+  opts: HybridRecallOptions = {},
+): Promise<RecallResult> {
+  return (await runRecall(db, paths, settings, question, opts)).result;
+}
+
 
 // --------------------------------------------------------- recall stats ----
 

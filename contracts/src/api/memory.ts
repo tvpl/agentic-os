@@ -294,6 +294,15 @@ const RecallResultSchema = z.object({
   opened: z.number(),
   candidates: z.array(z.object({ path: z.string(), score: z.number(), why: z.string() })),
   durationMs: z.number(),
+  /**
+   * The recall found no section that answers (.specs/features/cerebro-busca-significado, door 4): `no_match` with no
+   * keyword or no candidate, `weak` when no section matches half of the keywords and none is near enough in meaning;
+   * `answerContext` is then empty.
+   */
+  abstained: z.boolean(),
+  abstainReason: z.enum(["no_match", "weak"]).nullable(),
+  /** What the local reranker did (door 5): `off`, `used`, `skipped` (none ready), `timeout` or `failed`. */
+  rerank: z.enum(["off", "used", "skipped", "timeout", "failed"]),
 });
 
 const RecallStatsSchema = z.object({
@@ -1818,6 +1827,8 @@ export const memoryRoutes = {
       /** Only excerpts of these natures (one with none is not returned) / of files of these scopes (AC 12). */
       natureza: NaturezaQuery,
       escopo: EscopoQuery,
+      /** `false` (or `0`): the reranker is not called for this recall; `true` cannot turn on a disabled one (door 5). */
+      rerank: QueryFlag,
     }),
     responses: { 200: RecallResultSchema },
     errors: [contextNotFound],

@@ -1,7 +1,7 @@
 import type { Settings } from "../config/schema.js";
 import type { Db } from "../db/db.js";
 import { chooseProvider, type EmbeddingProvider, type LocalEmbedding } from "./embeddings.js";
-import { fileRowFromDb } from "./indexer.js";
+import { fileRowFromDb, type FileRow } from "./indexer.js";
 import {
   admits,
   searchFiles,
@@ -75,6 +75,25 @@ export function fuse(lists: ReadonlyArray<readonly number[]>, k: number = RRF_K)
     .sort((a, b) => b.score - a.score || a.id - b.id);
 }
 
+/** A section near a question, of a file the caller may read (the recall's vector candidates). */
+export interface NearSection {
+  file: FileRow;
+  ord: number;
+  /** The heading path of the row (door 1). */
+  heading: string;
+  /** The section's first body line (G13). */
+  line: number;
+  similarity: number;
+}
+
+export interface NearSections {
+  sections: NearSection[];
+  /** The cosine of the nearest section the caller may read; null with no vectors (AC 47). */
+  best: number | null;
+  /** The provider's threshold (`hash`'s 0.2, a catalog model's own). */
+  minSimilarity: number;
+}
+
 export class SemanticSearch {
   private readonly vectors: VectorIndex;
   /** The last failure to embed a QUERY (a down endpoint): per instance, cleared by the next success. */
@@ -124,6 +143,56 @@ export class SemanticSearch {
   }
 
   /**
+   * The question's vector: the one place a question is embedded (cerebro-v2 C52; the recall's too since
+   * cerebro-busca-significado, G46). A success clears the last query error.
+   */
+  private async embedQuestion(provider: EmbeddingProvider, question: string): Promise<Float32Array | undefined> {
+    const [vector] = await provider.embed([question], new AbortController().signal, "query");
+    this.queryError = null;
+    return vector;
+  }
+
+  /**
+   * The recall's vectors (cerebro-busca-significado, AC 43, G29): the `depth` sections nearest to the question among
+   * those of files `admit` lets the caller read, at or above the provider's `minSimilarity`, nearest first; and the
+   * cosine of the nearest admitted section (no floor), null when there is none. Null while the search is off or blocked.
+   * A provider that fails to embed the question gives no vectors (and says so in `status().error`).
+   */
+  async nearestSections(question: string, admit: (file: FileRow) => boolean, depth: number): Promise<NearSections | null> {
+    const choice = chooseProvider(this.getSettings().memory.embeddings, this.local);
+    if (choice.state !== "ready") return null;
+    const provider = choice.provider;
+    const none: NearSections = { sections: [], best: null, minSimilarity: provider.minSimilarity ?? 0 };
+    if (question.trim() === "" || countVectors(this.db).sections === 0) return none;
+    let vector: Float32Array | undefined;
+    try {
+      vector = await this.embedQuestion(provider, question.trim());
+    } catch (error) {
+      this.queryError = error instanceof Error ? error.message : String(error);
+      return none;
+    }
+    if (!vector || vector.every((n) => n === 0)) return none;
+    const byId = this.db.prepare("SELECT * FROM files WHERE id = ?");
+    const files = new Map<number, FileRow | null>();
+    const out: NearSections = { ...none, sections: [] };
+    for (const row of this.vectors.sections(vector, provider)) {
+      let file = files.get(row.id);
+      if (file === undefined) {
+        const found = byId.get(row.id) as Record<string, unknown> | undefined;
+        file = found && admit(fileRowFromDb(found)) ? fileRowFromDb(found) : null;
+        files.set(row.id, file);
+      }
+      if (!file) continue;
+      // The depth counts the sections the caller may read (C71), not the ones it is not told of.
+      if (out.best === null) out.best = row.similarity;
+      if (out.sections.length >= depth) break;
+      if (row.similarity < out.minSimilarity) continue;
+      out.sections.push({ file, ord: row.ord, heading: row.heading, line: row.line, similarity: row.similarity });
+    }
+    return out;
+  }
+
+  /**
    * `text`: the words only. `semantic`: the vectors only (409 when the search is off). `auto`: both fused when the
    * search is on and has vectors, else the words, unchanged. A provider that fails to embed the question never fails
    * the search: it falls back to the words and says so in `status().error`.
@@ -149,8 +218,7 @@ export class SemanticSearch {
     const refused = new Set<number>();
     let ranked: Ranked[] = [];
     try {
-      const [vector] = await provider.embed([question], new AbortController().signal, "query");
-      this.queryError = null;
+      const vector = await this.embedQuestion(provider, question);
       if (vector && vector.some((n) => n !== 0)) {
         const { clauses, params } = searchFilters(filters);
         const sql = clauses.map((clause) => `AND ${clause}`).join(" ");

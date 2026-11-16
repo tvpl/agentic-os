@@ -6,7 +6,11 @@ import { SettingsStore } from "../core/src/config/store.js";
 import { EventBus } from "../core/src/events.js";
 import { MODEL_CATALOG } from "../core/src/models/catalog.js";
 import { ensureDirs, resolvePaths } from "../core/src/paths.js";
+import { execFileSync } from "node:child_process";
+import { API, EVENT_SCHEMAS, OS_EVENT_TYPES } from "@mordomo/contracts";
 import { makeTempHome } from "./helpers.js";
+import { buscaWorld, code, type BuscaWorld } from "./helpers/buscaWorld.js";
+import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
 
 /**
  * .specs/features/cerebro-busca-significado: the contract pins of S4 (batch C): the network site of the local mode, the
@@ -181,5 +185,210 @@ describe("C68 the runtime is an exact, optional dependency of the core", () => {
     };
     expect(lock.packages["core"]?.["optionalDependencies" as never]).toEqual(core.optionalDependencies);
     expect(lock.packages["node_modules/@huggingface/transformers"]?.version).toBe("4.3.2");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------- batch D
+
+const worlds: BuscaWorld[] = [];
+afterEach(async () => {
+  for (const w of worlds.splice(0)) await w.close();
+});
+
+describe("C86 memory.recall defaults and bounds", () => {
+  it("C86 with no memory.recall in settings.json it reads door 4's defaults", () => {
+    const temp = makeTempHome("mordomo-busca-c86-");
+    try {
+      const paths = resolvePaths(temp.paths.home);
+      ensureDirs(paths);
+      fs.writeFileSync(paths.settingsFile, JSON.stringify({ setupCompleted: true, memory: {} }));
+      const settings = new SettingsStore(paths, new EventBus()).load();
+      expect(settings.memory.recall).toEqual({
+        abstain: true,
+        hops: 2,
+        tokenBudget: 3000,
+        rerank: { enabled: false, candidates: 20, timeoutMs: 15000 },
+      });
+    } finally {
+      temp.cleanup();
+    }
+  });
+  it("C86 through PUT each accepted edge is read back and each refused edge is 400 validation with settings.json unchanged", async () => {
+    const w = await buscaWorld("mordomo-busca-c86-put-");
+    worlds.push(w);
+    const file = path.join(w.home, "config", "settings.json");
+    const rerank = { enabled: false, candidates: 20, timeoutMs: 15000 };
+    const accepted: Array<[string, Record<string, unknown>]> = [
+      ["hops 1", { hops: 1 }],
+      ["hops 3", { hops: 3 }],
+      ["tokenBudget 500", { tokenBudget: 500 }],
+      ["tokenBudget 20000", { tokenBudget: 20000 }],
+      ["rerank.candidates 1", { rerank: { ...rerank, candidates: 1 } }],
+      ["rerank.candidates 50", { rerank: { ...rerank, candidates: 50 } }],
+      ["rerank.timeoutMs 1000", { rerank: { ...rerank, timeoutMs: 1000 } }],
+      ["rerank.timeoutMs 120000", { rerank: { ...rerank, timeoutMs: 120000 } }],
+    ];
+    for (const [name, recall] of accepted) {
+      const res = await w.call("PUT", "/api/settings", { memory: { recall } });
+      expect(res.status, `${name} ${JSON.stringify(res.body)}`).toBe(200);
+      const read = (await w.call("GET", "/api/settings")).body.memory.recall;
+      expect(read, name).toMatchObject(recall);
+    }
+    const refused: Array<[string, Record<string, unknown>]> = [
+      ["hops 0", { hops: 0 }],
+      ["hops 4", { hops: 4 }],
+      ["tokenBudget 499", { tokenBudget: 499 }],
+      ["tokenBudget 20001", { tokenBudget: 20001 }],
+      ["rerank.candidates 0", { rerank: { ...rerank, candidates: 0 } }],
+      ["rerank.candidates 51", { rerank: { ...rerank, candidates: 51 } }],
+      ["rerank.timeoutMs 999", { rerank: { ...rerank, timeoutMs: 999 } }],
+      ["rerank.timeoutMs 120001", { rerank: { ...rerank, timeoutMs: 120001 } }],
+      ["abstain yes", { abstain: "yes" }],
+    ];
+    for (const [name, recall] of refused) {
+      const before = fs.readFileSync(file);
+      expect(code(await w.call("PUT", "/api/settings", { memory: { recall } })), name).toEqual([
+        400,
+        "validation",
+      ]);
+      expect(fs.readFileSync(file).equals(before), name).toBe(true);
+    }
+  });
+  it("C86 a PUT of memory.recall without rerank reads rerank at its default (replaced whole, G43)", async () => {
+    const w = await buscaWorld("mordomo-busca-c86-whole-");
+    worlds.push(w);
+    const on = { enabled: true, candidates: 5, timeoutMs: 2000 };
+    expect((await w.call("PUT", "/api/settings", { memory: { recall: { rerank: on } } })).status).toBe(200);
+    expect((await w.call("GET", "/api/settings")).body.memory.recall.rerank).toEqual(on);
+    expect((await w.call("PUT", "/api/settings", { memory: { recall: { hops: 3 } } })).status).toBe(200);
+    expect((await w.call("GET", "/api/settings")).body.memory.recall).toEqual({
+      abstain: true,
+      hops: 3,
+      tokenBudget: 3000,
+      rerank: { enabled: false, candidates: 20, timeoutMs: 15000 },
+    });
+  });
+});
+
+describe("C97 the routes of door 8 and the changed entries", () => {
+  const pairs = (entry: { errors?: ReadonlyArray<{ status: number; code: string }> }) =>
+    (entry.errors ?? []).map((e) => [e.status, e.code]);
+  it("C97 GET and POST /api/memory/embedder, both owner, with exactly the declared errors of Coverage", () => {
+    const get = API["memory.embedder"];
+    const post = API["memory.embedder.action"];
+    expect([get.method, get.path, get.scope]).toEqual(["GET", "/api/memory/embedder", "owner"]);
+    expect([post.method, post.path, post.scope]).toEqual(["POST", "/api/memory/embedder", "owner"]);
+    // 403 owner_only and 403 forbidden are the owner scope's, 400 validation the body's: declared by every entry alike
+    expect(pairs(get)).toEqual([]);
+    expect(pairs(post).sort()).toEqual(
+      [
+        [400, "terms_not_accepted"],
+        [404, "model_not_found"],
+        [409, "local_unavailable"],
+        [409, "model_in_use"],
+        [409, "download_in_progress"],
+      ].sort(),
+    );
+    for (const key of ["GET /api/memory/embedder", "POST /api/memory/embedder"])
+      expect(EXPECTED_ROUTE_SCOPES[key], key).toBe("owner");
+    const security = read("docs/security.md");
+    for (const route of ["`GET /api/memory/embedder`", "`POST /api/memory/embedder`"])
+      expect(security, route).toContain(route);
+  });
+  it("C97 recall, search and status keep method, path, scope and errors, and their responses gain exactly the Surface's keys", () => {
+    const keep: Array<[keyof typeof API, string, string, string, Array<[number, string]>]> = [
+      ["memory.recall", "GET", "/api/memory/recall", "content", [[404, "context_not_found"]]],
+      [
+        "memory.search",
+        "GET",
+        "/api/memory/search",
+        "content",
+        [
+          [404, "context_not_found"],
+          [409, "semantic_disabled"],
+        ],
+      ],
+      ["memory.status", "GET", "/api/memory/status", "monitor", [[404, "context_not_found"]]],
+    ];
+    for (const [key, method, p, scope, errors] of keep) {
+      const entry = API[key] as {
+        method: string;
+        path: string;
+        scope?: string;
+        errors?: Array<{ status: number; code: string }>;
+      };
+      expect([entry.method, entry.path, entry.scope], key).toEqual([method, p, scope]);
+      expect(pairs(entry), key).toEqual(errors);
+    }
+    const shape = (schema: unknown) =>
+      Object.keys((schema as { shape: Record<string, unknown> }).shape).sort();
+    expect(shape(API["memory.recall"].responses[200])).toEqual(
+      [
+        "question",
+        "keywords",
+        "answerContext",
+        "tokensEstimate",
+        "candidatesConsidered",
+        "opened",
+        "candidates",
+        "durationMs",
+        "abstained",
+        "abstainReason",
+        "rerank",
+      ].sort(),
+    );
+    const status = (API["memory.status"].responses[200] as unknown as { shape: { semantic: unknown } }).shape
+      .semantic;
+    expect(shape(status)).toEqual(
+      ["enabled", "provider", "backend", "vectors", "sections", "model", "blocked", "error", "local"].sort(),
+    );
+    const hit = (API["memory.search"].responses[200] as unknown as { element: unknown }).element;
+    expect(shape(hit)).toEqual(expect.arrayContaining(["section", "line"]));
+    // the recall's query gains `rerank`, a flag
+    const query = API["memory.recall"].query as unknown as { shape: Record<string, unknown> };
+    expect(Object.keys(query.shape)).toContain("rerank");
+  });
+});
+
+describe("C102 no event is added", () => {
+  const BASE = "c2b510b";
+  it("C102 OS_EVENT_TYPES, the v1 schemas and docs/events.md are as on the feature's base", () => {
+    const git = (args: string[]) => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" });
+    expect(read("docs/events.md")).toBe(git(["show", `${BASE}:docs/events.md`]));
+    const names = (source: string) =>
+      [
+        ...source
+          .slice(source.indexOf("OS_EVENT_TYPES = ["))
+          .split("]")[0]!
+          .matchAll(/"([a-z.]+)"/g),
+      ].map((m) => m[1]);
+    expect([...OS_EVENT_TYPES]).toEqual(names(git(["show", `${BASE}:contracts/src/eventRegistry.ts`])));
+    expect(read("contracts/src/eventSchemas.ts")).toBe(
+      git(["show", `${BASE}:contracts/src/eventSchemas.ts`]),
+    );
+    expect(Object.keys(EVENT_SCHEMAS).sort()).toEqual([...OS_EVENT_TYPES].sort());
+  });
+});
+
+describe("C108 the guide and the security table", () => {
+  it("C108 docs/memory-guide.md has Busca por significado with the three providers, Ollama, the download and its license, and mordomo eval with door 6's format", () => {
+    const guide = read("docs/memory-guide.md");
+    const at = guide.indexOf("### Busca por significado");
+    expect(at).toBeGreaterThan(0);
+    const section = guide.slice(at, guide.indexOf("\n## ", at));
+    for (const provider of ["`hash`", "`http`", "`local`"]) expect(section, provider).toContain(provider);
+    expect(section).toMatch(/Install Ollama/);
+    expect(section).toContain('"endpoint": "http://127.0.0.1:11434/v1/embeddings"');
+    expect(section).toMatch(/downloaded to `<home>\/models\/<id>\/`/);
+    expect(section).toMatch(/accept the Gemma terms before the\s+download \(`acceptTerms: true`\)/);
+    expect(section).toContain("`mordomo eval <file> [--json]`");
+    expect(section).toContain(
+      '{ "v": 1, "queries": [{ "q": "<question>", "kind": "single" | "multi" | "latest" | "window" | "abstain", "expect": [',
+    );
+    expect(section).toMatch(/exits 2 with\s+`eval: <position>: <reason>`/);
+    // the rows of C97
+    const security = read("docs/security.md");
+    for (const route of ["`GET /api/memory/embedder`", "`POST /api/memory/embedder`"])
+      expect(security).toContain(route);
   });
 });

@@ -860,3 +860,18 @@ Status of batch C (updated in the commit that closes each piece):
 - **Abandoned:** an exact CDN host (`us.aws.cdn.hf.co`) in the catalog and the policy (Node's fetch was sent to
   `us.gcp.cdn.hf.co`); module-level caches in the child (the module-state pin of `sdk.instances` C30: they live in
   `main`'s closure); copying `@huggingface/tokenizers` and `jinja` into the installer.
+
+Status of batch D (updated in the commit that closes each piece):
+
+- the hybrid recall (S5: C69-C76, C78-C88): closed, every proof green in `tests/busca.abstain.test.ts`,
+  `tests/busca.recall.test.ts`, `tests/busca.access.test.ts` (C85), `tests/busca.contract.test.ts` (C86),
+  `tests/busca.cli.test.ts` (C84, built CLI) and `tests/natureza.search.test.ts` C20; the recall of the route, of
+  `mordomo recall` and of `mordomo eval` is `hybridRecall`/`runRecall` in `core/src/memory/recall.ts` (the synchronous
+  `recall` stays, by words alone, with the same abstention, hops and budget). C77 stays OPEN: its last clause ("the
+  corpus's `abstain` questions answer `abstained: true`") does not hold under AC 47 on the shipped corpus (with `hash`
+  2 of the 12 abstain, with the search off 8: several have a section matching half of their keywords, e.g. "quem
+  fornece o chocolate?", or a `hash` cosine at or above 0.2); its other two clauses are proven. Reported to the
+  coordinator for the owner. C10's baseline moved: `hybrid` 0.938/0.735/0.875 (was 0.938/0.784/0.896, now the fused
+  order) and `abstainCorrect=2/12` (was 5/12, an empty answer; now the recall's own abstention)
+- the closing checks so far (C97, C102, C106, C108): closed, their proofs green in `tests/busca.contract.test.ts`,
+  `tests/busca.cli.test.ts` (C106, built CLI) and the existing pin files their proof lines name

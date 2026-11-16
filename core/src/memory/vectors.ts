@@ -327,6 +327,28 @@ export class VectorIndex {
     filters: RankFilters,
     limit: number,
   ): Ranked[] {
+    const floor = provider.minSimilarity ?? 0;
+    // The first section of a file in that order is its best.
+    const out: Ranked[] = [];
+    const seen = new Set<number>();
+    for (const row of this.sections(query, provider, filters)) {
+      if (out.length >= limit) break;
+      if (row.similarity < floor || seen.has(row.id)) continue;
+      seen.add(row.id);
+      out.push({ id: row.id, similarity: row.similarity, ord: row.ord, section: row.heading, line: row.line });
+    }
+    return out;
+  }
+
+  /**
+   * Every section vector of `provider`, nearest first (no floor, not one per file): the recall's list of the sections
+   * nearest to a question (cerebro-busca-significado, AC 43). Ties as `rank`.
+   */
+  sections(
+    query: Float32Array,
+    provider: Pick<EmbeddingProvider, "id" | "dim">,
+    filters: RankFilters = { sql: "", params: [] },
+  ): NearRow[] {
     const params = [...filters.params];
     const scope = `v.provider = ? AND v.dim = ? ${filters.sql}`;
     const rows: Array<{ id: number; ord: number; heading: string; line: number; d: number }> = [];
@@ -353,20 +375,18 @@ export class VectorIndex {
         rows.push({ id: row.id, ord: row.ord, heading: row.heading, line: row.line, d: 1 - dot });
       }
     }
-    const floor = provider.minSimilarity ?? 0;
-    const sorted = rows
-      .map((row) => ({ ...row, similarity: 1 - row.d, key: Math.round(row.d * ROUND) }))
-      .filter((row) => row.similarity >= floor)
-      .sort((a, b) => a.key - b.key || a.id - b.id || a.ord - b.ord);
-    // The first section of a file in that order is its best.
-    const out: Ranked[] = [];
-    const seen = new Set<number>();
-    for (const row of sorted) {
-      if (out.length >= limit) break;
-      if (seen.has(row.id)) continue;
-      seen.add(row.id);
-      out.push({ id: row.id, similarity: row.similarity, ord: row.ord, section: row.heading, line: row.line });
-    }
-    return out;
+    return rows
+      .map((row) => ({ id: row.id, ord: row.ord, heading: row.heading, line: row.line, similarity: 1 - row.d, key: Math.round(row.d * ROUND) }))
+      .sort((a, b) => a.key - b.key || a.id - b.id || a.ord - b.ord)
+      .map(({ key: _key, ...row }) => row);
   }
+}
+
+/** One section vector and its cosine similarity to a question. */
+export interface NearRow {
+  id: number;
+  ord: number;
+  heading: string;
+  line: number;
+  similarity: number;
 }
