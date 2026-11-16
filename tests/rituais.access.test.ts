@@ -246,7 +246,10 @@ describe("C73 who may call the seven routes", () => {
       );
     const cli = fs.readFileSync(path.join(repoRoot, "apps", "api", "src", "cli.ts"), "utf8");
     expect(commands(cli).length).toBeGreaterThan(10);
-    expect(commands(cli)).toEqual(commands(atBase("apps/api/src/cli.ts")));
+    // cerebro-busca-significado, batch A, adds `mordomo eval` after `recall` (its door 6); it reaches none of these routes
+    const before = commands(atBase("apps/api/src/cli.ts"));
+    before.splice(before.indexOf("recall") + 1, 0, "eval");
+    expect(commands(cli)).toEqual(before);
     for (const text of [mcp, cli]) expect(text).not.toMatch(/weekly-review|memory\/mentions|memory\/tasks/);
   });
 });

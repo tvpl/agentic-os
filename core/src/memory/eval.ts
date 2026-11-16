@@ -1,7 +1,8 @@
-import fs from "node:fs";
+import path from "node:path";
 import type { Settings } from "../config/schema.js";
 import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
+import { readScope, readWorkspaceText } from "../security/safeFs.js";
 import type { FileRow } from "./indexer.js";
 import { recall, recallOrder } from "./recall.js";
 import { anyWordSearch, everyWordSearch } from "./search.js";
@@ -91,14 +92,21 @@ export function parseEvalFile(text: string): EvalQuery[] {
   });
 }
 
-/** The questions of an evaluation file on disk; a file that cannot be read is a `file` error. */
-export function readEvalFile(file: string): EvalQuery[] {
+/** The largest evaluation file read: far more than thousands of questions. */
+const MAX_EVAL_BYTES = 10 * 1024 * 1024;
+
+/**
+ * The questions of an evaluation file on disk; a file that cannot be read is a `file` error. The file is read through
+ * the workspace primitive with its own folder as the scope, so the home's `config/` and `logs/` are never read even
+ * when the path names them (`homeDir`: the home; by default the file's folder).
+ */
+export function readEvalFile(file: string, homeDir: string = path.dirname(file)): EvalQuery[] {
   let text: string;
   try {
-    text = fs.readFileSync(file, "utf8");
+    const scope = readScope({ homeDir, roots: [path.dirname(path.resolve(file))] });
+    text = readWorkspaceText(scope, path.resolve(file), { maxBytes: MAX_EVAL_BYTES, strict: true }).text;
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code ?? "unreadable";
-    throw new EvalFormatError("file", `cannot read ${file} (${code})`);
+    throw new EvalFormatError("file", `cannot read ${file}: ${error instanceof Error ? error.message : String(error)}`);
   }
   return parseEvalFile(text);
 }
@@ -192,7 +200,7 @@ export async function evalRankings(source: EvalSource, queries: readonly EvalQue
 
 /** Read the file, run it over the index and report: `EvalFormatError` when the file does not obey door 6. */
 export async function runEval(source: EvalSource, file: string): Promise<EvalReport> {
-  const queries = readEvalFile(file);
+  const queries = readEvalFile(file, source.paths.home);
   return evalReport(await evalRankings(source, queries), queries);
 }
 
