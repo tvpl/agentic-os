@@ -697,3 +697,9 @@ The estimate exceeds the 150k budget.
   - **E** (the screen, the copy, the browser and the weight): S7 ≈ 92k, plus the three UI files, `tests/e2e/busca.spec.ts` and the C135 part of `tests/busca.contract.test.ts` ≈ 95 KB → ≈ 24k = ≈ 116k; C109-C136
   - A + B ≈ 147k is at the edge with no room for a fix round, and every other pair is over the budget, so each batch stays apart; A lands first because B's sections reuse S2's search, C's routes and the stub need B's table, D's recall fuses B's sections and C's provider, and E calls C's routes and D's settings
 - Mechanism: handoff - chosen by the owner on 16/11/2026 (five batches, sequential, only on green; the next builder reads `checks.md` and the diff of what landed)
+
+Status of batch A (updated in the commit that closes each piece):
+
+- the Portuguese words (S2: C11-C16, C18): closed, every proof green in `tests/busca.stem.test.ts` and in
+  `tests/memory.semantic.test.ts` C46; C17 stays open for batch B (its claim reads `section_vectors`, which migration 34
+  of S3 creates)

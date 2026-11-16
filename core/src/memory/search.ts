@@ -1,7 +1,8 @@
 import type { Db } from "../db/db.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
 import { readEscopo, readNatureza, type Escopo, type Natureza } from "./natureza.js";
-import { extractKeywords } from "./recall.js";
+import { keywordForms, type KeywordForm } from "./recall.js";
+import { counterparts } from "./stem.js";
 import type { FtsTable } from "./audienceIndex.js";
 
 export interface SearchFilters {
@@ -57,8 +58,8 @@ export function admits(filters: Omit<SearchFilters, "query">, row: FileRow): boo
 /** A word for FTS5: quoted, so no query syntax leaks through, as a prefix. A NUL byte is dropped (FTS5 fails on it). */
 const ftsWord = (word: string): string => `"${word.replace(/["*\0]/g, "")}"*`;
 
-/** The words as typed, every one required, at most 8: the strict query of `cerebro-v2` (AD-037). */
-function strictQuery(input: string): string {
+/** The words as typed, every one required, at most 8: the strict query of `cerebro-v2` (AD-037). Never expanded. */
+export function strictQuery(input: string): string {
   const terms = input
     .split(/\s+/)
     .map((t) => t.replace(/["*\0]/g, "").trim())
@@ -177,31 +178,73 @@ export function strictWordsSearch(db: Db, filters: SearchFilters): SearchHit[] {
 }
 
 /**
- * The words that matter (`extractKeywords`: no stopwords, folded), every one first, then any of them
- * (.specs/features/cerebro-correcoes, door 3): the files that hold every word come first in BM25 order, then the ones
- * that hold some, more words first and BM25 after. A question that is only stopwords is searched as typed; one with no
- * word at all is the listing of the most recent files. Each file once.
+ * One keyword's term: today's stemmed keyword as a prefix, or, when the word it came from has another number in
+ * Portuguese (`counterparts`, cerebro-busca-significado S2), the OR of the keyword and those forms (G2).
  */
-export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
-  const limit = Math.min(filters.limit ?? 50, 200);
-  const keywords = extractKeywords(filters.query);
-  if (keywords.length === 0) return strictWordsSearch(db, filters);
+function keywordTerm(form: KeywordForm): string {
+  const extra = form.word === null ? [] : counterparts(form.word).filter((c) => c !== form.keyword);
+  if (extra.length === 0) return ftsWord(form.keyword);
+  return `(${[form.keyword, ...extra].map(ftsWord).join(" OR ")})`;
+}
 
-  const all = matches(db, keywords.map(ftsWord).join(" "), filters, limit);
-  if (all.length >= limit || keywords.length === 1) return all;
+/**
+ * The every-word query of `searchFiles`: each keyword's term, all required; empty when the question has no keyword.
+ * `AND` is written out: FTS5 does not read two bracketed groups side by side as an implicit `AND`.
+ */
+export function everyWordQuery(question: string): string {
+  return keywordForms(question).map(keywordTerm).join(" AND ");
+}
 
-  const seen = new Set(all.map((hit) => hit.id));
-  const some = matches(db, keywords.map(ftsWord).join(" OR "), filters, ANY_DEPTH, seen);
-  if (some.length === 0) return all;
+/** The any-word query of `searchFiles`: each keyword's term, any of them; empty when the question has no keyword. */
+export function anyWordQuery(question: string): string {
+  return keywordForms(question).map(keywordTerm).join(" OR ");
+}
+
+/** The files that hold every keyword (or its other number), in BM25 order, at most `limit`. */
+export function everyWordSearch(db: Db, filters: SearchFilters): SearchHit[] {
+  const fts = everyWordQuery(filters.query);
+  return fts ? matches(db, fts, filters, Math.min(filters.limit ?? 50, 200)) : [];
+}
+
+/** The files that hold any keyword, more keywords first and BM25 after, at most `limit` (ranked over `ANY_DEPTH`). */
+export function anyWordSearch(db: Db, filters: SearchFilters): SearchHit[] {
+  return anyWord(db, filters).slice(0, Math.min(filters.limit ?? 50, 200));
+}
+
+function anyWord(db: Db, filters: SearchFilters, skip?: ReadonlySet<number>): SearchHit[] {
+  const forms = keywordForms(filters.query);
+  if (forms.length === 0) return [];
+  const some = matches(db, forms.map(keywordTerm).join(" OR "), filters, ANY_DEPTH, skip);
+  if (some.length === 0) return some;
   const ids = some.map((hit) => hit.id);
   const marks = ids.map(() => "?").join(",");
   const count = new Map<number, number>();
   const holds = db.prepare(`SELECT rowid AS id FROM files_fts WHERE files_fts MATCH ? AND rowid IN (${marks})`);
-  for (const word of keywords) {
-    for (const { id } of holds.all(ftsWord(word), ...ids) as Array<{ id: number }>) count.set(id, (count.get(id) ?? 0) + 1);
+  for (const form of forms) {
+    for (const { id } of holds.all(keywordTerm(form), ...ids) as Array<{ id: number }>)
+      count.set(id, (count.get(id) ?? 0) + 1);
   }
   // Array.prototype.sort is stable: rows with the same count keep the BM25 order of the query.
-  some.sort((a, b) => (count.get(b.id) ?? 0) - (count.get(a.id) ?? 0));
+  return some.sort((a, b) => (count.get(b.id) ?? 0) - (count.get(a.id) ?? 0));
+}
+
+/**
+ * The words that matter (`extractKeywords`: no stopwords, folded), every one first, then any of them
+ * (.specs/features/cerebro-correcoes, door 3): the files that hold every word come first in BM25 order, then the ones
+ * that hold some, more words first and BM25 after. A question that is only stopwords is searched as typed; one with no
+ * word at all is the listing of the most recent files. Each file once. A word's other number counts as the word
+ * (cerebro-busca-significado, S2).
+ */
+export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
+  const limit = Math.min(filters.limit ?? 50, 200);
+  const keywords = keywordForms(filters.query);
+  if (keywords.length === 0) return strictWordsSearch(db, filters);
+
+  const all = everyWordSearch(db, filters);
+  if (all.length >= limit || keywords.length === 1) return all;
+
+  const some = anyWord(db, filters, new Set(all.map((hit) => hit.id)));
+  if (some.length === 0) return all;
   return [...all, ...some].slice(0, limit);
 }
 

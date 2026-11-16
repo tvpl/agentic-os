@@ -219,12 +219,16 @@ describe("S4 semantic search, off by default", () => {
     const via = new Map(both.map((h) => [h.name.replace(/\.md$/, ""), h.via]));
     expect(via.get("refund-policy")).toBe("both");
     // a file only the vectors found and one only the words found. Since AD-037 a file that holds some of the words is
-    // found by the words, and porter joins the English forms on both sides ("copy" finds "copies"), so the file only the
-    // vectors find is a Portuguese plural asked in the singular: "ação" against the "ações" of reuniao-semanal, which
-    // porter indexes apart and the hash provider stems to the same "acao".
+    // found by the words, and porter joins the English forms on both sides ("copy" finds "copies"). The Portuguese
+    // plural asked in the singular ("ação" against the "ações" of reuniao-semanal) was the vectors' alone until
+    // cerebro-busca-significado S2 gave the words the other number (its C12): it is found by both now. The file only
+    // the vectors find is a question shaped like a file name, which the words read whole, as one phrase, and the
+    // hash provider word by word: "pauta-ata.md" against the "pauta" and the "ata" of reuniao-semanal.
     const pt = rig({ enabled: true, provider: "hash" }, morphology.notes);
     await pt.ctx.indexer.indexAllAsync();
-    const semanticOnly = (await pt.ctx.semantic.search({ query: "ação" }, "auto"))[0]!;
+    const otherNumber = (await pt.ctx.semantic.search({ query: "ação" }, "auto"))[0]!;
+    expect([otherNumber.name, otherNumber.via]).toEqual(["reuniao-semanal.md", "both"]);
+    const semanticOnly = (await pt.ctx.semantic.search({ query: "pauta-ata.md" }, "auto"))[0]!;
     expect([semanticOnly.name, semanticOnly.via]).toEqual(["reuniao-semanal.md", "semantic"]);
     const textOnly = (await r.ctx.semantic.search({ query: "damaged" }, "auto")).find(
       (h) => h.name === "refund-policy.md",

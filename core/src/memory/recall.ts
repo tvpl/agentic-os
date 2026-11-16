@@ -162,24 +162,38 @@ function isPathLike(token: string): boolean {
  * other tokens are folded, stopword-filtered and stemmed.
  */
 export function extractKeywords(question: string): string[] {
-  const out: string[] = [];
+  return keywordForms(question).map((form) => form.keyword);
+}
+
+/** A keyword and the folded word it was stemmed from (null for a path-like token, kept whole). */
+export interface KeywordForm {
+  keyword: string;
+  word: string | null;
+}
+
+/**
+ * The keywords of `extractKeywords`, each with the folded word before `stemLite` (cerebro-busca-significado, G2): the
+ * search's text query adds the other number of that word, which the stemmed keyword no longer shows (`jornai`).
+ */
+export function keywordForms(question: string): KeywordForm[] {
+  const out: KeywordForm[] = [];
   const seen = new Set<string>();
-  const push = (k: string) => {
+  const push = (k: string, word: string | null) => {
     if (k.length < 2 || seen.has(k)) return;
     seen.add(k);
-    out.push(k);
+    out.push({ keyword: k, word });
   };
   for (const raw of question.split(/\s+/)) {
     const token = raw.replace(/^[^\p{L}\d/\\._~-]+|[^\p{L}\d/\\._~-]+$/gu, "");
     if (!token) continue;
     if (isPathLike(token)) {
-      push(fold(token));
+      push(fold(token), null);
       continue;
     }
     for (const part of fold(token).split(/[^a-z0-9]+/)) {
       if (!part || STOPWORDS.has(part)) continue;
       if (/^\d+$/.test(part) && part.length < 4) continue; // bare small numbers carry nothing
-      push(stemLite(part));
+      push(stemLite(part), part);
     }
   }
   return out.slice(0, MAX_KEYWORDS);
@@ -239,7 +253,8 @@ interface Scored {
   matched: Set<string>;
 }
 
-function ftsTerm(keyword: string): string {
+/** The recall's FTS term for one keyword: the keyword as a prefix, never the other number (cerebro-busca-significado, G5). */
+export function ftsTerm(keyword: string): string {
   return `"${keyword.replace(/["*]/g, "")}"*`;
 }
 
