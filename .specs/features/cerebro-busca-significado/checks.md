@@ -265,7 +265,7 @@ Proof: `npx vitest run tests/busca.recall.test.ts -t "C75 "`
 **C76** - The weak rule at its own layer (`decideAbstention`), one asserted case per row (G29): 4 keywords and a section matching exactly 2 → not weak, whatever the cosine; 4 keywords, best match 1, best cosine 0.19 with `minSimilarity` 0.2 → `weak`; best match 1, cosine exactly 0.2 → not weak (equal is not below); best match 1 and no vectors → `weak`; 5 keywords, a section matching 3 → not weak; 5 keywords, best match 2, cosine 0.1 → `weak`; any row with `abstain` false → not weak (AC 47, AC 48, G29, L-057)
 Proof: `npx vitest run tests/busca.abstain.test.ts -t "C76 "`
 
-**C77** - The weak rule through the route with `hash` (minimum 0.2): a question whose best section matches 1 of 4 keywords and whose nearest section is under 0.2 answers `abstained: true`, `abstainReason: "weak"`, `answerContext: []`; the same question with the embeddings off (no vectors) also answers `weak` (G31); the corpus's `abstain` questions answer `abstained: true` (AC 47, G31)
+**C77** - The weak rule through the route with `hash` (minimum 0.2): a question whose best section matches 1 of 4 keywords and whose nearest section is under 0.2 answers `abstained: true`, `abstainReason: "weak"`, `answerContext: []`; the same question with the embeddings off (no vectors) also answers `weak` (G31) (AC 47, G31)
 Proof: `npx vitest run tests/busca.recall.test.ts -t "C77 "`
 
 **C78** - With `memory.recall.abstain` false set by `PUT /api/settings`, C77's question answers `abstained: false`, `abstainReason: null` and an `answerContext` equal by value to the one this recall gives for it with abstention off (the excerpts the weak match finds, as today), not `[]` (AC 48, L-058)
@@ -498,6 +498,23 @@ missing "ações", which porter indexes as `acoe`; true on the base too). Additi
 **C138** - Through `GET /api/memory/search?mode=text`, the folded word itself is in each keyword's OR next to today's stemmed term and its counterparts (AC 9): over a home with a note holding exactly "ações", one holding "ação", one holding only "jornal" and one holding only "jornais", `q=ações` lists both the "ações" note and the "ação" note; `q=jornais` still lists the `jornal` note and the `jornais` note; the strict query is unchanged by value (`strictQuery("ações")` is `"ações"*` and `strictWordsSearch` lists exactly the "ações" note); and cerebro-v2's C46 morphology table still reads `[other-number, false, false, true, true]` six times and `[control, true, true, true, true]` twice (AC 9, AC 12, G2, L-044)
 Proof: `npx vitest run tests/busca.stem.test.ts -t "C138 "`
 Proof: `npx vitest run tests/memory.semantic.test.ts -t "C46 "`
+
+## Correções do lote D
+
+Decisões do dono de 17/11/2026 sobre o que o lote D achou (nenhum check reescrito além do que se diz aqui):
+
+1. **C77, a cláusula tirada.** "The corpus's `abstain` questions answer `abstained: true`" foi tirada da afirmação: com a regra
+   aprovada do AC 47 (metade das palavras-chave já casa; cosseno igual ao mínimo não é abaixo), 2 das 12 perguntas de abstenção
+   abstêm com o `hash` e 8 com a busca desligada, porque o limiar do `hash` (0,2) é baixo e várias perguntas têm uma seção que
+   casa metade dos termos. O C77 afirma as duas cláusulas restantes, provadas. A abstenção só vale para uma medição com um
+   modelo real (Gemma 0,62, Qwen 0,45): ela entra na prova opt-in C137 do lote E, e se não bastar vira uma emenda de regra, com
+   número, não uma reabertura do plano agora. O `abstainCorrect` do hash fica gravado no C10 como 2/12.
+2. **G29, o casamento de uma seção.** Ao contar "metade das palavras-chave casam" (AC 47), uma seção casa pelo texto do seu
+   corpo **e** pelo seu caminho de títulos (`Banco financeiro > Pagamento`), o nome que a door 1 dá à seção. Sem isso, a pergunta
+   "Quem aprovou a transferência…" casa 2 de 5 e abstém mesmo achando a nota certa. É a decisão (c) de "Settled mid-build" do lote
+   D, confirmada pelo dono; o C76 e o C77 a afirmam.
+3. **C69, a aritmética.** O texto diz que `B` vale `1/61 + 1/61`; com `B` em segundo lugar na lista de texto o RRF dá `1/62 + 1/61`.
+   A prova afirma o valor do RRF e a ordem `B`, `A`, `C`; o texto do check fica corrigido aqui, sem mudar a ordem nem a prova.
 
 ## Coverage
 
@@ -867,7 +884,7 @@ Status of batch D (updated in the commit that closes each piece):
   `tests/busca.recall.test.ts`, `tests/busca.access.test.ts` (C85), `tests/busca.contract.test.ts` (C86),
   `tests/busca.cli.test.ts` (C84, built CLI) and `tests/natureza.search.test.ts` C20; the recall of the route, of
   `mordomo recall` and of `mordomo eval` is `hybridRecall`/`runRecall` in `core/src/memory/recall.ts` (the synchronous
-  `recall` stays, by words alone, with the same abstention, hops and budget). C77 stays OPEN: its last clause ("the
+  `recall` stays, by words alone, with the same abstention, hops and budget). C77 is closed by the owner's decision of 17/11/2026 (see `## Correções do lote D`): its last clause ("the
   corpus's `abstain` questions answer `abstained: true`") does not hold under AC 47 on the shipped corpus (with `hash`
   2 of the 12 abstain, with the search off 8: several have a section matching half of their keywords, e.g. "quem
   fornece o chocolate?", or a `hash` cosine at or above 0.2); its other two clauses are proven. Reported to the
