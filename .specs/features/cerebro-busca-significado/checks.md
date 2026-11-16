@@ -706,3 +706,32 @@ Status of batch A (updated in the commit that closes each piece):
 - measuring the search (S1: C1-C8, C10): closed, every proof green in `tests/busca.eval.test.ts` and
   `tests/busca.cli.test.ts` (built CLI); the corpus is `tests/fixtures/pt-corpus/` (40 notes) and
   `tests/fixtures/pt-queries.json` (60 queries); C9 stays open for batch C (it needs the stub reranker)
+
+- **Boundary (batch A):** C1-C8, C10-C16 and C18 closed at `3178e05` (S2 in `fc42344`, S1 in `20488c5`, the two pins it
+  moved in `3178e05`), with C9 open (batch C, the stub reranker) and C17 open (batch B: its claim reads
+  `section_vectors.vec`, which migration 34 creates; S2 changes no stored vector and C16 pins `hashEmbed` by a golden
+  SHA-256). On that tree, after `npm run build`, `npm run typecheck` and `npm run lint` exit 0, every `Proof:` line of
+  the closed checks passes and runs only its check's tests, and `npx vitest run` at the root has one failure,
+  `tests/paineis.refresh.test.ts` C13 (date-dependent, fails the same way on the base). Pins batch A moved: the README's
+  command table (`docs.drift` C30), the internal barrel `EvalFormatError`, `formatEvalText`, `runEval` (`sdk.surface`
+  C38), the command list of `rituais.access` C73 (exactly `eval`, after `recall`), and the vectors-only example of
+  cerebro-v2 C45 (`memory.semantic`): since S2 the words find "ação" against "ações" (C12), so C45 now asserts that pair
+  `both` and takes `pauta-ata.md` (a file-name-shaped question the words read as one phrase) as the vectors-only case.
+  No route, setting, migration or door added. The `hash` baseline C10 pins: `and` 0.146/0.146/0.146, `or`
+  0.938/0.800/0.896, `semantic` 0.729/0.613/0.646, `hybrid` 0.938/0.784/0.896, `abstainCorrect=5/12`; batch D's fused
+  recall and its abstention will move the `hybrid` row and `abstainCorrect`, and batch B's sections the `semantic` row.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) the ending table is
+  `core/src/memory/stem.ts` (`counterparts`); `recall.ts` gains `keywordForms` (the keyword and its folded word,
+  `extractKeywords` maps it) and exports `ftsTerm` and `recallOrder`; `search.ts` exports `strictQuery`,
+  `everyWordQuery`, `anyWordQuery`, `everyWordSearch` and `anyWordSearch`, and `searchFiles` is built from them; (b) the
+  every-word query joins the terms with an explicit `AND` (FTS5 refuses two bracketed groups side by side); a
+  counterpart equal to the keyword is dropped; (c) the eval is `core/src/memory/eval.ts`: `hybrid` is the recall's
+  `scoreCandidates` order 20 deep and, until door 4 lands, the recall "abstains" when its `answerContext` is empty; ranked
+  files are matched to `expect` by their `rel`; (d) the format check also refuses a non-`abstain` question with an empty
+  `expect` and an `abstain` question with paths; reasons read e.g. `"v" must be 1`, `"queries" must be a list`,
+  `"kind" must be one of …`, `cannot read <file>: <error>`; (e) the file is read through `readWorkspaceText` with its
+  own folder as the scope; (f) the CLI runs the routes' functions offline, not the routes (Flow hop 6's arrows point at
+  the routes; the plan was left as frozen); (g) `tests/helpers/buscaWorld.ts` holds `buscaWorld` (memoria world +
+  `note`, `search`) and `corpusHome` (a home indexing a copy of the corpus with fixed mtimes, `hash` or off).
+- **Abandoned:** an implicit-`AND` every-word query (FTS5 syntax error with bracketed groups); reading the eval file with
+  a raw `fs.readFileSync` (it would grow the reviewed raw-read list of `security-reads` C55).
