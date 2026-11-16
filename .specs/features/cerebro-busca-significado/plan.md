@@ -350,6 +350,21 @@ recomendações que viu:
 | collection seções por arquivo                               | grouping, ordering, duplicates, exception | AC 14 (ordem de leitura), AC 15 (o limite de 64), a exceção é o arquivo sem título (`(top)`)                                         |
 | collection candidatas do recall                             | grouping, ordering, duplicates            | AC 43 (RRF, empate pelo menor id), um arquivo aparece uma vez                                                                        |
 
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+Achadas ao escrever os checks (`checks.md`, "Lacunas do plano"); o texto aprovado fica como está e a emenda vale por esta seção.
+
+1. **Emenda 1 (G1, G2; correção de fato do `Problem`).** O `Problem` diz que as seis perguntas `other-number` do corpus
+   `semantic-morphology` falham "por palavras (AND e OR)". Medido na base em 16/11/2026, a busca do produto (`mode=text`) **já as
+   acha**, porque o `stemLite` do recall e da busca dobra `-ções` em `-ção` antes da consulta; os números do `Problem` vêm de
+   `strictWordsSearch` e de um auxiliar do teste da `cerebro-v2`, que o AC 12 manda deixar como estão. O valor da S2 é o sentido
+   contrário e as formas que o `stemLite` não dobra (por exemplo `jornais` achando `jornal`): o AC 9 vale sobre a palavra
+   dobrada de acento **antes** do `stemLite` (o `extractKeywords` já a reduziria a `jornai`), e o AC 10 vale como escrito.
+2. **Emenda 2 (G31, G34; consequência da abstenção ligada).** Com a busca por significado desligada não há vetores, então o AC
+   47 faz abstenção valer para toda resposta em que nenhuma seção casa metade das palavras-chave, onde hoje o recall devolve
+   trechos; e `memory.recall.abstain: true` entra na lista dos booleanos ligados por padrão (o `Impact` dizia que a lista não
+   muda). Ambos já estavam implícitos na decisão do dono de 15/11/2026 de aprovar a abstenção ligada; ficam escritos aqui.
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C9 - o escopo: conjunto de avaliação em PT, embedder local real por seção, radicalização PT,
