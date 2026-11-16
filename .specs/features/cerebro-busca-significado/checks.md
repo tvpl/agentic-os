@@ -805,3 +805,58 @@ Status of batch C (updated in the commit that closes each piece):
   C24, C25 and C52; against the stubs of "Level honesty" (`tests/helpers/buscaStubs.ts`, `tests/helpers/stubChild.mjs`)
 - the installer (S4: C66): closed, its proof green in `tests/busca.packaging.test.ts` (built first): a Linux x64
   payload carries `lib/localChild.mjs` and the runtime, 68.0 MB of it, and the runtime loads from where it lands
+
+- **Boundary (batch C):** C41-C68, C9 and C25 and C31 (their local cases) closed at `366a16b` (the settings in
+  `d5416e3`, the local models, the routes, the legal texts and every pin in `a8817ab`, the installer in `366a16b`). On
+  that tree, after `npm run build`, `npm run typecheck` and `npm run lint` exit 0, every `Proof:` line of the closed
+  checks passes, and `npx vitest run` has one failure, `tests/paineis.refresh.test.ts` C13 (date-dependent, as on the
+  base). Pins batch C moved: routes 171 → 173 and non-public 169 → 171 (`api.contract`, `contracts.api`,
+  `api.openapi`, `device-scopes` with six `sdk.api-thin` C29 amendments), owner 92 → 94 (and the owner counts of
+  `docs/security.md` in `paineis.contract` C60 and `memoria.contract` C82), raised codes 89 → 94 (the five of door 8),
+  refusal and event scenarios 171 → 173 (`contractWorld`, `events.contract`), `legal.network` sites 43 → 44 and hosts
+  18 → 19 (G40: no help link yet, so 44; batch E's link of G41 may make it 45), `legal.network` C34 accepts the
+  model repository's gate being absent by default, `paineis.contract` C62 compares the policy and the 4.1 table to
+  its base minus exactly C67's change, `security-reads` C55 70 → 71 rows (the downloader, `api: "*"`; C61 and C84 compare
+  to their bases minus that row; the test title keeps its "70 rows" prefix for the older proof lines), the internal
+  barrel (`LocalModels`, `LocalModelsOptions`, `ModelRefusal`, `testProvider`), the contracts exports
+  (`LOCAL_EMBEDDER_IDS`), the settings pins of `data.settings` C46, C52 and C63 (G34) and the `settings.changed` v1
+  fixture. No eval baseline moved: C10's rows are unchanged. Measured: the installer's runtime on Linux x64 adds
+  68.0 MB; the CPU-only `onnxruntime-node` folder is 44 MB.
+- **Settled mid-build:** nothing by the owner. Catalog values (G39), fixed on 16/11/2026 from the repository's tree
+  at pinned commits (`embeddinggemma-300m-ONNX` `5090578d…`, `Qwen3-Embedding-0.6B-ONNX` `c25a394d…`,
+  `Qwen3-Reranker-0.6B-ONNX` `9995c50e…`): the files are `config.json`, `tokenizer.json`, `tokenizer_config.json` and
+  the dtype's `onnx/model_<dtype>.onnx` (+ `_data` for Gemma; + `generation_config.json` for the reranker), sizes and
+  SHA-256 in `core/src/models/catalog.ts`; each of the three was then downloaded through `ModelDownloads` and verified
+  (an ad hoc spike, not a proof). Hosts: `huggingface.co` and `*.cdn.hf.co` (the 302 of a large file went to
+  `us.aws.cdn.hf.co` from curl and `us.gcp.cdn.hf.co` from Node: an exact host failed the first real download with
+  `host_not_allowed`, so the entry names the CDN domain; the policy's `covers` already reads `*.`). Prefixes from the
+  model cards: Gemma `task: search result | query: ` / `title: none | text: `, Qwen3-Embedding the
+  `Instruct: … \nQuery:` query prefix and no document prefix. `maxChars` 2000 for both embedders. `minSimilarity`
+  measured over the Portuguese corpus with the real models on Linux x64 (best cosine of the 12 `abstain` questions
+  against the 48 others): Gemma 0.62 (0.48-0.65 against 0.63-0.84), Qwen3-Embedding 0.45 (0.25-0.61 against 0.41-0.83);
+  the same spike gave the `semantic` row 1.000/0.891/0.979 (Gemma) and 1.000/0.889/1.000 (Qwen) against hash's
+  0.729/0.632/0.667, a batch of 8 in 676 ms (Gemma) and 1 695 ms (Qwen), and the reranker 0.999 against 0.001 on a
+  pair in 9.8 s (C137 is still batch D/E's opt-in proof). Builder decisions inside the approved shape: (a) Landing
+  row 9 adds `name`, `source` (the pinned `resolve/<commit>/` URL) and `pooling` to door 3's entry and the
+  `.verified.json` record of G20; (b) the catalog lives in `core/src/models/` and the settings take its embedders
+  from `LOCAL_EMBEDDER_IDS` in the contracts, so a test's stub catalog reuses the real ids (with its files on
+  127.0.0.1); (c) `chooseProvider(config, local?)` takes the engine's `LocalEmbedding`; without one `local` reads
+  `platform_unsupported`; the platform is unsupported off linux/x64, linux/arm64, darwin/arm64 and win32/x64, without
+  a child entry, or when no `node_modules/@huggingface/transformers/package.json` is found walking up from the child
+  (by file name: the service never resolves the package); (d) `EmbeddingProvider.embed` takes a `purpose` (`query`
+  for the search's one call, so the C52 pin still reads `provider.embed([question]`) and a `batch`; (e) the worker's
+  pass asks the host for each batch (`EmbedRequest`/`EmbedReply` in `indexProtocol.ts`) with a snapshot of the ready
+  embedder; (f) a crashed batch marks its files' rows `size` -1 so the next pass embeds them again, and a pass that
+  recovered keeps `semantic.error`; (g) the POST answers `{ state }` for install, cancel and remove and
+  `{ state, model?, test }` for `test` (the state of the active local model, `absent` for hash and http); a remove
+  of a model being downloaded is `409 download_in_progress`; (h) the eval's `rerank` row reorders the 20-deep
+  hybrid file order's best `candidates` by the reranker's score of each file's first 2 000 characters (batch D aligns
+  it with the recall's sections for C95); (i) the license addresses of the catalog are `ignored` in the network
+  policy (shown, never contacted), so the hosts stay 19; (j) the installer copies the runtime only when the target is
+  the packaging machine (like sqlite-vec: sharp's natives are per-platform packages); `@huggingface/tokenizers` and
+  `jinja` are inside the runtime's node build and are not copied; (k) `tests/helpers/buscaStubs.ts` holds
+  `stubHost`, `stubCatalog`, `stubChild` and `localWorld`; `notesViewWorld`, `memoriaWorld`, `buscaWorld` and
+  `corpusHome` take `AppContextOptions`.
+- **Abandoned:** an exact CDN host (`us.aws.cdn.hf.co`) in the catalog and the policy (Node's fetch was sent to
+  `us.gcp.cdn.hf.co`); module-level caches in the child (the module-state pin of `sdk.instances` C30: they live in
+  `main`'s closure); copying `@huggingface/tokenizers` and `jinja` into the installer.
