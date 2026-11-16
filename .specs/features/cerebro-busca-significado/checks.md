@@ -763,3 +763,35 @@ Status of batch B (updated in the commit that closes each piece):
   model active, `model` is its id" stay open for batch C: both need the stub catalog and the `local` provider of S4,
   which this batch does not build; every other case of the two is green. The sections moved C10's `semantic` row:
   mrr 0.613 → 0.632, hit@3 0.646 → 0.667 (recall@20 0.729 unchanged), re-pinned with a comment
+
+- **Boundary (batch B):** C17, C19-C24, C26-C30 and C32-C40 closed at `166d7ee` (the splitter moved in `5e553cd`, the
+  section rows and the embedded text in `93a4871`, migration 34 and everything that reads it in `166d7ee`), with C25
+  and C31 closed but for one case each that needs batch C's stub catalog and `local` provider (C25's `local.model`
+  A → B recompute, C31's `model` = the stub model's id): batch C closes them. On that tree, after `npm run build`,
+  `npm run typecheck` and `npm run lint` exit 0, every `Proof:` line of the closed checks passes, and `npx vitest run`
+  has one failure, `tests/paineis.refresh.test.ts` C13 (date-dependent, as on the base). Pins batch B moved:
+  migrations 33 → 34 (`data.migration` C56 reads `file_vectors` absent after 34, G45; `contexts.runs` C25,
+  `memoria.migration` C79 and C39, `natureza.layer` C7, `paineis.layer` C19 and C98, `rituais.layer` C19,
+  `device-scopes` C22 with two `sdk.api-thin` C29 amendments); `memory.semantic` reads `section_vectors` (every note of
+  its corpora is one section), its C43 status gains `sections` and `model`, and its C45 example "ação" →
+  `reuniao-semanal.md` is `text` now (door 1's text adds the title and the H1, 0.219 → 0.199, under hash's 0.2); C10's
+  `semantic` row is 0.729/0.632/0.667. No route, setting, export or door added. Measured: C35 280 ms for 20 000
+  sections in JavaScript; cerebro-v2 C32 with hash on and 8 sections per note (24 000 sections, worker): the pass
+  17.8 s, the longest service write 18.6 ms, loop p99 11.4 ms, no write of 100 ms.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) `sections.ts` holds
+  `splitSections` (moved unchanged, re-exported by `recall.ts`), `sectionRows` and `embeddedText`; a section with no
+  letter or digit is not a section for `ord` and the 64 limit; a block of a `.txt` keeps the splitter's heading
+  (`lines 1-40`) as its row's `heading` and its trimmed lines as `start_line`/`end_line`; (b) `embedPending` takes an
+  optional `provider` (a test's recording provider); a file whose sections run past a batch is written with `size` -1
+  until its last batch settles it, so a pass that stops between leaves the file owed instead of complete with sections
+  missing; (c) the vectors phase also requires the row's root to be a root granted today (C27 found a pass over a few
+  paths sending a revoked folder's file: `rowFilter` knows excludes and `config/`, not grants); (d) `VectorIndex.rank`
+  reads every section row, sorts by distance (1e-6 ties), then file id, then `ord`, and keeps each file's first
+  (`Ranked` gains `ord`, `section`, `line`); a hit carries `section`/`line` only when the vectors ranked its file, so an
+  `auto` hit found by the words alone has neither; (e) `countVectors` returns `{ files, sections }`; (f) the frontmatter
+  of a note is its `(top)` section, as the recall reads it; (g) `tests/helpers/buscaWorld.ts` gains `hashOn`, `rowsOf`,
+  `allRows` and `embeddingsServer` (a loopback `/v1/embeddings` with `fail` and `hold`).
+- **Abandoned:** leaving `legal/PRIVACY.md`'s table row and `legal/network-policy.json` unchanged was chosen over
+  rewording them for sections (`paineis.contract` C62 pins both to its base and the plan's Impact says the text already
+  covers the sending); only section 3's "um vetor numérico por nota" moved. The row still says "até 8000 caracteres de
+  cada um", now per section: batch C's C67 rewrites that row anyway.
