@@ -488,6 +488,17 @@ Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.
 **C137** - OPT-IN, NOT CREDITED: with `MORDOMO_REAL_MODEL=1` and the real `embeddinggemma-300m-q4` already in `<casa>/models/` (the test skips when the variable is unset, as `tests/memory.packaging.test.ts` skips without a build), the Portuguese corpus indexed with the real local model gives a `semantic` row of `mordomo eval` whose `1-recall@20` is at least the `hash` baseline of C10, and the C46 `synonym` question of cerebro-v2's corpus finds its note in the top 3; the measured `minSimilarity` is printed for the catalog (Assumptions "Limiar de abstenção"). No Coverage row and no Swept line credits it
 Proof: `MORDOMO_REAL_MODEL=1 npx vitest run tests/busca.realmodel.test.ts -t "C137 "`
 
+## Correções do lote A
+
+Added after batch A by the coordinator (16/11/2026), from a defect the builder of batch A reported: AC 9 asks the OR of
+"the word and its counterparts", and G2's default (today's stemmed term and the counterparts) left the word itself out,
+so a question word missed a note that holds it literally when `stemLite` moved it off porter's stem (`ações` → `acao`,
+missing "ações", which porter indexes as `acoe`; true on the base too). Additive to G2; no existing claim changes.
+
+**C138** - Through `GET /api/memory/search?mode=text`, the folded word itself is in each keyword's OR next to today's stemmed term and its counterparts (AC 9): over a home with a note holding exactly "ações", one holding "ação", one holding only "jornal" and one holding only "jornais", `q=ações` lists both the "ações" note and the "ação" note; `q=jornais` still lists the `jornal` note and the `jornais` note; the strict query is unchanged by value (`strictQuery("ações")` is `"ações"*` and `strictWordsSearch` lists exactly the "ações" note); and cerebro-v2's C46 morphology table still reads `[other-number, false, false, true, true]` six times and `[control, true, true, true, true]` twice (AC 9, AC 12, G2, L-044)
+Proof: `npx vitest run tests/busca.stem.test.ts -t "C138 "`
+Proof: `npx vitest run tests/memory.semantic.test.ts -t "C46 "`
+
 ## Coverage
 
 | Set (size)                                                                          | Member -> proof                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Unproven |
@@ -500,7 +511,7 @@ Proof: `MORDOMO_REAL_MODEL=1 npx vitest run tests/busca.realmodel.test.ts -t "C1
 | `POST /api/memory/embedder` actions (4)                                             | `install` C43 · `cancel` C49 · `remove` C50 · `test` C57                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | -        |
 | changed response keys (8)                                                           | recall `abstained` C74 · recall `abstainReason` C74 · recall `rerank` C74, C90 · search `section` C29 · search `line` C29 · status `sections` C31 · status `model` C31, C63 · status `local` C63                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | -        |
 | AC 9 ending rows (13)                                                               | `ao` C11 · `oes` C11 · `al` C11, C13 · `ais` C11, C13 · `el` C11, C13 · `eis` C11 · `il` C11 · `ol` C11, C13 · `m` C11, C13 · `ns` C11, C13 · `r` C11 · `z` C11 · `s` alone C11, C13                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | -        |
-| ending table both directions through the route (7)                                  | `jornais`→`jornal` C13 · `jornal`→`jornais` C13 · `papel`→`papéis` C13 · `homens`→`homem` C13 · `farol`→`faróis` C13 · `rios`→`rio` C13 · `devolução`→`devoluções` C13                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | -        |
+| ending table both directions through the route (8)                                  | `jornais`→`jornal` C13 · `jornal`→`jornais` C13 · `papel`→`papéis` C13 · `homens`→`homem` C13 · `farol`→`faróis` C13 · `rios`→`rio` C13 · `devolução`→`devoluções` C13 · the word itself, `ações`→"ações" C138                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | -        |
 | length edge after folding (4)                                                       | 3 letters `pao` C12 · 3 letters `pes` C12 · exactly 4 `acao` C12 · exactly 4 `rios` C12                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | -        |
 | words searches (4)                                                                  | every word, expanded C13, C14 · any word, expanded C14 · strict, not expanded C15 · recall term, not expanded C18                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | -        |
 | section splitting cases (13)                                                        | H1-H6 C19 · 7 hashes C19 · no space C19 · ` ``` ` fence C19 · `~~~` fence C19 · preamble `(top)` C19, C21 · setext C19 · empty section C19, C21 · CRLF C19 · 40 lines C20 · 41 lines C20 · `.markdown` C20 · not text (`.json`, `.pdf`) C20                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | -        |
@@ -691,7 +702,7 @@ The estimate exceeds the 150k budget.
   - slices alone ≈ 32k + 26k + 56k + 81k + 31k + 7k + 76k + 92k = ≈ 401k; the new tests (fourteen root files, the world and the stubs ≈ 300 KB, three UI files ≈ 70 KB, `tests/e2e/busca.spec.ts` ≈ 25 KB: ≈ 395 KB) add ≈ 99k: ≈ 500k in all, over 150k
 - Proposed cut, at the surface boundaries (batches sequential, each only on green; core and API first, the screen last):
   - **A** (measuring and the Portuguese words): S1 + S2 ≈ 32k + 26k = ≈ 58k, plus `tests/busca.eval.test.ts`, `tests/busca.cli.test.ts` and `tests/busca.stem.test.ts` ≈ 50 KB → ≈ 13k = ≈ 71k; C1-C18 (C9 and C95 need the stub reranker of batch C: they close in C)
-  - **B** (sections and migration 34): S3 ≈ 56k, plus `tests/busca.sections.test.ts`, `tests/busca.vectors.test.ts`, `tests/busca.migration.test.ts`, the world and the search/status half of `tests/busca.access.test.ts` ≈ 80 KB → ≈ 20k = ≈ 76k; C19-C40
+  - **B** (sections and migration 34): S3 ≈ 56k, plus `tests/busca.sections.test.ts`, `tests/busca.vectors.test.ts`, `tests/busca.migration.test.ts`, the world and the search/status half of `tests/busca.access.test.ts` ≈ 80 KB → ≈ 20k = ≈ 76k; C17, C19-C40 (C17 moved here from A, confirmed by the orchestrator on 16/11/2026: its claim reads `section_vectors`, which migration 34 creates)
   - **C** (the local model, the download and the two routes): S4 ≈ 81k, plus `tests/busca.embedder.test.ts`, `tests/busca.localprovider.test.ts`, `tests/busca.packaging.test.ts` and the stubs ≈ 100 KB → ≈ 25k = ≈ 106k; C41-C68, C9
   - **D** (the hybrid recall, the reranker and the API's closing pins): S5 + S6 + C97-C108 ≈ 31k + 7k + 76k = ≈ 114k, plus `tests/busca.recall.test.ts`, `tests/busca.abstain.test.ts`, `tests/busca.rerank.test.ts`, `tests/busca.contract.test.ts` and the rest of `tests/busca.access.test.ts` ≈ 90 KB → ≈ 23k = ≈ 137k; C69-C108, C95 (C97 and C98 need every route, so they close after S4)
   - **E** (the screen, the copy, the browser and the weight): S7 ≈ 92k, plus the three UI files, `tests/e2e/busca.spec.ts` and the C135 part of `tests/busca.contract.test.ts` ≈ 95 KB → ≈ 24k = ≈ 116k; C109-C136
@@ -701,16 +712,18 @@ The estimate exceeds the 150k budget.
 Status of batch A (updated in the commit that closes each piece):
 
 - the Portuguese words (S2: C11-C16, C18): closed, every proof green in `tests/busca.stem.test.ts` and in
-  `tests/memory.semantic.test.ts` C46; C17 stays open for batch B (its claim reads `section_vectors`, which migration 34
-  of S3 creates)
+  `tests/memory.semantic.test.ts` C46; C17 moved to batch B, where it closes (its claim reads `section_vectors`, which
+  migration 34 of S3 creates; moved by the orchestrator on 16/11/2026)
+- the correction C138 (the folded word itself in the OR, `## Correções do lote A`): closed, its proof green in
+  `tests/busca.stem.test.ts` and `tests/memory.semantic.test.ts` C46; it moved C10's `or` mrr from 0.800 to 0.799
 - measuring the search (S1: C1-C8, C10): closed, every proof green in `tests/busca.eval.test.ts` and
   `tests/busca.cli.test.ts` (built CLI); the corpus is `tests/fixtures/pt-corpus/` (40 notes) and
   `tests/fixtures/pt-queries.json` (60 queries); C9 stays open for batch C (it needs the stub reranker)
 
 - **Boundary (batch A):** C1-C8, C10-C16 and C18 closed at `3178e05` (S2 in `fc42344`, S1 in `20488c5`, the two pins it
-  moved in `3178e05`), with C9 open (batch C, the stub reranker) and C17 open (batch B: its claim reads
-  `section_vectors.vec`, which migration 34 creates; S2 changes no stored vector and C16 pins `hashEmbed` by a golden
-  SHA-256). On that tree, after `npm run build`, `npm run typecheck` and `npm run lint` exit 0, every `Proof:` line of
+  moved in `3178e05`), with C9 open (batch C, the stub reranker); C17 moved to batch B and closes there (its
+  claim reads `section_vectors.vec`, which migration 34 creates; S2 changes no stored vector and C16 pins `hashEmbed`
+  by a golden SHA-256). C138 (`## Correções do lote A`) closed after the boundary, in the commit that adds it. On that tree, after `npm run build`, `npm run typecheck` and `npm run lint` exit 0, every `Proof:` line of
   the closed checks passes and runs only its check's tests, and `npx vitest run` at the root has one failure,
   `tests/paineis.refresh.test.ts` C13 (date-dependent, fails the same way on the base). Pins batch A moved: the README's
   command table (`docs.drift` C30), the internal barrel `EvalFormatError`, `formatEvalText`, `runEval` (`sdk.surface`
@@ -718,20 +731,20 @@ Status of batch A (updated in the commit that closes each piece):
   cerebro-v2 C45 (`memory.semantic`): since S2 the words find "ação" against "ações" (C12), so C45 now asserts that pair
   `both` and takes `pauta-ata.md` (a file-name-shaped question the words read as one phrase) as the vectors-only case.
   No route, setting, migration or door added. The `hash` baseline C10 pins: `and` 0.146/0.146/0.146, `or`
-  0.938/0.800/0.896, `semantic` 0.729/0.613/0.646, `hybrid` 0.938/0.784/0.896, `abstainCorrect=5/12`; batch D's fused
+  0.938/0.799/0.896 (0.800 before C138), `semantic` 0.729/0.613/0.646, `hybrid` 0.938/0.784/0.896, `abstainCorrect=5/12`; batch D's fused
   recall and its abstention will move the `hybrid` row and `abstainCorrect`, and batch B's sections the `semantic` row.
 - **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) the ending table is
   `core/src/memory/stem.ts` (`counterparts`); `recall.ts` gains `keywordForms` (the keyword and its folded word,
   `extractKeywords` maps it) and exports `ftsTerm` and `recallOrder`; `search.ts` exports `strictQuery`,
   `everyWordQuery`, `anyWordQuery`, `everyWordSearch` and `anyWordSearch`, and `searchFiles` is built from them; (b) the
-  every-word query joins the terms with an explicit `AND` (FTS5 refuses two bracketed groups side by side); a
-  counterpart equal to the keyword is dropped; (c) the eval is `core/src/memory/eval.ts`: `hybrid` is the recall's
+  every-word query joins the terms with an explicit `AND` (FTS5 refuses two bracketed groups side by side); since
+  C138 each keyword's OR holds the stemmed keyword, the folded word and its counterparts, each form once; (c) the eval is `core/src/memory/eval.ts`: `hybrid` is the recall's
   `scoreCandidates` order 20 deep and, until door 4 lands, the recall "abstains" when its `answerContext` is empty; ranked
   files are matched to `expect` by their `rel`; (d) the format check also refuses a non-`abstain` question with an empty
   `expect` and an `abstain` question with paths; reasons read e.g. `"v" must be 1`, `"queries" must be a list`,
   `"kind" must be one of …`, `cannot read <file>: <error>`; (e) the file is read through `readWorkspaceText` with its
-  own folder as the scope; (f) the CLI runs the routes' functions offline, not the routes (Flow hop 6's arrows point at
-  the routes; the plan was left as frozen); (g) `tests/helpers/buscaWorld.ts` holds `buscaWorld` (memoria world +
+  own folder as the scope; (f) the CLI runs the routes' functions offline, not the routes; the coordinator corrected
+  `plan.md` Flow to say so (hop 6 and the `EV` arrows now name `searchFiles`/`SemanticSearch` and `scoreCandidates`); (g) `tests/helpers/buscaWorld.ts` holds `buscaWorld` (memoria world +
   `note`, `search`) and `corpusHome` (a home indexing a copy of the corpus with fixed mtimes, `hash` or off).
 - **Abandoned:** an implicit-`AND` every-word query (FTS5 syntax error with bracketed groups); reading the eval file with
   a raw `fs.readFileSync` (it would grow the reviewed raw-read list of `security-reads` C55).

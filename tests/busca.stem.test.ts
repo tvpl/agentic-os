@@ -243,3 +243,34 @@ describe("S2 the recall is not expanded (G5)", () => {
     ]);
   });
 });
+
+describe("Correções do lote A: the word itself is in the OR (AC 9)", () => {
+  const notes = {
+    acoes: "# Carteira\n\nAs ações subiram na sexta.\n",
+    acao: "# Campanha\n\nA ação de vendas começa amanhã.\n",
+    jornal: "# Jornal\n\nO jornal da cidade saiu cedo.\n",
+    jornais: "# Jornais\n\nOs jornais da semana ficam na banca.\n",
+  };
+
+  it("C138 ações finds the note that holds exactly ações and the one that holds ação", async () => {
+    const w = await world(notes);
+    const res = await w.search("ações");
+    expect(res.status).toBe(200);
+    expect(res.names).toContain("acoes.md");
+    expect(res.names).toContain("acao.md");
+  });
+
+  it("C138 jornais still finds jornal and jornais", async () => {
+    const w = await world(notes);
+    const res = await w.search("jornais");
+    expect(res.status).toBe(200);
+    expect(res.names).toContain("jornal.md");
+    expect(res.names).toContain("jornais.md");
+  });
+
+  it('C138 the strict query of ações is unchanged: "ações"* exactly, listing the ações note and not the ação one', async () => {
+    expect(strictQuery("ações")).toBe('"ações"*');
+    const w = await world(notes);
+    expect(strictWordsSearch(w.ctx.db, { query: "ações" }).map((h) => h.name)).toEqual(["acoes.md"]);
+  });
+});

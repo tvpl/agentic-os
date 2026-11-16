@@ -178,13 +178,15 @@ export function strictWordsSearch(db: Db, filters: SearchFilters): SearchHit[] {
 }
 
 /**
- * One keyword's term: today's stemmed keyword as a prefix, or, when the word it came from has another number in
- * Portuguese (`counterparts`, cerebro-busca-significado S2), the OR of the keyword and those forms (G2).
+ * One keyword's term: today's stemmed keyword as a prefix, OR'd with the folded word it came from (AC 9: `ações` finds
+ * a note that holds "ações", which the stem `acao` alone misses under porter, C138) and, when that word has another
+ * number in Portuguese (`counterparts`, cerebro-busca-significado S2), with those forms too (G2). Each form once.
  */
 function keywordTerm(form: KeywordForm): string {
-  const extra = form.word === null ? [] : counterparts(form.word).filter((c) => c !== form.keyword);
-  if (extra.length === 0) return ftsWord(form.keyword);
-  return `(${[form.keyword, ...extra].map(ftsWord).join(" OR ")})`;
+  const forms = form.word === null ? [form.keyword] : [form.keyword, form.word, ...counterparts(form.word)];
+  const unique = [...new Set(forms)];
+  if (unique.length === 1) return ftsWord(form.keyword);
+  return `(${unique.map(ftsWord).join(" OR ")})`;
 }
 
 /**

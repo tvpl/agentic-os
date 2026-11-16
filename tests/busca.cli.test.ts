@@ -204,13 +204,14 @@ describe.skipIf(!distReady)("S1 mordomo eval over the Portuguese corpus", () => 
     expect(res.stderr).toBe("");
     expect(res.status).toBe(0);
     // recorded once by the builder of batch A from this run (G11): a change to the search moves a number here
+    // (moved once already: C138 put the word itself in the OR, and `or` mrr went 0.800 → 0.799, one question 5th → 6th)
     expect(res.stdout).toBe(BASELINE);
   });
 });
 
 const BASELINE = [
   "and 1-recall@20=0.146 mrr=0.146 hit@3=0.146",
-  "or 1-recall@20=0.938 mrr=0.800 hit@3=0.896",
+  "or 1-recall@20=0.938 mrr=0.799 hit@3=0.896",
   "semantic 1-recall@20=0.729 mrr=0.613 hit@3=0.646",
   "hybrid 1-recall@20=0.938 mrr=0.784 hit@3=0.896",
   "abstainCorrect=5/12",
