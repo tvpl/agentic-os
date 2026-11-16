@@ -803,4 +803,5 @@ Status of batch C (updated in the commit that closes each piece):
   C68), `tests/busca.access.test.ts` (C60), `tests/busca.eval.test.ts` (C9), `tests/busca.vectors.test.ts` (C25's
   `local.model` A → B, C31's `model` = the stub model's id), `tests/data.settings.test.ts` C46 and `tests/legal.network.test.ts`
   C24, C25 and C52; against the stubs of "Level honesty" (`tests/helpers/buscaStubs.ts`, `tests/helpers/stubChild.mjs`)
-- the installer (S4: C66): open
+- the installer (S4: C66): closed, its proof green in `tests/busca.packaging.test.ts` (built first): a Linux x64
+  payload carries `lib/localChild.mjs` and the runtime, 68.0 MB of it, and the runtime loads from where it lands
