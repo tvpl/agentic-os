@@ -1849,6 +1849,14 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
     why: "size and age of the engine's own log files",
   },
   {
+    // cerebro-busca-significado, door 3 (C103): the one row of the local models
+    file: "core/src/models/downloads.ts",
+    api: "*",
+    count: 0,
+    kind: "the models folder",
+    why: "the downloader writes, hashes and checks a catalog model's files under <home>/models/<id>/, a folder named by a catalog id only (never by the caller), and deletes it on a failure or a cancel",
+  },
+  {
     file: "core/src/memory/indexer.ts",
     api: "readdirSync",
     count: 1,
@@ -2321,8 +2329,9 @@ describe("C31 the raw-read detector sees every way of calling fs", () => {
 });
 
 describe("C55 the raw-fs list did not grow for the second brain", () => {
-  it("C55 the list holds 70 rows, and the only one under core/src/memory is the scan of the indexer; the new modules read through the primitives", () => {
-    expect(ALLOWED).toHaveLength(70);
+  it("C55 the list holds 70 rows and the downloader of the local models (71 in all), and the only one under core/src/memory is the scan of the indexer; the new modules read through the primitives", () => {
+    // 70, plus the downloader of the local models (cerebro-busca-significado, C103), under core/src/models/
+    expect(ALLOWED).toHaveLength(71);
     const memory = ALLOWED.filter(
       (a) => a.file.startsWith("core/src/memory/") || a.file.includes("routes/memory"),
     );
@@ -2428,7 +2437,10 @@ describe("C61 the dashboards read and write through the primitives (cerebro-pain
     });
     const now = rowsOf(fs.readFileSync(path.join(repoRoot, "tests", "security-reads.test.ts"), "utf8"));
     expect(now).toHaveLength(ALLOWED.length);
-    expect(now).toEqual(rowsOf(base));
+    // the one row added since, by cerebro-busca-significado (C103): the downloader of the local models
+    const DOWNLOADER = "core/src/models/downloads.ts * 0";
+    expect(now.filter((row) => row === DOWNLOADER)).toHaveLength(1);
+    expect(now.filter((row) => row !== DOWNLOADER)).toEqual(rowsOf(base));
 
     // What the walker does not cover, it does not see (so the claim names it) ...
     for (const [name, source] of UNCOVERED)
@@ -2523,7 +2535,10 @@ describe("C84 the history, the inbox, the guard and the consolidation hook read 
     });
     const now = rowsOf(fs.readFileSync(path.join(repoRoot, "tests", "security-reads.test.ts"), "utf8"));
     expect(now).toHaveLength(ALLOWED.length);
-    expect(now).toEqual(rowsOf(base));
+    // the one row added since, by cerebro-busca-significado (C103): the downloader of the local models
+    const DOWNLOADER = "core/src/models/downloads.ts * 0";
+    expect(now.filter((row) => row === DOWNLOADER)).toHaveLength(1);
+    expect(now.filter((row) => row !== DOWNLOADER)).toEqual(rowsOf(base));
 
     // What the walker does not cover, it does not see (so the claim names it) ...
     for (const [name, source] of UNCOVERED)

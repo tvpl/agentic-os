@@ -211,6 +211,12 @@ describe("S5 the surface is a closed list", () => {
         "EvalFormatError",
         "formatEvalText",
         "runEval",
+        // cerebro-busca-significado, batch C: the local models of an engine, their refusals and the connection test
+        // (doors 2, 3 and 8)
+        "LocalModels",
+        "LocalModelsOptions",
+        "ModelRefusal",
+        "testProvider",
       ].sort(),
     );
   });

@@ -6,10 +6,11 @@ import type { IndexMode, IndexPhase, IndexProgress, IndexStats } from "@mordomo/
 import type { Settings } from "../config/schema.js";
 import type { Db } from "../db/db.js";
 import type { EventBus } from "../events.js";
+import { EmbeddingError, type LocalEmbedding } from "./embeddings.js";
 import type { MordomoPaths } from "../paths.js";
 import { RestoreInProgressError, RestoreLock } from "../restoreLock.js";
 import { IncompleteIndexScanError, IndexCancelledError, type IndexRunner, type MemoryIndexer } from "./indexer.js";
-import { WorkerMessage, type StartMessage } from "./indexProtocol.js";
+import { WorkerMessage, type EmbedReply, type StartMessage } from "./indexProtocol.js";
 
 /**
  * Runs the index passes of one engine (.specs/features/cerebro-v2, S3): in a `worker_thread` when the worker script is
@@ -34,7 +35,7 @@ export const WORKER_PACE_MS = 2;
 /** After a cancel the worker gets this long to reach its next chunk before the thread is stopped. */
 export const CANCEL_GRACE_MS = 5_000;
 const RUN_MARKER_KEY = "index.run";
-const MESSAGE_KINDS: ReadonlySet<string> = new Set(["progress", "done", "failed"]);
+const MESSAGE_KINDS: ReadonlySet<string> = new Set(["progress", "done", "failed", "embed"]);
 
 /** The worker died, ran out of memory, or said something that is not in the protocol. */
 export class IndexWorkerError extends Error {
@@ -62,6 +63,8 @@ export interface IndexHostOptions {
   restoreWaitMs?: number;
   /** How long a worker that was asked to stop gets to reach its next chunk before the thread is stopped. */
   cancelGraceMs?: number;
+  /** The service's local models: a pass in the worker embeds through the service's one child (G18). */
+  local?: LocalEmbedding;
 }
 
 export interface IndexingStatus {
@@ -100,6 +103,13 @@ export function resolveWorkerEntry(moduleUrl: string): string | null {
     if (fs.existsSync(file)) return file;
   }
   return null;
+}
+
+/** What the worker is told of the local models: the platform, and the embedder the settings name when it is ready. */
+function localSnapshot(local: LocalEmbedding, settings: Settings): NonNullable<StartMessage["local"]> {
+  const id = settings.memory.embeddings.local?.model;
+  const entry = id ? local.ready(id) : null;
+  return { platform: local.platform(), ready: entry ? [entry] : [] };
 }
 
 export class IndexWorkerHost implements IndexRunner {
@@ -252,9 +262,12 @@ export class IndexWorkerHost implements IndexRunner {
       run.worker = worker;
       let settled = false;
       let hardStop: NodeJS.Timeout | undefined;
+      // A batch the worker asked the service's child for is let go of when the pass ends.
+      const embedAbort = new AbortController();
       const settle = (finish: () => void): void => {
         if (settled) return;
         settled = true;
+        embedAbort.abort();
         clearTimeout(hardStop);
         run.worker = null;
         void worker.terminate();
@@ -278,7 +291,24 @@ export class IndexWorkerHost implements IndexRunner {
           return;
         }
         const message = parsed.data;
-        if (message.t === "progress") {
+        if (message.t === "embed") {
+          const local = opts.local;
+          const reply = (answer: EmbedReply) => {
+            if (!settled) worker.postMessage(answer);
+          };
+          if (!local) reply({ t: "embedFailed", rid: message.rid, kind: "local_crashed", message: "no local models here" });
+          else
+            local.embed(message.entry, message.texts, embedAbort.signal).then(
+              (vectors) => reply({ t: "embedded", rid: message.rid, vectors }),
+              (error: unknown) =>
+                reply({
+                  t: "embedFailed",
+                  rid: message.rid,
+                  kind: error instanceof EmbeddingError ? error.kind : "network",
+                  message: error instanceof Error ? error.message : String(error),
+                }),
+            );
+        } else if (message.t === "progress") {
           onProgress(message.progress);
           opts.bus.emit("index.progress", message.progress);
         } else if (message.t === "done") {
@@ -326,6 +356,7 @@ export class IndexWorkerHost implements IndexRunner {
         ...(only ? { only: [...only] } : {}),
         cancel: run.flag.buffer as SharedArrayBuffer,
         paceMs: opts.paceMs ?? WORKER_PACE_MS,
+        ...(opts.local ? { local: localSnapshot(opts.local, opts.getSettings()) } : {}),
       };
       worker.postMessage(start);
       // `cancel` arms the hard stop: a worker that does not reach its next chunk is stopped.

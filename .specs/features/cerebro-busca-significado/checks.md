@@ -795,3 +795,12 @@ Status of batch B (updated in the commit that closes each piece):
   rewording them for sections (`paineis.contract` C62 pins both to its base and the plan's Impact says the text already
   covers the sending); only section 3's "um vetor numérico por nota" moved. The row still says "até 8000 caracteres de
   cada um", now per section: batch C's C67 rewrites that row anyway.
+
+Status of batch C (updated in the commit that closes each piece):
+
+- the local models (S4: C41-C65, C67, C68; C9; the local cases of C25 and C31): closed, every proof green in
+  `tests/busca.embedder.test.ts`, `tests/busca.localprovider.test.ts`, `tests/busca.contract.test.ts` (C56, C62, C67,
+  C68), `tests/busca.access.test.ts` (C60), `tests/busca.eval.test.ts` (C9), `tests/busca.vectors.test.ts` (C25's
+  `local.model` A → B, C31's `model` = the stub model's id), `tests/data.settings.test.ts` C46 and `tests/legal.network.test.ts`
+  C24, C25 and C52; against the stubs of "Level honesty" (`tests/helpers/buscaStubs.ts`, `tests/helpers/stubChild.mjs`)
+- the installer (S4: C66): open

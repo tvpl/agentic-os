@@ -10,12 +10,14 @@ import {
   evalMetrics,
   evalRankings,
   evalReport,
+  formatEvalText,
   parseEvalFile,
   readEvalFile,
   type EvalQuery,
   type EvalRankings,
 } from "../core/src/memory/eval.js";
 import { recall } from "../core/src/memory/recall.js";
+import { RERANKER, stubCatalog, stubChild, stubHost } from "./helpers/buscaStubs.js";
 import { PT_CORPUS, PT_QUERIES, corpusHome, type CorpusHome } from "./helpers/buscaWorld.js";
 
 /**
@@ -190,6 +192,78 @@ describe("S1 the format check", () => {
     expect(parseEvalFile(file([good]))).toEqual([good]);
     expect(parseEvalFile(file([{ q: "x?", kind: "abstain", expect: [] }]))).toHaveLength(1);
   });
+});
+
+describe("C9 the rerank row", () => {
+  it("C9 with the reranker on and the stub ready the text has six lines, rerank after hybrid, and the JSON's modes end with rerank; off, neither has it", async () => {
+    const stubs = await stubHost();
+    const catalog = stubCatalog(stubs);
+    const child = stubChild();
+    const h = await corpusHome("hash", undefined, {
+      localModels: {
+        catalog,
+        childEntry: child.entry,
+        platform: "linux",
+        arch: "x64",
+        runtimeAvailable: () => true,
+      },
+    });
+    homes.push(h);
+    try {
+      const queries = readEvalFile(PT_QUERIES);
+      const rerankOn = (enabled: boolean) => {
+        const s = h.ctx.settings();
+        s.memory.recall = { ...s.memory.recall, rerank: { ...s.memory.recall.rerank, enabled } };
+        h.ctx.settingsStore.save(s);
+      };
+      const run = async () => {
+        const source = { ...sourceOf(h), local: h.ctx.localModels };
+        return evalReport(await evalRankings(source, queries), queries);
+      };
+      // on, but no reranker ready: no row
+      rerankOn(true);
+      for (const report of [await run()]) {
+        expect(Object.keys(report.modes)).toEqual(["and", "or", "semantic", "hybrid"]);
+        expect(formatEvalText(report).trim().split("\n")).toHaveLength(5);
+      }
+      expect(child.pids()).toEqual([]);
+      // the stub reranker downloaded and verified: the row is there
+      h.ctx.localModels.downloads.install(RERANKER, true, true);
+      await h.ctx.localModels.downloads.settled();
+      expect(h.ctx.localModels.downloads.view(RERANKER).state).toBe("ready");
+      const on = await run();
+      expect(Object.keys(on.modes)).toEqual(["and", "or", "semantic", "hybrid", "rerank"]);
+      const lines = formatEvalText(on).trim().split("\n");
+      expect(lines).toHaveLength(6);
+      expect(lines.map((l) => l.split(/[ =]/)[0])).toEqual([
+        "and",
+        "or",
+        "semantic",
+        "hybrid",
+        "rerank",
+        "abstainCorrect",
+      ]);
+      expect(Object.keys(JSON.parse(JSON.stringify(on)).modes)).toEqual([
+        "and",
+        "or",
+        "semantic",
+        "hybrid",
+        "rerank",
+      ]);
+      expect(child.log().filter((m) => m.t === "rerank").length).toBeGreaterThan(0);
+      // off again: no row, and no rerank message more
+      rerankOn(false);
+      const sent = child.log().filter((m) => m.t === "rerank").length;
+      const off = await run();
+      expect(Object.keys(off.modes)).toEqual(["and", "or", "semantic", "hybrid"]);
+      expect(formatEvalText(off)).not.toContain("rerank");
+      expect(child.log().filter((m) => m.t === "rerank").length).toBe(sent);
+    } finally {
+      h.close();
+      await stubs.close();
+      child.cleanup();
+    }
+  }, 60_000);
 });
 
 describe("S1 a run over the index", () => {

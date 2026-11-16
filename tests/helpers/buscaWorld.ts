@@ -2,7 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { AppContext } from "../../apps/api/src/context.js";
+import { AppContext, type AppContextOptions } from "../../apps/api/src/context.js";
 import { makeTempHome } from "../helpers.js";
 import { memoriaWorld, type MemoriaWorld } from "./memoriaWorld.js";
 
@@ -39,8 +39,8 @@ export interface SectionVectorRow {
   size: number;
 }
 
-export async function buscaWorld(prefix: string): Promise<BuscaWorld> {
-  const base = await memoriaWorld(prefix);
+export async function buscaWorld(prefix: string, options: AppContextOptions = {}): Promise<BuscaWorld> {
+  const base = await memoriaWorld(prefix, options);
   return Object.assign(base, {
     note: (name: string, text: string) => base.put(path.join(base.memory, `${name}.md`), text),
     async search(q: string, mode: "text" | "semantic" | "auto" = "text") {
@@ -141,6 +141,7 @@ export interface CorpusHome {
 export async function corpusHome(
   embeddings: "hash" | "off",
   notes?: Record<string, string>,
+  options: AppContextOptions = {},
 ): Promise<CorpusHome> {
   const temp = makeTempHome("mordomo-busca-eval-");
   const folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-busca-corpus-")));
@@ -158,7 +159,7 @@ export async function corpusHome(
     fs.writeFileSync(file, text);
     fs.utimesSync(file, FIXED_MTIME, FIXED_MTIME);
   }
-  const ctx = new AppContext(temp.paths.home);
+  const ctx = new AppContext(temp.paths.home, options);
   const settings = ctx.settings();
   settings.setupCompleted = true;
   settings.indexedFolders = [{ path: folder, area: null, enabled: true }];

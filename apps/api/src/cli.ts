@@ -1636,6 +1636,7 @@ async function cmdEval(args: CliArgs): Promise<void> {
         settings: ctx.settings(),
         semantic: ctx.semantic,
         allow: ctx.indexer.rowFilter(),
+        local: ctx.localModels,
       },
       path.resolve(file),
     );

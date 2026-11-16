@@ -1523,6 +1523,45 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ['        "rituais",', "      ]);"],
       head: ['        "rituais",', '        "section-vectors",', "      ]);"],
     },
+    // cerebro-busca-significado, batch C, added GET /api/memory/embedder and POST /api/memory/embedder (owner, door 8).
+    // Each amends the head of cerebro-rituais C's amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: the two embedder routes under /api",
+      base: ["    expect(routes).toHaveLength(169);"],
+      head: ["    expect(routes).toHaveLength(171);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: owners and scoped routes, with the two embedder routes",
+      base: ["    expect([owners, scoped]).toEqual([92, 77]);"],
+      head: ["    expect([owners, scoped]).toEqual([94, 77]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: the registered routes, with the two embedder routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(169);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(171);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: the routes of each scope, with the two embedder routes",
+      times: 2,
+      base: ["toEqual({ owner: 92, monitor: 33, content: 37, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 94, monitor: 33, content: 37, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: the routes after the pairing passes, with the two embedder routes",
+      base: ["    expect(apiRoutes()).toHaveLength(169);"],
+      head: ["    expect(apiRoutes()).toHaveLength(171);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: the operations of the route document, with the two embedder routes",
+      base: ["    expect(operations).toBe(171);"],
+      head: ["    expect(operations).toBe(173);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

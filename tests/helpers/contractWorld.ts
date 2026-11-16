@@ -618,6 +618,12 @@ export const SCENARIOS: Record<string, Scenario> = {
       return w.call("GET", `/api/memory/links?id=${hits[0]?.id ?? 1}`);
     },
   },
+  // cerebro-busca-significado, batch C: the model catalog and the connection test of the default provider (door 8),
+  // which embeds the fixed phrase with hash, in this process and with no network.
+  [key("GET", "/api/memory/embedder")]: { run: (w) => w.call("GET", "/api/memory/embedder") },
+  [key("POST", "/api/memory/embedder")]: {
+    run: (w) => w.call("POST", "/api/memory/embedder", { action: "test" }),
+  },
   // cerebro-rituais, batch C: the unlinked mentions of the file the links read (door 6).
   [key("GET", "/api/memory/mentions")]: {
     run: async (w) => {

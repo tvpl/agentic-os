@@ -15,6 +15,7 @@ import {
   type BudgetCrossedPayload,
   type EffortLevel,
   type HostResolver,
+  type LocalModelsOptions,
   type MetricsSample,
   type ProviderId,
   type SecurityProfile,
@@ -68,6 +69,8 @@ export interface AppContextOptions {
   applyPendingRestore?: boolean;
   /** How a push endpoint's host is resolved (tests replace the system's DNS). */
   pushResolver?: HostResolver;
+  /** The local models' catalog, folder and child (tests give their stubs; the service, nothing: the real ones). */
+  localModels?: Partial<LocalModelsOptions>;
 }
 
 /**
@@ -108,6 +111,7 @@ export class AppContext extends MordomoEngine {
       applyPendingRestore: opts.applyPendingRestore === true,
       ...(opts.pushResolver ? { pushResolver: opts.pushResolver } : {}),
       ...(opts.restoreWaitMs !== undefined ? { restoreWaitMs: opts.restoreWaitMs } : {}),
+      ...(opts.localModels ? { localModels: opts.localModels } : {}),
     });
     this.connectorCache = new ConnectorDataCache(this.settings().connectors.dataCacheTtlMs);
     const env = { paths: this.paths, settings: () => this.settings() };

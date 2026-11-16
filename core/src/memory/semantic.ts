@@ -1,6 +1,6 @@
 import type { Settings } from "../config/schema.js";
 import type { Db } from "../db/db.js";
-import { chooseProvider, type EmbeddingProvider } from "./embeddings.js";
+import { chooseProvider, type EmbeddingProvider, type LocalEmbedding } from "./embeddings.js";
 import { fileRowFromDb } from "./indexer.js";
 import {
   admits,
@@ -55,10 +55,15 @@ export interface SemanticStatus {
   sections: number;
   /** The id of the local model in use; null for `hash` and `http`. */
   model: string | null;
-  /** Why an enabled search has no provider it may use (the endpoint policy), or null. */
+  /** Why an enabled search has no provider it may use (the endpoint policy, or door 7's two reasons), or null. */
   blocked: string | null;
   /** How the last attempt to embed failed, or null. */
   error: string | null;
+  /** Only while the provider is `local` (G15): the state of its model and whether this computer has the runtime. */
+  local?: {
+    state: "absent" | "downloading" | "ready" | "failed";
+    platform: { ok: true } | { ok: false; reason: "platform_unsupported" };
+  };
 }
 
 /** Fuse ranked lists of file ids: a file's score is the sum of `1 / (k + rank)` over the lists it is in; ties go to the lower id. */
@@ -79,30 +84,42 @@ export class SemanticSearch {
     private readonly db: Db,
     private readonly getSettings: () => Settings,
     loader?: VectorLoader,
+    /** The engine's local models, for `provider: "local"` (door 2). */
+    private readonly local?: LocalEmbedding,
   ) {
     this.vectors = new VectorIndex(db, loader);
   }
 
   /** The provider the settings ask for, if it may be used (`null` while off or blocked). */
   private provider(): EmbeddingProvider | null {
-    const choice = chooseProvider(this.getSettings().memory.embeddings);
+    const choice = chooseProvider(this.getSettings().memory.embeddings, this.local);
     return choice.state === "ready" ? choice.provider : null;
   }
 
   /** `allow`: the vectors counted are those of the files a caller may see (a device with a hidden folder). */
   status(allow?: (row: { root: string; rel: string }) => boolean): SemanticStatus {
     const config = this.getSettings().memory.embeddings;
-    const choice = chooseProvider(config);
+    const choice = chooseProvider(config, this.local);
     const counted = choice.state === "ready" ? countVectors(this.db, allow) : { files: 0, sections: 0 };
+    const isLocal = config.provider === "local";
+    const model = config.local?.model;
     return {
       enabled: config.enabled,
       provider: choice.state === "ready" ? choice.provider.id : null,
       backend: choice.state === "ready" ? this.vectors.backend() : null,
       vectors: counted.files,
       sections: counted.sections,
-      model: null,
+      model: isLocal && choice.state === "ready" && model ? model : null,
       blocked: choice.state === "blocked" ? choice.reason : null,
       error: this.queryError ?? storedSemanticError(this.db)?.message ?? null,
+      ...(isLocal
+        ? {
+            local: {
+              state: model && this.local ? this.local.state(model) : ("absent" as const),
+              platform: this.local ? this.local.platform() : { ok: false as const, reason: "platform_unsupported" as const },
+            },
+          }
+        : {}),
     };
   }
 
@@ -115,7 +132,7 @@ export class SemanticSearch {
     const limit = Math.min(filters.limit ?? 50, 200);
     const config = this.getSettings().memory.embeddings;
     if (mode === "text") return searchFiles(this.db, filters);
-    const choice = chooseProvider(config);
+    const choice = chooseProvider(config, this.local);
     if (choice.state !== "ready") {
       if (mode === "semantic")
         throw new SemanticDisabledError(choice.state === "blocked" ? choice.reason : "memory.embeddings.enabled is off");
@@ -132,7 +149,7 @@ export class SemanticSearch {
     const refused = new Set<number>();
     let ranked: Ranked[] = [];
     try {
-      const [vector] = await provider.embed([question], new AbortController().signal);
+      const [vector] = await provider.embed([question], new AbortController().signal, "query");
       this.queryError = null;
       if (vector && vector.some((n) => n !== 0)) {
         const { clauses, params } = searchFilters(filters);

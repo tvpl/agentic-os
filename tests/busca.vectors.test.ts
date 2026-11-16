@@ -13,6 +13,7 @@ import {
   type EmbeddingsServer,
   type Json,
 } from "./helpers/buscaWorld.js";
+import { GEMMA, QWEN, STUB_DIMS, localWorld } from "./helpers/buscaStubs.js";
 
 /**
  * .specs/features/cerebro-busca-significado, S3 at the boundary: what an index pass writes to `section_vectors`, read
@@ -252,6 +253,36 @@ describe("C25 a difference of provider, dimension or model recomputes every row"
   });
 });
 
+describe("C25 the local model's case", () => {
+  it("C25 with the stub catalog, local.model A to B gives local:<B>:<dims> on every row, read back after the pass", async () => {
+    const w = await localWorld("mordomo-busca-c25-local-");
+    try {
+      await w.install(QWEN);
+      await w.install(GEMMA);
+      w.note("um", "# Um\n\n## A\nprimeiro\n## B\nsegundo\n");
+      w.note("dois", "# Dois\n\nsó um corpo\n");
+      w.localOn(GEMMA);
+      await w.index();
+      expect(w.allRows()).toHaveLength(3);
+      expect(
+        w
+          .allRows()
+          .every((r) => r.provider === `local:${GEMMA}:${STUB_DIMS.gemma}` && r.dim === STUB_DIMS.gemma),
+      ).toBe(true);
+      w.localOn(QWEN);
+      await w.index();
+      expect(w.allRows()).toHaveLength(3);
+      expect(
+        w
+          .allRows()
+          .every((r) => r.provider === `local:${QWEN}:${STUB_DIMS.qwen}` && r.dim === STUB_DIMS.qwen),
+      ).toBe(true);
+    } finally {
+      await w.close();
+    }
+  });
+});
+
 describe("C26 a provider failure mid-pass keeps what was written", () => {
   it("C26 a 500 on the second batch keeps the first batch's rows, records the error, finishes the pass; the next pass fills the rest", async () => {
     const w = await world("mordomo-busca-c26-");
@@ -448,6 +479,40 @@ describe("C31 the status of the semantic search", () => {
     await w.index();
     const device = await status(w, w.device(["content"]));
     expect(device).toMatchObject({ sections: 3, vectors: 2, model: null });
+  });
+});
+
+describe("C31 the local model's case", () => {
+  it("C31 with the stub catalog's model active, model is its id, the keys gain local, and sections count its rows", async () => {
+    const w = await localWorld("mordomo-busca-c31-local-");
+    try {
+      await w.install(QWEN);
+      w.note("duas", "# Duas\n\n## A\num\n## B\ndois\n");
+      w.localOn(QWEN);
+      await w.index();
+      const local = await status(w);
+      expect(Object.keys(local).sort()).toEqual(
+        [
+          "enabled",
+          "provider",
+          "backend",
+          "vectors",
+          "sections",
+          "model",
+          "blocked",
+          "error",
+          "local",
+        ].sort(),
+      );
+      expect(local).toMatchObject({
+        provider: `local:${QWEN}:${STUB_DIMS.qwen}`,
+        model: QWEN,
+        sections: 2,
+        vectors: 1,
+      });
+    } finally {
+      await w.close();
+    }
   });
 });
 

@@ -8,6 +8,7 @@ import {
   vectorToBlob,
   type EmbeddingProvider,
   type EmbeddingSettings,
+  type LocalEmbedding,
 } from "./embeddings.js";
 
 /**
@@ -30,6 +31,8 @@ export const loadSqliteVec: VectorLoader = (db) => {
 
 const SEMANTIC_ERROR_KEY = "index.semantic_error";
 const BATCH_SIZE = 200;
+/** A child process of the local models that ends unasked is started again at most this many times in one pass (AC 36). */
+export const LOCAL_RESTARTS = 3;
 const EMBEDDED = `(${EMBEDDED_EXTENSIONS.map((ext) => `'${ext}'`).join(", ")})`;
 
 export interface SemanticError {
@@ -94,6 +97,8 @@ export interface EmbedPendingOptions {
   allow?: (row: { root: string; rel: string }) => boolean;
   /** The provider to embed with in place of the one the settings name (a test's recording provider). */
   provider?: EmbeddingProvider;
+  /** The engine's local models, for `provider: "local"` (door 2). */
+  local?: LocalEmbedding;
 }
 
 /**
@@ -108,7 +113,7 @@ export async function embedPending(
   config: EmbeddingSettings,
   options: EmbedPendingOptions = {},
 ): Promise<{ embedded: number; stopped: boolean }> {
-  const choice = chooseProvider(config);
+  const choice = chooseProvider(config, options.local);
   if (choice.state !== "ready") {
     // Off, or on but without an endpoint it may use: no vector survives that nobody can refresh.
     if (choice.state === "off") db.prepare("DELETE FROM section_vectors").run();
@@ -187,11 +192,20 @@ export async function embedPending(
   }
   if (emptied.length > 0) db.transaction(() => emptied.forEach((id) => dropFrom.run(id, 0)))();
 
-  const size = provider.local ? BATCH_SIZE : 16;
+  const size = provider.batch ?? (provider.local ? BATCH_SIZE : 16);
   const signal = options.signal ?? new AbortController().signal;
   let embedded = 0;
+  // The local child that ended unasked (AC 36, G19): its batch is owed to the next pass, the error is kept, and the
+  // next batch starts it again, at most `LOCAL_RESTARTS` times; then the phase stops.
+  let crashes = 0;
+  const owedFiles = new Set<number>();
+  const owe = () => {
+    if (owedFiles.size === 0) return;
+    const mark = db.prepare("UPDATE section_vectors SET size = -1 WHERE file_id = ?");
+    db.transaction(() => owedFiles.forEach((id) => mark.run(id)))();
+  };
   for (let from = 0; from < sections.length; from += size) {
-    if (options.shouldStop?.()) return { embedded, stopped: true };
+    if (options.shouldStop?.()) return owe(), { embedded, stopped: true };
     const batch = sections.slice(from, from + size);
     let vectors: Float32Array[];
     try {
@@ -200,10 +214,14 @@ export async function embedPending(
         signal,
       );
     } catch (error) {
-      if (signal.aborted) return { embedded, stopped: true };
+      if (signal.aborted) return owe(), { embedded, stopped: true };
       const kind = error instanceof EmbeddingError ? error.kind : "network";
       setSemanticError(db, { at: Date.now(), kind, message: error instanceof Error ? error.message : String(error) });
-      return { embedded, stopped: false };
+      if (kind === "local_crashed" && ++crashes <= LOCAL_RESTARTS) {
+        for (const row of batch) owedFiles.add(row.fileId);
+        continue;
+      }
+      return owe(), { embedded, stopped: false };
     }
     // A file whose last section is in a later batch is written with size -1 until that batch settles it: a pass that
     // ends before then leaves the file owed (its rows do not match it), not complete with sections missing.
@@ -235,7 +253,9 @@ export async function embedPending(
     embedded += batch.length;
     options.onProgress?.(Math.min(from + size, sections.length), sections.length);
   }
-  setSemanticError(db, null);
+  owe();
+  // A pass that recovered from a crash keeps its error: only a clean pass clears it (G19).
+  if (crashes === 0) setSemanticError(db, null);
   return { embedded, stopped: false };
 }
 

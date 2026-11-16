@@ -100,6 +100,9 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "POST /api/memory/tasks": "owner",
   // cerebro-rituais, door 7: "Linkar" rewrites a line of a note
   "POST /api/memory/mentions/link": "owner",
+  // cerebro-busca-significado, door 8: the model catalog and its downloads, the owner's only
+  "GET /api/memory/embedder": "owner",
+  "POST /api/memory/embedder": "owner",
   "POST /api/memory/journal/append": "owner",
   "POST /api/memory/open": "owner",
   "GET /api/memory/preview": "content",

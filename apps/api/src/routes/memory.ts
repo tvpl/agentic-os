@@ -21,6 +21,7 @@ import {
   decideProposal,
   exportFolder,
   importFolder,
+  testProvider,
   listProposals,
   planNewNote,
   readProposal,
@@ -195,6 +196,54 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       indexing: redact ? { ...indexing, scanned: 0, total: indexing.total === null ? null : 0 } : indexing,
       semantic: ctx.semantic.status(redact && policy ? policy : undefined),
     };
+  });
+
+  /**
+   * The local models (.specs/features/cerebro-busca-significado, door 8): the catalog with each model's state, whether
+   * this computer has the runtime, and the embedder the settings name (G23). Owner only: a download and the home's
+   * folders are not a device's.
+   */
+  const activeModel = (): string | null => {
+    const config = ctx.settings().memory.embeddings;
+    return config.provider === "local" ? (config.local?.model ?? null) : null;
+  };
+  bind(app, "memory.embedder", async () => {
+    const local = ctx.localModels;
+    return {
+      active: activeModel(),
+      platform: local.platform(),
+      models: local.catalog.map((entry) => ({
+        id: entry.id,
+        kind: entry.kind,
+        name: entry.name,
+        bytes: entry.files.reduce((sum, file) => sum + file.bytes, 0),
+        ...(entry.dimensions !== undefined ? { dimensions: entry.dimensions } : {}),
+        license: { name: entry.license.name, acceptRequired: entry.license.acceptRequired },
+        ...local.downloads.view(entry.id),
+      })),
+    };
+  });
+
+  bind(app, "memory.embedder.action", async ({ body }) => {
+    const local = ctx.localModels;
+    const about = (id: string | null | undefined) =>
+      id ? { state: local.downloads.view(id).state, model: id } : { state: "absent" as const };
+    if (body.action === "install") {
+      return { state: local.downloads.install(body.id!, body.acceptTerms, local.platform().ok).state };
+    }
+    if (body.action === "cancel") {
+      const id = local.downloads.downloading() ?? body.id;
+      await local.downloads.cancel();
+      return { state: about(id).state };
+    }
+    if (body.action === "remove") {
+      return { state: local.downloads.remove(body.id!, activeModel() === body.id).state };
+    }
+    // `test` (AC 38, G24): the provider the settings name, on or off; one the policy blocks is not tried.
+    const test = await testProvider(ctx.settings().memory.embeddings, local);
+    if ("blocked" in test)
+      throw httpError(400, `The provider cannot be tested: ${test.blocked}.`, "validation");
+    return { ...about(activeModel()), test };
   });
 
   bind(app, "memory.index", async () => {

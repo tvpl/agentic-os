@@ -142,6 +142,10 @@ export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./m
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
 // cerebro-busca-significado: `mordomo eval` (door 6)
 export { runEval, formatEvalText, EvalFormatError } from "./memory/eval.js";
+// cerebro-busca-significado: the local models (doors 2, 3 and 8)
+export { testProvider } from "./memory/embeddings.js";
+export { ModelRefusal } from "./models/downloads.js";
+export { LocalModels, type LocalModelsOptions } from "./models/localModels.js";
 export { ESCOPOS, NATUREZAS, parseEscopoList, parseNaturezaList } from "./memory/natureza.js";
 export { reviewsDue } from "./memory/reviews.js";
 export { decideReview } from "./memory/reviewDecisions.js";

@@ -264,9 +264,9 @@ describe("C24 the code and the policy agree, in both directions", () => {
     expect(cli.status, cli.stderr).toBe(0);
   });
 
-  it("C24 the real code has the network points the research found (37, plus the 4 of the desktop shell: distribuicao, plus the 2 of cerebro-v2: the embeddings request and the local vector package) and the hosts the policy names", () => {
+  it("C24 the real code has the network points the research found (37, plus the 4 of the desktop shell: distribuicao, plus the 2 of cerebro-v2: the embeddings request and the local vector package, plus the model download of cerebro-busca-significado) and the hosts the policy names", () => {
     const found = realScan;
-    expect(found.sites).toHaveLength(43);
+    expect(found.sites).toHaveLength(44);
     const fetchFiles = found.sites.filter((s) => s.kind === "fetch").map((s) => s.file);
     for (const file of [
       "apps/api/src/updates.ts",
@@ -276,6 +276,8 @@ describe("C24 the code and the policy agree, in both directions", () => {
       "core/src/routines/scheduler.ts",
       "core/src/skills/registry.ts",
       "core/src/connectors/client.ts",
+      // cerebro-busca-significado, C67: the downloader's fetch, the one network site of the local mode
+      "core/src/models/downloads.ts",
     ])
       expect(fetchFiles, file).toContain(file);
     const hosts = found.hosts.map((h) => h.host);
@@ -372,10 +374,10 @@ describe("C24 the code and the policy agree, in both directions", () => {
 describe("C25 the privacy policy repeats the network policy", () => {
   const ROLES = ["local", "contact", "user-defined", "cli", "link", "build"];
 
-  it("C25 there are 18 entries (15, plus the desktop updater and the signing timestamp: distribuicao, plus the embeddings endpoint: cerebro-v2), ids are unique, roles are the six, and no site names an id that is missing", () => {
-    expect(policy.hosts).toHaveLength(18);
+  it("C25 there are 19 entries (15, plus the desktop updater and the signing timestamp: distribuicao, plus the embeddings endpoint: cerebro-v2, plus the model repository: cerebro-busca-significado), ids are unique, roles are the six, and no site names an id that is missing", () => {
+    expect(policy.hosts).toHaveLength(19);
     const ids = policy.hosts.map((h) => h.id);
-    expect(new Set(ids).size).toBe(18);
+    expect(new Set(ids).size).toBe(19);
     expect([...new Set(policy.hosts.map((h) => h.role))].sort()).toEqual([...ROLES].sort());
     for (const site of policy.sites)
       for (const id of site.hosts) expect(ids, `${site.file} ${site.kind}`).toContain(id);
@@ -709,8 +711,11 @@ describe("C34 what the policy says about each destination is tied to the real de
       if (entry.defaultState === "on") expect(["local", "cli"], entry.id).toContain(entry.role);
       if (entry.gate?.setting) {
         const value = at(defaultSettings, entry.gate.setting);
+        // cerebro-busca-significado, C67: the model repository is gated on the model the owner chose to install,
+        // which no default names (absent until the owner picks one).
+        const absentByDefault = entry.id === "model-repository" && value === undefined;
         expect(
-          value === false || (Array.isArray(value) && value.length === 0),
+          value === false || (Array.isArray(value) && value.length === 0) || absentByDefault,
           `${entry.id} ${entry.gate.setting} = ${JSON.stringify(value)}`,
         ).toBe(true);
       } else if (entry.defaultState === "off") {

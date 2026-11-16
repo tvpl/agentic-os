@@ -121,11 +121,27 @@
       "match": [],
       "trigger": "só com `memory.embeddings.enabled` ligado, `memory.embeddings.provider` igual a `http` e um `endpoint` que o dono escreveu: um endereço de loopback (um servidor de embeddings na própria máquina) ou, com `memory.embeddings.sendRemote` ligado, um endereço https; com o provedor `hash` (o padrão) nada é enviado a lugar nenhum",
       "default": "desligado",
-      "data": "POST com o modelo e texto que sai da máquina de dois modos: (1) ao indexar, o texto de cada arquivo `.md` e `.txt` indexado, de qualquer pasta indexada e não só das notas do MordomoOS (até 8000 caracteres de cada um, em lotes de até 16); (2) a cada busca em modo `auto` ou `semantic`, enquanto houver ao menos um vetor, a pergunta digitada, que é o dado mais pessoal da função, numa requisição por busca, seja a busca da tela, do CLI, do MCP ou de um dispositivo pareado. No cabeçalho vai `Authorization: Bearer` com o valor da variável de ambiente cujo nome o dono escreveu em `memory.embeddings.apiKeyEnv`: o valor dessa variável, qualquer que seja, vai a esse endereço em toda requisição, então use uma chave feita para ele; o nome só aceita letras maiúsculas, dígitos e `_` (até 64) e nunca começa com `MORDOMO_`, e sem nome nenhum (o padrão) não há cabeçalho. A chave nunca fica em `settings.json`; sem redirecionamento, 30 segundos de limite e 8 MB de resposta",
+      "data": "POST com o modelo e texto que sai da máquina de dois modos: (1) ao indexar, o texto de cada arquivo `.md` e `.txt` indexado, de qualquer pasta indexada e não só das notas do MordomoOS (cada arquivo dividido em seções pelos seus títulos, até 64 seções por arquivo, e cada seção enviada com o caminho de títulos da nota e até 8000 caracteres, em lotes de até 16); (2) a cada busca em modo `auto` ou `semantic`, enquanto houver ao menos um vetor, a pergunta digitada, que é o dado mais pessoal da função, numa requisição por busca, seja a busca da tela, do CLI, do MCP ou de um dispositivo pareado; (3) a cada recall (`GET /api/memory/recall`, a ferramenta `recall` do MCP ou `mordomo recall`), a pergunta do recall vai ao mesmo endereço, do mesmo modo que a pergunta de uma busca, numa requisição por recall. No cabeçalho vai `Authorization: Bearer` com o valor da variável de ambiente cujo nome o dono escreveu em `memory.embeddings.apiKeyEnv`: o valor dessa variável, qualquer que seja, vai a esse endereço em toda requisição, então use uma chave feita para ele; o nome só aceita letras maiúsculas, dígitos e `_` (até 64) e nunca começa com `MORDOMO_`, e sem nome nenhum (o padrão) não há cabeçalho. A chave nunca fica em `settings.json`; sem redirecionamento, 30 segundos de limite e 8 MB de resposta",
       "defaultState": "off",
       "gate": {
         "setting": "memory.embeddings.enabled"
       }
+    },
+    {
+      "id": "model-repository",
+      "label": "Repositório dos modelos locais (huggingface.co)",
+      "role": "contact",
+      "match": [
+        "huggingface.co",
+        "*.cdn.hf.co"
+      ],
+      "trigger": "só quando o dono pede o download de um modelo do catálogo (`POST /api/memory/embedder` com `action: \"install\"`, na tela de Configurações, aceitando a licença quando ela pede); o modelo do provedor `local` fica em `memory.embeddings.local.model`. Nunca ao indexar nem ao buscar: com o provedor `local` os vetores são calculados num processo filho, neste computador, sem rede",
+      "default": "desligado",
+      "data": "um GET de cada arquivo do modelo escolhido, nos caminhos fixados no catálogo de modelos do MordomoOS (`core/src/models/catalog.ts`), com redirecionamento aceito só para os endereços desta linha; cada arquivo é conferido pela soma SHA-256 fixada no catálogo e apagado se não bater. Nenhum texto de nota, nenhuma pergunta e nenhuma chave vai junto; o repositório vê o endereço IP e os caminhos pedidos",
+      "gate": {
+        "setting": "memory.embeddings.local.model"
+      },
+      "defaultState": "off"
     },
     {
       "id": "skill-registry",
@@ -400,6 +416,20 @@
     {
       "match": "ipc.localhost",
       "reason": "origem interna do IPC do Tauri na política de segurança de conteúdo (`connect-src`) das telas locais do app desktop; o Tauri a trata sem rede"
+    },
+    {
+      "match": "ai.google.dev",
+      "reason": "endereço do texto da licença de um modelo do catálogo, mostrado para o dono ler antes de baixar; o MordomoOS nunca o acessa",
+      "files": [
+        "core/src/models/catalog.ts"
+      ]
+    },
+    {
+      "match": "www.apache.org",
+      "reason": "endereço do texto da licença de um modelo do catálogo, mostrado para o dono ler antes de baixar; o MordomoOS nunca o acessa",
+      "files": [
+        "core/src/models/catalog.ts"
+      ]
     }
   ],
   "sites": [
@@ -676,6 +706,15 @@
         "embeddings"
       ],
       "note": "o provedor `http`, só depois da política do endereço (loopback, ou https com `sendRemote`)"
+    },
+    {
+      "file": "core/src/models/downloads.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "model-repository"
+      ],
+      "note": "o download de um modelo do catálogo, só com `action: \"install\"` do dono; redirecionamento manual, só para os `hosts` da entrada, e soma SHA-256 de cada arquivo"
     },
     {
       "file": "core/src/memory/vectors.ts",

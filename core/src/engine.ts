@@ -48,6 +48,7 @@ import { generateRouters } from "./memory/routers.js";
 import { IndexWorkerHost } from "./memory/indexHost.js";
 import { CleanupScanner } from "./memory/cleanupScan.js";
 import { SemanticSearch } from "./memory/semantic.js";
+import { LocalModels, localModelsOptions, type LocalModelsOptions } from "./models/localModels.js";
 import { installJournalHooks } from "./memory/journal.js";
 import { installConsolidationHook } from "./memory/consolidationHook.js";
 import { MemoryGuard } from "./memory/memoryGuard.js";
@@ -98,6 +99,11 @@ export interface MordomoEngineOptions {
   }) => PermissionBroker | null;
   /** How a push endpoint's host name is resolved before it is accepted and before a send (default: the system's DNS). */
   pushResolver?: HostResolver;
+  /**
+   * The local models (cerebro-busca-significado, doors 2 and 3): by default the real catalog, `<home>/models/` and the
+   * real child next to the engine; a test gives its stub catalog and stub child through the same keys (C104).
+   */
+  localModels?: Partial<LocalModelsOptions>;
 }
 
 export interface WriteGate {
@@ -181,6 +187,8 @@ export class MordomoEngine {
   readonly cleanup: CleanupScanner;
   /** The semantic half of the search (off until `memory.embeddings.enabled`); one per engine. */
   readonly semantic: SemanticSearch;
+  /** The catalog, the downloads and the child process of the local models; one per engine. */
+  readonly localModels: LocalModels;
   readonly routines: RoutineStore;
   readonly scheduler: RoutineScheduler;
   readonly connectors: ConnectorRegistry;
@@ -302,13 +310,16 @@ export class MordomoEngine {
       { homeDir: this.paths.home },
       this.events,
     );
-    this.semantic = new SemanticSearch(this.db, () => this.settings());
+    this.localModels = new LocalModels(localModelsOptions(this.paths.home, opts.localModels));
+    this.indexer.setLocal(this.localModels);
+    this.semantic = new SemanticSearch(this.db, () => this.settings(), undefined, this.localModels);
     this.indexHost = new IndexWorkerHost({
       paths: this.paths,
       db: this.db,
       bus: this.events,
       getSettings: () => this.settings(),
       indexer: this.indexer,
+      local: this.localModels,
     });
     this.cleanup = new CleanupScanner({
       db: this.db,
@@ -596,6 +607,7 @@ export class MordomoEngine {
     this.scheduler.stop();
     // A pass in a worker thread is cancelled and its thread stopped before the database it writes to goes away.
     this.indexHost.dispose();
+    this.localModels.dispose();
     this.releaseLock();
     if (this.db.open) this.db.close();
   }

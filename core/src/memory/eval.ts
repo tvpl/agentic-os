@@ -7,6 +7,7 @@ import type { FileRow } from "./indexer.js";
 import { recall, recallOrder } from "./recall.js";
 import { anyWordSearch, everyWordSearch } from "./search.js";
 import { SemanticDisabledError, type SemanticSearch } from "./semantic.js";
+import type { LocalModels } from "../models/localModels.js";
 
 /**
  * `mordomo eval` (.specs/features/cerebro-busca-significado, S1, door 6): the owner's questions, each with the files that
@@ -31,10 +32,11 @@ export interface EvalMetrics {
   "hit@3": number;
 }
 
-export type EvalMode = "and" | "or" | "semantic" | "hybrid";
+export type EvalMode = "and" | "or" | "semantic" | "hybrid" | "rerank";
 
 export interface EvalReport {
-  modes: Record<EvalMode, EvalMetrics>;
+  /** The modes of door 6 in its order; `rerank` only while the reranker is on and ready (AC 8). */
+  modes: Record<Exclude<EvalMode, "rerank">, EvalMetrics> & { rerank?: EvalMetrics };
   abstainCorrect: { n: number; total: number };
 }
 
@@ -44,6 +46,8 @@ export interface EvalRankings {
   or: string[][];
   semantic: string[][];
   hybrid: string[][];
+  /** The `hybrid` order after the reranker; absent while it is off or not ready. */
+  rerank?: string[][];
   abstained: boolean[];
 }
 
@@ -148,6 +152,7 @@ export function evalMetrics(rankings: ReadonlyArray<readonly string[]>, queries:
  */
 export function evalReport(rankings: EvalRankings, queries: readonly EvalQuery[]): EvalReport {
   const hybrid = rankings.hybrid.map((ranking, i) => (rankings.abstained[i] ? [] : ranking));
+  const rerank = rankings.rerank?.map((ranking, i) => (rankings.abstained[i] ? [] : ranking));
   const abstain = queries.map((query, i) => ({ query, abstained: rankings.abstained[i] === true }));
   return {
     modes: {
@@ -155,6 +160,7 @@ export function evalReport(rankings: EvalRankings, queries: readonly EvalQuery[]
       or: evalMetrics(rankings.or, queries),
       semantic: evalMetrics(rankings.semantic, queries),
       hybrid: evalMetrics(hybrid, queries),
+      ...(rerank ? { rerank: evalMetrics(rerank, queries) } : {}),
     },
     abstainCorrect: {
       n: abstain.filter((a) => a.query.kind === "abstain" && a.abstained).length,
@@ -170,7 +176,12 @@ export interface EvalSource {
   settings: Settings;
   semantic: SemanticSearch;
   allow?: (row: { root: string; rel: string }) => boolean;
+  /** The engine's local models: the `rerank` row runs through their reranker when it is on and ready (door 5). */
+  local?: Pick<LocalModels, "reranker" | "rerank">;
 }
+
+/** How much of a candidate file the reranker reads. */
+const RERANK_CHARS = 2000;
 
 const relsOf = (files: readonly FileRow[]): string[] => files.map((file) => normalPath(file.rel));
 
@@ -182,6 +193,10 @@ const relsOf = (files: readonly FileRow[]): string[] => files.map((file) => norm
 export async function evalRankings(source: EvalSource, queries: readonly EvalQuery[]): Promise<EvalRankings> {
   const { db, paths, settings, semantic, allow } = source;
   const out: EvalRankings = { and: [], or: [], semantic: [], hybrid: [], abstained: [] };
+  const rerank = settings.memory.recall.rerank;
+  const reranker = rerank.enabled ? (source.local?.reranker() ?? null) : null;
+  if (reranker) out.rerank = [];
+  const textOf = db.prepare("SELECT content FROM files_fts WHERE rowid = ?");
   for (const { q } of queries) {
     const filters = { query: q, limit: EVAL_DEPTH, ...(allow ? { allow } : {}) };
     out.and.push(relsOf(everyWordSearch(db, filters)));
@@ -192,7 +207,25 @@ export async function evalRankings(source: EvalSource, queries: readonly EvalQue
       if (!(error instanceof SemanticDisabledError)) throw error;
       out.semantic.push([]);
     }
-    out.hybrid.push(relsOf(recallOrder(db, paths, settings, q, EVAL_DEPTH)));
+    const order = recallOrder(db, paths, settings, q, EVAL_DEPTH);
+    out.hybrid.push(relsOf(order));
+    if (reranker && out.rerank) {
+      // The best `candidates` of the fused order, reordered by the reranker's "yes" probability; the rest after them.
+      // A reranker that fails or is late leaves the fused order (door 5).
+      const head = order.slice(0, rerank.candidates);
+      const texts = head.map((file) =>
+        ((textOf.get(file.id) as { content: string } | undefined)?.content ?? "").slice(0, RERANK_CHARS),
+      );
+      let ranked = order;
+      try {
+        const scores = await source.local!.rerank(reranker, q, texts, rerank.timeoutMs);
+        const sorted = head.map((file, i) => ({ file, score: scores[i]!, i })).sort((a, b) => b.score - a.score || a.i - b.i);
+        ranked = [...sorted.map((s) => s.file), ...order.slice(head.length)];
+      } catch {
+        ranked = order;
+      }
+      out.rerank.push(relsOf(ranked));
+    }
     out.abstained.push(recall(db, paths, settings, q).answerContext.length === 0);
   }
   return out;

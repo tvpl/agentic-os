@@ -1,6 +1,8 @@
+import fs from "node:fs";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { buscaWorld, type BuscaWorld, type Json } from "./helpers/buscaWorld.js";
+import { GEMMA, QWEN, RERANKER, localWorld } from "./helpers/buscaStubs.js";
+import { buscaWorld, code, type BuscaWorld, type Json } from "./helpers/buscaWorld.js";
 
 /**
  * .specs/features/cerebro-busca-significado: who may call and the audience differentials (L-064, L-066, G44). Batch B
@@ -94,6 +96,57 @@ describe("C28 the audience differential of the search and the status", () => {
       const theirs = await status(twin);
       expect([theirs.sections, theirs.vectors]).toEqual([10, 5]);
       expect([mine.sections, mine.vectors], `N=${n}`).toEqual([theirs.sections, theirs.vectors]);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------- C60
+
+describe("C60 who may call the two embedder routes", () => {
+  it("C60 a device with every scope gets 403 owner_only and a run's credential 403 forbidden, through /api and /api/v1, with nothing fetched, written or deleted", async () => {
+    const w = await localWorld("mordomo-busca-c60-");
+    try {
+      await w.install(QWEN);
+      const fetched = w.host.requests.length;
+      const device = w.device(["content", "monitor", "run", "approve"]);
+      const run = w.run("write").headers;
+      const modelsDir = path.join(w.home, "models");
+      const listing = () =>
+        (fs.readdirSync(modelsDir, { recursive: true }) as string[])
+          .map((p) => p.split(path.sep).join("/"))
+          .sort();
+      const settings = () => fs.readFileSync(path.join(w.home, "config", "settings.json"));
+      const bodies: Json[] = [
+        { action: "install", id: RERANKER, acceptTerms: true },
+        { action: "install", id: GEMMA, acceptTerms: true },
+        { action: "cancel" },
+        { action: "remove", id: QWEN },
+        { action: "test" },
+      ];
+      for (const prefix of ["/api", "/api/v1"]) {
+        for (const [who, headers, want] of [
+          ["device", device, [403, "owner_only"]],
+          ["run", run, [403, "forbidden"]],
+        ] as const) {
+          const beforeList = listing();
+          const beforeSettings = settings();
+          const get = await w.call("GET", `${prefix}/memory/embedder`, undefined, headers);
+          expect(code(get), `${who} GET ${prefix}`).toEqual(want);
+          for (const body of bodies) {
+            const post = await w.call("POST", `${prefix}/memory/embedder`, body, headers);
+            expect(code(post), `${who} POST ${prefix} ${JSON.stringify(body)}`).toEqual(want);
+          }
+          expect(w.host.requests.length, who).toBe(fetched);
+          expect(listing(), who).toEqual(beforeList);
+          expect(settings().equals(beforeSettings), who).toBe(true);
+        }
+      }
+      // the owner still reads it, and the model is still there
+      const owner = await w.embedder();
+      expect(owner.status).toBe(200);
+      expect((owner.body.models as Json[]).find((m) => m.id === QWEN)!.state).toBe("ready");
+    } finally {
+      await w.close();
     }
   });
 });

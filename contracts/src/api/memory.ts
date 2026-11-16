@@ -84,10 +84,20 @@ const SemanticStatusSchema = z.object({
   sections: z.number(),
   /** The id of the local model in use; null for `hash` and `http`. */
   model: z.string().nullable(),
-  /** Why an enabled search has no endpoint it may use. */
+  /** Why an enabled search has no endpoint it may use, or door 7's `model_missing` / `platform_unsupported`. */
   blocked: z.string().nullable(),
   error: z.string().nullable(),
+  /** Only while the provider is `local` (G15): its model's state and whether this computer has the runtime. */
+  local: z
+    .object({
+      state: z.enum(["absent", "downloading", "ready", "failed"]),
+      platform: z.object({ ok: z.boolean(), reason: z.literal("platform_unsupported").optional() }),
+    })
+    .optional(),
 });
+
+/** A model's state in `<home>/models/` (cerebro-busca-significado, door 8). */
+const ModelStateSchema = z.enum(["absent", "downloading", "ready", "failed"]);
 
 /** The version of a note: `sha256:` plus the hex digest of its exact bytes. */
 export const NoteVersionSchema = z
@@ -942,6 +952,87 @@ export const memoryRoutes = {
       }),
     },
     errors: [contextNotFound],
+  }),
+  "memory.embedder": route({
+    method: "GET",
+    path: "/api/memory/embedder",
+    summary:
+      "The model catalog of the local search (.specs/features/cerebro-busca-significado, door 8): each model with its license and its state in the home, whether this computer can run them, and the embedder in use",
+    tag: "memory",
+    scope: "owner",
+    responses: {
+      200: z.object({
+        /** The catalog id in `memory.embeddings.local.model` while the provider is `local`, on or off (G23); else null. */
+        active: z.string().nullable(),
+        platform: z.object({ ok: z.boolean(), reason: z.literal("platform_unsupported").optional() }),
+        /** One per catalog entry, in its order. */
+        models: z.array(
+          z.object({
+            id: z.string(),
+            kind: z.enum(["embedder", "reranker"]),
+            name: z.string(),
+            /** The sum of its files. */
+            bytes: z.number().int(),
+            /** Embedders only: the length of one vector. */
+            dimensions: z.number().int().optional(),
+            license: z.object({ name: z.string(), acceptRequired: z.boolean() }),
+            state: ModelStateSchema,
+            /** While `downloading`: bytes written and the sum of the files. */
+            progress: z.object({ done: z.number().int(), total: z.number().int() }).optional(),
+            /** While `failed`: `checksum`, `host_not_allowed` or `network: <message>`. */
+            reason: z.string().optional(),
+          }),
+        ),
+      }),
+    },
+  }),
+  "memory.embedder.action": route({
+    method: "POST",
+    path: "/api/memory/embedder",
+    summary:
+      "Download (with the license accepted when it asks), cancel or remove a catalog model, or embed one fixed phrase through the configured provider (.specs/features/cerebro-busca-significado, door 8); one download at a time",
+    tag: "memory",
+    scope: "owner",
+    body: z
+      .object({
+        action: z.enum(["install", "cancel", "remove", "test"]),
+        /** A catalog id: required to `install` and `remove`. */
+        id: z.string().min(1).max(200).optional(),
+        /** `true` accepts the model's license; a model whose license asks for it is not downloaded without it. */
+        acceptTerms: z.boolean().optional(),
+      })
+      .refine((body) => (body.action !== "install" && body.action !== "remove") || body.id !== undefined, {
+        message: "id is required to install or remove a model",
+        path: ["id"],
+      }),
+    responses: {
+      200: z.object({
+        /** The state of the model the action is about (`absent` when there is none). */
+        state: ModelStateSchema,
+        /** That model's id, when there is one. */
+        model: z.string().optional(),
+        /** `test`: the fixed phrase embedded once, or the kind of failure. */
+        test: z
+          .object({
+            ok: z.boolean(),
+            dimensions: z.number().int().optional(),
+            ms: z.number().optional(),
+            kind: z.string().optional(),
+          })
+          .optional(),
+      }),
+    },
+    errors: [
+      err(
+        400,
+        "terms_not_accepted",
+        "The model's license asks to be accepted (acceptTerms: true); nothing was downloaded",
+      ),
+      err(404, "model_not_found", "No model of the catalog has this id"),
+      err(409, "local_unavailable", "This computer has no runtime for local models; nothing was downloaded"),
+      err(409, "model_in_use", "The model is the embedder the settings name; nothing was deleted"),
+      err(409, "download_in_progress", "A model is downloading; one at a time"),
+    ],
   }),
   "memory.index": route({
     method: "POST",
