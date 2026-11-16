@@ -321,6 +321,13 @@ export type ChannelSettings = z.infer<typeof ChannelSettingsSchema>;
  */
 export const EMBEDDINGS_KEY_ENV = /^(?!MORDOMO_)[A-Z][A-Z0-9_]{0,63}$/;
 
+/**
+ * The embedders of the model catalog (.specs/features/cerebro-busca-significado, door 3), in its order: the only values
+ * `memory.embeddings.local.model` takes (door 7). The catalog itself (files, sums, hosts) is the engine's
+ * (`core/src/models/catalog.ts`), which holds exactly these embedders.
+ */
+export const LOCAL_EMBEDDER_IDS = ["embeddinggemma-300m-q4", "qwen3-embedding-0.6b-q4f16"] as const;
+
 export const CURRENT_SETTINGS_VERSION = 2;
 
 /** The work contexts (door 1 of cerebro-contextos): the id rule and the bounds are the package's; the schema is not. */
@@ -600,7 +607,7 @@ export const SettingsSchema = z.object({
       embeddings: z
         .object({
           enabled: z.boolean().default(false),
-          provider: z.enum(["hash", "http"]).default("hash"),
+          provider: z.enum(["hash", "http", "local"]).default("hash"),
           endpoint: z.string().max(2000).optional(),
           model: z.string().max(200).optional(),
           /**
@@ -620,6 +627,35 @@ export const SettingsSchema = z.object({
           dimensions: z.number().int().min(8).max(4096).optional(),
           /** A non-loopback endpoint receives note text only when this is on. */
           sendRemote: z.boolean().default(false),
+          /**
+           * The `local` provider (.specs/features/cerebro-busca-significado, door 2): the catalog model it runs in a
+           * child process, from `<home>/models/<id>/` (door 3). An id outside the catalog is refused (door 7).
+           */
+          local: z
+            .object({
+              model: z.enum(LOCAL_EMBEDDER_IDS).optional(),
+            })
+            .optional(),
+        })
+        .default({}),
+      /**
+       * The recall (.specs/features/cerebro-busca-significado, door 4): abstain when no section answers, follow links up
+       * to `hops` levels, stop adding excerpts at `tokenBudget` tokens, and optionally reorder the best `candidates`
+       * sections with the local reranker (door 5), within `timeoutMs`. `PUT /api/settings` replaces `memory.recall`
+       * whole, like the other fields of `memory` (G43).
+       */
+      recall: z
+        .object({
+          abstain: z.boolean().default(true),
+          hops: z.number().int().min(1).max(3).default(2),
+          tokenBudget: z.number().int().min(500).max(20_000).default(3000),
+          rerank: z
+            .object({
+              enabled: z.boolean().default(false),
+              candidates: z.number().int().min(1).max(50).default(20),
+              timeoutMs: z.number().int().min(1000).max(120_000).default(15_000),
+            })
+            .default({}),
         })
         .default({}),
     })

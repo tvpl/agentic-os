@@ -155,6 +155,16 @@
           "enabled": false,
           "provider": "hash",
           "sendRemote": false
+        },
+        "recall": {
+          "abstain": true,
+          "hops": 2,
+          "tokenBudget": 3000,
+          "rerank": {
+            "enabled": false,
+            "candidates": 20,
+            "timeoutMs": 15000
+          }
         }
       },
       "sentinels": {

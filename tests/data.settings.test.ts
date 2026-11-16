@@ -488,18 +488,22 @@ describe("S3 settings tolerate an invalid field", () => {
       } else if (Array.isArray(node) && typeof node[0] === "object") walk(node[0], [...trail, "0"]);
     };
     walk(SettingsSchema.parse({ indexedFolders: [{ path: "/tmp/x" }] }), []);
-    expect(onByDefault.sort()).toEqual([
-      "indexedFolders.0.enabled",
-      "sentinels.connectorDelta.enabled",
-      "sentinels.proposalsPending.enabled",
-      "sentinels.repeatDetector.enabled",
-      "sentinels.repeatedFailure.enabled",
-      "sentinels.reviewDue.enabled",
-      "sentinels.silentRoutine.enabled",
-      "sentinels.triage.enabled",
-      // cerebro-rituais, door 4
-      "sentinels.weeklyReview.enabled",
-    ]);
+    expect(onByDefault.sort()).toEqual(
+      [
+        "indexedFolders.0.enabled",
+        "sentinels.connectorDelta.enabled",
+        "sentinels.proposalsPending.enabled",
+        "sentinels.repeatDetector.enabled",
+        "sentinels.repeatedFailure.enabled",
+        "sentinels.reviewDue.enabled",
+        "sentinels.silentRoutine.enabled",
+        "sentinels.triage.enabled",
+        // cerebro-rituais, door 4
+        "sentinels.weeklyReview.enabled",
+        // cerebro-busca-significado, door 4 (G34): abstaining says less, so an unreadable value reads on (below)
+        "memory.recall.abstain",
+      ].sort(),
+    );
     for (const leaf of onByDefault) {
       for (const bad of ["false", 0, null, "off", {}, []]) {
         const { store, write } = setup();
@@ -515,7 +519,8 @@ describe("S3 settings tolerate an invalid field", () => {
         write(doc);
         const loaded = store.load() as any;
         const value = keys.reduce((acc: any, key) => acc?.[key], loaded);
-        expect(value, `${leaf} = ${JSON.stringify(bad)}`).toBe(false);
+        // The one flag whose "on" opens nothing: the recall abstains, it says less (cerebro-busca-significado, G34).
+        expect(value, `${leaf} = ${JSON.stringify(bad)}`).toBe(leaf === "memory.recall.abstain");
       }
     }
   });
@@ -645,6 +650,16 @@ describe("S3 settings tolerate an invalid field", () => {
         "how many reminders of the dashboards the inbox gets a day; it writes no file and opens nothing (cerebro-paineis door 5)",
       "dashboards.reminders.at":
         "from what local time the dashboards' reminders are written; it opens nothing (cerebro-paineis door 5)",
+      "memory.recall.abstain":
+        "on by default: the recall says it found nothing instead of a weak guess; an unreadable value reads on, which says less (cerebro-busca-significado door 4, G34)",
+      "memory.recall.hops":
+        "how many levels of links the recall follows inside what the caller may read; it writes nothing (cerebro-busca-significado door 4)",
+      "memory.recall.tokenBudget":
+        "how many tokens of excerpts the recall answers at most; it writes nothing (cerebro-busca-significado door 4)",
+      "memory.recall.rerank.candidates":
+        "how many sections the reranker reorders, while it is on (its switch is closed) (cerebro-busca-significado door 5)",
+      "memory.recall.rerank.timeoutMs":
+        "how long the recall waits for the reranker, while it is on (its switch is closed) (cerebro-busca-significado door 5)",
       "memory.history.maxBytes":
         "how many bytes the history of memory/ keeps before it drops old versions; it writes no file and opens nothing (cerebro-memoria-confiavel door 4)",
     };
@@ -909,6 +924,8 @@ describe("C52 memory.embeddings", () => {
     "apiKeyEnv",
     "dimensions",
     "sendRemote",
+    // cerebro-busca-significado, door 2: the eighth leaf, `local.model` (C100)
+    "local",
   ];
 
   it("C52 the schema has exactly the seven leaves, off by default, and the two that open something are closed", () => {
@@ -923,6 +940,7 @@ describe("C52 memory.embeddings", () => {
       apiKeyEnv: "KEY",
       dimensions: 768,
       sendRemote: true,
+      local: { model: "embeddinggemma-300m-q4" },
     };
     const parsed = (SettingsSchema.parse({ memory: { embeddings: { ...all, extra: 1 } } }) as any).memory
       .embeddings;
@@ -935,6 +953,9 @@ describe("C52 memory.embeddings", () => {
       ["memory.embeddings.enabled", false],
       ["memory.embeddings.sendRemote", false],
       ["memory.embeddings.provider", "hash"],
+      // cerebro-busca-significado, door 7: a local model that cannot be read is no model (C62)
+      ["memory.embeddings.local.model", undefined],
+      ["memory.embeddings.local", undefined],
     ]);
   });
 

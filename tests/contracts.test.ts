@@ -127,6 +127,8 @@ describe("S1 the contracts package", () => {
         "KnownStreamTypes",
         // cerebro-memoria-confiavel, verification round 1: the one-line rule of an op (finding 6)
         "LINE_BREAK",
+        // cerebro-busca-significado, batch C: the embedders `memory.embeddings.local.model` takes (door 7)
+        "LOCAL_EMBEDDER_IDS",
         "MicroAppSchema",
         "NAMED_SCHEMAS",
         "NOTIFICATION_KINDS",
