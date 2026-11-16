@@ -703,3 +703,6 @@ Status of batch A (updated in the commit that closes each piece):
 - the Portuguese words (S2: C11-C16, C18): closed, every proof green in `tests/busca.stem.test.ts` and in
   `tests/memory.semantic.test.ts` C46; C17 stays open for batch B (its claim reads `section_vectors`, which migration 34
   of S3 creates)
+- measuring the search (S1: C1-C8, C10): closed, every proof green in `tests/busca.eval.test.ts` and
+  `tests/busca.cli.test.ts` (built CLI); the corpus is `tests/fixtures/pt-corpus/` (40 notes) and
+  `tests/fixtures/pt-queries.json` (60 queries); C9 stays open for batch C (it needs the stub reranker)

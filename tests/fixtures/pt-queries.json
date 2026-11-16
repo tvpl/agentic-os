@@ -1,0 +1,309 @@
+{
+  "v": 1,
+  "queries": [
+    {
+      "q": "qual é o prazo para trocar um produto?",
+      "kind": "single",
+      "expect": ["politica-de-trocas.md"]
+    },
+    {
+      "q": "como se faz a broa de milho?",
+      "kind": "single",
+      "expect": ["receita-broa-de-milho.md"]
+    },
+    {
+      "q": "quem é o técnico que faz a manutenção do forno?",
+      "kind": "single",
+      "expect": ["manutencao-forno.md"]
+    },
+    {
+      "q": "com quantas horas de antecedência aceitamos encomendas de bolo?",
+      "kind": "single",
+      "expect": ["encomendas-festas.md"]
+    },
+    {
+      "q": "qual é o raio de entrega do aplicativo?",
+      "kind": "single",
+      "expect": ["entrega-delivery.md"]
+    },
+    {
+      "q": "quando renovamos a apólice do seguro?",
+      "kind": "single",
+      "expect": ["seguro-loja.md"]
+    },
+    {
+      "q": "receitas de bolos de cenoura",
+      "kind": "single",
+      "expect": ["receita-bolo-de-cenoura.md"]
+    },
+    {
+      "q": "em que dias da semana publicamos no instagram?",
+      "kind": "single",
+      "expect": ["marketing-instagram.md"]
+    },
+    {
+      "q": "quando é a consulta com a cardiologista?",
+      "kind": "single",
+      "expect": ["medico-consultas.md"]
+    },
+    {
+      "q": "quanto custa o plano do café da manhã por assinatura?",
+      "kind": "single",
+      "expect": ["assinatura-cafe-da-manha.md"]
+    },
+    {
+      "q": "quanto pagamos pela locação do imóvel?",
+      "kind": "single",
+      "expect": ["aluguel.md"]
+    },
+    {
+      "q": "qual foi a queixa mais frequente dos fregueses?",
+      "kind": "single",
+      "expect": ["clientes-reclamacoes.md"]
+    },
+    {
+      "q": "quem são os funcionários e quando tiram férias?",
+      "kind": "multi",
+      "expect": ["equipe.md", "ferias-equipe.md"]
+    },
+    {
+      "q": "quanto gastamos por mês com aluguel e com a conta de luz?",
+      "kind": "multi",
+      "expect": ["aluguel.md", "energia-eletrica.md"]
+    },
+    {
+      "q": "o que sabemos sobre o forno novo e a manutenção dele?",
+      "kind": "multi",
+      "expect": ["forno-novo-compra.md", "manutencao-forno.md", "reuniao-2026-02-03.md"]
+    },
+    {
+      "q": "quais impostos pagamos e quem cuida da contabilidade?",
+      "kind": "multi",
+      "expect": ["impostos-2026.md", "contador.md", "troca-de-contador-2026-06.md"]
+    },
+    {
+      "q": "como surgiu e como funciona o café da manhã por assinatura?",
+      "kind": "multi",
+      "expect": ["diario-2026-06-02.md", "assinatura-cafe-da-manha.md", "diario-2026-10-28.md"]
+    },
+    {
+      "q": "quais receitas a padaria tem?",
+      "kind": "multi",
+      "expect": ["receita-pao-frances.md", "receita-broa-de-milho.md", "receita-bolo-de-cenoura.md"]
+    },
+    {
+      "q": "quais moinhos já forneceram farinha para nós?",
+      "kind": "multi",
+      "expect": [
+        "fornecedor-farinha-2026-01.md",
+        "fornecedor-farinha-2026-04.md",
+        "fornecedor-farinha-2026-09.md"
+      ]
+    },
+    {
+      "q": "o que a Luísa faz na padaria e fora do expediente?",
+      "kind": "multi",
+      "expect": ["equipe.md", "curso-confeitaria.md"]
+    },
+    {
+      "q": "quais documentos e coberturas a loja precisa manter em dia?",
+      "kind": "multi",
+      "expect": ["vigilancia-sanitaria.md", "seguro-loja.md"]
+    },
+    {
+      "q": "como controlamos o estoque de fermento?",
+      "kind": "multi",
+      "expect": ["fermento-e-insumos.md", "diario-2026-03-15.md"]
+    },
+    {
+      "q": "cuidados com a saúde e com o veículo",
+      "kind": "multi",
+      "expect": ["medico-consultas.md", "carro-revisao.md"]
+    },
+    {
+      "q": "de que jeitos vendemos sem o cliente vir ao balcão?",
+      "kind": "multi",
+      "expect": ["entrega-delivery.md", "encomendas-festas.md", "assinatura-cafe-da-manha.md"]
+    },
+    {
+      "q": "qual é o preço atual do pão francês?",
+      "kind": "latest",
+      "expect": ["precos-2026-10.md"]
+    },
+    {
+      "q": "qual é a tabela de preços mais recente?",
+      "kind": "latest",
+      "expect": ["precos-2026-10.md"]
+    },
+    {
+      "q": "quem é o nosso fornecedor de farinha agora?",
+      "kind": "latest",
+      "expect": ["fornecedor-farinha-2026-09.md"]
+    },
+    {
+      "q": "quanto pagamos hoje pelo quilo da farinha?",
+      "kind": "latest",
+      "expect": ["fornecedor-farinha-2026-09.md"]
+    },
+    {
+      "q": "até que horas a loja fica aberta no domingo?",
+      "kind": "latest",
+      "expect": ["reuniao-2026-08-20.md"]
+    },
+    {
+      "q": "o que foi decidido na última reunião?",
+      "kind": "latest",
+      "expect": ["reuniao-2026-08-20.md"]
+    },
+    {
+      "q": "quantos assinantes temos no café da manhã?",
+      "kind": "latest",
+      "expect": ["diario-2026-10-28.md"]
+    },
+    {
+      "q": "qual é a meta de vendas atual?",
+      "kind": "latest",
+      "expect": ["meta-vendas-2026-07.md"]
+    },
+    {
+      "q": "qual é a anotação mais recente do diário?",
+      "kind": "latest",
+      "expect": ["diario-2026-10-28.md"]
+    },
+    {
+      "q": "quem faz a nossa contabilidade hoje?",
+      "kind": "latest",
+      "expect": ["troca-de-contador-2026-06.md"]
+    },
+    {
+      "q": "qual o preço mais novo do pão de queijo?",
+      "kind": "latest",
+      "expect": ["precos-2026-10.md"]
+    },
+    {
+      "q": "quanto custa a fatia de bolo depois do último aumento?",
+      "kind": "latest",
+      "expect": ["reuniao-2026-05-12.md"]
+    },
+    {
+      "q": "o que decidimos na reunião de fevereiro?",
+      "kind": "window",
+      "expect": ["reuniao-2026-02-03.md"]
+    },
+    {
+      "q": "qual era o preço do pão francês em março?",
+      "kind": "window",
+      "expect": ["precos-2026-03.md"]
+    },
+    {
+      "q": "quanto custava o quilo da farinha em janeiro?",
+      "kind": "window",
+      "expect": ["fornecedor-farinha-2026-01.md"]
+    },
+    {
+      "q": "qual foi o reajuste da farinha em abril?",
+      "kind": "window",
+      "expect": ["fornecedor-farinha-2026-04.md"]
+    },
+    {
+      "q": "o que aconteceu no dia 15 de março?",
+      "kind": "window",
+      "expect": ["diario-2026-03-15.md"]
+    },
+    {
+      "q": "como foram as vendas no começo de junho?",
+      "kind": "window",
+      "expect": ["diario-2026-06-02.md"]
+    },
+    {
+      "q": "qual era a meta de faturamento no início do ano?",
+      "kind": "window",
+      "expect": ["meta-vendas-2026-01.md"]
+    },
+    {
+      "q": "o que ficou decidido na reunião de maio?",
+      "kind": "window",
+      "expect": ["reuniao-2026-05-12.md"]
+    },
+    {
+      "q": "quanto custava o café coado em julho?",
+      "kind": "window",
+      "expect": ["precos-2026-07.md"]
+    },
+    {
+      "q": "o que compramos para a cozinha em março?",
+      "kind": "window",
+      "expect": ["forno-novo-compra.md"]
+    },
+    {
+      "q": "quem era o contador no primeiro semestre?",
+      "kind": "window",
+      "expect": ["contador.md"]
+    },
+    {
+      "q": "o que mudou no horário em agosto?",
+      "kind": "window",
+      "expect": ["reuniao-2026-08-20.md"]
+    },
+    {
+      "q": "qual é a senha do wi-fi da loja?",
+      "kind": "abstain",
+      "expect": []
+    },
+    {
+      "q": "quanto custa o seguro do carro?",
+      "kind": "abstain",
+      "expect": []
+    },
+    {
+      "q": "quem fornece o chocolate?",
+      "kind": "abstain",
+      "expect": []
+    },
+    {
+      "q": "qual é o telefone do encanador?",
+      "kind": "abstain",
+      "expect": []
+    },
+    {
+      "q": "quando é o aniversário da Joana?",
+      "kind": "abstain",
+      "expect": []
+    },
+    {
+      "q": "quantos litros de leite compramos por semana?",
+      "kind": "abstain",
+      "expect": []
+    },
+    {
+      "q": "como se chama o cachorro?",
+      "kind": "abstain",
+      "expect": []
+    },
+    {
+      "q": "qual banco financia a reforma?",
+      "kind": "abstain",
+      "expect": []
+    },
+    {
+      "q": "quais vinhos vendemos?",
+      "kind": "abstain",
+      "expect": []
+    },
+    {
+      "q": "quanto rende a poupança?",
+      "kind": "abstain",
+      "expect": []
+    },
+    {
+      "q": "qual é a cor da fachada?",
+      "kind": "abstain",
+      "expect": []
+    },
+    {
+      "q": "quando é a próxima maratona?",
+      "kind": "abstain",
+      "expect": []
+    }
+  ]
+}

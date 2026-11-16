@@ -140,6 +140,8 @@ export { scanCleanupScope } from "./memory/cleanupScan.js";
 export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from "./memory/cleanupApply.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
+// cerebro-busca-significado: `mordomo eval` (door 6)
+export { runEval, formatEvalText, EvalFormatError } from "./memory/eval.js";
 export { ESCOPOS, NATUREZAS, parseEscopoList, parseNaturezaList } from "./memory/natureza.js";
 export { reviewsDue } from "./memory/reviews.js";
 export { decideReview } from "./memory/reviewDecisions.js";

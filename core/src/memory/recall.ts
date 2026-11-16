@@ -581,6 +581,19 @@ function pointerTargets(db: Db, scope: ReadScope, section: Section, from: FileRo
 
 // ---------------------------------------------------------------- recall ----
 
+/**
+ * The files the recall would open for a question, in its order before opening, at most `depth` deep: the `hybrid` row
+ * of `mordomo eval` (cerebro-busca-significado, G6). The same candidates and scores as `recall`, with no file read.
+ */
+export function recallOrder(db: Db, paths: MordomoPaths, settings: Settings, question: string, depth: number): FileRow[] {
+  const keywords = extractKeywords(question);
+  if (keywords.length === 0) return [];
+  const scope = grantedReadScope(settings, paths.home);
+  return scoreCandidates(db, paths, settings, scope, keywords, {})
+    .slice(0, depth)
+    .map((cand) => cand.file);
+}
+
 export function recall(db: Db, paths: MordomoPaths, settings: Settings, question: string, opts: RecallOptions = {}): RecallResult {
   const started = Date.now();
   const k = Math.min(Math.max(opts.k ?? 3, 1), 10);

@@ -207,6 +207,10 @@ describe("S5 the surface is a closed list", () => {
         // cerebro-rituais, batch C: a note's unlinked mentions and "Linkar" (doors 6 and 7)
         "linkMention",
         "mentionsOf",
+        // cerebro-busca-significado, batch A: `mordomo eval` runs, prints and refuses a file by these (door 6)
+        "EvalFormatError",
+        "formatEvalText",
+        "runEval",
       ].sort(),
     );
   });
