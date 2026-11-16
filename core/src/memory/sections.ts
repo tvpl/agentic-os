@@ -1,6 +1,8 @@
 /**
  * The sections of a file (.specs/features/cerebro-busca-significado, S3, door 1): the one splitter the recall opens a
- * file with and the vectors phase embeds a file with. `splitSections` is the recall's, moved here unchanged.
+ * file with and the vectors phase embeds a file with. `splitSections` is the recall's, moved here unchanged;
+ * `sectionRows` reads its output as the rows of `section_vectors` (the heading path, the lines, the limit of 64), and
+ * `embeddedText` is the text one row's vector is computed from.
  */
 
 export interface Section {
@@ -51,4 +53,74 @@ export function splitSections(content: string, isMarkdown: boolean): Section[] {
   });
   flush();
   return out.length ? out : [{ heading: "(top)", body: content.trim(), level: 0 }];
+}
+
+/** The most rows one file has (the first 64 sections that hold a word, AC 15). */
+export const MAX_SECTIONS = 64;
+/** The files whose sections are embedded, and those of them split by headings. */
+export const EMBEDDED_EXTENSIONS: readonly string[] = [".md", ".markdown", ".txt"];
+const MARKDOWN = new Set([".md", ".markdown"]);
+
+const hasWords = (text: string): boolean => /[\p{L}\p{N}]/u.test(text);
+
+export interface SectionRow {
+  /** 0-based, in reading order, with no gap. */
+  ord: number;
+  /** The titles from the outermost ancestor to the section's own, joined by " > "; `(top)` before the first heading. */
+  heading: string;
+  /** The parts of `heading` the embedded text names: none for the preamble and for a block of a plain-text file. */
+  path: string[];
+  startLine: number;
+  endLine: number;
+  body: string;
+}
+
+/**
+ * The rows of a file: one per section that holds a letter or a digit, at most `MAX_SECTIONS`. A heading with no body
+ * gives no row and still names its children; a block of 40 lines (a file that is not Markdown) has no path of its own.
+ */
+export function sectionRows(content: string, ext: string): SectionRow[] {
+  const markdown = MARKDOWN.has(ext);
+  const out: SectionRow[] = [];
+  const stack: Array<{ level: number; title: string }> = [];
+  splitSections(content, markdown).forEach((section, index) => {
+    let path: string[] = [];
+    if (markdown && section.level > 0) {
+      while (stack.length > 0 && stack[stack.length - 1]!.level >= section.level) stack.pop();
+      stack.push({ level: section.level, title: section.heading });
+      path = stack.map((s) => s.title);
+    }
+    if (out.length >= MAX_SECTIONS || !hasWords(section.body)) return;
+    let { startLine, endLine } = section;
+    if (!markdown) {
+      // A block starts at line 40 * index + 1; its lines are those of its trimmed text, as a Markdown section's.
+      const lines = section.body.split("\n");
+      const first = lines.findIndex((l) => l.trim() !== "");
+      const last = lines.length - 1 - [...lines].reverse().findIndex((l) => l.trim() !== "");
+      startLine = 40 * index + 1 + first;
+      endLine = 40 * index + 1 + last;
+    }
+    out.push({
+      ord: out.length,
+      heading: path.length > 0 ? path.join(" > ") : section.heading,
+      path,
+      startLine: startLine!,
+      endLine: endLine!,
+      body: section.body.trim(),
+    });
+  });
+  return out;
+}
+
+/**
+ * What a row's vector is computed from (door 1, G12): `<área> > <título da nota> > <caminho de títulos>`, a line break
+ * and the body, cut to `maxChars`. A part that is missing is left out with its separator.
+ */
+export function embeddedText(
+  parts: { area: string | null; title: string | null; path: readonly string[] },
+  body: string,
+  maxChars: number,
+): string {
+  const head = [parts.area, parts.title, ...parts.path].filter((p): p is string => !!p && p.trim() !== "").join(" > ");
+  return (head === "" ? body : `${head}\n${body}`).slice(0, maxChars);
 }

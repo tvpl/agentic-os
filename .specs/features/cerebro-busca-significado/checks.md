@@ -748,3 +748,9 @@ Status of batch A (updated in the commit that closes each piece):
   `note`, `search`) and `corpusHome` (a home indexing a copy of the corpus with fixed mtimes, `hash` or off).
 - **Abandoned:** an implicit-`AND` every-word query (FTS5 syntax error with bracketed groups); reading the eval file with
   a raw `fs.readFileSync` (it would grow the reviewed raw-read list of `security-reads` C55).
+
+Status of batch B (updated in the commit that closes each piece):
+
+- the shared splitter (S3: C19): closed, its proof green in `tests/busca.sections.test.ts`; `splitSections` moved
+  unchanged from `recall.ts` to `core/src/memory/sections.ts` (the recall re-exports it), with `sectionRows` (the rows,
+  the heading path, the 64 limit) and `embeddedText` (door 1's text) beside it
