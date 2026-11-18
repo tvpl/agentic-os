@@ -367,6 +367,12 @@ Markdown) gets one vector, computed from `<area> > <note title> > <heading path>
   file is checked against the SHA-256 the catalog pins. EmbeddingGemma asks you to accept the Gemma terms before the
   download (`acceptTerms: true`); the Qwen3 models are Apache-2.0 and ask nothing. macOS on Intel has no runtime.
 
+In the interface it is the block "Busca por significado" of Settings > Memória: the on/off button, the three
+providers, the own server's fields with "Testar conexão" (it embeds one phrase and reads `OK: <n> dimensões, <ms> ms` or
+the kind of failure), the catalog's models with their size, license and state (download, cancel, remove, "Usar este
+modelo"; a change of provider, model or dimensions over a ready index asks before recomputing it), and the reranker's
+button, which turns on only when the reranker is downloaded. Its help link points here.
+
 The recall (`GET /api/memory/recall`, `mordomo recall`, the MCP tool `recall`) joins to its word candidates the files
 of the 50 sections nearest to the question (reciprocal rank fusion, k 60), and says when nothing answers:
 `abstained: true` with `abstainReason` `no_match` (no keyword, or no candidate) or `weak` (no section matches half of

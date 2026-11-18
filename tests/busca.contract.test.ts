@@ -392,3 +392,35 @@ describe("C108 the guide and the security table", () => {
       expect(security).toContain(route);
   });
 });
+
+// ---- C135: the weight of the screen ------------------------------------------------------------------------------
+
+describe("C135 the bundle ceiling", () => {
+  it("C135 the baseline's cerebro-busca-significado entry follows cerebro-rituais with a reason of more than 40 characters and the four numbers, at most 12 288 B of JS gzip and 2 048 B of CSS gzip above it (604 839 B and 83 496 B)", () => {
+    type Entry = {
+      feature: string;
+      reason: string;
+      jsRaw: number;
+      jsGzip: number;
+      cssRaw: number;
+      cssGzip: number;
+    };
+    const baseline = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, "..", "scripts", "bundle-baseline.json"), "utf8"),
+    ) as { after: Entry[] };
+    const i = baseline.after.findIndex((e) => e.feature === "cerebro-busca-significado");
+    expect(i, "the entry exists").toBeGreaterThan(0);
+    const entry = baseline.after[i]!;
+    const before = baseline.after[i - 1]!;
+    expect(before.feature).toBe("cerebro-rituais");
+    expect([before.jsGzip, before.cssGzip]).toEqual([604_839, 83_496]);
+    expect(entry.reason.length).toBeGreaterThan(40);
+    for (const k of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
+      expect(Number.isInteger(entry[k]) && entry[k] > 0, k).toBe(true);
+    // the ceiling of the plan's Assumptions ("Teto de peso", AD-047 h): at most 617 127 B and 85 544 B
+    expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(12_288);
+    expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(2_048);
+    expect(entry.jsGzip).toBeLessThanOrEqual(617_127);
+    expect(entry.cssGzip).toBeLessThanOrEqual(85_544);
+  });
+});

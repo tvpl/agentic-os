@@ -939,3 +939,9 @@ Status of batch E (updated in the commit that closes each piece):
   `semanticSearchMotion.test.ts`; the block is `views/settings/SemanticSearch.tsx` with `semanticSearch.css`, the second
   card of `MemoryTab`, and the network of its tests is `semanticSearchNet.ts` (answers only the bodies a test allows,
   L-052). C109 and C131 have their component proofs green and close with their browser proofs (`tests/e2e/busca.spec.ts`)
+- the browser (C109, C131-C134, C136): closed, every proof green in `tests/e2e/busca.spec.ts` (built first) in both
+  shells, both themes where the claim names them; the gallery's entry is `gallery/semanticStory.tsx` (`#story-semantic`);
+  C127 also asserts that `busca-por-significado` is the slug of a heading of `docs/memory-guide.md`, whose section gains
+  the paragraph on the block; the license link's two hosts (`ai.google.dev`, `www.apache.org`) are ignored in the UI file
+  too (`legal/network-policy.json`, their `files`), and the help link is a `github.com` link the policy already covers:
+  the sites stay 44 and the hosts 19 (G40: an `<a href>` is not a network site of the scan)

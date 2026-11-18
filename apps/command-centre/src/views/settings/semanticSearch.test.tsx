@@ -7,6 +7,8 @@
  * keyboard. The network is `./semanticSearchNet`, which answers only the requests each test allows (L-052); the copy
  * is asserted in pt-BR, by value, as design.md's "Texto" table writes it.
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, screen, waitFor, within } from "@testing-library/react";
@@ -16,7 +18,7 @@ import { api } from "../../api";
 import { installPage } from "../../ui/testkit";
 import { renderWith } from "../../contexts/testkit";
 import { MemoryTab } from "./memory";
-import { SemanticSearch } from "./SemanticSearch";
+import { HELP_URL, SemanticSearch } from "./SemanticSearch";
 import type { SettingsShape } from "./shared";
 import { EMB, GEMMA, QWEN, RECALL, RERANKER, net, resetNet, status } from "./semanticSearchNet";
 
@@ -909,6 +911,22 @@ describe("C127 the footer link", () => {
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")!.split(" ")).toContain("noopener");
     expect(link.getAttribute("href")!.endsWith("docs/memory-guide.md#busca-por-significado")).toBe(true);
+  });
+});
+
+describe("C127 the anchor of the footer link", () => {
+  it("C127 busca-por-significado is the slug of a heading of docs/memory-guide.md (C108)", () => {
+    const guide = readFileSync(resolve(__dirname, "../../../../../docs/memory-guide.md"), "utf8");
+    // GitHub's slug: lower case, punctuation out, spaces to hyphens (accents kept)
+    const slugs = [...guide.matchAll(/^#{1,6} (.+)$/gm)].map((m) =>
+      m[1]!
+        .trim()
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N} _-]/gu, "")
+        .replace(/ /g, "-"),
+    );
+    expect(HELP_URL.split("#")[1]).toBe("busca-por-significado");
+    expect(slugs).toContain("busca-por-significado");
   });
 });
 

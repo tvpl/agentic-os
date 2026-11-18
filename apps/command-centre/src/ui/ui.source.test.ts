@@ -641,6 +641,8 @@ const HAND_MADE: Record<string, string> = {
     "the guided tour owns the keyboard while it is up and is not modal in its guided step (comandos-atalhos design: it stays)",
   "gallery/main.tsx":
     "a dialog drawn in place for the layer stories (the real Modal portals to the page and traps focus)",
+  "gallery/semanticStory.tsx":
+    "the license dialog of Busca por significado drawn in place for its story (cerebro-busca-significado C134; the real Modal portals and traps focus)",
 };
 
 describe("C26 what is still hand-made is on a closed list, with its reason", () => {

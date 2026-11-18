@@ -5,7 +5,7 @@
  * reranker block), the index line while the search is on, and the help link. Every write is `PUT /api/settings`
  * (`memory.embeddings` or `memory.recall`, each replaced whole) or `POST /api/memory/embedder`.
  */
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -43,7 +43,7 @@ const RECALL_DEFAULTS: Recall = {
   rerank: { enabled: false, candidates: 20, timeoutMs: 15_000 },
 };
 type Catalog = Contracts.ApiCallResult<"GET /api/memory/embedder">;
-type Model = Catalog["models"][number];
+export type Model = Catalog["models"][number];
 type EmbedderId = NonNullable<NonNullable<Embeddings["local"]>["model"]>;
 
 const PROVIDERS: Array<{ id: Provider; title: TKey; line: TKey }> = [
@@ -128,6 +128,8 @@ export function SemanticSearch({ s, put }: { s: SettingsShape; put: Put }) {
     )
       return null;
     const res = await put({ memory: { embeddings: next } } as SettingsPatch, true);
+    // The catalog's `active` follows the settings (a model put in use can no longer be removed).
+    if (res.ok) void qc.invalidateQueries({ queryKey: qk.memoryEmbedder });
     if (ready && res.ok) {
       setRecalc(Date.now());
       index.mutate(undefined, { onSettled: () => void status.refetch() });
@@ -477,7 +479,7 @@ function LocalModels(p: {
   );
 }
 
-function ModelRow(p: {
+export function ModelRow(p: {
   m: Model;
   active: boolean;
   onInstall: () => void;
@@ -572,18 +574,33 @@ function ModelRow(p: {
 /** design.md "Diálogo - Licença do modelo". */
 function Terms({ m, onClose, onAccept }: { m: Model; onClose: () => void; onAccept: () => void }) {
   const t = useT();
-  const [accepted, setAccepted] = useState(false);
   const box = useRef<HTMLInputElement>(null);
   return (
     <Modal title={t("semantic.terms")} onClose={onClose} narrow initialFocus={() => box.current}>
+      <TermsContent m={m} box={box} onCancel={onClose} onAccept={onAccept} />
+    </Modal>
+  );
+}
+
+/** The dialog's body and actions (the gallery draws them in place, without the Modal's portal and focus trap). */
+export function TermsContent(p: {
+  m: Model;
+  box?: RefObject<HTMLInputElement>;
+  onCancel: () => void;
+  onAccept: () => void;
+}) {
+  const t = useT();
+  const [accepted, setAccepted] = useState(false);
+  return (
+    <>
       <div className="modal-body stack">
-        <a href={LICENSE_URLS[m.license.name]} target="_blank" rel="noopener noreferrer">
-          {m.license.name}
+        <a href={LICENSE_URLS[p.m.license.name]} target="_blank" rel="noopener noreferrer">
+          {p.m.license.name}
         </a>
         <p>{t("semantic.termsBody")}</p>
         <label className="ss-check">
           <input
-            ref={box}
+            ref={p.box}
             type="checkbox"
             checked={accepted}
             onChange={(e) => setAccepted(e.target.checked)}
@@ -592,13 +609,13 @@ function Terms({ m, onClose, onAccept }: { m: Model; onClose: () => void; onAcce
         </label>
       </div>
       <div className="modal-actions">
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="ghost" onClick={p.onCancel}>
           {t("semantic.cancel")}
         </Button>
-        <Button variant="primary" icon={<Download aria-hidden />} disabled={!accepted} onClick={onAccept}>
+        <Button variant="primary" icon={<Download aria-hidden />} disabled={!accepted} onClick={p.onAccept}>
           {t("semantic.install")}
         </Button>
       </div>
-    </Modal>
+    </>
   );
 }

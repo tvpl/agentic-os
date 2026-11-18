@@ -419,15 +419,17 @@
     },
     {
       "match": "ai.google.dev",
-      "reason": "endereço do texto da licença de um modelo do catálogo, mostrado para o dono ler antes de baixar; o MordomoOS nunca o acessa",
+      "reason": "endereço do texto da licença de um modelo do catálogo, mostrado para o dono ler antes de baixar (o catálogo e o diálogo de licença da tela Busca por significado); o MordomoOS nunca o acessa",
       "files": [
+        "apps/command-centre/src/views/settings/SemanticSearch.tsx",
         "core/src/models/catalog.ts"
       ]
     },
     {
       "match": "www.apache.org",
-      "reason": "endereço do texto da licença de um modelo do catálogo, mostrado para o dono ler antes de baixar; o MordomoOS nunca o acessa",
+      "reason": "endereço do texto da licença de um modelo do catálogo, mostrado para o dono ler antes de baixar (o catálogo e o diálogo de licença da tela Busca por significado); o MordomoOS nunca o acessa",
       "files": [
+        "apps/command-centre/src/views/settings/SemanticSearch.tsx",
         "core/src/models/catalog.ts"
       ]
     }
