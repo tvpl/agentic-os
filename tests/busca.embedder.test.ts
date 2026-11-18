@@ -293,6 +293,114 @@ describe("C46 a host pattern of the catalog at its own layer", () => {
   });
 });
 
+// ---------------------------------------------------------------------------------------------- C139, C142
+
+/**
+ * The stub Qwen entry with four files, the `.onnx` graph neither first nor last (door 3: "a soma SHA-256 de cada
+ * arquivo"): `config.json`, `tokenizer.json`, `onnx/model.onnx` and its data file `onnx/model.onnx_data`.
+ */
+const FOUR = ["config.json", "tokenizer.json", "onnx/model.onnx", "onnx/model.onnx_data"] as const;
+function fourFiles(w: LocalWorld): void {
+  const entry = w.catalog.find((e) => e.id === QWEN)!;
+  w.host.files.set(
+    `/${QWEN}/tokenizer.json`,
+    Buffer.from(JSON.stringify({ stub: "tokenizer", v: [1, 2, 3] })),
+  );
+  w.host.files.set(`/${QWEN}/onnx/model.onnx_data`, Buffer.from("stub weights ".repeat(2048)));
+  entry.files = FOUR.map((p) => {
+    const bytes = w.host.files.get(`/${QWEN}/${p}`)!;
+    return { path: p, bytes: bytes.length, sha256: crypto.createHash("sha256").update(bytes).digest("hex") };
+  });
+}
+
+/** The install ended `failed` with `checksum`, nothing of the entry is left on disk and the model is not used. */
+async function failedChecksum(w: LocalWorld): Promise<void> {
+  expect((await w.act({ action: "install", id: QWEN })).status).toBe(200);
+  const model = await w.settle(QWEN);
+  expect(model.state).toBe("failed");
+  expect(model.reason).toBe("checksum");
+  expect(w.modelFiles().filter((f) => f.startsWith(`${QWEN}/`))).toEqual([]);
+  expect(exists(path.join(w.home, "models", QWEN))).toBe(false);
+  w.localOn(QWEN);
+  const status = await w.call("GET", "/api/memory/status");
+  expect(status.body.semantic.blocked).toBe("model_missing");
+  expect(status.body.semantic.provider).toBeNull();
+}
+
+describe("C139 the size and the SHA-256 of every file of an entry", () => {
+  it("C139 the four-file entry untouched installs ready, every file on disk byte-exact", async () => {
+    const w = await world();
+    fourFiles(w);
+    expect((await w.install(QWEN)).state).toBe("ready");
+    for (const p of FOUR) {
+      const disk = fs.readFileSync(path.join(w.home, "models", QWEN, ...p.split("/")));
+      expect(disk.equals(w.host.files.get(`/${QWEN}/${p}`)!), p).toBe(true);
+    }
+  });
+
+  it.each(FOUR)(
+    "C139 %s served with one byte changed: failed, checksum, every file deleted, model_missing",
+    async (p) => {
+      const w = await world();
+      fourFiles(w);
+      w.host.corrupt.add(`/${QWEN}/${p}`);
+      await failedChecksum(w);
+      expect(w.host.requests).toContain(`/${QWEN}/${p}`);
+    },
+  );
+
+  it.each(FOUR)(
+    "C139 %s one byte shorter than the catalog's size, its SHA-256 the served bytes': failed, checksum, every file deleted, model_missing",
+    async (p) => {
+      const w = await world();
+      fourFiles(w);
+      const file = w.catalog.find((e) => e.id === QWEN)!.files.find((f) => f.path === p)!;
+      const served = w.host.files.get(`/${QWEN}/${p}`)!.subarray(0, file.bytes - 1);
+      w.host.files.set(`/${QWEN}/${p}`, served);
+      file.sha256 = crypto.createHash("sha256").update(served).digest("hex");
+      await failedChecksum(w);
+      expect(w.host.requests).toContain(`/${QWEN}/${p}`);
+    },
+  );
+
+  it("C139 a file one byte longer than the catalog's size, its SHA-256 the served bytes': failed, checksum", async () => {
+    const w = await world();
+    fourFiles(w);
+    const file = w.catalog.find((e) => e.id === QWEN)!.files.find((f) => f.path === "tokenizer.json")!;
+    const served = Buffer.concat([w.host.files.get(`/${QWEN}/tokenizer.json`)!, Buffer.from(" ")]);
+    w.host.files.set(`/${QWEN}/tokenizer.json`, served);
+    file.sha256 = crypto.createHash("sha256").update(served).digest("hex");
+    await failedChecksum(w);
+  });
+});
+
+describe("C142 a catalog host is reached over https only", () => {
+  it("C142 a 302 to http:// on a host of the entry that is not this machine stops before any request: host_not_allowed; another scheme too; https on a host of the entry passes the guard", async () => {
+    const w = await world();
+    const entry = w.catalog.find((e) => e.id === QWEN)!;
+    // 192.0.2.1 is TEST-NET-1: never routed, so a request to it would hang rather than answer
+    entry.hosts = ["127.0.0.1", "192.0.2.1"];
+    for (const target of ["http://192.0.2.1/x", "ftp://127.0.0.1/x"]) {
+      w.host.redirect.set(`/${QWEN}/onnx/model.onnx`, target);
+      await w.act({ action: "install", id: QWEN });
+      const model = await w.settle(QWEN);
+      expect(model.state, target).toBe("failed");
+      expect(model.reason, target).toBe("host_not_allowed");
+      expect(
+        w.modelFiles().filter((f) => f.startsWith(`${QWEN}/`)),
+        target,
+      ).toEqual([]);
+    }
+    // the same rule lets https through to a host of the entry: the stub speaks plain http, so the TLS request fails
+    // as a network failure, not as host_not_allowed
+    w.host.redirect.set(`/${QWEN}/onnx/model.onnx`, `https://127.0.0.1:${w.host.port}/x`);
+    await w.act({ action: "install", id: QWEN });
+    const model = await w.settle(QWEN);
+    expect(model.state).toBe("failed");
+    expect(model.reason).toMatch(/^network: /);
+  });
+});
+
 describe("C47 a network failure", () => {
   it("C47 a cut mid-body deletes the partial files and reads network: <message>; a later install starts again and ends ready", async () => {
     const w = await world();
