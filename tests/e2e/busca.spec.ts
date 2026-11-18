@@ -451,6 +451,54 @@ for (const shell of SHELLS)
     expect(w.warn.bottom).toBeGreaterThan(w.label.top);
   });
 
+/* ---------------- C141: the header's state to the right of the title ---------------- */
+
+/**
+ * `semanticSearch.css` has no width breakpoint: `.ss-head` is a wrapping flex row, so the state would drop below the
+ * title only where the block grows narrower than the header's content. The block narrows only between the shells'
+ * own layout changes; these are the first widths (px) of each new layout, measured at this commit, each asserted
+ * exactly on it and one pixel above (where the header is narrowest before the change, L-067).
+ */
+const LAYOUT_CHANGES: Record<Shell, number[]> = { moldura: [1308, 899, 730], nucleo: [780, 760, 680] };
+
+for (const shell of SHELLS)
+  test(`C141 ${shell}: the state sits to the right of the title, on its line, with the button after it, at 1 440 px, on and one pixel above each layout change, every 10 px down to 320, on and off`, async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const widths = [
+      ...new Set([
+        1440,
+        ...LAYOUT_CHANGES[shell].flatMap((w) => [w + 1, w]),
+        ...Array.from({ length: 113 }, (_, i) => 1440 - i * 10),
+      ]),
+    ];
+    for (const [enabled, word] of [
+      [false, "Desligada"],
+      [true, "Ligada"],
+    ] as const) {
+      await page.unroute(/\/api\/v1\/settings(\?.*)?$/);
+      await feign(page, { enabled, provider: "hash" });
+      if (enabled) await page.reload();
+      else await open(page, shell, "dark", 1440);
+      await expect(page.locator(`${BLOCK} .ss-head .ss-state`)).toHaveText(word);
+      for (const width of widths) {
+        await page.setViewportSize({ width, height: 900 });
+        const g = await page.locator(`${BLOCK} .ss-head`).evaluate((head) => {
+          const [title, state, button] = [...head.children].map((c) => c.getBoundingClientRect());
+          return { title: title!, state: state!, button: button! };
+        });
+        const at = `${word} at ${width} px`;
+        expect(g.state.width, at).toBeGreaterThan(0);
+        expect(g.state.left, `right of the title, ${at}`).toBeGreaterThanOrEqual(g.title.right);
+        expect(g.state.top, `on the title's line, ${at}`).toBeLessThan(g.title.bottom);
+        expect(g.state.bottom, `on the title's line, ${at}`).toBeGreaterThan(g.title.top);
+        expect(g.button.left, `the button after the state, ${at}`).toBeGreaterThanOrEqual(g.state.right);
+        expect(g.button.top, `the button on the same line, ${at}`).toBeLessThan(g.title.bottom);
+      }
+    }
+  });
+
 /* ---------------- C134: the gallery ---------------- */
 
 for (const theme of THEMES)
