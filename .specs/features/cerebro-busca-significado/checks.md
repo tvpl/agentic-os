@@ -957,3 +957,42 @@ Status of batch E (updated in the commit that closes each piece):
   `semantic` 0.875/0.806/0.875, `hybrid` 0.938/0.814/0.917, `abstainCorrect=6/12`, 0.25-0.61 against 0.41-0.83 (catalog
   0.45), synonym hit@3 1.000 (`and` and `or` as C10's). The abstention measurement the owner moved here from C77: with a
   real model 6 of the 12 `abstain` questions abstain (hash: 2/12); no rule was changed
+
+- **Boundary (batch E):** C109-C137 closed at `c2db1a7` (the block and its component proofs in `f440cec`, the browser
+  proofs, the gallery's story, the guide's paragraph and the policy's two `files` in `f0214b6`, the weight and C137's
+  run in `c2db1a7`), C137 opt-in and not credited. On that tree, after `npm run build`, `npm run typecheck`,
+  `npm run lint` and `npm run lint:css` exit 0; `npm run test -w apps/command-centre` passes 1981 of 1981;
+  `npx vitest run` has one failure, `tests/paineis.refresh.test.ts` C13 (date-dependent, as on the base), and skips
+  C137; `tests/e2e/busca.spec.ts` passes its 32 cases (with `contexts.spec.ts`, `organize.spec.ts` and
+  `gallery.spec.ts` beside it: `contexts.spec.ts` C32 failed once in that run, the palette's combobox read as the
+  console's folder select, and passes alone: flaky, not this block). Pins batch E moved: `legacy.graph` C1 (the
+  closed list gains `views/settings/semanticSearchNet.ts`, test material), `ui.source` C25 (the `title` of the active
+  model's disabled "Remover", WORDS) and C26 (`gallery/semanticStory.tsx`'s license dialog drawn in place),
+  `legal/network-policy.json`'s two license hosts naming the UI file too (sites 44 and hosts 19 unchanged, G40), the
+  baseline's new `after` entry (C135). No route, setting, migration, event or door added.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) the block is
+  `views/settings/SemanticSearch.tsx` with `semanticSearch.css`, the second card `MemoryTab` returns; a partial
+  `memory` (an older service, a test) reads as the defaults; (b) `GET /api/memory/embedder` carries the license's name
+  only (the Surface, C41's `toEqual`), so the dialog's link takes the license text's address from a map by name in the
+  block (the catalog's two), and the policy ignores those two hosts in that file too; (c) G41: the help link is
+  `https://github.com/tvpl/agentic-os/blob/main/docs/memory-guide.md#busca-por-significado` (the owner should confirm),
+  and G40: an `<a href>` is no network site, so the sites stay 44; (d) after "Continuar" the block starts a pass
+  (`POST /api/memory/index`, exists) and reads "Recalculando…" until a status read after it is idle (plan Flow hop 7
+  says so); a new "Modelo" of the own server asks it too (design.md "modelo ou dimensões"); a cancelled "Dimensões"
+  reads the stored value again; (e) the index line of `hash` puts "com o vetor simples" in place of "com {model}" (the
+  table's two strings); (f) the two on/off buttons are the sentinels' (`Ligado`/`Desligado`, `aria-pressed`) named by
+  the block's and the reranker's titles; "Modelos" labels the list; the catalog is read again after a save (its
+  `active` follows the settings); (g) C131's order follows design.md and G49: the reranker's own row sits below its
+  button, so its action comes after the reranker button and before the footer link; (h) the remote warning keeps to
+  the checkbox's line and wraps its own text (a 494 px card in the moldura with the conversation open); (i) C137 links
+  the models from `MORDOMO_REAL_MODEL_HOME`'s `models/` (default `~/.mordomo`) into fresh homes, indexes through the
+  built CLI and measures the cosines through the built core (the source tree has no child).
+- **Abandoned:** adding `license.url` to the GET (a Surface change that C41's `toEqual` refuses); marking the chosen
+  option by a coloured border (a state told by colour alone, `states.test` C16); letting the remote warning wrap
+  below the checkbox (C133).
+
+Whole feature: C1-C138 are all closed (C137 opt-in, not credited; C77 by the owner's decision of `## Correções do
+lote D`), with the proof list run on the tree of `c2db1a7`: `npm run build`, `npx vitest run` (3395 passed, the one
+known date-dependent failure `tests/paineis.refresh.test.ts` C13, C137 skipped), `npm run test -w apps/command-centre`
+(1981 passed), `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts busca.spec.ts`
+(32 passed), `npm run bundle:check` (exit 0), and C137 once with `MORDOMO_REAL_MODEL=1` (2 passed).
