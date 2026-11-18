@@ -34,6 +34,8 @@ export const qk = {
   artifacts: ["artifacts"] as const,
   connectors: ["connectors"] as const,
   memoryStatus: ["memory", "status"] as const,
+  /** The local models' catalog and their state (cerebro-busca-significado, door 8). */
+  memoryEmbedder: ["memory", "embedder"] as const,
   contexts: ["contexts"] as const,
   memoryGraph: (params?: Record<string, string | number | undefined>) =>
     ["memory", "graph", params ?? {}] as const,

@@ -400,6 +400,8 @@ const TITLE_STAYS: Record<string, [reason: "DATA" | "WORDS" | "BINDING" | "DECK"
   "desktop/widgets/BoardWidget.tsx :: {r.name}": ["DATA", 1],
   'moldura/Sidebar.tsx :: {collapsed ? t("moldura.nav.expand") : t("moldura.nav.collapse")}': ["BINDING", 1],
   "moldura/Sidebar.tsx :: {collapsed ? name : undefined}": ["BINDING", 1],
+  // cerebro-busca-significado design.md "Lista de modelos": the active model's disabled Remover says why
+  'views/settings/SemanticSearch.tsx :: {p.active ? t("semantic.removeInUse") : undefined}': ["WORDS", 1],
   'moldura/TopBar.tsx :: {t("moldura.top.chatHint", { keys: comboLabel(CHAT_TOGGLE) })}': ["WORDS", 1],
   'nucleo/Telemetry.tsx :: { problem ? `${t("dash.activeProvider")}: ${t(`gate.state.${problem}`)}` : t("dash.activeP':
     ["WORDS", 1],

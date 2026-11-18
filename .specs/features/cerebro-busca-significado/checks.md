@@ -931,3 +931,11 @@ Status of batch D (updated in the commit that closes each piece):
 - **Abandoned:** making `recall` asynchronous (it would change every synchronous caller and test); fusing every
   admitted section with no floor (with `hash`, a noise file at the vectors' rank 1 ties the words' first hit and beats
   their second); counting a section's own heading alone for AC 47 (see (c)).
+
+Status of batch E (updated in the commit that closes each piece):
+
+- the screen in rendered components (S7: C110-C130): closed, every proof green in
+  `apps/command-centre/src/views/settings/semanticSearch.test.tsx`, `semanticSearchCopy.test.ts` and
+  `semanticSearchMotion.test.ts`; the block is `views/settings/SemanticSearch.tsx` with `semanticSearch.css`, the second
+  card of `MemoryTab`, and the network of its tests is `semanticSearchNet.ts` (answers only the bodies a test allows,
+  L-052). C109 and C131 have their component proofs green and close with their browser proofs (`tests/e2e/busca.spec.ts`)
