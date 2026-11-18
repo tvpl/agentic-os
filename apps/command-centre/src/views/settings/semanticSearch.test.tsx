@@ -328,6 +328,16 @@ describe("C115 Testar conexão", () => {
   });
 });
 
+describe("C140 the class and icon of Testar conexão", () => {
+  it("C140 Testar conexão is .btn with Plug", () => {
+    draw(HTTP);
+    const button = within(detail()).getByRole("button", { name: "Testar conexão" });
+    expect([...button.classList].filter((c) => c !== "sm")).toEqual(["btn", "secondary"]);
+    expect(has(button, "plug")).toBe(true);
+    expect(icon(button)).toHaveLength(1);
+  });
+});
+
 describe("C116 the model list", () => {
   it("C116 one row per embedder in catalog order, the reranker's row in the reranker block; line 1 name (ss-b), Recomendado only on Gemma, the kind; line 2 (ss-s)", async () => {
     draw(LOCAL);
