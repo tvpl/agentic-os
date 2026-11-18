@@ -1088,3 +1088,19 @@ lote D`), with the proof list run on the tree of `c2db1a7`: `npm run build`, `np
 known date-dependent failure `tests/paineis.refresh.test.ts` C13, C137 skipped), `npm run test -w apps/command-centre`
 (1981 passed), `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts busca.spec.ts`
 (32 passed), `npm run bundle:check` (exit 0), and C137 once with `MORDOMO_REAL_MODEL=1` (2 passed).
+
+Round 1 fixes (`## Correções da rodada 1`):
+
+- **Boundary (round 1 fixes):** C139-C142 closed at `0bcae3d` (the corrections and Coverage in `63f5a28`, C139 and C142
+  in `67b78a7`, C140 in `52a558f`, C141 in `0bcae3d`); C98 gains the `tests/contracts.api.test.ts` Proof line, no other
+  approved claim changed, no product code changed. After `npm run build`: `tests/busca.embedder.test.ts` 44 passed;
+  C98's and C99's Proof lines and C30 passed; `npm run test -w apps/command-centre -- src/views/settings` 154 passed;
+  `tests/e2e/busca.spec.ts` 34 passed; `npm run typecheck`, `npm run lint` and `npm run lint:css` exit 0. Faults shown
+  killed in a scratch worktree: `.onnx`-only verification (C139, six cases), size test removed and SHA-256 test removed
+  (C139, four cases each), the scheme clause removed and `http` allowed off this machine (C142), `Plug` swapped and the
+  ghost variant (C140), the header as a column under 760 px (C141, both shells).
+- **Settled mid-build:** nothing by the owner. Recorded, not changed: any port of an allowed host is accepted today
+  (finding 5); C99's name of 34 rests on C30 and `rituais.layer` C19 (finding 4 b).
+- **Abandoned:** adding a name assertion to the 34 pins of `memoria.migration` C39 and `natureza.layer` C7 (C30 already
+  ties 34 to `section-vectors`); a 1 px sweep of every width for C141 (about 40 s a shell-state; the layout changes are
+  measured exactly and the rest every 10 px).
