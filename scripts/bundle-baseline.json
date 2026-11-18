@@ -111,6 +111,14 @@
       "jsGzip": 604839,
       "cssRaw": 377147,
       "cssGzip": 83496
+    },
+    {
+      "feature": "cerebro-busca-significado",
+      "reason": "the Busca por significado block of Settings > Memória (the header and its on/off button, the three providers as a radio group, the own server's fields with Testar conexão, the local models' list with the progress bar, the license dialog, the two confirmations, the reranker block, the index line and the help link) with its stylesheet, the gallery's story of it, and the strings in two languages; measured on the build of batch E: 7.3 KB JS gzip and 0.7 KB CSS gzip above cerebro-rituais (C135)",
+      "jsRaw": 1873695,
+      "jsGzip": 612336,
+      "cssRaw": 378823,
+      "cssGzip": 84193
     }
   ]
 }

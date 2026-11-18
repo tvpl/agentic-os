@@ -945,3 +945,15 @@ Status of batch E (updated in the commit that closes each piece):
   the paragraph on the block; the license link's two hosts (`ai.google.dev`, `www.apache.org`) are ignored in the UI file
   too (`legal/network-policy.json`, their `files`), and the help link is a `github.com` link the policy already covers:
   the sites stay 44 and the hosts 19 (G40: an `<a href>` is not a network site of the scan)
+- the weight (C135): closed, its proofs green (`tests/busca.contract.test.ts` C135, `tests/bundle-size.test.ts` C31,
+  `npm run build -w apps/command-centre && npm run bundle:check`); measured on a fresh build: JS gzip 612 336 B
+  (+7 497 over cerebro-rituais' 604 839, ceiling 617 127), CSS gzip 84 193 B (+697 over 83 496, ceiling 85 544), JS raw
+  1 873 695, CSS raw 378 823; the entry is in `scripts/bundle-baseline.json`
+- the opt-in real-model proof (C137, NOT CREDITED): written in `tests/busca.realmodel.test.ts`, skipped unless
+  `MORDOMO_REAL_MODEL=1` (the models are linked from `MORDOMO_REAL_MODEL_HOME`'s `models/`, default `~/.mordomo`); run
+  once on Linux x64 on 18/11/2026 with both embedders downloaded through `ModelDownloads` and verified: 2 passed.
+  EmbeddingGemma: `semantic` 0.979/0.889/0.979, `hybrid` 0.979/0.870/0.958, `abstainCorrect=6/12`, best cosine of the
+  abstain questions 0.48-0.65 against 0.63-0.84 (catalog 0.62), the synonym question at hit@3 1.000; Qwen3-Embedding:
+  `semantic` 0.875/0.806/0.875, `hybrid` 0.938/0.814/0.917, `abstainCorrect=6/12`, 0.25-0.61 against 0.41-0.83 (catalog
+  0.45), synonym hit@3 1.000 (`and` and `or` as C10's). The abstention measurement the owner moved here from C77: with a
+  real model 6 of the 12 `abstain` questions abstain (hash: 2/12); no rule was changed

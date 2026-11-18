@@ -117,6 +117,13 @@ async function bestCosines(home: string, id: string, questions: string[]): Promi
   }
 }
 
+/** What the run measured: printed, and appended to `MORDOMO_REAL_MODEL_REPORT` when it names a file. */
+function report(text: string) {
+  console.log(text);
+  if (process.env.MORDOMO_REAL_MODEL_REPORT)
+    fs.appendFileSync(process.env.MORDOMO_REAL_MODEL_REPORT, `${text}\n`);
+}
+
 const range = (xs: number[]) => `${Math.min(...xs).toFixed(2)}-${Math.max(...xs).toFixed(2)}`;
 const MODELS = ["embeddinggemma-300m-q4", "qwen3-embedding-0.6b-q4f16"];
 
@@ -144,7 +151,7 @@ describe.skipIf(!REAL)("C137 OPT-IN, NOT CREDITED: the real local models on this
         const abstain = best.filter((_, i) => queries[i]!.kind === "abstain");
         const answered = best.filter((_, i) => queries[i]!.kind !== "abstain");
         const catalog = MODEL_CATALOG.find((m) => m.id === id)!;
-        console.log(
+        report(
           [
             `C137 ${id}`,
             ...Object.entries(run.modes).map(
@@ -176,7 +183,7 @@ describe.skipIf(!REAL)("C137 OPT-IN, NOT CREDITED: the real local models on this
             }),
           );
           const one = evalJson(home.home, file);
-          console.log(`  synonym "${synonym.q}": semantic hit@3=${one.modes.semantic!["hit@3"].toFixed(3)}`);
+          report(`  synonym "${synonym.q}": semantic hit@3=${one.modes.semantic!["hit@3"].toFixed(3)}`);
           expect(one.modes.semantic!["hit@3"]).toBe(1);
         } finally {
           home.cleanup();
