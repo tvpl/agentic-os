@@ -366,6 +366,10 @@ Achadas ao escrever os checks (`checks.md`, "Lacunas do plano"); o texto aprovad
    trechos; e `memory.recall.abstain: true` entra na lista dos booleanos ligados por padrão (o `Impact` dizia que a lista não
    muda). Ambos já estavam implícitos na decisão do dono de 15/11/2026 de aprovar a abstenção ligada; ficam escritos aqui.
 
+3. **Emenda 3 (decisão do dono de 19/11/2026, achado da rodada 2; a door 3 ganha a porta).** Um host do catálogo só é alcançado
+   por `https` na porta padrão (sem porta ou 443); um host desta máquina (o stub dos testes) mantém qualquer porta e os dois
+   esquemas. A door 3 dizia só "hosts e redirecionamentos"; `hopAllowed` em `core/src/models/downloads.ts` é o ponto. Prova: C144.
+
 ## Sources
 
 - `.specs/roadmap.md`, linha C9 - o escopo: conjunto de avaliação em PT, embedder local real por seção, radicalização PT,

@@ -128,3 +128,13 @@ para agentes." Abaixo, a linha do modelo do reranker na mesma lista de modelos.
 | índice            | {n} seções indexadas com {model} · com o vetor simples · Recalculando…                                                                                           | {n} sections indexed with {model} · with the simple vector · Recalculating…                                                                                                   |
 | erros             | Não deu para carregar os modelos. · Tentar de novo · Carregando…                                                                                                 | Could not load the models. · Try again · Loading…                                                                                                                             |
 | ajuda             | Como instalar o Ollama                                                                                                                                           | How to install Ollama                                                                                                                                                         |
+
+## Emendas depois da aprovação
+
+1. **Cabeçalho do bloco estreito (decisão do dono de 19/11/2026, achado 1 da rodada 3 da verificação).** O estado ("Ligada" ou
+   "Desligada") fica à direita do título, na linha dele, enquanto o cabeçalho tem a largura em que cabem título, espaço e estado
+   (cerca de 244 px com "Desligada" e 223 px com "Ligada"); abaixo disso o estado quebra para baixo do título, como um
+   `flex-wrap` normal, e o botão liga/desliga fica depois do estado na mesma linha só enquanto cabem os três (cerca de 348 px
+   e 306 px). O desenho não previa o cabeçalho estreito; a janela do app macOS tem largura mínima de 900 px (`scripts/macos-app/main.swift:53`),
+   então a quebra só aparece numa aba de navegador abaixo de cerca de 374 px. O C141 prova este comportamento medido, e o texto
+   "à direita o estado" do **Bloco - Busca por significado**, item 1, vale para os cabeçalhos que cabem.

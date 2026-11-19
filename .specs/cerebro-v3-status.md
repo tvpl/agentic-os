@@ -1,5 +1,9 @@
 # Roteiro do segundo cérebro: estado, o que falta, gaps e o que revisar
 
+> **Atualização de 19/11/2026:** a **C9 `cerebro-busca-significado`** está construída e fechada por escalonamento ao dono (144 checks, três
+> verificações em FAIL por lacunas de prova, AD-050 e AD-051). Faltam C10 e C11, que só têm a linha do roteiro, a sessão de telas da C8
+> e da C9 com o dono e a revisão jurídica das minutas.
+>
 > **Atualização de 14/11/2026:** a **C8 `cerebro-rituais`** está construída e fechada (101 checks mais 10 de correção, verificação PASS na
 > rodada 3, AD-048 e AD-049). Faltam C9 a C11, que só têm a linha do roteiro, e a sessão de andar as telas com o dono.
 >
@@ -34,7 +38,7 @@ empurrada. A **parte B foi interrompida** pelo dono no meio da construção:
 | C6b | `cerebro-paineis`           | construída e fechada                                                     | 104    | rodada 3 FAIL, testes escritos depois, sem nova verificação (AD-044) |
 | C7  | `cerebro-memoria-confiavel` | **construída (A1-B2, com B1b), em correção depois de 2 rodadas em FAIL** | 171    | aberta: rodada 3, a última, ainda não rodou                          |
 | C8  | `cerebro-rituais`           | construída e fechada (111 checks)                                        | 111    | rodada 3 PASS (AD-049)                                               |
-| C9  | `cerebro-busca-significado` | **só linha no roteiro**                                                  | -      | sem plano, sem checks                                                |
+| C9  | `cerebro-busca-significado` | construída e fechada (144 checks)                                        | 144    | rodadas 1-3 FAIL, escalonamento (AD-051)                             |
 | C10 | `cerebro-perguntar`         | **só linha no roteiro**                                                  | -      | sem plano, sem checks                                                |
 | C11 | `cerebro-entidades-resumos` | **só linha no roteiro**                                                  | -      | sem plano, sem checks                                                |
 
