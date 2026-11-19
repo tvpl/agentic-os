@@ -554,6 +554,7 @@ Findings and what closes them:
   pixel above it (L-067), and every 10 px from 1 440 down to 320 px. The code puts the state to the right everywhere:
   no build defect. Fault: `.ss-head { flex-direction: column }` under `max-width: 760px` fails both shells (moldura
   first at 731 px, Núcleo at 760 px). Coverage: the arrangements row credits C141 on the header.
+  (Superseded by `## Correções da rodada 2`: the 730 and the 363 px were artifacts of a long folder path.)
 - **Finding 4, three precision gaps.** (a) C98's claim names `tests/contracts.api.test.ts`, whose 173 pin
   (`Object.keys(API)).toHaveLength(173)`) sits in "C58 the table itself is frozen…": C98 gains that Proof line; the test
   is unchanged. (b) C99's "naming `section-vectors`": `tests/memoria.migration.test.ts` C39 and
@@ -591,11 +592,17 @@ Proof: `npx vitest run tests/busca.embedder.test.ts -t "C139 "`
 icon (round 1 finding 2, design.md "Servidor seu")
 Proof: `npm run test -w apps/command-centre -- src/views/settings/semanticSearch.test.tsx -t "C140 "`
 
-**C141** - In a real browser, in the moldura and in the Núcleo, with the search off and on, the header's state
-("Desligada", "Ligada") sits to the right of the title (its left edge at or after the title's right edge) and on the
-title's line (vertically overlapping it), and the on/off button after the state on the same line, at 1 440 px, exactly
-on and one pixel above each width where the shell's layout changes (moldura 1 308, 899, 730; Núcleo 780, 760, 680), and
-every 10 px from 1 440 down to 320 px (round 1 finding 3, design.md "Cabeçalho", L-067, L-069)
+**C141** - In a real browser, in the moldura and in the Núcleo, with the search off and on, with the indexed folder
+`/Users/ana/Notas` (a realistic short path, in place of the e2e home's own), at every width from 1 440 down to 300 px
+(1 px steps): the header's state ("Desligada", "Ligada") sits to the right of the title (its left edge at or after the
+title's right edge) and on the title's line (vertically overlapping it) while the header is at least as wide as the
+title, a gap and the state (243.78 px with "Desligada", 222.64 px with "Ligada"), and wraps to the next line below it;
+the on/off button sits after the state on that same line while the header is at least as wide as the three and their two
+gaps (347.52 px with "Desligada", 305.02 px with "Ligada"), and wraps to a later line below it, as a normal flex-wrap;
+the Settings grid changes layout exactly at moldura 1 308, 899 and 736 px and Núcleo 780, 760 and 680 px (the first
+width of each new layout); the narrowest header is 170 px (moldura) and 226 px (Núcleo), and a header within 1 px on
+each side of each limit it reaches is measured (round 1 finding 3, round 2 finding 1 and the owner's decision of
+19/11/2026 in `## Correções da rodada 2`, design.md "Cabeçalho", L-067, L-069)
 Proof: `npm run build && MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/busca.spec.ts -g "C141 "`
 
 **C142** - A download reaches a host of its entry over `https` only, plain `http` only to this machine: a `302` to
@@ -603,6 +610,96 @@ Proof: `npm run build && MORDOMO_E2E_PORT=4901 npx playwright test --config test
 "failed"`, `reason: "host_not_allowed"`, with no file of the entry left; a `302` to `https://127.0.0.1:<port>/x` passes the
 guard and ends `failed` with a `network: …` reason (round 1 finding 5, door 3)
 Proof: `npx vitest run tests/busca.embedder.test.ts -t "C142 "`
+
+## Correções da rodada 2
+
+Round 2 of the verification (`verification.md`, FAIL at `10510ca`, scoped) found one gap, C141: its claim was false at
+narrow widths, and its proof was green only because the e2e home's indexed folder (a long path under the checkout)
+widened the one-column Settings grid (`apps/command-centre/src/views/apps.css:706`, `grid-template-columns: 1fr` under
+`@container (max-width: 640px)`) to the "Pastas indexadas" card's min-content (873 px), so the header was never measured
+under 363 px; and `LAYOUT_CHANGES` named 730 where the moldura changes at 736. The Verifier noted the grid defect itself
+as pre-existing and not counted. **The owner decided on 19/11/2026** (in the coordinator's session): (a) reduce C141's
+claim to the design (the state to the right of the title; the button after it on that line only while the header holds
+it, with a case on each side of the limit, L-067), with a realistic short folder path in the fixture and a test that the
+header really narrows, and 736 in place of 730; this is the one edit allowed to an approved claim; (b) fix the grid
+defect (`1fr` to `minmax(0, 1fr)`), an owner-approved change to a screen outside C9's scope, proven by a new browser
+check, C143; (c) say whether the moldura's 1 250 and 1 000 px rate changes still add no minimum once the grid is fixed.
+Every number below was measured again with a 1 px sweep from 1 440 to 300 px, both shells, both states, with the folder
+`/Users/ana/Notas` and with a long path, before and after the grid fix. Each new proof was made to fail by a fault
+injected in a scratch worktree (`git worktree add --detach`, `node_modules` symlinked, its own `npm run build`, E2E on
+port 4902; the real tree's `git status --porcelain` empty before and after; the worktree removed and pruned).
+
+Findings and what closes them:
+
+- **Finding 1, C141 (design.md "Cabeçalho").** The header is a wrapping flex row, gap 8 px, whose title (148.45 px)
+  takes `margin-right: auto`; the state is 87.33 px ("Desligada") or 66.19 px ("Ligada"), the button 95.73 px or
+  74.38 px. So the button stays on the title's line while the header is at least 347.52 px ("Desligada") or 305.02 px
+  ("Ligada"), in whole pixels 348 and 306; 363 was not a limit but the narrowest header the long path allowed. With the
+  short path and the grid fixed, the button wraps at moldura 969-900 and 477-300 px ("Desligada"), 927-900 and 435-300
+  px ("Ligada"), Núcleo 421-300 and 379-300 px.
+  **Departure from decision (a), for the owner to ratify.** The decision keeps the state to the right of the title "at
+  every width", which the Verifier measured true at `10510ca`; it was true only because the grid defect kept the header
+  at 299 px or more even with a short path (another min-content of the tab held the `1fr` column). With (b) applied the
+  header falls to 170 px (moldura) and 226 px (Núcleo) at 300 px, and the state wraps under the title, as the same normal
+  flex-wrap, where the header is narrower than the title, a gap and the state (243.78 px "Desligada", 222.64 px
+  "Ligada"): moldura 373-300 px ("Desligada") and 352-300 px ("Ligada"), Núcleo 317-300 px ("Desligada"; "Ligada"
+  never). Keeping the state on the title's line there needs a change to the header's CSS that nobody approved; C141
+  therefore states the state with the same rule as the button, with a case on each side of its limit. If the owner wants
+  the state to the right at every width, that is a product change to `semanticSearch.css` and a new claim.
+  **The proof.** C141 replaces the indexed folders the screen reads with `/Users/ana/Notas` (through the
+  `GET /api/v1/settings` route its `feign` helper already answers, now given an optional `folders` argument), so it no
+  longer depends on the length of the checkout's path; it sweeps every pixel from 1 440 to 300 px; at each width it
+  asserts the title, gap and state, and the three with both gaps, equal the two limits (to 1/1 000 px), and the state and
+  the button on the title's line or wrapped below it by the header's width against them; it reads the layout changes
+  from the grid's own column count and asserts them (moldura 1 308, 899, 736; Núcleo 780, 760, 680), asserts the
+  narrowest header (170 px moldura, 226 px Núcleo) and that a header within 1 px on each side of each limit it reaches
+  was measured. Faults: the Verifier's deduced mutant (`.ss` an inline-size container, `.ss-head { flex-direction:
+column }` under `@container (max-width: 340px)`) fails both shells ("right of the title", moldura at 962 px, Núcleo at
+  414 px, header 340 px); `.ss .ss-head { flex-wrap: nowrap }` fails both (moldura at 969 px, Núcleo at 421 px, header
+  347 px: the items shrink); the grid back to `1fr` fails both (the narrowest header).
+  **The layout changes**, re-derived from the shells' code and read from the grid's column count in the sweep: moldura
+  1 308 (one column: the settings page, an inline-size container, reaches `@container (max-width: 640px)`), 899
+  (`moldura/useFrameLayout.ts:23` `NARROW = "(max-width: 899px)"`, two columns again), 736 (one column; 737 is the last
+  two-column width); Núcleo 780 (one column), 760 (`nucleo/nucleo.css:769` `@media (max-width: 760px)`, two columns),
+  680 (one column). They are the same before and after the grid fix.
+- **Finding 2, the one-column Settings grid (the Verifier's note; owner-approved change).** `apps.css:706`
+  `grid-template-columns: 1fr` becomes `minmax(0, 1fr)`: a `1fr` track's minimum is its content's min-content, so a long
+  indexed folder path (the row's `span.mono.truncate` is an inline span the `truncate` class cannot clip) made the column
+  wider than the panel and `.app-panel { overflow-x: hidden }` cut off the rest of the Memória tab, this block's header
+  included. The only twin in the file, `.apps-ma-row { grid-template-columns: 1fr }` under `@media (max-width: 760px)`
+  (`apps.css:386`, Settings › Desktop micro-apps), holds three inputs and a button, whose min-content does not grow with
+  what is typed: checked, not changed. **C143** proves the fix. Fault: `1fr` back fails C143 in both shells (the column
+  945.22 px in a 448 px panel at moldura 1 000 px, 945.22 px in 638 px at Núcleo 770 px). Files touched:
+  `apps/command-centre/src/views/apps.css` (one line) and `tests/e2e/busca.spec.ts` (C141, C143, `feign`'s `folders`).
+  Rerun with nothing moved: `npm run test -w apps/command-centre -- src/views/settings` and `src/views/Settings*`; the
+  e2e specs that open Settings (`approval-longword-layout`, `approval-request-layout`, `device-card-layout`,
+  `contexts`, `organize`, `desktop-parity`, `desktop-regressions`, `onboarding`, `provider-readiness`, `render-profile`,
+  `smoke`, `memoria`, `a11y`); CSS gzip 84 193 B, unchanged (CSS raw +10 B), under the 85 544 B ceiling of C135.
+  **Still pre-existing, not fixed (outside the approval):** with a long path the folder row itself is as wide as its
+  path at every width, two columns included, and runs past its card; the panel clips it, so the tab's `scrollWidth`
+  still exceeds its `clientWidth`. C143 therefore asserts the grid's column and the Busca block inside the panel, not the
+  whole tab's `scrollWidth`. Clipping that row is a separate decision for the owner.
+- **Note (c), the moldura's 1 250 and 1 000 px changes.** Still no new minimum after the grid fix: the header's local
+  minima over 1 440-300 px are at 1 309 px (363 px), 900 px (278 px) and 737 px (363 px) in the moldura and 781 and
+  681 px (363 px) in the Núcleo, each one pixel above a layout change; under the last change of each shell (736, 680) the
+  header narrows steadily to the sweep's floor, which C141 pins. (Before the fix, with the long path, the minima were
+  1 309 and 737 only, the column pinned at the card's 873 px below each one-column switch.)
+
+C141's claim before this edit, for the record: "In a real browser, in the moldura and in the Núcleo, with the search off
+and on, the header's state ("Desligada", "Ligada") sits to the right of the title (its left edge at or after the title's
+right edge) and on the title's line (vertically overlapping it), and the on/off button after the state on the same line,
+at 1 440 px, exactly on and one pixel above each width where the shell's layout changes (moldura 1 308, 899, 730; Núcleo
+780, 760, 680), and every 10 px from 1 440 down to 320 px". Its new text is in `## Correções da rodada 1`.
+
+New check:
+
+**C143** - In a real browser, in the moldura and in the Núcleo, with the search on and one indexed folder whose path is
+longer than the panel is wide (`/Users/ana/Library/Mobile Documents/iCloud~md~obsidian/Documents/Cofre pessoal/Notas do
+trabalho/2026`), at one width inside each one-column range of the Settings grid (moldura 1 000 and 600 px, Núcleo 770
+and 500 px): the grid has one column, no wider than its panel; the "Busca por significado" block lies wholly inside the
+panel (left and right edges), each part of its header too, and its header is wholly in view (round 2 finding 2, the
+owner's approved change to `views/apps.css`)
+Proof: `npm run build && MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/busca.spec.ts -g "C143 "`
 
 ## Coverage
 
@@ -662,14 +759,15 @@ Proof: `npx vitest run tests/busca.embedder.test.ts -t "C142 "`
 | screen parts in order (5)                                                           | header C109, C110 · provider options C109, C111 · detail C109, C113, C114 · index state C109, C125 · footer link C109, C127                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | -        |
 | screen states (8)                                                                   | loading C126 · read error C126 · no runtime C112 · no model C120 · downloading C119 · failed download C121 · test running and result C115 · recompute running C125                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | -        |
 | buttons with the class and icon design.md gives (7)                                 | Baixar C117 · Tentar de novo C117 · Cancelar C117 · Remover C117 · Usar este modelo C117 · Testar conexão C140 (C114, C115 find it by name) · dialog Baixar C118                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | -        |
-| arrangements design.md draws (8)                                                    | five parts order C109 · header order C110, the state to the right of the title in a browser C141 · options order C111 · server fields order C114 · row line 1 then line 2 C116 · state and actions to the right C133 · warning beside the checkbox C114, C133 · reranker block after the list C124                                                                                                                                                                                                                                                                                                                                                                                                                    | -        |
+| arrangements design.md draws (8)                                                    | five parts order C109 · header order C110, the state to the right of the title on its line in a browser C141 (at every width of both shells while the header holds the title, a gap and the state; narrower, it wraps: `## Correções da rodada 2`) · options order C111 · server fields order C114 · row line 1 then line 2 C116 · state and actions to the right C133 · warning beside the checkbox C114, C133 · reranker block after the list C124                                                                                                                                                                                                                                                                  | -        |
+| one-column ranges of the Settings grid, shell × range, with a long folder path (4)  | moldura 1 308-900 px C143 · moldura 736-300 px C143 · Núcleo 780-761 px C143 · Núcleo 680-300 px C143                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | -        |
 | confirmations (2)                                                                   | recompute C122 · remove C123                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | -        |
 | shells (2)                                                                          | moldura C109, C132 · Núcleo C109, C132                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | -        |
 | themes (2)                                                                          | light C132, C134 · dark C132, C134                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | -        |
 | design.md copy (25 rows)                                                            | C129, table-driven over all 25                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | -        |
 
 - Claims naming a status code, route or response shape: C24-C32, C34, C38, C39, C41, C43-C52, C55, C57-C60, C63-C65, C70-C75, C77-C81, C83, C85-C94, C96 and C97, each proven through `app.inject` against `buildServer`; C2, C3, C6, C7, C11, C12, C19, C20, C23, C29, C69, C73, C76, C80, C82 and C90 also or only at their own layer, with no HTTP; C4-C7, C10, C34, C84 and C106 through the built CLI
-- Claims about the screen: C109-C131 in rendered components; C109, C131-C134 and C136 also in a real browser, both shells where the claim names them
+- Claims about the screen: C109-C131 in rendered components; C109, C131-C134, C136, C141 and C143 also in a real browser, both shells where the claim names them
 - C137 is opt-in and proves nothing in CI; no row above credits it
 
 ## Binding sources
@@ -686,11 +784,11 @@ Proof: `npx vitest run tests/busca.embedder.test.ts -t "C142 "`
 
 ## Test policy
 
-| Code                                                                                                                                                                                                                                                                                                                                        | Required proofs                                                          | Coverage expectation                                                                                 |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| Decides, reached across a boundary (the ending table, the splitter and the embedded text, the recompute rule, the eval's format check and metrics, the catalog check and the download's verdicts, the choice of provider and its blocked reasons, the fusion, the abstention, the section choice, the hops, the budget, the rerank outcome) | one at the boundary (HTTP or the built CLI) **and** one at its own layer | the contract at the boundary; one asserted case per row of the decision table at its own layer       |
-| Decides, not reached across a boundary (migration 34, the child's batch, idle and restart rules, the static walker)                                                                                                                                                                                                                         | one at its own layer                                                     | one asserted case per row                                                                            |
-| Screens (the Settings block, its dialog and confirmations)                                                                                                                                                                                                                                                                                  | one in rendered components per element and state                         | each state, arrangement and copy design.md names; both themes and both shells for axe in the browser |
+| Code                                                                                                                                                                                                                                                                                                                                        | Required proofs                                                          | Coverage expectation                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Decides, reached across a boundary (the ending table, the splitter and the embedded text, the recompute rule, the eval's format check and metrics, the catalog check and the download's verdicts, the choice of provider and its blocked reasons, the fusion, the abstention, the section choice, the hops, the budget, the rerank outcome) | one at the boundary (HTTP or the built CLI) **and** one at its own layer | the contract at the boundary; one asserted case per row of the decision table at its own layer                                                                                                                                                                                                                                                |
+| Decides, not reached across a boundary (migration 34, the child's batch, idle and restart rules, the static walker)                                                                                                                                                                                                                         | one at its own layer                                                     | one asserted case per row                                                                                                                                                                                                                                                                                                                     |
+| Screens (the Settings block, its dialog and confirmations)                                                                                                                                                                                                                                                                                  | one in rendered components per element and state                         | each state, arrangement and copy design.md names; both themes and both shells for axe in the browser; the header's arrangement in a real browser at every width of both shells, with a case on each side of each fit width and a short folder path (C141); the block inside its panel with a long folder path in each one-column range (C143) |
 
 Evidence:
 
