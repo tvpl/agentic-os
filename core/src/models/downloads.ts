@@ -241,17 +241,23 @@ export class ModelDownloads {
 }
 
 /**
+ * May a request go to `at`: a host of the entry, over `https` on the default port (443), or over plain `http` or any
+ * port only to a host on this machine (door 3 and its port limit, owner decision of 19/11/2026).
+ */
+export function hopAllowed(hosts: readonly string[], at: URL): boolean {
+  if (!hostAllowed(hosts, at.hostname)) return false;
+  if (isLoopback(at.hostname)) return at.protocol === "https:" || at.protocol === "http:";
+  return at.protocol === "https:" && (at.port === "" || at.port === "443");
+}
+
+/**
  * GET `url`, following redirects by hand: every hop must be on one of `hosts`, over `https` (plain `http` only to a
  * host on this machine), or the download stops with `host_not_allowed` before the next request is made.
  */
 async function fetchWithin(url: URL, hosts: readonly string[], signal: AbortSignal): Promise<Response> {
   let at = url;
   for (let hop = 0; ; hop++) {
-    if (
-      !hostAllowed(hosts, at.hostname) ||
-      !(at.protocol === "https:" || (at.protocol === "http:" && isLoopback(at.hostname)))
-    )
-      throw new DownloadFailure("host_not_allowed");
+    if (!hopAllowed(hosts, at)) throw new DownloadFailure("host_not_allowed");
     let response: Response;
     try {
       response = await fetch(at, { redirect: "manual", signal });

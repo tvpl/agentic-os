@@ -7,6 +7,7 @@ import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { LOCAL_EMBEDDER_IDS } from "../contracts/src/settings.js";
 import { MODEL_CATALOG, checkCatalog, hostAllowed } from "../core/src/models/catalog.js";
+import { hopAllowed } from "../core/src/models/downloads.js";
 import { TEST_PHRASE } from "../core/src/memory/embeddings.js";
 import { embeddingsServer, type EmbeddingsServer } from "./helpers/buscaWorld.js";
 import {
@@ -398,6 +399,47 @@ describe("C142 a catalog host is reached over https only", () => {
     const model = await w.settle(QWEN);
     expect(model.state).toBe("failed");
     expect(model.reason).toMatch(/^network: /);
+  });
+});
+
+describe("C144 a catalog host is reached on the default https port only", () => {
+  it("C144 at the guard's own layer: https on a host of the entry with no port or 443 passes; any other port, plain http and another scheme do not; a host on this machine keeps any port", () => {
+    const hosts = ["huggingface.co", "*.cdn.hf.co", "127.0.0.1"];
+    const ok = [
+      "https://huggingface.co/x",
+      "https://huggingface.co:443/x",
+      "https://us.aws.cdn.hf.co/x",
+      "https://us.gcp.cdn.hf.co:443/x",
+    ];
+    for (const url of ok) expect(hopAllowed(hosts, new URL(url)), url).toBe(true);
+    const no = [
+      "https://huggingface.co:8443/x",
+      "https://huggingface.co:444/x",
+      "https://huggingface.co:80/x",
+      "https://us.aws.cdn.hf.co:8080/x",
+      "http://huggingface.co/x",
+      "http://huggingface.co:443/x",
+      "ftp://huggingface.co/x",
+      "https://evilcdn.hf.co/x",
+    ];
+    for (const url of no) expect(hopAllowed(hosts, new URL(url)), url).toBe(false);
+    // this machine: the stub of the tests and a local server keep any port, over http or https
+    for (const url of ["http://127.0.0.1:41234/x", "https://127.0.0.1:41234/x", "http://127.0.0.1/x"])
+      expect(hopAllowed(hosts, new URL(url)), url).toBe(true);
+    expect(hopAllowed(hosts, new URL("ftp://127.0.0.1/x"))).toBe(false);
+  });
+
+  it("C144 through the route: a 302 to https on a host of the entry at port 8443 stops before any request, host_not_allowed, no file left", async () => {
+    const w = await world();
+    const entry = w.catalog.find((e) => e.id === QWEN)!;
+    // 192.0.2.1 is TEST-NET-1: never routed, so a request to it would hang; the guard must stop first
+    entry.hosts = ["127.0.0.1", "192.0.2.1"];
+    w.host.redirect.set(`/${QWEN}/onnx/model.onnx`, "https://192.0.2.1:8443/x");
+    await w.act({ action: "install", id: QWEN });
+    const model = await w.settle(QWEN);
+    expect(model.state).toBe("failed");
+    expect(model.reason).toBe("host_not_allowed");
+    expect(w.modelFiles().filter((f) => f.startsWith(`${QWEN}/`))).toEqual([]);
   });
 });
 
