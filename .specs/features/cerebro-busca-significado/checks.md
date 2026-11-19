@@ -1202,3 +1202,17 @@ Round 1 fixes (`## Correções da rodada 1`):
 - **Abandoned:** adding a name assertion to the 34 pins of `memoria.migration` C39 and `natureza.layer` C7 (C30 already
   ties 34 to `section-vectors`); a 1 px sweep of every width for C141 (about 40 s a shell-state; the layout changes are
   measured exactly and the rest every 10 px).
+
+Round 2 fixes (`## Correções da rodada 2`):
+
+- **Round 2 fixes:** C141 reworked and C143 added at `40dc024` (the grid fix in `5de8289`, the proofs in `787f031`, the
+  corrections, the C141 claim edit, Coverage and the Test policy Screens row in `40dc024`); the one approved claim edited
+  is C141, by the owner's decision of 19/11/2026, with one departure flagged for the owner (the state's own fit width
+  after the grid fix). After `npm run build`: `tests/e2e/busca.spec.ts` 36 passed (C141 about 1.5 min a shell);
+  `npm run test -w apps/command-centre -- src/views/settings` 154 passed (with `src/views/Settings*`, 169); the 13 e2e
+  specs that open Settings 149 passed, 1 failed, `desktop-regressions` "the field, the core and the iris are painted",
+  which fails the same at `1f571c9` (pre-existing, the home page's canvases, no Settings); `npm run typecheck`,
+  `npm run lint`, `npm run lint:css` and `npm run bundle:check` exit 0 (CSS gzip 84 193 B, unchanged). Faults shown
+  killed in a scratch worktree: the grid back to `1fr` (C143 and C141, both shells), the header as a column under a
+  340 px block (C141, both shells), the header never wrapping (C141, both shells). Not fixed, for the owner: the folder
+  row of "Pastas indexadas" still runs past its card with a long path (finding 2).
