@@ -70,14 +70,18 @@ async function seed(page: Page, shell: Shell, theme: Theme): Promise<void> {
   );
 }
 
-/** The settings the screen reads, with `memory.embeddings` (and the status's `semantic`) changed by the test. */
-async function feign(page: Page, embeddings: Json, semantic: Json = {}): Promise<void> {
+/**
+ * The settings the screen reads, with `memory.embeddings` (and the status's `semantic`) changed by the test, and the
+ * indexed folders replaced when `folders` is given.
+ */
+async function feign(page: Page, embeddings: Json, semantic: Json = {}, folders?: Json[]): Promise<void> {
   await page.route(/\/api\/v1\/settings(\?.*)?$/, async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     try {
       const response = await route.fetch();
       const json = await response.json();
       json.memory = { ...json.memory, embeddings: { ...json.memory.embeddings, ...embeddings } };
+      if (folders) json.indexedFolders = folders;
       await route.fulfill({ response, json });
     } catch {
       /* disposed */
@@ -454,48 +458,153 @@ for (const shell of SHELLS)
 /* ---------------- C141: the header's state to the right of the title ---------------- */
 
 /**
- * `semanticSearch.css` has no width breakpoint: `.ss-head` is a wrapping flex row, so the state would drop below the
- * title only where the block grows narrower than the header's content. The block narrows only between the shells'
- * own layout changes; these are the first widths (px) of each new layout, measured at this commit, each asserted
- * exactly on it and one pixel above (where the header is narrowest before the change, L-067).
+ * `semanticSearch.css` has no width breakpoint: `.ss-head` is a wrapping flex row (gap 8 px) whose title takes
+ * `margin-right: auto`, so an item leaves the title's line only where the header is narrower than the title, the items
+ * before it, the item and the gaps. Measured at this commit with a 1 px sweep, both shells, both states: the state stays
+ * on the title's line, to its right, while the header is at least `STATE_FITS` px wide (the title, 148.45 px, a gap of
+ * 8 and the state: "Desligada" 87.33 px, "Ligada" 66.19 px), and the button follows it on that line while the header is
+ * at least `BUTTON_FITS` px wide (another gap and the button: 95.73 px, 74.38 px); below each, the item wraps to the
+ * next line. The widths are Chromium's layout units (1/64 px) and are asserted at every width. `LAYOUT_CHANGES` are the first widths (px) of each new layout of the Settings grid (its
+ * column count): moldura 1 308 (one column, `views/apps.css` `@container (max-width: 640px)`), 899
+ * (`moldura/useFrameLayout.ts` `NARROW`), 736 (one column again; 737 is the last two-column width); Núcleo 780, 760
+ * (`nucleo/nucleo.css` `@media (max-width: 760px)`), 680. `NARROWEST` is the header at 300 px, which the sweep must reach
+ * so that it cannot pass without the header narrowing past the limits (owner decision of 19/11/2026,
+ * `## Correções da rodada 2`).
  */
-const LAYOUT_CHANGES: Record<Shell, number[]> = { moldura: [1308, 899, 730], nucleo: [780, 760, 680] };
+const STATE_FITS = { Desligada: 243.78125, Ligada: 222.640625 } as const;
+const BUTTON_FITS = { Desligada: 347.515625, Ligada: 305.015625 } as const;
+const LAYOUT_CHANGES: Record<Shell, number[]> = { moldura: [1308, 899, 736], nucleo: [780, 760, 680] };
+const NARROWEST: Record<Shell, number> = { moldura: 170, nucleo: 226 };
+/** A realistic indexed folder, in place of the e2e home's own, whose length is that of the checkout's path. */
+const SHORT_FOLDER = "/Users/ana/Notas";
 
 for (const shell of SHELLS)
-  test(`C141 ${shell}: the state sits to the right of the title, on its line, with the button after it, at 1 440 px, on and one pixel above each layout change, every 10 px down to 320, on and off`, async ({
+  test(`C141 ${shell}: with a short folder path, every px from 1 440 down to 300, on and off, the state sits to the right of the title on its line while the header is at least 243.78 px (Desligada) or 222.64 px (Ligada) and the button after it while it is at least 347.52 or 305.02 px; below each, the item wraps`, async ({
     page,
   }) => {
-    test.setTimeout(90_000);
-    const widths = [
-      ...new Set([
-        1440,
-        ...LAYOUT_CHANGES[shell].flatMap((w) => [w + 1, w]),
-        ...Array.from({ length: 113 }, (_, i) => 1440 - i * 10),
-      ]),
-    ];
+    test.setTimeout(300_000);
     for (const [enabled, word] of [
       [false, "Desligada"],
       [true, "Ligada"],
     ] as const) {
       await page.unroute(/\/api\/v1\/settings(\?.*)?$/);
-      await feign(page, { enabled, provider: "hash" });
+      await feign(page, { enabled, provider: "hash" }, {}, [
+        { path: SHORT_FOLDER, area: null, enabled: true },
+      ]);
       if (enabled) await page.reload();
       else await open(page, shell, "dark", 1440);
       await expect(page.locator(`${BLOCK} .ss-head .ss-state`)).toHaveText(word);
-      for (const width of widths) {
+      await expect(page.locator(".folder-row .mono")).toHaveText([SHORT_FOLDER]);
+      const heads = new Set<number>();
+      const changes: number[] = [];
+      let columns = 2;
+      for (let width = 1440; width >= 300; width--) {
         await page.setViewportSize({ width, height: 900 });
         const g = await page.locator(`${BLOCK} .ss-head`).evaluate((head) => {
           const [title, state, button] = [...head.children].map((c) => c.getBoundingClientRect());
-          return { title: title!, state: state!, button: button! };
+          const grid = head.closest(".settings-shell")!;
+          return {
+            head: head.getBoundingClientRect().width,
+            columns: getComputedStyle(grid).gridTemplateColumns.split(" ").length,
+            title: title!,
+            state: state!,
+            button: button!,
+          };
         });
-        const at = `${word} at ${width} px`;
+        if (g.columns !== columns) changes.push(width);
+        columns = g.columns;
+        heads.add(g.head);
+        const at = `${word} at ${width} px, header ${g.head} px`;
+        expect(g.title.width + 8 + g.state.width, `title, gap and state, ${at}`).toBeCloseTo(
+          STATE_FITS[word],
+          3,
+        );
+        expect(
+          g.title.width + g.state.width + g.button.width + 16,
+          `the three and the gaps, ${at}`,
+        ).toBeCloseTo(BUTTON_FITS[word], 3);
         expect(g.state.width, at).toBeGreaterThan(0);
-        expect(g.state.left, `right of the title, ${at}`).toBeGreaterThanOrEqual(g.title.right);
-        expect(g.state.top, `on the title's line, ${at}`).toBeLessThan(g.title.bottom);
-        expect(g.state.bottom, `on the title's line, ${at}`).toBeGreaterThan(g.title.top);
-        expect(g.button.left, `the button after the state, ${at}`).toBeGreaterThanOrEqual(g.state.right);
-        expect(g.button.top, `the button on the same line, ${at}`).toBeLessThan(g.title.bottom);
+        if (g.head >= STATE_FITS[word]) {
+          expect(g.state.left, `right of the title, ${at}`).toBeGreaterThanOrEqual(g.title.right);
+          expect(g.state.top, `on the title's line, ${at}`).toBeLessThan(g.title.bottom);
+          expect(g.state.bottom, `on the title's line, ${at}`).toBeGreaterThan(g.title.top);
+        } else {
+          expect(g.state.top, `the state wraps below the title, ${at}`).toBeGreaterThanOrEqual(
+            g.title.bottom,
+          );
+        }
+        if (g.head >= BUTTON_FITS[word]) {
+          expect(g.button.left, `the button after the state, ${at}`).toBeGreaterThanOrEqual(g.state.right);
+          expect(g.button.top, `the button on the title's line, ${at}`).toBeLessThan(g.title.bottom);
+        } else {
+          expect(g.button.top, `the button wraps below the title, ${at}`).toBeGreaterThanOrEqual(
+            g.title.bottom,
+          );
+        }
       }
+      expect(changes, `${word}: the layout changes`).toEqual(LAYOUT_CHANGES[shell]);
+      // the header narrows past each limit it reaches, with a header within 1 px on each side of it (L-067)
+      expect(Math.min(...heads), `${word}: the narrowest header`).toBe(NARROWEST[shell]);
+      for (const limit of [
+        BUTTON_FITS[word],
+        ...(NARROWEST[shell] < STATE_FITS[word] ? [STATE_FITS[word]] : []),
+      ]) {
+        const sides = [...heads].filter((h) => h >= limit - 1 && h < limit + 1).map((h) => h >= limit);
+        expect(new Set(sides), `${word}: headers within 1 px on each side of ${limit}`).toEqual(
+          new Set([false, true]),
+        );
+      }
+    }
+  });
+
+/* ---------------- C143: the one-column Settings grid holds a long folder path ---------------- */
+
+/**
+ * A long indexed folder path made the one-column Settings grid (`grid-template-columns: 1fr`, whose minimum is the
+ * content's) as wide as the "Pastas indexadas" card's min-content and `.app-panel { overflow-x: hidden }` clipped the
+ * rest, this block's header included. One width inside each one-column range of each shell (`LAYOUT_CHANGES`).
+ */
+const LONG_FOLDER =
+  "/Users/ana/Library/Mobile Documents/iCloud~md~obsidian/Documents/Cofre pessoal/Notas do trabalho/2026";
+const ONE_COLUMN: Record<Shell, number[]> = { moldura: [1000, 600], nucleo: [770, 500] };
+
+for (const shell of SHELLS)
+  test(`C143 ${shell}: with a long indexed folder path, at one width in each one-column range, the Settings grid's column is no wider than its panel and the Busca por significado block lies wholly inside the panel, its header in view`, async ({
+    page,
+  }) => {
+    await feign(page, { enabled: true, provider: "hash" }, {}, [
+      { path: LONG_FOLDER, area: null, enabled: true },
+    ]);
+    await open(page, shell, "dark", 1440);
+    await expect(page.locator(".folder-row .mono")).toHaveText([LONG_FOLDER]);
+    for (const width of ONE_COLUMN[shell]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.locator(`${BLOCK} .ss-head`).scrollIntoViewIfNeeded();
+      const m = await page.locator(BLOCK).evaluate((block) => {
+        const grid = block.closest(".settings-shell")!;
+        const panel = grid.closest(".app-panel")!;
+        const p = panel.getBoundingClientRect();
+        const left = p.left + panel.clientLeft;
+        const b = block.getBoundingClientRect();
+        return {
+          tracks: getComputedStyle(grid)
+            .gridTemplateColumns.split(" ")
+            .map((t) => parseFloat(t)),
+          panel: { left, right: left + panel.clientWidth, width: panel.clientWidth },
+          path: document.querySelector(".folder-row .mono")!.getBoundingClientRect().width,
+          block: { left: b.left, right: b.right },
+          head: [...block.querySelector(".ss-head")!.children].map((c) => c.getBoundingClientRect().right),
+        };
+      });
+      const at = `${shell} at ${width} px`;
+      expect(m.tracks, `one column, ${at}`).toHaveLength(1);
+      expect(m.path, `the path is wider than the panel, ${at}`).toBeGreaterThan(m.panel.width);
+      expect(m.tracks[0], `the column within the panel, ${at}`).toBeLessThanOrEqual(m.panel.width);
+      expect(m.block.left, `the block inside the panel, ${at}`).toBeGreaterThanOrEqual(m.panel.left);
+      expect(m.block.right, `the block inside the panel, ${at}`).toBeLessThanOrEqual(m.panel.right);
+      for (const right of m.head)
+        expect(right, `the header inside the panel, ${at}`).toBeLessThanOrEqual(m.panel.right);
+      await expect(page.locator(`${BLOCK} .ss-head`)).toBeInViewport({ ratio: 1 });
     }
   });
 
