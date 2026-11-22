@@ -815,3 +815,40 @@ cursor, codex]`, the guardrails and the shape of door 3) and the default `memory
   is door 5, built there; today the header is ignored and the owner's token passes); C13's case of a file with no
   heading is proven with `(top)`, the name `splitSections` and the recall give the preamble, because the claim's
   parenthetical `(início)` names a label the code does not have (renegotiation for the owner, not edited here)
+
+- **Boundary (batch A):** C1-C35 closed at `75f630b` (the skill and its setting in `f202c37`, the ask in `75f630b`),
+  with C8's case of the principal `mcp` open for batch B (door 5 builds the principal; today `x-mordomo-as` is ignored
+  and the owner's token passes) and C13's case of a file with no heading proven with `(top)` (its parenthetical
+  `(início)` names a label neither `splitSections` nor the recall has; for the owner to settle). On that tree, after
+  `npm run build`, `npm run typecheck` and `npm run lint` exit 0, every `Proof:` line of C1-C35 passes and runs only its
+  check's cases, and `npx vitest run` at the root has one failure, `tests/paineis.refresh.test.ts` C13 (date-dependent,
+  fails the same way on the base). Pins batch A moved: routes 173 -> 176 (`api.contract` C1 and C53, `contracts.api`
+  C2 and C58, `api.openapi` C15, `device-scopes` C43), non-public 171 -> 174 (`device-scopes` C1, C3, C9), owner
+  94 -> 97 (`api.contract` C3, `device-scopes`, the owner row of `docs/security.md` and the counts `paineis.contract`
+  C60 and `memoria.contract` C82 read off it), raised codes 94 -> 97 (`ask_in_progress`, `folder_outside_index`,
+  `unknown_note`; `skill_unavailable` and `budget_exhausted` were already raised), checked answers 171 -> 174
+  (`api.openapi` C21), refusal and event scenarios 173 -> 176 (one scenario per new route in `contractWorld.ts`),
+  `EXPECTED_ROUTE_SCOPES`, the `sdk.api-thin` amendments of `device-scopes`, the contracts' exports (`contracts` C41,
+  fourteen names), the internal barrel (`sdk.surface` C38: `ASK_SKILL`, `checkAskAnswer`, `countSentences`,
+  `resolveAskScope`, the four of C67's list this batch adds) and the five-item default `memorySkills`
+  (`builtin-context`, `organize.skill` C9, `paineis.question` C56). No migration, setting key, event or door added.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) the routes are
+  `apps/api/src/routes/ask.ts`, which also holds the run-to-ask mapping and the inverse of the `scope` input line, so the
+  core barrel gains only C67's names; `AppContext.ask` (`available`, `start`) is the skill's dependency, as the question
+  dashboard's is, and the point C69's factory reads; (b) `access.ts` gains `audienceView(ctx, audience)`
+  (`accessView` is it over the principal's audience); the ask recalls with the agents' view, their index
+  (`audienceTable("agents")`) and the scope's `within`, with the recall's own `k` and token budget, and does not record
+  in `recall.stats`; `consulted` counts the rows the agents' row filter keeps, not hidden, inside the scope; (c) a
+  `SKILL.md` the safe reader refuses reads as unavailable (`409 skill_unavailable`), so the ask answers none of the
+  file refusals and keeps the Coverage set of codes; (d) the scope's refusals are `AskFolderOutsideError`,
+  `AskUnknownNoteError` and the cleanup's `CleanupContextNotFoundError` (the error scan reads their literal codes); on
+  read, a scope today's rules refuse makes the ask `refused` with that message; (e) the reasons are in Portuguese, one
+  per rule (`A citação <onde> nomeia <path>, que …`, `A resposta passa de 65536 bytes.`, `A resposta não é JSON.`,
+  `A resposta não segue o formato de answer.json: <path>: <rule>`, `A provocação tem <n> frases; no máximo 2.`); (f)
+  `:id` is `IdParams` (a string that is no id is `400 validation`, any id that names no `brain-ask` run `404`); the list
+  is newest `created_at` first, `startedAt` the run's start or, unstarted, its creation; (g) the schemas stay open (an
+  unknown key is accepted, the OpenAPI document's rule); (h) `countSentences` is the claim's rule as written; (i) the
+  test world is `tests/helpers/perguntarWorld.ts` (`askWorld`, `threeNotes`, `paragraph`); (j) the clone was shallow:
+  the builder fetched the full history, and with it 11 of the 12 failures the base showed (tests that read files at
+  earlier commits) pass; `plan.md` Flow now names `resolveAskScope` over `contextMembership` and `resolveCleanupScope`.
+- **Abandoned:** nothing.
