@@ -269,8 +269,8 @@ describe("S1 the refusals of the file readers", () => {
   }, 900_000);
 
   it("C45 the probe runs one scenario for each route, and the refusals reach the routes", () => {
-    expect(Object.keys(SCENARIOS)).toHaveLength(173);
-    expect(scenariosSeen).toBe(173);
+    expect(Object.keys(SCENARIOS)).toHaveLength(176);
+    expect(scenariosSeen).toBe(176);
     for (const fault of FAULTS) {
       expect(injected[fault], `${fault} injected`).toBeGreaterThan(20);
       // A probe that finds nothing would pass every comparison below.

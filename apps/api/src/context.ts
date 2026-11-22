@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { DASHBOARD_ANSWER_SKILL } from "@mordomo/contracts";
 import type { HealthStatus, PermissionBroker, ProviderCapabilities, RunMode } from "@mordomo/core";
 import {
+  ASK_SKILL,
   ConnectorDataCache,
   DashboardService,
   DashboardStore,
@@ -99,6 +100,15 @@ export class AppContext extends MordomoEngine {
   /** The dashboards: their files, their snapshots, one refresh at a time each, and the clock's tick. */
   readonly dashboards: DashboardService;
 
+  /**
+   * The skill an ask runs (cerebro-perguntar, doors 1 and 2): whether it can run now (it exists, is enabled and is a
+   * memory skill of the settings), and its start, read-only like any skill run, which answers the run's id.
+   */
+  readonly ask: {
+    available: () => boolean;
+    start: (input: { inputs: Record<string, string>; contextId?: string }) => string;
+  };
+
   private healthCache = new Map<ProviderId, { at: number; health: HealthStatus }>();
   private healthInFlight = new Map<ProviderId, Promise<HealthStatus>>();
 
@@ -152,6 +162,28 @@ export class AppContext extends MordomoEngine {
           ).runId,
       },
     });
+    this.ask = {
+      available: () => {
+        // A SKILL.md the safe reader refuses (a link out of skills/, a file too large) is a skill that cannot run.
+        let skill: ReturnType<typeof this.skills.load>;
+        try {
+          skill = this.skills.load(ASK_SKILL);
+        } catch {
+          return false;
+        }
+        return skill !== null && skill.enabled && this.settings().memorySkills.includes(ASK_SKILL);
+      },
+      start: ({ inputs, contextId }) =>
+        this.execution.startSkill(
+          {
+            slug: ASK_SKILL,
+            inputs,
+            ...(contextId !== undefined ? { contextId } : {}),
+            startedBy: "owner",
+          },
+          { folderCheck: "launch" },
+        ).runId,
+    };
     this.unsubscribeCredentials = this.events.subscribe((e) => {
       if (e.type !== "run.finished") return;
       const runId = (e.payload as { runId?: string }).runId;

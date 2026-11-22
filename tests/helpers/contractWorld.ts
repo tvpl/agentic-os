@@ -608,6 +608,24 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   [key("GET", "/api/memory/recall")]: { run: (w) => w.call("GET", "/api/memory/recall?q=Alfa&record=false") },
   [key("GET", "/api/memory/recall/stats")]: { run: (w) => w.call("GET", "/api/memory/recall/stats") },
+  // cerebro-perguntar, batch A (door 1): an ask the recall abstains on (no run is started, so no lock is held), the
+  // list, and an ask whose run is a finished row of brain-ask.
+  [key("POST", "/api/memory/ask")]: {
+    run: (w) =>
+      w.call("POST", "/api/memory/ask", { question: "xyzzy plugh", mode: "direct", scope: { kind: "all" } }),
+  },
+  [key("GET", "/api/memory/ask")]: { run: (w) => w.call("GET", "/api/memory/ask") },
+  [key("GET", "/api/memory/ask/:id")]: {
+    run: (w) => {
+      const id = crypto.randomUUID();
+      w.ctx.db
+        .prepare(
+          "INSERT INTO runs (id, created_at, started_at, finished_at, origin, provider, status, skill_slug) VALUES (?, ?, ?, ?, 'skill', 'claude', 'done', 'brain-ask')",
+        )
+        .run(id, Date.now(), Date.now(), Date.now());
+      return w.call("GET", `/api/memory/ask/${id}`);
+    },
+  },
   [key("GET", "/api/memory/journal")]: { run: (w) => w.call("GET", "/api/memory/journal") },
   [key("GET", "/api/memory/hygiene")]: { run: (w) => w.call("GET", "/api/memory/hygiene") },
   [key("GET", "/api/memory/facts")]: { run: (w) => w.call("GET", "/api/memory/facts") },

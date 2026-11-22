@@ -808,3 +808,10 @@ Status of batch A (updated in the commit that closes each piece):
 - the skill and its setting (door 2): `skills/brain-ask/SKILL.md` (`mode: read_only`, the five inputs, `providers: [claude,
 cursor, codex]`, the guardrails and the shape of door 3) and the default `memorySkills` with `brain-ask` last; no check
   closes here (C64 and C66 close in batch C), and the pins that name the default list are moved to the five
+- the ask, its scopes, the owner's take and the provocation (S1-S4: C1-C35): closed, every proof green in
+  `tests/perguntar.routes.test.ts`, `tests/perguntar.layer.test.ts` and `tests/perguntar.scope.test.ts`, each proof line
+  run alone and running only its check's cases; two notes: C8 is closed for the owner, a paired device, a run's `rc_`
+  and no token through `/api` and `/api/v1`, and its case of the principal `mcp` stays open for batch B (the principal
+  is door 5, built there; today the header is ignored and the owner's token passes); C13's case of a file with no
+  heading is proven with `(top)`, the name `splitSections` and the recall give the preamble, because the claim's
+  parenthetical `(início)` names a label the code does not have (renegotiation for the owner, not edited here)

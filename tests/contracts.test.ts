@@ -207,6 +207,21 @@ describe("S1 the contracts package", () => {
         "toWire",
         "wireSchema",
         "writeDecision",
+        // cerebro-perguntar, batch A (doors 1 and 3): an ask's bounds, its scope and the answer the skill writes
+        "ASK_ANSWER_MAX_BYTES",
+        "ASK_MODES",
+        "ASK_NOTES_MAX",
+        "ASK_QUESTION_MAX",
+        "ASK_QUESTION_MIN",
+        "ASK_STATUSES",
+        "ASK_TAKE_MAX",
+        "ASK_TAKE_MIN",
+        "AskAnswerFileSchema",
+        "AskAnswerSchema",
+        "AskCitationSchema",
+        "AskScopeSchema",
+        "LABELLED_NATUREZAS",
+        "PROVOCATION_KINDS",
       ].sort(),
     );
     // The browser takes the scopes from the entry point that carries no zod.

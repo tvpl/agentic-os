@@ -937,6 +937,173 @@ const TaskWrittenSchema = z.object({
   task: z.object({ line: z.number(), done: z.boolean(), text: z.string() }),
 });
 
+// ---- cerebro-perguntar, doors 1 and 3: an ask, its scope and its answer -------------------------------------------
+
+/** The bounds of door 1: the question and the owner's take, after `trim`. */
+export const ASK_QUESTION_MIN = 3;
+export const ASK_QUESTION_MAX = 500;
+export const ASK_TAKE_MIN = 20;
+export const ASK_TAKE_MAX = 4000;
+/** `scope.kind: "notes"` names 1 to 20 files (AC 21, AC 22). */
+export const ASK_NOTES_MAX = 20;
+/** `artifacts/<run>/answer.json` is read up to this many bytes (door 3). */
+export const ASK_ANSWER_MAX_BYTES = 65_536;
+export const ASK_MODES = ["direct", "reason_first"] as const;
+export const PROVOCATION_KINDS = ["contradiz", "complica", "falta"] as const;
+/** The natures a citation is labelled with (door 3): read from the index, never from the answer. */
+export const LABELLED_NATUREZAS = ["plano", "hipotese", "opiniao"] as const;
+
+/** What an ask is about (AC 17-23): the whole brain, a work context, a folder, or some notes. */
+export const AskScopeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("all") }),
+  z.object({ kind: z.literal("context"), id: z.string().min(1).max(64) }),
+  z.object({ kind: z.literal("folder"), path: z.string().min(1).max(4096) }),
+  z.object({
+    kind: z.literal("notes"),
+    paths: z.array(z.string().min(1).max(4096)).min(1).max(ASK_NOTES_MAX),
+  }),
+]);
+export type AskScope = z.infer<typeof AskScopeSchema>;
+export type AskMode = (typeof ASK_MODES)[number];
+
+/** A citation as the skill writes it: a file of the index and a heading of it. */
+const AskFileCitationSchema = z.object({
+  path: z.string().min(1, "citation.path is required").max(4096),
+  section: z
+    .string({ required_error: "citation.section is required" })
+    .min(1, "citation.section is required")
+    .max(200),
+});
+const AskFileItemSchema = z.object({
+  text: z.string().min(1, "an item's text is required").max(400, "an item's text has at most 400 characters"),
+  citations: z
+    .array(AskFileCitationSchema)
+    .min(1, "an item cites 1 to 3 sections")
+    .max(3, "an item cites 1 to 3 sections"),
+});
+
+/**
+ * What the skill writes to `artifacts/<run>/answer.json` (door 3). The schema is tolerant as the question dashboard's
+ * is: an unknown key is dropped. The host refuses the whole answer when any rule fails (`checkAskAnswer`).
+ */
+export const AskAnswerFileSchema = z.object({
+  v: z.literal(1, { errorMap: () => ({ message: "v must be 1" }) }),
+  paragraphs: z
+    .array(
+      z.object({
+        text: z
+          .string()
+          .min(1, "a paragraph's text is required")
+          .max(1200, "a paragraph's text has at most 1200 characters"),
+        citations: z
+          .array(AskFileCitationSchema)
+          .min(1, "a paragraph cites 1 to 6 sections")
+          .max(6, "a paragraph cites 1 to 6 sections"),
+      }),
+    )
+    .min(1, "1 to 8 paragraphs")
+    .max(8, "1 to 8 paragraphs"),
+  takeFeedback: z
+    .object({
+      agrees: z.array(AskFileItemSchema).default([]),
+      disagrees: z.array(AskFileItemSchema).default([]),
+      missing: z.array(AskFileItemSchema).default([]),
+    })
+    .optional(),
+  provocation: z
+    .object({
+      kind: z.enum(PROVOCATION_KINDS, {
+        errorMap: () => ({ message: "provocation.kind is contradiz, complica or falta" }),
+      }),
+      text: z
+        .string()
+        .min(1, "provocation.text is required")
+        .max(300, "provocation.text has at most 300 characters"),
+      citation: AskFileCitationSchema,
+    })
+    .optional(),
+});
+export type AskAnswerFile = z.infer<typeof AskAnswerFileSchema>;
+
+/** A citation as the host returns it: the index row's path, its name and id, and its nature when it is labelled. */
+export const AskCitationSchema = z.object({
+  path: z.string(),
+  section: z.string(),
+  name: z.string(),
+  fileId: z.number().int(),
+  natureza: z.enum(LABELLED_NATUREZAS).optional(),
+});
+const AskItemSchema = z.object({ text: z.string(), citations: z.array(AskCitationSchema) });
+export const AskAnswerSchema = z.object({
+  paragraphs: z.array(AskItemSchema),
+  takeFeedback: z
+    .object({
+      agrees: z.array(AskItemSchema),
+      disagrees: z.array(AskItemSchema),
+      missing: z.array(AskItemSchema),
+    })
+    .optional(),
+  provocation: z
+    .object({ kind: z.enum(PROVOCATION_KINDS), text: z.string(), citation: AskCitationSchema })
+    .optional(),
+});
+export type AskAnswer = z.infer<typeof AskAnswerSchema>;
+
+/** An ask's status (door 1): its run's, and once the run is done, its answer's verdict. */
+export const ASK_STATUSES = ["running", "answered", "refused", "failed"] as const;
+export type AskStatus = (typeof ASK_STATUSES)[number];
+
+const AskListItemSchema = z.object({
+  id: z.string(),
+  question: z.string(),
+  mode: z.enum(ASK_MODES),
+  scope: AskScopeSchema,
+  status: z.enum(ASK_STATUSES),
+  startedAt: z.number(),
+  finishedAt: z.number().optional(),
+});
+
+const AskDetailSchema = z.object({
+  id: z.string(),
+  question: z.string(),
+  mode: z.enum(ASK_MODES),
+  take: z.string().optional(),
+  scope: AskScopeSchema,
+  status: z.enum(ASK_STATUSES),
+  answer: AskAnswerSchema.optional(),
+  reason: z.string().optional(),
+  run: z.object({ provider: z.string(), startedAt: z.number(), finishedAt: z.number().optional() }),
+});
+
+const askBody = z
+  .object({
+    question: z.string(),
+    mode: z.enum(ASK_MODES),
+    take: z.string().optional(),
+    scope: AskScopeSchema,
+  })
+  .superRefine((b, ctx) => {
+    const question = b.question.trim();
+    if (question.length < ASK_QUESTION_MIN || question.length > ASK_QUESTION_MAX) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["question"],
+        message: `question: ${ASK_QUESTION_MIN} to ${ASK_QUESTION_MAX} characters`,
+      });
+    }
+    const take = b.take?.trim() ?? "";
+    if (b.mode === "reason_first" && (take.length < ASK_TAKE_MIN || take.length > ASK_TAKE_MAX)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["take"],
+        message: `take: ${ASK_TAKE_MIN} to ${ASK_TAKE_MAX} characters in reason_first`,
+      });
+    }
+    if (b.mode === "direct" && take !== "") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["take"], message: "take: only in reason_first" });
+    }
+  });
+
 // ---- routes ----------------------------------------------------------------------------------------------------
 
 export const memoryRoutes = {
@@ -1841,6 +2008,56 @@ export const memoryRoutes = {
     scope: "content",
     query: z.object({ limit: z.coerce.number().int().min(1).max(500).optional() }),
     responses: { 200: RecallStatsSchema },
+  }),
+  // cerebro-perguntar, door 1: an ask is a run of the read-only skill brain-ask, judged on read (door 3)
+  "memory.ask": route({
+    method: "POST",
+    path: "/api/memory/ask",
+    summary:
+      "Ask the second brain: the recall of the scope as agents read it abstains (200, no run) or starts the brain-ask skill (202)",
+    tag: "memory",
+    scope: "owner",
+    body: askBody,
+    responses: {
+      200: z.object({
+        status: z.literal("abstained"),
+        abstainReason: z.enum(["no_match", "weak"]),
+        consulted: z.number().int().min(0),
+      }),
+      202: z.object({ status: z.literal("running"), id: z.string() }),
+    },
+    errors: [
+      contextNotFound,
+      err(
+        400,
+        "folder_outside_index",
+        "The folder of the scope is not inside memory/ nor an indexed folder, or is in a folder hidden from agents",
+      ),
+      err(400, "unknown_note", "A path of the notes scope is no index row agents may read"),
+      err(409, "ask_in_progress", "A brain-ask run is queued, running or waiting for approval"),
+      err(409, "skill_unavailable", "The brain-ask skill is missing, disabled or not a memory skill"),
+      err(409, "budget_exhausted", "The skill's daily budget is exhausted"),
+    ],
+  }),
+  "memory.ask.list": route({
+    method: "GET",
+    path: "/api/memory/ask",
+    summary: "The recent asks, newest first: the runs of brain-ask, each with its status as judged today",
+    tag: "memory",
+    scope: "owner",
+    query: z.object({ limit: z.coerce.number().int().min(1).max(100).optional() }),
+    responses: { 200: z.object({ items: z.array(AskListItemSchema) }) },
+  }),
+  "memory.ask.get": route({
+    method: "GET",
+    path: "/api/memory/ask/:id",
+    summary:
+      "An ask and, once its run is done, its answer checked by today's policy, folders and scope (answered or refused)",
+    tag: "memory",
+    scope: "owner",
+    params: IdParams,
+    responses: { 200: AskDetailSchema },
+    errors: [notFound("A run of brain-ask with this id")],
   }),
   "memory.journal": route({
     method: "GET",

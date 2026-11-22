@@ -109,6 +109,10 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "GET /api/memory/query": "content",
   "GET /api/memory/recall": "content",
   "GET /api/memory/recall/stats": "content",
+  // cerebro-perguntar, door 1: an ask is a paid run of the owner's, and its answer the owner's to read
+  "POST /api/memory/ask": "owner",
+  "GET /api/memory/ask": "owner",
+  "GET /api/memory/ask/:id": "owner",
   "GET /api/memory/related": "content",
   "POST /api/memory/routers": "owner",
   "GET /api/memory/routers/check": "content",

@@ -136,6 +136,8 @@ export {
 } from "./memory/notes.js";
 export { memoryTree } from "./memory/tree.js";
 export { cleanupInventory, resolveCleanupScope } from "./memory/cleanup.js";
+// cerebro-perguntar, doors 1-3: the ask's skill, its scope, the sentence rule and the answer's check
+export { ASK_SKILL, checkAskAnswer, countSentences, resolveAskScope } from "./memory/ask.js";
 export { scanCleanupScope } from "./memory/cleanupScan.js";
 export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from "./memory/cleanupApply.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";

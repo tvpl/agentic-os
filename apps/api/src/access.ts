@@ -59,10 +59,14 @@ export function audienceOf(principal: Principal | null | undefined): "devices" |
 }
 
 export function accessView(ctx: AppContext, principal: Principal | null | undefined): AccessView {
+  return audienceView(ctx, audienceOf(principal));
+}
+
+/** What an audience may read (`null`: the owner), whoever reads for it (cerebro-perguntar: an ask reads as agents). */
+export function audienceView(ctx: AppContext, audience: "devices" | "agents" | null): AccessView {
   const base = ctx.settings();
   const env = { paths: ctx.paths, settings: base };
   const access = resolveFolderAccess(env);
-  const audience = audienceOf(principal);
   const settings = audience === null ? base : accessSettings(env, audience, access);
   const denied = audience === null ? [] : deniedDirs(ctx.paths, audience);
   return {

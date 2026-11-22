@@ -219,6 +219,11 @@ describe("S5 the surface is a closed list", () => {
         "testProvider",
         // cerebro-busca-significado, batch D: the recall with vectors, abstention and the reranker (doors 4 and 5)
         "hybridRecall",
+        // cerebro-perguntar, batch A: the ask's skill, its scope, the sentence rule and the answer's check (doors 1-3)
+        "ASK_SKILL",
+        "checkAskAnswer",
+        "countSentences",
+        "resolveAskScope",
       ].sort(),
     );
   });

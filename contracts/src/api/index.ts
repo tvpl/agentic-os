@@ -81,6 +81,26 @@ export {
   ProposalFileSchema,
   type ProposalFile,
   type ProposalOp,
+  // cerebro-perguntar, doors 1 and 3: an ask's bounds, its scope and the answer the skill writes
+  ASK_ANSWER_MAX_BYTES,
+  ASK_MODES,
+  ASK_NOTES_MAX,
+  ASK_QUESTION_MAX,
+  ASK_QUESTION_MIN,
+  ASK_STATUSES,
+  ASK_TAKE_MAX,
+  ASK_TAKE_MIN,
+  AskAnswerFileSchema,
+  AskAnswerSchema,
+  AskCitationSchema,
+  AskScopeSchema,
+  LABELLED_NATUREZAS,
+  PROVOCATION_KINDS,
+  type AskAnswer,
+  type AskAnswerFile,
+  type AskMode,
+  type AskScope,
+  type AskStatus,
 } from "./memory.js";
 export { QUERY_FLAG_TEXTS, QueryFlag, RUN_LIMITS } from "./common.js";
 export { NAMED_SCHEMAS } from "./schemas.js";
