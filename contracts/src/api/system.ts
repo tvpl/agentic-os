@@ -250,6 +250,35 @@ const ProviderIdParams = z.object({ id: ProviderId });
 
 // ---- routes ----------------------------------------------------------------------------------------------------
 
+const McpUsageCountSchema = z.object({ name: z.string(), calls: z.number(), lastAt: z.number() });
+
+/** `GET /api/mcp` (cerebro-perguntar, door 7). */
+const McpOverviewSchema = z.object({
+  clients: z.array(
+    z.object({
+      id: z.enum(["claude", "cursor", "codex"]),
+      name: z.string(),
+      connected: z.boolean(),
+      /** The file the server was found in; for a client not connected, a config file that does not parse. */
+      source: z.string().optional(),
+      unreadable: z.literal(true).optional(),
+      /** The server found: its name and its command, a credential-shaped part read `[hidden]`. */
+      server: z.object({ name: z.string(), command: z.string() }).optional(),
+      command: z.string(),
+    }),
+  ),
+  tools: z.array(z.object({ name: z.string(), kind: z.enum(["read", "propose", "owner"]) })),
+  usage: z.object({
+    since: z.number().nullable(),
+    calls: z.number(),
+    byTool: z.array(McpUsageCountSchema),
+    byClient: z.array(McpUsageCountSchema),
+    paths: z.array(
+      z.object({ path: z.string(), reads: z.number(), lastAt: z.number(), fileId: z.number().optional() }),
+    ),
+  }),
+});
+
 export const systemRoutes = {
   "system.info": route({
     method: "GET",
@@ -671,5 +700,15 @@ export const systemRoutes = {
     tag: "system",
     scope: "owner",
     responses: { 200: DiagnosticsBundleSchema },
+  }),
+  // cerebro-perguntar, door 7: the MCP's connection to each CLI, its tools and what the agents read
+  "mcp.overview": route({
+    method: "GET",
+    path: "/api/mcp",
+    summary:
+      "Whether Claude Code, Cursor and Codex have mordomo configured (their config files, read only) and the command that connects each, the 13 MCP tools by kind, and what the agents read",
+    tag: "system",
+    scope: "owner",
+    responses: { 200: McpOverviewSchema },
   }),
 } as const;

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { handleMcpRequest } from "../apps/api/src/mcp/stdio.js";
 import { httpApi, mordomoTools, type McpApi } from "../apps/api/src/mcp/mordomo.js";
+import { API } from "@mordomo/contracts";
 import { MCP_ROUTES } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
 import { mcpRecorder } from "./helpers/mcpRecorder.js";
@@ -406,6 +407,34 @@ describe("C41 MCP_ROUTES is the 11 routes of the 13 tools", () => {
       }
       expect([...reached].sort()).toEqual([...MCP_ROUTES].sort());
       for (const run of w.ctx.runs.list({ limit: 100 })) await w.ctx.execution.wait(run.id);
+    });
+  });
+});
+
+describe("C42 every other route refuses the principal mcp", () => {
+  it("C42 table-driven over the 177 routes of the API table minus the 11 and the public ones: 403 forbidden each, through /api and /api/v1", async () => {
+    await fresh(async (w) => {
+      const entries = Object.values(API);
+      expect(entries).toHaveLength(177);
+      const others = entries.filter((e) => e.public !== true && !MCP_ROUTES.has(`${e.method} ${e.path}`));
+      expect(others).toHaveLength(177 - 11 - entries.filter((e) => e.public === true).length);
+      expect(others).toHaveLength(164);
+      const problems: string[] = [];
+      for (const entry of others) {
+        for (const prefix of ["/api", "/api/v1"]) {
+          const url = `${prefix}${entry.path.slice("/api".length).replace(/:[A-Za-z]+/g, "x")}`;
+          const res = await w.app.inject({
+            method: entry.method as "GET",
+            url,
+            headers: w.mcpHeaders(),
+            ...(entry.method === "GET" ? {} : { payload: {} }),
+          });
+          const body = res.body ? (res.json() as Json) : null;
+          const got = `${res.statusCode} ${body?.error?.code}`;
+          if (got !== "403 forbidden") problems.push(`${entry.method} ${url}: ${got}`);
+        }
+      }
+      expect(problems).toEqual([]);
     });
   });
 });

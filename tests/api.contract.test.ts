@@ -165,8 +165,8 @@ describe("S1 the route table and the registration", () => {
     // cerebro-rituais, batch A: the weekly review's list and loop decisions, and POST /api/memory/tasks (164 -> 167);
     // batch B: the week's archive and its finish (167 -> 169); batch C: the unlinked mentions and "Linkar" (169 -> 171);
     // cerebro-busca-significado batch C: the model catalog and its downloads (171 -> 173)
-    // cerebro-perguntar batch A: the ask, its list and one ask (173 -> 176)
-    expect(entries).toHaveLength(176);
+    // cerebro-perguntar batch A: the ask, its list and one ask (173 -> 176); batch B: GET /api/mcp (176 -> 177)
+    expect(entries).toHaveLength(177);
     for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
       const entry = API[want.id];
       expect(entry, key).toBeDefined();
@@ -219,10 +219,10 @@ describe("S1 the route table and the registration", () => {
     try {
       const router = app.apiRoutes.map((r) => `${r.method} ${r.url}`).sort();
       const table = entries.map(([, e]) => routeKey(e)).sort();
-      expect(router).toHaveLength(176);
+      expect(router).toHaveLength(177);
       expect(table).toEqual(router);
-      expect(new Set(table).size).toBe(176);
-      expect(new Set(entries.map(([id]) => id)).size).toBe(176);
+      expect(new Set(table).size).toBe(177);
+      expect(new Set(entries.map(([id]) => id)).size).toBe(177);
       for (const [id, entry] of entries) {
         expect(id, id).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)+$/);
         expect(entry.summary.length, `${id} summary`).toBeGreaterThan(8);
@@ -257,8 +257,8 @@ describe("S1 the route table and the registration", () => {
       // and batch B, the week's archive and its finish (owner), and batch C, the unlinked mentions (content) and
       // "Linkar" (owner)
       // and cerebro-busca-significado C, the two embedder routes (owner), and cerebro-perguntar A, the three ask routes
-      // (owner)
-      expect(counts).toEqual({ owner: 97, monitor: 33, content: 37, run: 6, approve: 1, public: 2 });
+      // (owner), and its batch B, GET /api/mcp (owner)
+      expect(counts).toEqual({ owner: 98, monitor: 33, content: 37, run: 6, approve: 1, public: 2 });
       expect(entries.filter(([, e]) => e.public && e.scope !== undefined)).toEqual([]);
 
       expect(
@@ -795,7 +795,7 @@ describe("S2 the real answer is checked", () => {
     // A route with no scenario, or a scenario for no route: both are a hole in this proof.
     expect(Object.keys(SCENARIOS).sort()).toEqual(router);
     expect(Object.keys(SCENARIOS).sort()).toEqual(tabled);
-    expect(results).toHaveLength(176);
+    expect(results).toHaveLength(177);
     const problems: string[] = [];
     for (const { key, entry, answer, id } of results) {
       const scenario = SCENARIOS[key]!;

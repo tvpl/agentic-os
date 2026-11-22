@@ -113,6 +113,8 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "POST /api/memory/ask": "owner",
   "GET /api/memory/ask": "owner",
   "GET /api/memory/ask/:id": "owner",
+  // cerebro-perguntar, door 7: the CLIs' config files, the MCP tools and what the agents read are the owner's
+  "GET /api/mcp": "owner",
   "GET /api/memory/related": "content",
   "POST /api/memory/routers": "owner",
   "GET /api/memory/routers/check": "content",

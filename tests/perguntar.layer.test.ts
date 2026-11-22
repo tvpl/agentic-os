@@ -2,7 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { checkAskAnswer, countSentences, resolveAskScope } from "@mordomo/core/internal";
+import {
+  agentUsage,
+  checkAskAnswer,
+  countSentences,
+  mcpClients,
+  recordAgentUsage,
+  resolveAskScope,
+} from "@mordomo/core/internal";
 import { audienceOf, audienceView } from "../apps/api/src/access.js";
 import { mcpClientName } from "../apps/api/src/mcp/mordomo.js";
 import { principalFromHeaders } from "../apps/api/src/server.js";
@@ -645,5 +652,110 @@ describe("C39 the principal at its own layer (principalFromHeaders, batch B)", (
     expect(from({ "x-mordomo-token": token, "x-mordomo-as": "mcp" })).toEqual({
       principal: { kind: "mcp", client: "desconhecido" },
     });
+  });
+});
+
+describe("C51 the connected detection at its own layer (mcpClients, batch B)", () => {
+  const made: string[] = [];
+  afterAll(() => {
+    for (const dir of made) fs.rmSync(dir, { recursive: true, force: true });
+  });
+  /** The client `id` as judged over a user home holding `files`. */
+  const judge = (files: Record<string, string>, id: string) => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-perguntar-clients-")));
+    made.push(dir);
+    for (const [rel, text] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(dir, rel), text);
+    }
+    return { dir, found: mcpClients(w.ctx.providers.manifests(), dir).find((c) => c.id === id)! };
+  };
+  const servers = (map: Record<string, Json>) => JSON.stringify({ mcpServers: map });
+  it("C51 one case per row: name mordomo, a command named mordomo, .cmd, .exe, another server, an absent file, codex TOML, a file that does not parse", () => {
+    const named = judge({ ".claude.json": servers({ mordomo: { command: "x" } }) }, "claude");
+    expect([named.found.connected, named.found.source]).toEqual([true, path.join(named.dir, ".claude.json")]);
+    for (const command of ["/usr/local/bin/mordomo", "mordomo.cmd", "C:\\bin\\mordomo.exe"]) {
+      const byCommand = judge({ ".cursor/mcp.json": servers({ brain: { command } }) }, "cursor");
+      expect([byCommand.found.connected, byCommand.found.source], command).toEqual([
+        true,
+        path.join(byCommand.dir, ".cursor", "mcp.json"),
+      ]);
+    }
+    const other = judge({ ".claude.json": servers({ "mordomo-old": { command: "node" } }) }, "claude");
+    expect(other.found).toEqual({
+      id: "claude",
+      name: "Claude Code",
+      connected: false,
+      command: "claude mcp add mordomo -- mordomo mcp",
+    });
+    const absent = judge({}, "cursor");
+    expect([absent.found.connected, "source" in absent.found]).toEqual([false, false]);
+    const toml = judge({ ".codex/config.toml": '[mcp_servers.mordomo]\ncommand = "mordomo"\n' }, "codex");
+    expect([toml.found.connected, toml.found.source]).toEqual([
+      true,
+      path.join(toml.dir, ".codex", "config.toml"),
+    ]);
+    const broken = judge({ ".claude.json": "{ not json" }, "claude");
+    expect([broken.found.connected, broken.found.source, broken.found.unreadable]).toEqual([
+      false,
+      path.join(broken.dir, ".claude.json"),
+      true,
+    ]);
+  });
+});
+
+describe("C55 the usage record at its own layer (recordAgentUsage, batch B)", () => {
+  const reset = () => w.ctx.db.prepare("DELETE FROM meta WHERE key = 'agents.usage'").run();
+  const stored = () =>
+    JSON.parse(
+      (w.ctx.db.prepare("SELECT value FROM meta WHERE key = 'agents.usage'").get() as { value: string })
+        .value,
+    ) as Json;
+  afterAll(reset);
+  it("C55 500 paths are kept, the 501st evicts the one with fewest reads, on a tie the oldest lastAt", () => {
+    reset();
+    const p = (i: number) => `/m/p${String(i).padStart(3, "0")}.md`;
+    // p000 is read twice; p001..p499 once each, p001 the oldest of them
+    recordAgentUsage(w.ctx.db, { tool: "search", client: "c", paths: [p(0)] }, 1);
+    for (let i = 0; i < 500; i++)
+      recordAgentUsage(w.ctx.db, { tool: "search", client: "c", paths: [p(i)] }, 10 + i);
+    expect(Object.keys(stored().paths)).toHaveLength(500);
+    recordAgentUsage(w.ctx.db, { tool: "search", client: "c", paths: [p(500)] }, 1_000);
+    const after = stored().paths as Record<string, Json>;
+    expect(Object.keys(after)).toHaveLength(500);
+    expect(p(1) in after).toBe(false);
+    expect(after[p(0)]).toEqual({ reads: 2, lastAt: 10 });
+    expect(after[p(500)]).toEqual({ reads: 1, lastAt: 1_000 });
+    // fewest reads first, whatever the age: a path read once lately leaves before p000, read twice long ago
+    reset();
+    for (let i = 0; i < 499; i++) {
+      recordAgentUsage(w.ctx.db, { tool: "search", client: "c", paths: [p(i)] }, 10 + i);
+      recordAgentUsage(w.ctx.db, { tool: "search", client: "c", paths: [p(i)] }, 10 + i);
+    }
+    recordAgentUsage(w.ctx.db, { tool: "search", client: "c", paths: [p(499)] }, 5_000);
+    recordAgentUsage(w.ctx.db, { tool: "search", client: "c", paths: [p(500)] }, 6_000);
+    const kept = stored().paths as Record<string, Json>;
+    expect(Object.keys(kept)).toHaveLength(500);
+    expect([p(499) in kept, p(500) in kept, p(0) in kept]).toEqual([false, true, true]);
+  });
+  it("C55 50 clients are kept and the 51st evicts the oldest lastAt; since is set on the first write and never moves", () => {
+    reset();
+    for (let i = 0; i < 50; i++)
+      recordAgentUsage(w.ctx.db, { tool: "recall", client: `c${i}`, paths: [] }, 100 + i);
+    // c0 is the oldest but is seen again: c1 becomes the oldest
+    recordAgentUsage(w.ctx.db, { tool: "recall", client: "c0", paths: [] }, 500);
+    expect(Object.keys(stored().byClient)).toHaveLength(50);
+    recordAgentUsage(w.ctx.db, { tool: "recall", client: "novo", paths: [] }, 600);
+    const clients = stored().byClient as Record<string, Json>;
+    expect(Object.keys(clients)).toHaveLength(50);
+    expect(["c0" in clients, "c1" in clients, "c2" in clients, "novo" in clients]).toEqual([
+      true,
+      false,
+      true,
+      true,
+    ]);
+    expect(stored().since).toBe(100);
+    expect(stored().calls).toBe(52);
+    expect(agentUsage(w.ctx.db).since).toBe(100);
   });
 });

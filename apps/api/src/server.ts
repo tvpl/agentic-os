@@ -46,6 +46,7 @@ import { registerPushRoutes } from "./routes/push.js";
 import { resolveApprovalForChat } from "./approvalActions.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerAskRoutes } from "./routes/ask.js";
+import { registerMcpRoutes } from "./routes/mcp.js";
 import { registerCleanupRoutes } from "./routes/cleanup.js";
 import { registerReviewRoutes } from "./routes/reviews.js";
 import { registerWeeklyReviewRoutes } from "./routes/weeklyReview.js";
@@ -731,6 +732,7 @@ export async function buildServer(
   registerPushRoutes(app, ctx);
   registerMemoryRoutes(app, ctx);
   registerAskRoutes(app, ctx);
+  registerMcpRoutes(app, ctx);
   registerCleanupRoutes(app, ctx);
   registerReviewRoutes(app, ctx);
   registerWeeklyReviewRoutes(app, ctx);

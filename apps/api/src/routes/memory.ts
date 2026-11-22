@@ -50,6 +50,7 @@ import {
   recallStats,
   recentJournals,
   recordRecall,
+  recordAgentUsage,
   relatedFiles,
   resolveOpenablePath,
   retractFact,
@@ -95,6 +96,21 @@ function runReach(
     };
   const roots = [ctx.paths.memory, ...contextOkPaths({ paths: ctx.paths, settings }, context)];
   return { scope: homeReadScope(ctx.paths.home, roots, settings.excludes), context: context.id };
+}
+
+/**
+ * One read of an agent (cerebro-perguntar, door 7): the principal `mcp` (its client) or a run's own credential
+ * (`run:<provider>`) adds the call and the paths it was given to `agents.usage`; the owner and a device add nothing.
+ */
+function recordAgentRead(ctx: AppContext, req: FastifyRequest, tool: string, paths: readonly string[]): void {
+  const principal = req.principal;
+  const client =
+    principal?.kind === "mcp"
+      ? principal.client
+      : principal?.kind === "run"
+        ? `run:${ctx.runs.get(principal.runId)?.provider ?? "desconhecido"}`
+        : null;
+  if (client !== null) recordAgentUsage(ctx.db, { tool, client, paths });
 }
 
 /**
@@ -272,6 +288,12 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       { ...filters, ...natureFilters(q), query: q.q, allow, ...(index ? { index } : {}) },
       mode ?? "auto",
     );
+    recordAgentRead(
+      ctx,
+      req,
+      "search",
+      hits.map((h) => h.path),
+    );
     // Anyone but the owner is given the score of a hit's place in the list, never the bm25 of the whole index (amendment 4).
     return view.audience === null ? hits : rankScored(hits);
   });
@@ -324,6 +346,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     // Rows are judged by today's policy as they are read: a stale row under a private path is not a file here.
     const links = linksOf(ctx.db, fileId, accessView(ctx, req.principal).rowFilter());
     if (!links) throw httpError(404, "File not found", "not_found");
+    recordAgentRead(ctx, req, "links", [links.file.path]);
     return links;
   });
 
@@ -399,7 +422,9 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     const audience = view.audience !== null;
     if (audience && view.hidden(p)) throw hiddenFromDevice("note");
     try {
-      return readNote({ ...noteContext(), settings: view.settings }, p);
+      const note = readNote({ ...noteContext(), settings: view.settings }, p);
+      recordAgentRead(ctx, req, "note_read", [note.path]);
+      return note;
     } catch (err) {
       if (audience && (err as NodeJS.ErrnoException).code === "ENOENT") throw hiddenFromDevice("note");
       if ((err as NodeJS.ErrnoException).code === "ENOENT")
@@ -552,6 +577,12 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       ...(q.rerank === false ? { rerank: false } : {}),
     });
     if (q.record !== false) recordRecall(ctx.db, result);
+    recordAgentRead(
+      ctx,
+      req,
+      "recall",
+      result.answerContext.map((c) => c.path),
+    );
     // Anyone but the owner is given scores by place in each list (amendment 4).
     return view.audience === null
       ? result

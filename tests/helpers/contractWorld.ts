@@ -626,6 +626,8 @@ export const SCENARIOS: Record<string, Scenario> = {
       return w.call("GET", `/api/memory/ask/${id}`);
     },
   },
+  // cerebro-perguntar, batch B (door 7): the CLIs' connection, the MCP tools and the agents' usage
+  [key("GET", "/api/mcp")]: { run: (w) => w.call("GET", "/api/mcp") },
   [key("GET", "/api/memory/journal")]: { run: (w) => w.call("GET", "/api/memory/journal") },
   [key("GET", "/api/memory/hygiene")]: { run: (w) => w.call("GET", "/api/memory/hygiene") },
   [key("GET", "/api/memory/facts")]: { run: (w) => w.call("GET", "/api/memory/facts") },

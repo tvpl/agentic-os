@@ -260,8 +260,8 @@ describe("S4 the bus and the document", () => {
       expect(checkBody(entry.schema, sent), type).toEqual([]);
     }
     // the scenarios of the shared contract world: 171, and cerebro-busca-significado C's two embedder routes, and
-    // cerebro-perguntar A's three ask routes
-    expect(Object.keys(SCENARIOS)).toHaveLength(176);
+    // cerebro-perguntar A's three ask routes, and its B's GET /api/mcp
+    expect(Object.keys(SCENARIOS)).toHaveLength(177);
   });
 
   it("C53 docs/events.md describes the two events of the index worker and the phases of its progress, and equals the generated text", () => {

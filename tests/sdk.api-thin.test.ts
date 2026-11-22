@@ -1601,6 +1601,44 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(173);"],
       head: ["    expect(operations).toBe(176);"],
     },
+    // cerebro-perguntar, batch B, added GET /api/mcp (owner, door 7). Each amends the head of batch A's amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-perguntar B: GET /api/mcp under /api",
+      base: ["    expect(routes).toHaveLength(174);"],
+      head: ["    expect(routes).toHaveLength(175);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-perguntar B: owners and scoped routes, with GET /api/mcp",
+      base: ["    expect([owners, scoped]).toEqual([97, 77]);"],
+      head: ["    expect([owners, scoped]).toEqual([98, 77]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-perguntar B: the registered routes, with GET /api/mcp",
+      base: ["    expect(Object.keys(registered)).toHaveLength(174);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(175);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-perguntar B: the routes of each scope, with GET /api/mcp",
+      times: 2,
+      base: ["toEqual({ owner: 97, monitor: 33, content: 37, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 98, monitor: 33, content: 37, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-perguntar B: the routes after the pairing passes, with GET /api/mcp",
+      base: ["    expect(apiRoutes()).toHaveLength(174);"],
+      head: ["    expect(apiRoutes()).toHaveLength(175);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-perguntar B: the operations of the route document, with GET /api/mcp",
+      base: ["    expect(operations).toBe(176);"],
+      head: ["    expect(operations).toBe(177);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

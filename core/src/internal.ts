@@ -138,6 +138,9 @@ export { memoryTree } from "./memory/tree.js";
 export { cleanupInventory, resolveCleanupScope } from "./memory/cleanup.js";
 // cerebro-perguntar, doors 1-3: the ask's skill, its scope, the sentence rule and the answer's check
 export { ASK_SKILL, checkAskAnswer, countSentences, resolveAskScope } from "./memory/ask.js";
+// cerebro-perguntar, door 7: what the agents read, and whether each CLI has mordomo configured
+export { agentUsage, recordAgentUsage } from "./memory/agentUsage.js";
+export { mcpClients } from "./connectors/mcpClients.js";
 export { scanCleanupScope } from "./memory/cleanupScan.js";
 export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from "./memory/cleanupApply.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";

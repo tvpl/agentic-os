@@ -89,6 +89,26 @@ const clamp = (v: unknown, max: number, fallback: number): number =>
 export const abstentionText = (reason: string): string =>
   `Nothing found: no indexed section answers this (${reason}).`;
 
+/**
+ * What each tool does to the memory (cerebro-perguntar, door 7, `GET /api/mcp`): it reads as an agent, it proposes (the
+ * owner decides in the review inbox, or the line is marked as an agent's), or it is the owner's by its nature.
+ */
+export const MCP_TOOL_KINDS: Readonly<Record<string, "read" | "propose" | "owner">> = {
+  recall: "read",
+  skills_list: "read",
+  skills_run: "owner",
+  journal_append: "propose",
+  facts_assert: "propose",
+  facts_query: "read",
+  note_create: "propose",
+  note_read: "read",
+  note_save: "propose",
+  inbox_unread: "owner",
+  search: "read",
+  links: "read",
+  hygiene: "read",
+};
+
 export function mordomoTools(api: McpApi): McpTool[] {
   return [
     {

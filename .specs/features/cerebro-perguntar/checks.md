@@ -868,3 +868,6 @@ Status of batch B (updated in the commit that closes each piece):
   `mcp`): closed, every proof green in `tests/perguntar.mcp.test.ts`, `tests/perguntar.layer.test.ts` (C37, C39),
   `tests/perguntar.routes.test.ts` (C8) and `tests/perguntar.contract.test.ts` (C49), each proof line run alone and
   running only its check's cases; C42 is table-driven over the 177 routes and closes with `GET /api/mcp`
+- the agents' usage and `GET /api/mcp` (S7 API, door 7: C51-C60) and C42: closed, every proof green in
+  `tests/perguntar.usage.test.ts`, `tests/perguntar.layer.test.ts` (C51, C55) and `tests/perguntar.mcp.test.ts` (C42),
+  each proof line run alone and running only its check's cases; the pins moved with the route (176 -> 177)

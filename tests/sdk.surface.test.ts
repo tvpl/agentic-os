@@ -224,6 +224,10 @@ describe("S5 the surface is a closed list", () => {
         "checkAskAnswer",
         "countSentences",
         "resolveAskScope",
+        // cerebro-perguntar, batch B: the agents' usage record and the CLIs' MCP connection (door 7)
+        "agentUsage",
+        "mcpClients",
+        "recordAgentUsage",
       ].sort(),
     );
   });
