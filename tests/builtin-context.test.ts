@@ -113,12 +113,13 @@ describe.skipIf(!POSIX)(
 
     it("a skill that talks of the run credential is one the owner's settings name, and the three memory skills are", () => {
       // cerebro-organizar (AC 9, C11): organize-brain is the third built-in memory skill; cerebro-paineis (door 7,
-      // amendment 19) adds dashboard-answer after it.
+      // amendment 19) adds dashboard-answer after it, and cerebro-perguntar (door 2) brain-ask after that.
       expect(s.ctx.settings().memorySkills).toEqual([
         "recall",
         "consolidate-memory",
         "organize-brain",
         "dashboard-answer",
+        "brain-ask",
       ]);
       for (const skill of skills()) {
         const text = textFiles(skill.dir)
@@ -133,7 +134,7 @@ describe.skipIf(!POSIX)(
           .filter((k) => k.memoryAccess)
           .map((k) => k.slug)
           .sort(),
-      ).toEqual(["consolidate-memory", "dashboard-answer", "organize-brain", "recall"]);
+      ).toEqual(["brain-ask", "consolidate-memory", "dashboard-answer", "organize-brain", "recall"]);
     });
 
     it("each skill run starts in <home>/workspace with its own folder, and a memory skill also gets memory/ and its credential", async () => {

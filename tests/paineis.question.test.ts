@@ -330,12 +330,13 @@ describe("C56 the skill and the memory skills", () => {
       ["context_id", false],
     ]);
   });
-  it("C56 the default memorySkills are recall, consolidate-memory, organize-brain and dashboard-answer", () => {
+  it("C56 the default memorySkills are recall, consolidate-memory, organize-brain and dashboard-answer (and, since cerebro-perguntar door 2, brain-ask after them)", () => {
     expect(SettingsSchema.parse({}).memorySkills).toEqual([
       "recall",
       "consolidate-memory",
       "organize-brain",
       "dashboard-answer",
+      "brain-ask",
     ]);
   });
   it("C56 a home whose stored memorySkills is [recall] keeps [recall]; GET /api/skills shows dashboard-answer with memoryAccess on a fresh home", async () => {

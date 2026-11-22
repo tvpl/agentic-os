@@ -300,12 +300,14 @@ describe.skipIf(!POSIX)("S1 the skill organize-brain, its guide and its question
     const fresh = makeTempHome("mordomo-organize-c9-");
     try {
       const first = new AppContext(fresh.paths.home);
-      // cerebro-paineis (door 7, amendment 19) adds dashboard-answer after organize-brain
+      // cerebro-paineis (door 7, amendment 19) adds dashboard-answer after organize-brain, and cerebro-perguntar (door
+      // 2) brain-ask after it
       expect(first.settings().memorySkills).toEqual([
         "recall",
         "consolidate-memory",
         "organize-brain",
         "dashboard-answer",
+        "brain-ask",
       ]);
       first.settingsStore.save(first.settings());
       first.close();
