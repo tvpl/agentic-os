@@ -155,6 +155,55 @@ export function linkEdges(db: Db, allow: Allow, sources?: ReadonlySet<number>): 
   return [...edges.values()];
 }
 
+/** A link of `note_links` that leads to no indexed file the caller may read (`brokenLinks`). */
+export interface BrokenLink {
+  /** The file that holds it. */
+  path: string;
+  name: string;
+  kind: LinkKind;
+  /** As stored: the absolute path of a Markdown link, the key of a wikilink. */
+  target: string;
+  line: number;
+}
+
+/**
+ * The links of the files `allow` lets through that resolve to no file it lets through (cerebro-perguntar, door 4: the
+ * hygiene's broken links), by the resolution of `linkEdges`, by source path and line. A link to the file itself is not
+ * broken.
+ */
+export function brokenLinks(db: Db, allow: Allow): BrokenLink[] {
+  const files = (db.prepare("SELECT id, root, rel, dir, name, path FROM files").all() as EdgeFile[]).filter((file) =>
+    allow(file),
+  );
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  const byName = new Map<string, EdgeFile[]>();
+  for (const file of files) {
+    const name = foldName(file.name);
+    byName.set(name, [...(byName.get(name) ?? []), file]);
+  }
+  const byId = new Map(files.map((file) => [file.id, file]));
+  const rows = db.prepare("SELECT src_id, kind, target, line FROM note_links ORDER BY src_id, line, rowid").all() as Array<{
+    src_id: number;
+    kind: LinkKind;
+    target: string;
+    line: number;
+  }>;
+  const broken: BrokenLink[] = [];
+  for (const row of rows) {
+    const source = byId.get(row.src_id);
+    if (!source) continue;
+    if (row.kind === "markdown-link") {
+      if (byPath.has(row.target)) continue;
+    } else {
+      const last = row.target.slice(row.target.lastIndexOf("/") + 1);
+      const named = [`${last}.md`, `${last}.markdown`, last].flatMap((name) => byName.get(name) ?? []);
+      if (rankWikilink(source, row.target, [...new Set(named)]).length > 0) continue;
+    }
+    broken.push({ path: source.path, name: source.name, kind: row.kind, target: row.target, line: row.line });
+  }
+  return broken.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line));
+}
+
 /** The keys a wikilink may use to mean this file: every tail of its path without the extension. */
 function keysOf(file: FileRow): string[] {
   const parts = stemOf(file.rel).split("/");

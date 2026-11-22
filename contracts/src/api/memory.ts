@@ -350,6 +350,11 @@ const HygieneReportSchema = z.object({
       action: z.enum(["open", "disconnect", "archive", "link"]),
     }),
   ),
+  /** cerebro-perguntar, door 4: the links of notes that lead nowhere the caller may read, the first `perKind`. */
+  brokenLinks: z.object({
+    count: z.number(),
+    items: z.array(z.object({ path: z.string(), name: z.string(), target: z.string(), line: z.number() })),
+  }),
   thresholds: z.object({
     staleDays: z.number(),
     silentRoutineDays: z.number(),
@@ -1309,10 +1314,12 @@ export const memoryRoutes = {
   "memory.links": route({
     method: "GET",
     path: "/api/memory/links",
-    summary: "Who points at an indexed file (backlinks) and where its own links lead, broken ones included",
+    summary:
+      "Who points at an indexed file (backlinks) and where its own links lead, broken ones included; the file by its id or by its path (p, absolute or relative to memory/), exactly one",
     tag: "memory",
     scope: "content",
-    query: z.object({ id: z.coerce.number().int() }),
+    // cerebro-perguntar, door 4: `p` names the file by its path, for the MCP's `links`; both or neither is `400 validation`.
+    query: z.object({ id: z.coerce.number().int().optional(), p: z.string().min(1).optional() }),
     responses: {
       200: z.object({
         file: FileRowSchema,
@@ -1372,8 +1379,11 @@ export const memoryRoutes = {
       ),
       err(404, "not_a_file", "The path names something that is not a regular file"),
       err(404, "note_missing", "The file does not exist"),
-      // cerebro-memoria-confiavel, AC 92: what a paired device is answered for a note hidden from it or not there.
-      notFound("For a paired device: a note in a folder hidden from it, or one that does not exist"),
+      // cerebro-memoria-confiavel, AC 92: what a paired device is answered for a note hidden from it or not there; and
+      // cerebro-perguntar, door 5, the MCP's note_read reading as agents.
+      notFound(
+        "For a paired device, or mordomo mcp reading as agents: a note in a folder hidden from it, or one that does not exist",
+      ),
       err(
         413,
         "note_too_large",

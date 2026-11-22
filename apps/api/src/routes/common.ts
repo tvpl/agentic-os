@@ -15,13 +15,16 @@ export type Principal =
   | { kind: "owner" }
   | { kind: "device"; deviceId: string }
   | { kind: "broker"; runId: string }
-  | { kind: "run"; runId: string };
+  | { kind: "run"; runId: string }
+  // cerebro-perguntar, door 5: `mordomo mcp`, the owner's token with `x-mordomo-as: mcp`; reads as agents do.
+  | { kind: "mcp"; client: string };
 
 /** How an approval records its decider (`Approval.resolvedBy`). */
 export function principalName(principal: Principal): string {
   if (principal.kind === "device") return `device:${principal.deviceId}`;
   if (principal.kind === "broker") return `broker:${principal.runId}`;
   if (principal.kind === "run") return `run:${principal.runId}`;
+  if (principal.kind === "mcp") return `mcp:${principal.client}`;
   return "owner";
 }
 
@@ -34,6 +37,8 @@ export function startedByOf(req: FastifyRequest): string {
   if (!req.principal) {
     throw httpError(500, "No principal on a request that starts work", "principal_missing");
   }
+  // The MCP's tools start work as the owner, whose token they hold (cerebro-perguntar, door 5: `skills_run` as today).
+  if (req.principal.kind === "mcp") return "owner";
   return principalName(req.principal);
 }
 

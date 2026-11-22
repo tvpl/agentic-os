@@ -173,8 +173,9 @@ export const COMMON_ERRORS: readonly CommonError[] = deepFreeze([
     status: 400,
     code: "validation",
     description:
-      "A part of the request does not satisfy the schema of the route; error.issues lists each one",
-    applies: reads,
+      "A part of the request does not satisfy the schema of the route; error.issues lists each one. Or, with the local token, an x-mordomo-as header whose value is not mcp",
+    // cerebro-perguntar, door 5: the gate reads `x-mordomo-as` before any route, so every guarded route can answer it.
+    applies: (route) => reads(route) || guarded(route),
   },
   {
     status: 400,

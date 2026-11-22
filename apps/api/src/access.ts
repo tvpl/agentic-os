@@ -20,8 +20,8 @@ import type { Principal } from "./routes/common.js";
 
 /**
  * What a request may read, by who made it (.specs/features/cerebro-memoria-confiavel, door 12): a paired device reads
- * as `devices`, a run's own credential as `agents`, and the owner (and the permission broker, which reads nothing) as
- * before. Every read route takes its settings, its stored-row filter and its read scopes from here, so a folder hidden
+ * as `devices`, a run's own credential and `mordomo mcp` (cerebro-perguntar, door 5) as `agents`, and the owner (and
+ * the permission broker, which reads nothing) as before. Every read route takes its settings, its stored-row filter and its read scopes from here, so a folder hidden
  * from the caller is left out by the same filter that leaves out the owner's excludes.
  */
 export interface AccessView {
@@ -54,7 +54,7 @@ export interface AccessView {
 
 export function audienceOf(principal: Principal | null | undefined): "devices" | "agents" | null {
   if (principal?.kind === "device") return "devices";
-  if (principal?.kind === "run") return "agents";
+  if (principal?.kind === "run" || principal?.kind === "mcp") return "agents";
   return null;
 }
 

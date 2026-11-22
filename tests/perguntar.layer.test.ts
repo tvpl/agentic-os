@@ -3,7 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { checkAskAnswer, countSentences, resolveAskScope } from "@mordomo/core/internal";
-import { audienceView } from "../apps/api/src/access.js";
+import { audienceOf, audienceView } from "../apps/api/src/access.js";
+import { mcpClientName } from "../apps/api/src/mcp/mordomo.js";
+import { principalFromHeaders } from "../apps/api/src/server.js";
 import { askWorld, paragraph, threeNotes, type AskWorld, type Json } from "./helpers/perguntarWorld.js";
 
 /**
@@ -570,5 +572,78 @@ describe("C34 sentences counted by . ! or ? followed by a space or the end", () 
       "A versão 2.5 mudou. Ex.:o prazo.",
     );
     expect(refused(check(provoking("")))).toContain("provocation.text: provocation.text is required");
+  });
+});
+
+describe("C37 the client's name at its own layer (mcpClientName, batch B)", () => {
+  it("C37 claude-code kept, Cursor lower-cased, codex_cli.v2 kept, 40 kept and 41 desconhecido, a space, empty, missing and a non-string desconhecido", () => {
+    expect(mcpClientName({ name: "claude-code" })).toBe("claude-code");
+    expect(mcpClientName({ name: "Cursor" })).toBe("cursor");
+    expect(mcpClientName({ name: "codex_cli.v2" })).toBe("codex_cli.v2");
+    expect(mcpClientName({ name: "a".repeat(40) })).toBe("a".repeat(40));
+    expect(mcpClientName({ name: "a".repeat(41) })).toBe("desconhecido");
+    expect(mcpClientName({ name: "a b" })).toBe("desconhecido");
+    expect(mcpClientName({ name: "" })).toBe("desconhecido");
+    expect(mcpClientName(undefined)).toBe("desconhecido");
+    expect(mcpClientName({ name: 42 })).toBe("desconhecido");
+  });
+});
+
+describe("C39 the principal at its own layer (principalFromHeaders, batch B)", () => {
+  it("C39 one case per row: owner+mcp, owner, owner+owner, owner+MCP, device+mcp, run+mcp, broker+mcp", () => {
+    const token = w.ctx.token();
+    const from = (headers: Record<string, string>) => principalFromHeaders(w.ctx, headers);
+    const owned = from({
+      "x-mordomo-token": token,
+      "x-mordomo-as": "mcp",
+      "x-mordomo-client": "claude-code",
+    });
+    expect(owned).toEqual({ principal: { kind: "mcp", client: "claude-code" } });
+    expect(audienceOf(owned && "principal" in owned ? owned.principal : null)).toBe("agents");
+    const owner = from({ "x-mordomo-token": token });
+    expect(owner).toEqual({ principal: { kind: "owner" } });
+    expect(audienceOf(owner && "principal" in owner ? owner.principal : null)).toBeNull();
+    for (const value of ["owner", "MCP"]) {
+      const refused = from({ "x-mordomo-token": token, "x-mordomo-as": value });
+      expect(
+        refused && "refused" in refused ? [refused.refused.status, refused.refused.code] : null,
+        value,
+      ).toEqual([400, "validation"]);
+    }
+    const device = w.device(["content"])["x-mordomo-token"]!;
+    const asDevice = from({ "x-mordomo-token": device, "x-mordomo-as": "mcp" });
+    expect(asDevice && "principal" in asDevice ? asDevice.principal.kind : null).toBe("device");
+    const held = w.ctx.runs.create({
+      origin: "skill",
+      provider: "claude",
+      prompt: "held open",
+      cwd: w.home,
+      model: null,
+      effort: "default",
+      mode: "write",
+      timeoutMs: 60_000,
+      profile: "review_before_write",
+      skillSlug: "organize-brain",
+      startedBy: null,
+    } as never);
+    const rc = w.ctx.runApiAccessFor(held, "write")!.token;
+    expect(rc).toMatch(/^rc_/);
+    expect(from({ "x-mordomo-token": rc, "x-mordomo-as": "mcp" })).toEqual({
+      principal: { kind: "run", runId: held.id },
+      writable: true,
+    });
+    const brk = w.ctx.permissionBrokerFor({ id: held.id, permissionProfile: "review_before_write" } as never)!
+      .env.MORDOMO_TOKEN!;
+    expect(brk).toMatch(/^brk_/);
+    expect(from({ "x-mordomo-token": brk, "x-mordomo-as": "mcp" })).toEqual({
+      principal: { kind: "broker", runId: held.id },
+    });
+    // a client name the rule refuses reads desconhecido, and none at all too
+    expect(from({ "x-mordomo-token": token, "x-mordomo-as": "mcp", "x-mordomo-client": "a b" })).toEqual({
+      principal: { kind: "mcp", client: "desconhecido" },
+    });
+    expect(from({ "x-mordomo-token": token, "x-mordomo-as": "mcp" })).toEqual({
+      principal: { kind: "mcp", client: "desconhecido" },
+    });
   });
 });

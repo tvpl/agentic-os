@@ -64,7 +64,7 @@ import {
 } from "./instances.js";
 import { PKG_VERSION } from "./routes/system.js";
 import { servePermissionTool } from "./mcp/permission.js";
-import { abstentionText, httpApi, serveMordomoMcp } from "./mcp/mordomo.js";
+import { abstentionText, httpApi, mcpClientName, serveMordomoMcp } from "./mcp/mordomo.js";
 import {
   LAUNCH_SECRET_MIN_LENGTH,
   PortInUseError,
@@ -1524,8 +1524,16 @@ async function cmdMcp(args: CliArgs): Promise<void> {
   const ctx = new AppContext();
   try {
     const settings = ctx.settings();
-    const api = httpApi(process.env.MORDOMO_URL ?? `http://127.0.0.1:${settings.port}`, ctx.token());
-    await serveMordomoMcp(api, PKG_VERSION);
+    // The client's name is known once it sends `initialize` (cerebro-perguntar, door 5): every call after it carries it.
+    let client = "desconhecido";
+    const api = httpApi(
+      process.env.MORDOMO_URL ?? `http://127.0.0.1:${settings.port}`,
+      ctx.token(),
+      () => client,
+    );
+    await serveMordomoMcp(api, PKG_VERSION, (params) => {
+      client = mcpClientName(params?.clientInfo);
+    });
   } finally {
     ctx.close();
   }

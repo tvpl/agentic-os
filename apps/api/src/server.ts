@@ -64,6 +64,7 @@ import { registerOpenApiRoute } from "./openapi.js";
 import { installResponseCheck, responsesValidated } from "./contract.js";
 import { redactorFor } from "./access.js";
 import { principalName, type Principal } from "./routes/common.js";
+import { mcpClientName } from "./mcp/mordomo.js";
 import { ticketKey } from "./tickets.js";
 import { ignoredBindMessage, listenPlan } from "./transport.js";
 
@@ -252,6 +253,68 @@ const RUN_API_READ_ROUTES = new Set([
   "GET /api/memory/maps",
 ]);
 const RUN_API_WRITE_ROUTES = new Set(["POST /api/memory/journal/append", "POST /api/memory/facts"]);
+
+/**
+ * The only routes the principal `mcp` may call (cerebro-perguntar, door 5): the ones the 13 tools of `mordomo mcp`
+ * call, and no other; any other route is `403 forbidden`. Not containment: the process holds the owner's token and
+ * can leave the header out (docs/security.md).
+ */
+export const MCP_ROUTES: ReadonlySet<string> = new Set([
+  "GET /api/memory/recall",
+  "GET /api/skills",
+  "POST /api/skills/:slug/run",
+  "POST /api/memory/journal/append",
+  "POST /api/memory/proposals",
+  "GET /api/memory/facts",
+  "GET /api/memory/note",
+  "GET /api/notifications",
+  "GET /api/memory/search",
+  "GET /api/memory/links",
+  "GET /api/memory/hygiene",
+]);
+
+/** Who a credential is, with what the gate needs to judge the route (a device's scopes, whether a run may write). */
+export type HeaderVerdict =
+  | { principal: Principal; scopes?: readonly DeviceScope[]; writable?: boolean }
+  | { refused: { status: 400; code: "validation"; message: string } }
+  | null;
+
+/**
+ * The principal of a request by its headers (cerebro-perguntar, door 5): the owner's token, a paired device's, the
+ * permission broker's (`brk_`) or a run's own credential (`rc_`), else null (`401`). `x-mordomo-as` is read only with
+ * the owner's token: `mcp` makes the principal `{ kind: "mcp", client }` (audience `agents`, the client named by
+ * `x-mordomo-client` or `desconhecido`), any other value is `400 validation`; with any other credential it is ignored.
+ */
+export function principalFromHeaders(
+  ctx: AppContext,
+  headers: FastifyRequest["headers"],
+  queryToken?: string,
+  ownerToken: string = ctx.token(),
+): HeaderVerdict {
+  const supplied = (headers["x-mordomo-token"] as string | undefined) ?? queryToken;
+  if (tokenMatches(supplied, ownerToken)) {
+    const as = headers["x-mordomo-as"];
+    if (as === undefined) return { principal: { kind: "owner" } };
+    if (as !== "mcp") {
+      return {
+        refused: {
+          status: 400,
+          code: "validation",
+          message: 'x-mordomo-as: the only value is "mcp", sent with the owner\'s token by mordomo mcp',
+        },
+      };
+    }
+    return { principal: { kind: "mcp", client: mcpClientName({ name: headers["x-mordomo-client"] }) } };
+  }
+  if (typeof supplied !== "string") return null;
+  const device = ctx.settings().remote.enabled ? ctx.devices.verify(supplied) : null;
+  if (device) return { principal: { kind: "device", deviceId: device.id }, scopes: device.scopes };
+  const broker = ctx.brokerRunFor(supplied);
+  if (broker?.active) return { principal: { kind: "broker", runId: broker.runId } };
+  const runApi = ctx.runApiRunFor(supplied);
+  if (runApi?.active) return { principal: { kind: "run", runId: runApi.runId }, writable: runApi.writable };
+  return null;
+}
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -512,12 +575,27 @@ export async function buildServer(
       return;
     }
     const supplied = (req.headers["x-mordomo-token"] as string | undefined) ?? queryToken;
-    if (tokenMatches(supplied, token)) {
-      req.principal = { kind: "owner" };
+    const verdict = principalFromHeaders(ctx, req.headers, queryToken, token);
+    if (verdict && "refused" in verdict) {
+      return reply
+        .code(verdict.refused.status)
+        .send(errorBody(verdict.refused.code, verdict.refused.message));
+    }
+    const principal = verdict?.principal;
+    if (principal?.kind === "owner") {
+      req.principal = principal;
       return;
     }
-    const device = remote.enabled && typeof supplied === "string" ? ctx.devices.verify(supplied) : null;
-    if (device) {
+    if (principal?.kind === "mcp") {
+      if (!MCP_ROUTES.has(`${req.method} ${route}`)) {
+        return reply
+          .code(403)
+          .send(errorBody("forbidden", "The tools of mordomo mcp cannot call this route"));
+      }
+      req.principal = principal;
+      return;
+    }
+    if (principal?.kind === "device") {
       // A device credential never rides in the URL of a stream: it asks for a ticket (door 5).
       if (config.ticket === true && supplied === queryToken && queryToken !== undefined) {
         return reply
@@ -530,13 +608,13 @@ export async function buildServer(
           );
       }
       const needed = config.scope;
-      const verdict = deviceVerdict(device.scopes, needed);
-      if (verdict === "owner_only") {
+      const allowed = deviceVerdict(verdict!.scopes ?? [], needed);
+      if (allowed === "owner_only") {
         return reply
           .code(403)
           .send(errorBody("owner_only", "Only the owner, with the local token, can call this route"));
       }
-      if (verdict === "scope_required") {
+      if (allowed === "scope_required") {
         return reply
           .code(403)
           .send(
@@ -546,30 +624,28 @@ export async function buildServer(
             ),
           );
       }
-      req.principal = { kind: "device", deviceId: device.id };
+      req.principal = principal;
       return;
     }
-    const broker = typeof supplied === "string" ? ctx.brokerRunFor(supplied) : null;
-    if (broker?.active) {
+    if (principal?.kind === "broker") {
       if (!BROKER_ROUTES.has(`${req.method} ${route}`)) {
         return reply.code(403).send(errorBody("forbidden", "The permission broker cannot call this route"));
       }
-      req.brokerRunId = broker.runId;
-      req.principal = { kind: "broker", runId: broker.runId };
+      req.brokerRunId = principal.runId;
+      req.principal = principal;
       return;
     }
-    const runApi = typeof supplied === "string" ? ctx.runApiRunFor(supplied) : null;
-    if (runApi?.active) {
+    if (principal?.kind === "run") {
       const called = `${req.method} ${route}`;
       if (!RUN_API_READ_ROUTES.has(called) && !RUN_API_WRITE_ROUTES.has(called)) {
         return reply.code(403).send(errorBody("forbidden", "A run's credential cannot call this route"));
       }
-      if (RUN_API_WRITE_ROUTES.has(called) && !runApi.writable) {
+      if (RUN_API_WRITE_ROUTES.has(called) && verdict!.writable !== true) {
         return reply
           .code(403)
           .send(errorBody("forbidden", "The credential of a read-only run cannot write to the memory"));
       }
-      req.principal = { kind: "run", runId: runApi.runId };
+      req.principal = principal;
       return;
     }
     return reply.code(401).send(errorBody("unauthorized", UNAUTHORIZED_MESSAGE));

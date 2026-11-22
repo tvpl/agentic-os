@@ -4,7 +4,7 @@ import type { MordomoPaths } from "../paths.js";
 import type { Settings } from "../config/schema.js";
 import type { Routine, SilentRoutine } from "../routines/types.js";
 import type { Connector } from "../connectors/registry.js";
-import { linkEdges } from "./links.js";
+import { brokenLinks, linkEdges } from "./links.js";
 import { checkRouters } from "./routers.js";
 
 /**
@@ -36,6 +36,11 @@ export interface HygieneReport {
   generatedAt: number;
   counts: Record<HygieneKind, number>;
   items: HygieneItem[];
+  /**
+   * The links of notes that lead nowhere the caller may read (cerebro-perguntar, door 4): how many, and the first
+   * `perKind` by path and line. Not a kind of `items`: what the hygiene screen lists is unchanged.
+   */
+  brokenLinks: { count: number; items: Array<{ path: string; name: string; target: string; line: number }> };
   thresholds: { staleDays: number; silentRoutineDays: number; unusedConnectorDays: number };
 }
 
@@ -119,14 +124,20 @@ export function memoryHygiene(
     items.push({ kind: "dangling-link", id: issue.file, name: path.basename(issue.file), detail: issue.problem, action: "open" });
   }
 
-  // 3. Stale files: not touched for `staleDays`.
+  // 3. Stale files: not touched for `staleDays`, judged by the same row filter as the orphans (cerebro-perguntar,
+  // door 4: a file in a folder hidden from the caller is in no list).
   const staleCutoff = now - staleDays * DAY;
-  const staleCount = (db.prepare("SELECT COUNT(*) c FROM files WHERE mtime < ?").get(staleCutoff) as { c: number }).c;
-  counts.stale = staleCount;
-  const staleRows = db
-    .prepare("SELECT path, name, mtime FROM files WHERE mtime < ? ORDER BY mtime ASC LIMIT ?")
-    .all(staleCutoff, perKind) as Array<{ path: string; name: string; mtime: number }>;
-  for (const r of staleRows) {
+  const staleRows = (
+    db.prepare("SELECT root, rel, path, name, mtime FROM files WHERE mtime < ? ORDER BY mtime ASC").all(staleCutoff) as Array<{
+      root: string;
+      rel: string;
+      path: string;
+      name: string;
+      mtime: number;
+    }>
+  ).filter((r) => allow(r));
+  counts.stale = staleRows.length;
+  for (const r of staleRows.slice(0, perKind)) {
     items.push({ kind: "stale", id: r.path, name: r.name, detail: `Untouched for ${daysAgo(r.mtime, now)} d.`, action: "archive" });
   }
 
@@ -186,5 +197,17 @@ export function memoryHygiene(
     items.push({ kind: "unused-connector", id: c.id, name: c.name, detail, action: "disconnect" });
   }
 
-  return { generatedAt: now, counts, items, thresholds: { staleDays, silentRoutineDays, unusedConnectorDays } };
+  // 7. Links of notes that lead nowhere (door 4): a Markdown link whose target the caller may not be told of is left out.
+  const broken = brokenLinks(db, allow).filter(
+    (link) => !opts.allowPath || !path.isAbsolute(link.target) || opts.allowPath(link.target),
+  );
+  const brokenItems = broken.slice(0, perKind).map(({ path: p, name, target, line }) => ({ path: p, name, target, line }));
+
+  return {
+    generatedAt: now,
+    counts,
+    items,
+    brokenLinks: { count: broken.length, items: brokenItems },
+    thresholds: { staleDays, silentRoutineDays, unusedConnectorDays },
+  };
 }

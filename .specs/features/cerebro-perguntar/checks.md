@@ -861,3 +861,10 @@ cursor, codex]`, the guardrails and the shape of door 3) and the default `memory
   the builder fetched the full history, and with it 11 of the 12 failures the base showed (tests that read files at
   earlier commits) pass; `plan.md` Flow now names `resolveAskScope` over `contextMembership` and `resolveCleanupScope`.
 - **Abandoned:** nothing.
+
+Status of batch B (updated in the commit that closes each piece):
+
+- the principal `mcp` and the three new tools (S6, doors 4 and 5: C36-C41, C43-C50, and C8's case of the principal
+  `mcp`): closed, every proof green in `tests/perguntar.mcp.test.ts`, `tests/perguntar.layer.test.ts` (C37, C39),
+  `tests/perguntar.routes.test.ts` (C8) and `tests/perguntar.contract.test.ts` (C49), each proof line run alone and
+  running only its check's cases; C42 is table-driven over the 177 routes and closes with `GET /api/mcp`

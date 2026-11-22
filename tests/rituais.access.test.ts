@@ -239,7 +239,10 @@ describe("C73 who may call the seven routes", () => {
       [...source.matchAll(/^\s+name: "([a-z_]+)",$/gm)].map((m) => m[1]!).sort();
     const mcp = fs.readFileSync(path.join(repoRoot, "apps", "api", "src", "mcp", "mordomo.ts"), "utf8");
     expect(tools(mcp).length).toBeGreaterThan(5);
-    expect(tools(mcp)).toEqual(tools(atBase("apps/api/src/mcp/mordomo.ts")));
+    // cerebro-perguntar, batch B, adds search, links and hygiene (its door 4); they reach none of these routes
+    expect(tools(mcp)).toEqual(
+      [...tools(atBase("apps/api/src/mcp/mordomo.ts")), "hygiene", "links", "search"].sort(),
+    );
     const commands = (source: string) =>
       [...(/const COMMANDS = \[([\s\S]*?)\] as const;/.exec(source)?.[1] ?? "").matchAll(/"([a-z-]+)"/g)].map(
         (m) => m[1]!,

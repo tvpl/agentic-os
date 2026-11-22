@@ -425,6 +425,42 @@ describe("C8 who may call the three routes", () => {
   });
 });
 
+describe("C8 the principal mcp (batch B, door 5)", () => {
+  it("C8 through /api and /api/v1: the principal mcp answers 403 forbidden on the three routes (none is in MCP_ROUTES)", async () => {
+    await fresh(async (w) => {
+      await threeNotes(w);
+      const mcp = {
+        "x-mordomo-token": w.ctx.token(),
+        "x-mordomo-as": "mcp",
+        "x-mordomo-client": "claude-code",
+        "content-type": "application/json",
+      };
+      const known = uuid();
+      w.askRow({ id: known, status: "done", createdAt: Date.now(), finishedAt: Date.now() });
+      const before = w.runCount();
+      for (const prefix of ["/api", "/api/v1"]) {
+        const calls: Array<[string, string, unknown]> = [
+          ["POST", `${prefix}/memory/ask`, direct()],
+          ["GET", `${prefix}/memory/ask`, undefined],
+          ["GET", `${prefix}/memory/ask/${known}`, undefined],
+        ];
+        for (const [method, url, body] of calls) {
+          expect(statusAndCode(await w.call(method, url, body, mcp)), `${method} ${url}`).toEqual([
+            403,
+            "forbidden",
+          ]);
+          // the owner's token without the header is the owner
+          expect(
+            (await w.call(method, url, method === "POST" ? direct({ question: "xyzzy plugh" }) : body))
+              .status,
+          ).toBe(200);
+        }
+      }
+      expect(w.runCount()).toBe(before);
+    });
+  });
+});
+
 describe("C12 a cited path the index does not have, at the boundary", () => {
   it("C12 GET /api/memory/ask/:id reads refused, with no answer key and the reason naming the paragraph and the path", async () => {
     await fresh(async (w) => {

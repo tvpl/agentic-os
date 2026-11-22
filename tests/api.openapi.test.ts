@@ -320,11 +320,13 @@ describe("S3 the document", () => {
       // The ones that apply by the shape of the route.
       const has = (status: number) => op.responses[String(status)] !== undefined;
       expect(has(401) && has(403) && has(429) && has(500), id).toBe(true);
+      // cerebro-perguntar, door 5: every guarded route can answer `400 validation` to an `x-mordomo-as` other than mcp.
       expect(has(400), `${id} 400`).toBe(
         entry.params !== undefined ||
           entry.query !== undefined ||
           entry.body !== undefined ||
-          entry.method !== "GET",
+          entry.method !== "GET" ||
+          entry.public !== true,
       );
       expect(has(413), `${id} 413`).toBe(
         entry.method !== "GET" || declaredErrors(entry).some((e) => e.status === 413),

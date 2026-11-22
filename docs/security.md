@@ -464,9 +464,15 @@ The owner's token is never bound by a level: the owner reads and writes every fo
   and Cursor can still open a hidden folder by its absolute path. Claude Code's `Bash` is not covered by the deny rules;
   it asks a human first in every profile a run uses. A binary a device is served (an image of an artifact or of a
   skill) is sent as it is, and the totals in the `x-total-count` header of `GET /api/runs` and `GET /api/sessions`
-  count every row, hidden ones included. **`mordomo mcp` reads with the owner's token** (it is the owner's own program),
-  so an agent session that has its tools (`recall`, `note_read`, `facts_query`) reads hidden folders: `hide` for agents
-  binds the runs MordomoOS starts and the credential it gives them, not a program the owner configures with the token.
+  count every row, hidden ones included. **`mordomo mcp` reads as agents read** (`.specs/features/cerebro-perguntar`,
+  door 5): its tools send the owner's token with `x-mordomo-as: mcp` (and `x-mordomo-client`, the name the client gave
+  in `initialize`), the service gives such a request the principal `mcp`, whose audience is `agents`, so `recall`,
+  `search`, `note_read`, `facts_query`, `links` and `hygiene` read with the agents' folder rules and leave out a folder
+  hidden from agents, and the principal may only call `MCP_ROUTES`, the 11 routes its 13 tools call (any other route is
+  `403 forbidden`; an `x-mordomo-as` other than `mcp` is `400 validation`). **This is not containment:** the process
+  holds the owner's token, and whoever holds it can call the API without the header and read as the owner; the header
+  binds the tools MordomoOS hands an agent, not a program that reads the token. `skills_run` and `inbox_unread` stay
+  the owner's, and `journal_append` appends with the agent's mark and no folder check.
   A name is hidden whole only where it is written as a path: a bare folder name in a sentence (`fin`) is not a
   citation and stays; the tail of a hidden path stops at the first space, so the part of a file name after a space
   below a hidden folder may stay. The output of a run the owner (or a routine) started that was handed a folder hidden from

@@ -25,9 +25,17 @@ interface Request {
 export const MCP_PROTOCOL_VERSION = "2024-11-05";
 
 /** Handle one request; returns the JSON-RPC response object or null for notifications. */
+export interface McpServer {
+  name: string;
+  version: string;
+  tools: McpTool[];
+  /** Told the params of `initialize` (its `clientInfo` names the program on the other end). */
+  onInitialize?: (params: Record<string, unknown> | undefined) => void;
+}
+
 export async function handleMcpRequest(
   req: Request,
-  server: { name: string; version: string; tools: McpTool[] },
+  server: McpServer,
 ): Promise<Record<string, unknown> | null> {
   const { id, method, params } = req;
   const reply = (result: unknown) => ({ jsonrpc: "2.0", id: id ?? null, result });
@@ -40,6 +48,7 @@ export async function handleMcpRequest(
   if (method.startsWith("notifications/")) return null;
   switch (method) {
     case "initialize":
+      server.onInitialize?.(params);
       return reply({
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: {} },
@@ -74,7 +83,7 @@ export async function handleMcpRequest(
 }
 
 /** Serve `tools` on stdin/stdout until stdin closes. */
-export function serveMcpStdio(server: { name: string; version: string; tools: McpTool[] }): Promise<void> {
+export function serveMcpStdio(server: McpServer): Promise<void> {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     const queue: Promise<void>[] = [];

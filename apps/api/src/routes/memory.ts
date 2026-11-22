@@ -309,9 +309,20 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     return related;
   });
 
-  bind(app, "memory.links", async ({ query: { id } }, req) => {
+  bind(app, "memory.links", async ({ query: { id, p } }, req) => {
+    // The file by its id or by its path (cerebro-perguntar, door 4: the MCP's `links`), exactly one of them; a path is
+    // absolute or relative to memory/, and one that names no index row is a file that is not there.
+    if ((id === undefined) === (p === undefined))
+      throw httpError(400, "Name the file by exactly one of id and p.", "validation");
+    const fileId =
+      id ??
+      (
+        ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(path.resolve(ctx.paths.memory, p!)) as
+          { id: number } | undefined
+      )?.id;
+    if (fileId === undefined) throw httpError(404, "File not found", "not_found");
     // Rows are judged by today's policy as they are read: a stale row under a private path is not a file here.
-    const links = linksOf(ctx.db, id, accessView(ctx, req.principal).rowFilter());
+    const links = linksOf(ctx.db, fileId, accessView(ctx, req.principal).rowFilter());
     if (!links) throw httpError(404, "File not found", "not_found");
     return links;
   });
@@ -383,12 +394,14 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   bind(app, "memory.note", async ({ query: { p } }, req) => {
     const view = accessView(ctx, req.principal);
-    const device = view.audience === "devices";
-    if (device && view.hidden(p)) throw hiddenFromDevice("note");
+    // A device, and the MCP's `note_read` reading as agents (cerebro-perguntar, door 5), are told the same of a note
+    // hidden from them as of one that is not there.
+    const audience = view.audience !== null;
+    if (audience && view.hidden(p)) throw hiddenFromDevice("note");
     try {
       return readNote({ ...noteContext(), settings: view.settings }, p);
     } catch (err) {
-      if (device && (err as NodeJS.ErrnoException).code === "ENOENT") throw hiddenFromDevice("note");
+      if (audience && (err as NodeJS.ErrnoException).code === "ENOENT") throw hiddenFromDevice("note");
       if ((err as NodeJS.ErrnoException).code === "ENOENT")
         throw httpError(404, "The note does not exist.", "note_missing");
       throw err;
