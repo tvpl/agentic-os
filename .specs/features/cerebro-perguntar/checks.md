@@ -798,5 +798,7 @@ The estimate exceeds the 150k budget.
   - **E** (the tab Agentes (MCP)): S7 screen ≈ 30k; C101-C108 (C99's tab story and C107's e2e close here)
   - A + B ≈ 165k is over the budget; C + E ≈ 113k fits but E needs D's gallery and e2e scaffolding, so D lands before E;
     every batch stays apart
-- Mechanism: **ask** — the estimate is over the budget; handoff (five batches, sequential, only on green; the next builder
-  reads `checks.md` and the diff of what landed) or one builder (accepting compaction)
+- Mechanism: handoff - chosen by the owner on 22/11/2026 (five batches A-E, sequential, only on green; the next builder
+  reads `checks.md` and the diff of what landed). The route-count and refusal-probe pins move with each batch to the
+  value its routes give (176 after A, 177 after B), so the whole suite stays green between batches; C61 and C62 close in C
+  at 177
