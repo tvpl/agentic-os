@@ -643,6 +643,17 @@ Proof: `npm run test -w apps/command-centre -- src/views/settings/agentsMcp.test
 - **C8, the `mcp` case moves to batch B:** the principal `mcp` is door 5, which batch B builds; until then the header is
   ignored. C8 closes when that case is green.
 
+## Correções do lote B
+
+- **C52, literal corrected by the orchestrator on 22/11/2026:** the codex command is the **three** lines the check lists
+  (`[mcp_servers.mordomo]`, `command = "mordomo"`, `args = ["mcp"]`); "two lines" was a counting slip in the check, the
+  lines themselves are unchanged and are what the proof asserts.
+- **C40, reading confirmed by the orchestrator:** for `note_read` and `links` the path of `segredo.md` is the tool's own
+  argument and C44 requires it in `File not found: <path>`, so "nothing of `segredo.md`" means no content, no excerpt, no
+  fact and no other path of the hidden folder; the proof asserts that.
+- **C69, left for batch C:** batch B calls `recordAgentUsage` on `ctx.db` from the routes; C69's single factory for the
+  ask service and the usage recorder across the three assemblies is batch C's to build or to report as wrong.
+
 ## Coverage
 
 | Set (size)                                                            | Member -> proof                                                                                                                                                                                                                                                                                                                                                             | Unproven |
