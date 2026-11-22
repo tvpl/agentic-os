@@ -1,0 +1,117 @@
+/* Settings › Memória › "Busca por significado" (.specs/features/cerebro-busca-significado, design.md). */
+.ss-b {
+  margin: 0;
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+.ss-s {
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.ss .tone-ok {
+  color: var(--ok);
+}
+.ss .tone-warn {
+  color: var(--warn);
+}
+.ss .tone-muted {
+  color: var(--text-faint);
+}
+.ss svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  vertical-align: -2px;
+}
+.ss-top,
+.ss-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
+}
+.ss-head,
+.ss-row,
+.ss-state,
+.ss-remote,
+.ss-test,
+.ss-check,
+.ss-opt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+/* design.md "Servidor seu": the warning stays beside the checkbox, its text wrapping in the room left */
+.ss-remote {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+.ss-remote > span {
+  flex: 1;
+  min-width: 0;
+}
+.ss-head .ss-b {
+  margin-right: auto;
+}
+.ss-opts,
+.ss-models {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ss-opt {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ss-opt[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+.ss-opt .ss-col {
+  flex: 1;
+}
+.ss-model {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s-2) var(--s-4);
+  align-items: center;
+}
+.ss-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-1);
+}
+.ss-bar {
+  display: block;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.ss-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ss-fill {
+    transition: transform 240ms ease-out;
+  }
+  .ss-detail {
+    animation: ss-in 200ms ease-out;
+  }
+  @keyframes ss-in {
+    from {
+      opacity: 0;
+    }
+  }
+}

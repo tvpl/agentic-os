@@ -14,6 +14,7 @@ import { parsePassages, type Passage } from "./natureza.js";
 import { parseTasks, type ParsedTask } from "./tasks.js";
 import { extractLinks, type ParsedLink } from "./linkParser.js";
 import { embedPending } from "./vectors.js";
+import type { LocalEmbedding } from "./embeddings.js";
 import {
   AudienceMirror,
   RELATED_DEVICES_TABLE,
@@ -268,6 +269,8 @@ export class MemoryIndexer {
   private writeMs = 0;
   /** Runs when a pass that changed rows ends, before `index.finished` is announced (`setAfterPass`). */
   private afterPass: ((stats: IndexStats) => void) | null = null;
+  /** The engine's local models, for the vectors phase with `provider: "local"` (cerebro-busca-significado, door 2). */
+  private local: LocalEmbedding | undefined;
 
   constructor(
     private readonly db: Db,
@@ -277,6 +280,11 @@ export class MemoryIndexer {
     /** Where a pass is announced (`index.progress`, `index.finished`, `index.failed`); without one it is silent. */
     private readonly bus?: EventBus,
   ) {}
+
+  /** The local models a pass embeds with (the engine's in the service, the host's relay in the worker, G18). */
+  setLocal(local: LocalEmbedding): void {
+    this.local = local;
+  }
 
   /**
    * A test over stored rows, for readers of old data (search, recall): true when
@@ -489,10 +497,18 @@ export class MemoryIndexer {
       runId?: string | undefined;
     } = {},
   ): Promise<void> {
-    const config = this.getSettings().memory.embeddings;
+    const settings = this.getSettings();
+    const config = settings.memory.embeddings;
     let announced = false;
+    // What may be sent is what today's policy admits (G17 of cerebro-busca-significado) under a root granted today: a
+    // folder whose grant was revoked keeps its rows until a full pass prunes them, and a pass over a few paths does not.
+    const policy = this.rowFilter();
+    const granted = new Set(
+      [...settings.indexedFolders, ...this.implicitRoots].filter((f) => f.enabled).map((f) => path.resolve(f.path)),
+    );
     const { embedded } = await embedPending(this.db, config, {
-      allow: this.rowFilter(),
+      ...(this.local ? { local: this.local } : {}),
+      allow: (row) => granted.has(path.resolve(row.root)) && policy(row),
       ...(options.signal ? { signal: options.signal } : {}),
       ...(options.shouldStop ? { shouldStop: options.shouldStop } : {}),
       onProgress: (done, total) => {
@@ -925,6 +941,9 @@ export class MemoryIndexer {
         tags = [...new Set([...(header?.tags ?? []), ...inline])].slice(0, 20);
         // The vocabulary keys of the header (cerebro-organizar, door 6), then the inline fields, which win on a key.
         fields = { ...header?.fields, ...parseInlineFields(content) };
+        // The header's `aliases`, as the JSON of the list (.specs/features/cerebro-rituais, G33): the terms of the
+        // note's unlinked mentions. A row indexed before has none until its file is indexed again.
+        if (header && header.aliases.length > 0) fields.aliases = JSON.stringify(header.aliases);
       }
     }
     const name = path.basename(full);
@@ -1222,7 +1241,7 @@ export class MemoryIndexer {
     this.db.prepare("DELETE FROM note_passages WHERE file_id = ?").run(id);
     // The tasks go with the file too (door 3 of cerebro-paineis).
     this.db.prepare("DELETE FROM note_tasks WHERE src_id = ?").run(id);
-    this.db.prepare("DELETE FROM file_vectors WHERE file_id = ?").run(id);
+    this.db.prepare("DELETE FROM section_vectors WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_minhash WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_terms WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_related WHERE src_id = ? OR dst_id = ?").run(id, id);

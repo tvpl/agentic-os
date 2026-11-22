@@ -6,6 +6,7 @@ import type { AgentRun } from "@mordomo/core";
 import { seedHome } from "@mordomo/core/internal";
 import type { RunRecord } from "@mordomo/contracts";
 import { FAKE_BIN, withFakeBinPath } from "../helpers.js";
+import type { AppContextOptions } from "../../apps/api/src/context.js";
 import { notesViewWorld, type Json, type NotesViewWorld } from "./notesViewWorld.js";
 
 export { sha, type Json } from "./notesViewWorld.js";
@@ -21,8 +22,8 @@ export interface MemoriaWorld extends NotesViewWorld {
 
 export const code = (r: { status: number; body: Json }): [number, unknown] => [r.status, r.body?.error?.code];
 
-export async function memoriaWorld(prefix: string): Promise<MemoriaWorld> {
-  const base = await notesViewWorld(prefix);
+export async function memoriaWorld(prefix: string, options: AppContextOptions = {}): Promise<MemoriaWorld> {
+  const base = await notesViewWorld(prefix, options);
   // A change of `folderAccess` starts a pass of its own (the devices' related edges follow the access, door 20), and a
   // request for a pass made while it runs joins it: the pass that answers would be one that read the settings of before.
   // `index` therefore waits for a pass in flight to end and then makes its own.

@@ -23,7 +23,7 @@ four layers, and only the last two ever touch the disk.
 | **1. Keywords** | The question is folded (accents removed), English and Portuguese stopwords dropped, tokens stemmed lightly (`approved → approv`, `decisões → decisao`); path-like tokens (`core/src/memory/recall.ts`, `budget-2026.md`) are kept whole. Max 8 keywords. | none |
 | **2. Candidates** | One FTS pass per keyword over `files_fts` (name, rel, content) plus row-level signals already in the index: file name (×6), title (×4), tags (×3), path (×1.5), keyword coverage (×5), a **+8 boost when a router points at the file** and **+4 when a keyword names an area**. **No file is opened.** | one query per keyword |
 | **3. Sections** | Only the top **K** candidates (default 3, `k=` up to 10) are read. Each file is split by markdown heading (fences respected; non-markdown is chunked in 40-line blocks) and every section is scored: heading hit +3, body hits `1 + log2(1+n)`, coverage ×2, a mild penalty for sections over 4 000 chars. The best section wins. | K file reads |
-| **4. Pointers** | Markdown links **inside the winning section** are followed **one level only** (max 2 by default) and kept when the pointed section scores higher than the one that pointed at it. Only indexed files are followed, so the exclusion policy still holds. | ≤ 2 extra reads |
+| **4. Pointers** | Markdown links **inside the winning section** are followed up to `memory.recall.hops` levels (2 by default, 1 to 3; max 2 links per section) and kept when the pointed section scores higher than the one that pointed at it; a section not kept ends that branch. Only indexed files the caller may read are followed, so the exclusion policy still holds. | ≤ 2 extra reads per level |
 
 The answer is a list of sections, never whole files:
 
@@ -316,7 +316,8 @@ out before the page is cut, so a page is never short because of them.
 
 **Semantic search (optional, off by default).** `GET /api/memory/search` ranks by words (BM25 over the
 full-text index; NUL bytes in `q` are ignored, so a `q` made only of them lists the recent files like an empty one). With `memory.embeddings.enabled` on (`PUT /api/settings`, owner only) the index also keeps one
-vector per Markdown or text file, and a search fuses the two orders (reciprocal rank fusion, k = 60): each hit says
+vector per section of each Markdown or text file (the text between two headings, or a block of 40 lines outside
+Markdown, at most 64 per file), and a search fuses the two orders (reciprocal rank fusion, k = 60): each hit says
 `via` `text`, `semantic` or `both`, and `mode` is `auto` (the default), `text` or `semantic` (`409 semantic_disabled`
 while the search is off). Nothing is embedded, no extension is loaded and no connection is opened while it is off;
 turning it off deletes the vectors at the next index pass.
@@ -348,6 +349,44 @@ turning it off deletes the vectors at the next index pass.
 - **Ranking** uses the `sqlite-vec` extension when it loads (`semantic.backend: "sqlite-vec"`) and the same cosine in
   JavaScript when it does not (a platform it does not ship for, a missing package): the order is the same, only
   slower on a very large index. The installer carries the extension for the machine that built it.
+
+### Busca por significado
+
+The search and the recall can also find a note by what it means, not only by its words
+(`memory.embeddings`, off by default). Each section of a note (a heading and its body, or a block of 40 lines outside
+Markdown) gets one vector, computed from `<area> > <note title> > <heading path>` and the body. Three providers:
+
+- `hash` - words and a simple vector, in this process: no download, no network. It understands plurals and spelling
+  variants, not synonyms.
+- `http` - your own server with the OpenAI embeddings format, such as Ollama. Install Ollama (`ollama.com`), pull an
+  embedding model (`ollama pull nomic-embed-text`) and point `endpoint` at it:
+  `"endpoint": "http://127.0.0.1:11434/v1/embeddings"`, with `model` and `dimensions` (768 for that model). A loopback
+  address needs nothing else; another address needs `https` and `sendRemote`.
+- `local` - a model of the catalog downloaded to `<home>/models/<id>/` and run in a child process on this computer
+  (Settings > Memória > Busca por significado, or `POST /api/memory/embedder {"action": "install", "id": ...}`). Each
+  file is checked against the SHA-256 the catalog pins. EmbeddingGemma asks you to accept the Gemma terms before the
+  download (`acceptTerms: true`); the Qwen3 models are Apache-2.0 and ask nothing. macOS on Intel has no runtime.
+
+In the interface it is the block "Busca por significado" of Settings > Memória: the on/off button, the three
+providers, the own server's fields with "Testar conexão" (it embeds one phrase and reads `OK: <n> dimensões, <ms> ms` or
+the kind of failure), the catalog's models with their size, license and state (download, cancel, remove, "Usar este
+modelo"; a change of provider, model or dimensions over a ready index asks before recomputing it), and the reranker's
+button, which turns on only when the reranker is downloaded. Its help link points here.
+
+The recall (`GET /api/memory/recall`, `mordomo recall`, the MCP tool `recall`) joins to its word candidates the files
+of the 50 sections nearest to the question (reciprocal rank fusion, k 60), and says when nothing answers:
+`abstained: true` with `abstainReason` `no_match` (no keyword, or no candidate) or `weak` (no section matches half of
+the keywords and none is near enough in meaning; with the search off, the words alone decide), and the tool prints
+`Nothing found: no indexed section answers this (<reason>).` `memory.recall` sets `abstain` (on), `hops` (2),
+`tokenBudget` (3000 tokens of excerpts) and the optional local reranker (`rerank.enabled`, `candidates` 20,
+`timeoutMs` 15000), which reorders the best fused sections; `rerank` in the answer says what it did (`off`, `used`,
+`skipped`, `timeout`, `failed`).
+
+Measure it on your own questions with `mordomo eval <file> [--json]`. The file is
+`{ "v": 1, "queries": [{ "q": "<question>", "kind": "single" | "multi" | "latest" | "window" | "abstain", "expect": ["<path relative to memory/ or to the indexed folder>"] }] }`
+(an `abstain` question has `"expect": []`); it prints `1-recall@20`, `mrr` and `hit@3` for the modes `and`, `or`,
+`semantic`, `hybrid` (and `rerank` when the reranker is on), then `abstainCorrect=<n>/<total>`, and exits 2 with
+`eval: <position>: <reason>` on a file that does not follow the format.
 
 ---
 

@@ -44,9 +44,12 @@ const UNREACHED: Record<string, string> = {
   "brain/cleanup/testkit.tsx": "test material: imported by specs only",
   // cerebro-natureza, batch D: the reviews specs' routes over the notes-view stub, and their render helpers
   "brain/reviews/testkit.tsx": "test material: imported by specs only",
+  // cerebro-rituais, batch D: the weekly review's specs' routes over the notes-view stub, and their render helpers
+  "brain/weekly/testkit.tsx": "test material: imported by specs only",
   // cerebro-paineis, batch D: the dashboards specs' routes over the notes-view stub, and their render helpers
   "dashboards/testkit.tsx": "test material: imported by specs only",
   "dashboards/testnet.ts": "test material: imported by specs only",
+  "views/settings/semanticSearchNet.ts": "test material: imported by specs only",
   "commands/listenersAllowlist.ts":
     "the list of key listeners outside the registry, read by the registry's source check and probe (C16)",
   "testing/canvasText.ts": "a reader of the design-system guards: specs only",

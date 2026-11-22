@@ -47,6 +47,7 @@ const SentinelFiredSchema = z.object({
     "connectorDelta",
     "reviewDue",
     "proposalsPending",
+    "weeklyReview",
   ]),
   messageParams: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
   title: z.string(),

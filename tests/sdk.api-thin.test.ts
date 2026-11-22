@@ -1374,6 +1374,194 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ['        "audience-search-indexes",', "      ]);"],
       head: ['        "audience-search-indexes",', '        "audience-related-edges",', "      ]);"],
     },
+    // cerebro-rituais, batch A, added GET /api/memory/weekly-review, POST /api/memory/weekly-review/loops and
+    // POST /api/memory/tasks (owner), and migration 33. Each amends the head of the amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: the weekly review's list and loop decisions and POST /api/memory/tasks under /api",
+      base: ["    expect(routes).toHaveLength(162);"],
+      head: ["    expect(routes).toHaveLength(165);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: owners and scoped routes, with the weekly review and the new task",
+      base: ["    expect([owners, scoped]).toEqual([86, 76]);"],
+      head: ["    expect([owners, scoped]).toEqual([89, 76]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: the registered routes, with the weekly review and the new task",
+      base: ["    expect(Object.keys(registered)).toHaveLength(162);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(165);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: the routes of each scope, with the weekly review and the new task",
+      times: 2,
+      base: ["toEqual({ owner: 86, monitor: 33, content: 36, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 89, monitor: 33, content: 36, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: the routes after the pairing passes, with the weekly review and the new task",
+      base: ["    expect(apiRoutes()).toHaveLength(162);"],
+      head: ["    expect(apiRoutes()).toHaveLength(165);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: the operations of the route document, with the weekly review and the new task",
+      base: ["    expect(operations).toBe(164);"],
+      head: ["    expect(operations).toBe(167);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: migration 33 after 32, in the comment",
+      base: ["      // of the audiences and their related edges (doors 19 and 20), three more."],
+      head: [
+        "      // of the audiences and their related edges (doors 19 and 20), three more, and the loop decisions and the weekly",
+        "      // reviews (cerebro-rituais), two more.",
+      ],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais A: rituais after audience-related-edges",
+      base: ['        "audience-related-edges",', "      ]);"],
+      head: ['        "audience-related-edges",', '        "rituais",', "      ]);"],
+    },
+    // cerebro-rituais, batch B, added POST /api/memory/weekly-review/archive and POST /api/memory/weekly-review/finish
+    // (owner). Each amends the head of batch A's amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: the week's archive and finish under /api",
+      base: ["    expect(routes).toHaveLength(165);"],
+      head: ["    expect(routes).toHaveLength(167);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: owners and scoped routes, with the week's archive and finish",
+      base: ["    expect([owners, scoped]).toEqual([89, 76]);"],
+      head: ["    expect([owners, scoped]).toEqual([91, 76]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: the registered routes, with the week's archive and finish",
+      base: ["    expect(Object.keys(registered)).toHaveLength(165);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(167);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: the routes of each scope, with the week's archive and finish",
+      times: 2,
+      base: ["toEqual({ owner: 89, monitor: 33, content: 36, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 91, monitor: 33, content: 36, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: the routes after the pairing passes, with the week's archive and finish",
+      base: ["    expect(apiRoutes()).toHaveLength(165);"],
+      head: ["    expect(apiRoutes()).toHaveLength(167);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais B: the operations of the route document, with the week's archive and finish",
+      base: ["    expect(operations).toBe(167);"],
+      head: ["    expect(operations).toBe(169);"],
+    },
+    // cerebro-rituais, batch C, added GET /api/memory/mentions (content) and POST /api/memory/mentions/link (owner).
+    // Each amends the head of batch B's amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais C: the unlinked mentions and Linkar under /api",
+      base: ["    expect(routes).toHaveLength(167);"],
+      head: ["    expect(routes).toHaveLength(169);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais C: owners and scoped routes, with the unlinked mentions and Linkar",
+      base: ["    expect([owners, scoped]).toEqual([91, 76]);"],
+      head: ["    expect([owners, scoped]).toEqual([92, 77]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais C: the registered routes, with the unlinked mentions and Linkar",
+      base: ["    expect(Object.keys(registered)).toHaveLength(167);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(169);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais C: the routes of each scope, with the unlinked mentions and Linkar",
+      times: 2,
+      base: ["toEqual({ owner: 91, monitor: 33, content: 36, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 92, monitor: 33, content: 37, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais C: the routes after the pairing passes, with the unlinked mentions and Linkar",
+      base: ["    expect(apiRoutes()).toHaveLength(167);"],
+      head: ["    expect(apiRoutes()).toHaveLength(169);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-rituais C: the operations of the route document, with the unlinked mentions and Linkar",
+      base: ["    expect(operations).toBe(169);"],
+      head: ["    expect(operations).toBe(171);"],
+    },
+    // cerebro-busca-significado, batch B, added migration 34 (one vector per section, door 1). It amends the head of
+    // cerebro-rituais A's migration amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado B: migration 34 after 33, in the comment",
+      base: ["      // reviews (cerebro-rituais), two more."],
+      head: [
+        "      // reviews (cerebro-rituais), two more, and one vector per section in place of the old vector table",
+        "      // (cerebro-busca-significado), one more.",
+      ],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado B: section-vectors after rituais",
+      base: ['        "rituais",', "      ]);"],
+      head: ['        "rituais",', '        "section-vectors",', "      ]);"],
+    },
+    // cerebro-busca-significado, batch C, added GET /api/memory/embedder and POST /api/memory/embedder (owner, door 8).
+    // Each amends the head of cerebro-rituais C's amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: the two embedder routes under /api",
+      base: ["    expect(routes).toHaveLength(169);"],
+      head: ["    expect(routes).toHaveLength(171);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: owners and scoped routes, with the two embedder routes",
+      base: ["    expect([owners, scoped]).toEqual([92, 77]);"],
+      head: ["    expect([owners, scoped]).toEqual([94, 77]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: the registered routes, with the two embedder routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(169);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(171);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: the routes of each scope, with the two embedder routes",
+      times: 2,
+      base: ["toEqual({ owner: 92, monitor: 33, content: 37, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 94, monitor: 33, content: 37, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: the routes after the pairing passes, with the two embedder routes",
+      base: ["    expect(apiRoutes()).toHaveLength(169);"],
+      head: ["    expect(apiRoutes()).toHaveLength(171);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-busca-significado C: the operations of the route document, with the two embedder routes",
+      base: ["    expect(operations).toBe(171);"],
+      head: ["    expect(operations).toBe(173);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

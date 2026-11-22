@@ -1,0 +1,65 @@
+/* "Menções sem link" of the note panel (cerebro-rituais design.md "Painel da nota - dobra Menções sem link"). */
+.mf,
+.mf-list {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.mf-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mf-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--s-2);
+}
+
+.mf-name {
+  justify-self: start;
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+
+.mf-excerpt {
+  grid-column: 1;
+  font-size: var(--fs-2);
+  overflow-wrap: anywhere;
+}
+
+.mf-excerpt mark {
+  color: var(--text);
+}
+
+.mf-item > .btn {
+  grid-area: 1 / 2 / 3;
+  align-self: start;
+}
+
+.mf-trouble {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.mf-trouble,
+.mf-notice {
+  margin: 0;
+  font-size: var(--fs-3);
+}
+
+.mf-trouble svg {
+  width: 14px;
+  height: 14px;
+  color: var(--warn);
+}
+
+.mf-dim {
+  margin: 0;
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}

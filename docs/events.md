@@ -475,7 +475,7 @@ Payload, version 1:
 
 | Field | Type | Required |
 | --- | --- | --- |
-| `sentinel` | "fsWatch" \| "repeatedFailure" \| "silentRoutine" \| "connectorDelta" \| "reviewDue" \| "proposalsPending" | yes |
+| `sentinel` | "fsWatch" \| "repeatedFailure" \| "silentRoutine" \| "connectorDelta" \| "reviewDue" \| "proposalsPending" \| "weeklyReview" | yes |
 | `messageParams` | map of string \| number \| boolean | no |
 | `title` | string | yes |
 | `body` | string | yes |

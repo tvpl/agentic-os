@@ -400,6 +400,8 @@ const TITLE_STAYS: Record<string, [reason: "DATA" | "WORDS" | "BINDING" | "DECK"
   "desktop/widgets/BoardWidget.tsx :: {r.name}": ["DATA", 1],
   'moldura/Sidebar.tsx :: {collapsed ? t("moldura.nav.expand") : t("moldura.nav.collapse")}': ["BINDING", 1],
   "moldura/Sidebar.tsx :: {collapsed ? name : undefined}": ["BINDING", 1],
+  // cerebro-busca-significado design.md "Lista de modelos": the active model's disabled Remover says why
+  'views/settings/SemanticSearch.tsx :: {p.active ? t("semantic.removeInUse") : undefined}': ["WORDS", 1],
   'moldura/TopBar.tsx :: {t("moldura.top.chatHint", { keys: comboLabel(CHAT_TOGGLE) })}': ["WORDS", 1],
   'nucleo/Telemetry.tsx :: { problem ? `${t("dash.activeProvider")}: ${t(`gate.state.${problem}`)}` : t("dash.activeP':
     ["WORDS", 1],
@@ -427,6 +429,11 @@ const TITLE_STAYS: Record<string, [reason: "DATA" | "WORDS" | "BINDING" | "DECK"
   'plugins/pixel/PixelStudio.tsx :: {t("pixel.onion")}': ["WORDS", 1],
   "views/RoutinesTimeline.tsx :: {`${fmtHour(h.firedAt)} · ${said}`}": ["DATA", 1],
   'views/Skills/SkillDetail.tsx :: {t("skills.notes.promoteHint")}': ["WORDS", 1],
+  // cerebro-rituais (design.md "Entradas" and "Etapa 1"): "Revisão semanal" says when the week was finished, and a
+  // disabled "Virar tarefa" says why.
+  'brain/weeklyEntry.tsx :: {at === null ? undefined : t("weekly.finishedButton", { day: shortDay(new Date(at)) })}':
+    ["WORDS", 1],
+  'brain/weekly/WeeklyReview.tsx :: {t("weekly.noProject")}': ["WORDS", 1],
 };
 
 describe("C25 an icon-only control names itself and hints with a Tooltip, not with title", () => {
@@ -634,6 +641,8 @@ const HAND_MADE: Record<string, string> = {
     "the guided tour owns the keyboard while it is up and is not modal in its guided step (comandos-atalhos design: it stays)",
   "gallery/main.tsx":
     "a dialog drawn in place for the layer stories (the real Modal portals to the page and traps focus)",
+  "gallery/semanticStory.tsx":
+    "the license dialog of Busca por significado drawn in place for its story (cerebro-busca-significado C134; the real Modal portals and traps focus)",
 };
 
 describe("C26 what is still hand-made is on a closed list, with its reason", () => {

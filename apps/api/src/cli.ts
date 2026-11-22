@@ -23,8 +23,11 @@ import {
   generateRouters,
   isStartupServiceInstalled,
   planStartupService,
-  recall,
+  hybridRecall,
   recordRecall,
+  runEval,
+  formatEvalText,
+  EvalFormatError,
   contextMembership,
   ESCOPOS,
   NATUREZAS,
@@ -61,7 +64,7 @@ import {
 } from "./instances.js";
 import { PKG_VERSION } from "./routes/system.js";
 import { servePermissionTool } from "./mcp/permission.js";
-import { httpApi, serveMordomoMcp } from "./mcp/mordomo.js";
+import { abstentionText, httpApi, serveMordomoMcp } from "./mcp/mordomo.js";
 import {
   LAUNCH_SECRET_MIN_LENGTH,
   PortInUseError,
@@ -106,6 +109,7 @@ const COMMANDS = [
   "run",
   "service",
   "recall",
+  "eval",
   "note",
   "context",
   "mcp",
@@ -168,6 +172,7 @@ const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   run: ["provider", "model", "effort", "input", "json", "context"],
   service: ["yes"],
   recall: ["json", "context", "natureza", "escopo"],
+  eval: ["json"],
   note: ["json", "area", "front-matter", "tag", "base"],
   context: ["none", "json"],
   mcp: [],
@@ -581,6 +586,8 @@ async function main(): Promise<void> {
       return cmdService(args);
     case "recall":
       return cmdRecall(args);
+    case "eval":
+      return cmdEval(args);
     case "note":
       return cmdNote(args);
     case "context":
@@ -618,6 +625,8 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo recall <question>  Layered memory retrieval: only the sections worth reading (--json,
                            --context <id|all>; without it, the active context of this machine;
                            --natureza fato,relato and --escopo pessoal keep only those excerpts)
+  mordomo eval <file>      Measure the search on your own questions: per mode 1-recall@20, mrr and hit@3, and
+                           abstainCorrect, over the local index (--json; exit 2 if the file breaks the format)
   mordomo context list       The work contexts (* marks the active one); mordomo context use <id> | use --none
                            sets the active context; mordomo context show <id> prints its map
   mordomo note new <title>   Create a note under memory/notes (--area <a>, --front-matter, --tag <t> ..., --json)
@@ -1572,10 +1581,13 @@ async function cmdRecall(args: CliArgs): Promise<void> {
     const chosen = chosenContext(ctx, args);
     if (chosen === undefined) return;
     const within = chosen ? contextMembership({ paths: ctx.paths, settings }, chosen) : undefined;
-    const result = recall(ctx.db, ctx.paths, settings, question, {
+    // The same recall as GET /api/memory/recall: with the engine's vectors and reranker when they are ready here.
+    const result = await hybridRecall(ctx.db, ctx.paths, settings, question, {
       ...(within ? { within } : {}),
       ...(natureza ? { natureza } : {}),
       ...(escopo ? { escopo } : {}),
+      semantic: ctx.semantic,
+      local: ctx.localModels,
     });
     recordRecall(ctx.db, result);
     if (args.json) {
@@ -1585,6 +1597,10 @@ async function cmdRecall(args: CliArgs): Promise<void> {
     console.log(
       `${pc.bold("recall")} keywords: ${result.keywords.join(", ") || "(none)"} · ${result.candidatesConsidered} candidates scored, ${result.opened} opened, ~${result.tokensEstimate} tokens`,
     );
+    if (result.abstained) {
+      console.log(abstentionText(result.abstainReason ?? "no_match"));
+      return;
+    }
     if (result.answerContext.length === 0)
       console.log(pc.dim("No indexed section matched. Run `mordomo index` if the workspace changed."));
     for (const c of result.answerContext) {
@@ -1600,6 +1616,42 @@ async function cmdRecall(args: CliArgs): Promise<void> {
           .join("\n"),
       );
     }
+  } finally {
+    ctx.close();
+  }
+}
+
+// ----------------------------------------------------------------- eval ----
+
+/**
+ * `mordomo eval <file> [--json]` (cerebro-busca-significado, door 6): the questions of the file against the local index,
+ * offline, with the provider of the settings (`hash` or off: no network, no model). A file that breaks the format
+ * prints `eval: <position>: <reason>` on standard error, nothing on standard output, and exits 2.
+ */
+async function cmdEval(args: CliArgs): Promise<void> {
+  const file = args.positionals[0];
+  if (!file || args.positionals.length > 1) {
+    console.error(pc.red("Usage: mordomo eval <file> [--json]"));
+    process.exit(EXIT_USAGE);
+  }
+  const ctx = new AppContext();
+  try {
+    const report = await runEval(
+      {
+        db: ctx.db,
+        paths: ctx.paths,
+        settings: ctx.settings(),
+        semantic: ctx.semantic,
+        allow: ctx.indexer.rowFilter(),
+        local: ctx.localModels,
+      },
+      path.resolve(file),
+    );
+    process.stdout.write(args.json ? `${JSON.stringify(report)}\n` : formatEvalText(report));
+  } catch (error) {
+    if (!(error instanceof EvalFormatError)) throw error;
+    console.error(error.message);
+    process.exitCode = EXIT_USAGE;
   } finally {
     ctx.close();
   }

@@ -12,13 +12,46 @@ import { parentPort } from "node:worker_threads";
 import Database from "better-sqlite3";
 import type { IndexProgress } from "@mordomo/contracts";
 import type { Settings } from "../config/schema.js";
+import { EmbeddingError, type LocalEmbedding } from "./embeddings.js";
 import { IncompleteIndexScanError, MemoryIndexer, WRITE_REST_RATIO } from "./indexer.js";
-import { StartMessage, type WorkerMessage } from "./indexProtocol.js";
+import { EmbedReply, StartMessage, type LocalSnapshot, type WorkerMessage } from "./indexProtocol.js";
 
 const port = parentPort;
 if (!port) throw new Error("indexWorker.ts is the entry of a worker thread; it is not meant to be imported");
 
 const post = (message: WorkerMessage): void => port.postMessage(message);
+
+/**
+ * The local models of the pass (G18): the platform and the ready embedder as the host saw them, and every batch sent
+ * to the host, which embeds it with the service's one child process. This thread never starts a process.
+ */
+function relayedLocal(snapshot: LocalSnapshot): LocalEmbedding {
+  let next = 1;
+  const waiting = new Map<number, { resolve: (v: number[][]) => void; reject: (e: Error) => void }>();
+  port!.on("message", (raw: unknown) => {
+    const parsed = EmbedReply.safeParse(raw);
+    if (!parsed.success) return;
+    const reply = parsed.data;
+    const pending = waiting.get(reply.rid);
+    if (!pending) return;
+    waiting.delete(reply.rid);
+    if (reply.t === "embedded") pending.resolve(reply.vectors);
+    else pending.reject(new EmbeddingError(reply.kind as EmbeddingError["kind"], reply.message));
+  });
+  return {
+    platform: () => snapshot.platform,
+    ready: (id) => snapshot.ready.find((entry) => entry.id === id) ?? null,
+    state: (id) => (snapshot.ready.some((entry) => entry.id === id) ? "ready" : "absent"),
+    embed: (entry, texts, signal) =>
+      new Promise((resolve, reject) => {
+        const rid = next++;
+        if (signal.aborted) return reject(signal.reason);
+        signal.addEventListener("abort", () => (waiting.delete(rid), reject(signal.reason)), { once: true });
+        waiting.set(rid, { resolve, reject });
+        post({ t: "embed", rid, entry, texts });
+      }),
+  };
+}
 
 function sleep(ms: number): void {
   if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -34,6 +67,7 @@ async function run(start: StartMessage): Promise<void> {
       ...(start.platform ? { platform: start.platform as NodeJS.Platform } : {}),
     });
     for (const folder of start.implicitRoots) indexer.addImplicitRoot(folder);
+    if (start.local) indexer.setLocal(relayedLocal(start.local));
     const cancel = new Int32Array(start.cancel);
     const stopped = () => Atomics.load(cancel, 0) === 1;
     const cancelled = () => post({ t: "failed", code: "index_cancelled", message: "cancelled", previousIndexPreserved: true });

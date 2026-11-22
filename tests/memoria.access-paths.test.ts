@@ -551,6 +551,8 @@ describe("C159 every GET route a device may call", () => {
       "memory.journal": "/api/memory/journal?days=7",
       "memory.links": `/api/memory/links?id=${visibleId}`,
       "memory.maps": "/api/memory/maps",
+      // cerebro-rituais, batch C: the unlinked mentions of the visible note
+      "memory.mentions.list": `/api/memory/mentions?id=${visibleId}`,
       "memory.note": `/api/memory/note?p=${enc(visible)}`,
       "memory.preview": `/api/memory/preview?p=${enc(visible)}`,
       "memory.proposals.list": "/api/memory/proposals",

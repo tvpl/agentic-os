@@ -60,6 +60,10 @@ const CleanupStory = lazy(() => import("./cleanupStory"));
 /** "Revisões" (cerebro-natureza, C91): through the screen's chunk, as it is in the app. */
 const ReviewsStory = lazy(() => import("./reviewsStory"));
 const DashboardsStory = lazy(() => import("./dashboardsStory"));
+/** "Revisão semanal" (cerebro-rituais, C99): through the page's chunk, as it is in the app. */
+const WeeklyStory = lazy(() => import("./weeklyStory"));
+/** "Busca por significado" (cerebro-busca-significado, C134): the Settings block's own module. */
+const SemanticStory = lazy(() => import("./semanticStory"));
 
 /* ---------- fixtures (plainly synthetic; the gallery never talks to the API) ---------- */
 const NOW = Date.UTC(2026, 8, 2, 14, 30);
@@ -303,6 +307,12 @@ function seededClient(): QueryClient {
   qc.setQueryData(qk.metrics, metrics);
   qc.setQueryData(qk.artifacts, artifacts);
   qc.setQueryData(qk.memoryStatus, memoryStatus);
+  // "Busca por significado": a computer with no runtime for the local models, so its option shows the lock.
+  qc.setQueryData(qk.memoryEmbedder, {
+    active: null,
+    platform: { ok: false, reason: "platform_unsupported" },
+    models: [],
+  });
   qc.setQueryData(qk.approvals, [
     { id: "a1", kind: "write_run", description: "Write-mode prompt run with claude" },
   ]);
@@ -886,6 +896,18 @@ function Gallery() {
       <Story id="dashboards" title="Dashboards">
         <Suspense fallback={null}>
           <DashboardsStory />
+        </Suspense>
+      </Story>
+
+      <Story id="weekly" title="Weekly review">
+        <Suspense fallback={null}>
+          <WeeklyStory />
+        </Suspense>
+      </Story>
+
+      <Story id="semantic" title="Busca por significado">
+        <Suspense fallback={null}>
+          <SemanticStory />
         </Suspense>
       </Story>
 

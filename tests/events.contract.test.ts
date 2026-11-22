@@ -259,7 +259,8 @@ describe("S4 the bus and the document", () => {
       const entry = EVENT_ENVELOPES.find((e) => e.type === type && e.v === sent.v)!;
       expect(checkBody(entry.schema, sent), type).toEqual([]);
     }
-    expect(Object.keys(SCENARIOS)).toHaveLength(164);
+    // the scenarios of the shared contract world: 171, and cerebro-busca-significado C's two embedder routes
+    expect(Object.keys(SCENARIOS)).toHaveLength(173);
   });
 
   it("C53 docs/events.md describes the two events of the index worker and the phases of its progress, and equals the generated text", () => {

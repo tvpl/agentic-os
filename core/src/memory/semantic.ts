@@ -1,7 +1,7 @@
 import type { Settings } from "../config/schema.js";
 import type { Db } from "../db/db.js";
-import { chooseProvider, type EmbeddingProvider } from "./embeddings.js";
-import { fileRowFromDb } from "./indexer.js";
+import { chooseProvider, type EmbeddingProvider, type LocalEmbedding } from "./embeddings.js";
+import { fileRowFromDb, type FileRow } from "./indexer.js";
 import {
   admits,
   searchFiles,
@@ -11,7 +11,14 @@ import {
   type SearchHit,
   type SearchVia,
 } from "./search.js";
-import { VectorIndex, countVectors, storedSemanticError, type VectorBackend, type VectorLoader } from "./vectors.js";
+import {
+  VectorIndex,
+  countVectors,
+  storedSemanticError,
+  type Ranked,
+  type VectorBackend,
+  type VectorLoader,
+} from "./vectors.js";
 
 /**
  * The semantic half of the search and its fusion with the words (.specs/features/cerebro-v2, S4): reciprocal rank
@@ -42,11 +49,21 @@ export interface SemanticStatus {
   provider: string | null;
   /** Where the cosine is computed; null while the search is off (nothing is loaded then). */
   backend: VectorBackend | null;
+  /** The files with at least one section vector (G14). */
   vectors: number;
-  /** Why an enabled search has no provider it may use (the endpoint policy), or null. */
+  /** The section vectors (door 1, AC 23). */
+  sections: number;
+  /** The id of the local model in use; null for `hash` and `http`. */
+  model: string | null;
+  /** Why an enabled search has no provider it may use (the endpoint policy, or door 7's two reasons), or null. */
   blocked: string | null;
   /** How the last attempt to embed failed, or null. */
   error: string | null;
+  /** Only while the provider is `local` (G15): the state of its model and whether this computer has the runtime. */
+  local?: {
+    state: "absent" | "downloading" | "ready" | "failed";
+    platform: { ok: true } | { ok: false; reason: "platform_unsupported" };
+  };
 }
 
 /** Fuse ranked lists of file ids: a file's score is the sum of `1 / (k + rank)` over the lists it is in; ties go to the lower id. */
@@ -58,6 +75,25 @@ export function fuse(lists: ReadonlyArray<readonly number[]>, k: number = RRF_K)
     .sort((a, b) => b.score - a.score || a.id - b.id);
 }
 
+/** A section near a question, of a file the caller may read (the recall's vector candidates). */
+export interface NearSection {
+  file: FileRow;
+  ord: number;
+  /** The heading path of the row (door 1). */
+  heading: string;
+  /** The section's first body line (G13). */
+  line: number;
+  similarity: number;
+}
+
+export interface NearSections {
+  sections: NearSection[];
+  /** The cosine of the nearest section the caller may read; null with no vectors (AC 47). */
+  best: number | null;
+  /** The provider's threshold (`hash`'s 0.2, a catalog model's own). */
+  minSimilarity: number;
+}
+
 export class SemanticSearch {
   private readonly vectors: VectorIndex;
   /** The last failure to embed a QUERY (a down endpoint): per instance, cleared by the next success. */
@@ -67,28 +103,93 @@ export class SemanticSearch {
     private readonly db: Db,
     private readonly getSettings: () => Settings,
     loader?: VectorLoader,
+    /** The engine's local models, for `provider: "local"` (door 2). */
+    private readonly local?: LocalEmbedding,
   ) {
     this.vectors = new VectorIndex(db, loader);
   }
 
   /** The provider the settings ask for, if it may be used (`null` while off or blocked). */
   private provider(): EmbeddingProvider | null {
-    const choice = chooseProvider(this.getSettings().memory.embeddings);
+    const choice = chooseProvider(this.getSettings().memory.embeddings, this.local);
     return choice.state === "ready" ? choice.provider : null;
   }
 
   /** `allow`: the vectors counted are those of the files a caller may see (a device with a hidden folder). */
   status(allow?: (row: { root: string; rel: string }) => boolean): SemanticStatus {
     const config = this.getSettings().memory.embeddings;
-    const choice = chooseProvider(config);
+    const choice = chooseProvider(config, this.local);
+    const counted = choice.state === "ready" ? countVectors(this.db, allow) : { files: 0, sections: 0 };
+    const isLocal = config.provider === "local";
+    const model = config.local?.model;
     return {
       enabled: config.enabled,
       provider: choice.state === "ready" ? choice.provider.id : null,
       backend: choice.state === "ready" ? this.vectors.backend() : null,
-      vectors: choice.state === "ready" ? countVectors(this.db, allow) : 0,
+      vectors: counted.files,
+      sections: counted.sections,
+      model: isLocal && choice.state === "ready" && model ? model : null,
       blocked: choice.state === "blocked" ? choice.reason : null,
       error: this.queryError ?? storedSemanticError(this.db)?.message ?? null,
+      ...(isLocal
+        ? {
+            local: {
+              state: model && this.local ? this.local.state(model) : ("absent" as const),
+              platform: this.local ? this.local.platform() : { ok: false as const, reason: "platform_unsupported" as const },
+            },
+          }
+        : {}),
     };
+  }
+
+  /**
+   * The question's vector: the one place a question is embedded (cerebro-v2 C52; the recall's too since
+   * cerebro-busca-significado, G46). A success clears the last query error.
+   */
+  private async embedQuestion(provider: EmbeddingProvider, question: string): Promise<Float32Array | undefined> {
+    const [vector] = await provider.embed([question], new AbortController().signal, "query");
+    this.queryError = null;
+    return vector;
+  }
+
+  /**
+   * The recall's vectors (cerebro-busca-significado, AC 43, G29): the `depth` sections nearest to the question among
+   * those of files `admit` lets the caller read, at or above the provider's `minSimilarity`, nearest first; and the
+   * cosine of the nearest admitted section (no floor), null when there is none. Null while the search is off or blocked.
+   * A provider that fails to embed the question gives no vectors (and says so in `status().error`).
+   */
+  async nearestSections(question: string, admit: (file: FileRow) => boolean, depth: number): Promise<NearSections | null> {
+    const choice = chooseProvider(this.getSettings().memory.embeddings, this.local);
+    if (choice.state !== "ready") return null;
+    const provider = choice.provider;
+    const none: NearSections = { sections: [], best: null, minSimilarity: provider.minSimilarity ?? 0 };
+    if (question.trim() === "" || countVectors(this.db).sections === 0) return none;
+    let vector: Float32Array | undefined;
+    try {
+      vector = await this.embedQuestion(provider, question.trim());
+    } catch (error) {
+      this.queryError = error instanceof Error ? error.message : String(error);
+      return none;
+    }
+    if (!vector || vector.every((n) => n === 0)) return none;
+    const byId = this.db.prepare("SELECT * FROM files WHERE id = ?");
+    const files = new Map<number, FileRow | null>();
+    const out: NearSections = { ...none, sections: [] };
+    for (const row of this.vectors.sections(vector, provider)) {
+      let file = files.get(row.id);
+      if (file === undefined) {
+        const found = byId.get(row.id) as Record<string, unknown> | undefined;
+        file = found && admit(fileRowFromDb(found)) ? fileRowFromDb(found) : null;
+        files.set(row.id, file);
+      }
+      if (!file) continue;
+      // The depth counts the sections the caller may read (C71), not the ones it is not told of.
+      if (out.best === null) out.best = row.similarity;
+      if (out.sections.length >= depth) break;
+      if (row.similarity < out.minSimilarity) continue;
+      out.sections.push({ file, ord: row.ord, heading: row.heading, line: row.line, similarity: row.similarity });
+    }
+    return out;
   }
 
   /**
@@ -100,7 +201,7 @@ export class SemanticSearch {
     const limit = Math.min(filters.limit ?? 50, 200);
     const config = this.getSettings().memory.embeddings;
     if (mode === "text") return searchFiles(this.db, filters);
-    const choice = chooseProvider(config);
+    const choice = chooseProvider(config, this.local);
     if (choice.state !== "ready") {
       if (mode === "semantic")
         throw new SemanticDisabledError(choice.state === "blocked" ? choice.reason : "memory.embeddings.enabled is off");
@@ -109,16 +210,15 @@ export class SemanticSearch {
     const provider = choice.provider;
     const question = filters.query.trim();
     const text = question === "" ? [] : searchFiles(this.db, { ...filters, limit: DEPTH });
-    if (question === "" || countVectors(this.db) === 0) return mode === "semantic" ? [] : searchFiles(this.db, filters);
+    if (question === "" || countVectors(this.db).sections === 0) return mode === "semantic" ? [] : searchFiles(this.db, filters);
 
     // Every file the vector list names, the rows the filters admit being the hits (the text list's first).
     const byId = new Map<number, SearchHit>();
     for (const hit of text) byId.set(hit.id, hit);
     const refused = new Set<number>();
-    let ranked: Array<{ id: number; similarity: number }> = [];
+    let ranked: Ranked[] = [];
     try {
-      const [vector] = await provider.embed([question], new AbortController().signal);
-      this.queryError = null;
+      const vector = await this.embedQuestion(provider, question);
       if (vector && vector.some((n) => n !== 0)) {
         const { clauses, params } = searchFilters(filters);
         const sql = clauses.map((clause) => `AND ${clause}`).join(" ");
@@ -159,14 +259,16 @@ export class SemanticSearch {
     const textIds = text.map((hit) => hit.id);
     const lists = mode === "semantic" ? [semanticIds] : [textIds, semanticIds];
     const inText = new Set(mode === "semantic" ? [] : textIds);
-    const inSemantic = new Set(semanticIds);
+    const best = new Map(ranked.map((r) => [r.id, r]));
     return fuse(lists)
       .filter(({ id }) => byId.has(id))
       .slice(0, limit)
       .map(({ id, score }) => {
         const hit = byId.get(id)!;
-        const via: SearchVia = inText.has(id) && inSemantic.has(id) ? "both" : inSemantic.has(id) ? "semantic" : "text";
-        return { ...hit, score, via };
+        const section = best.get(id);
+        const via: SearchVia = inText.has(id) && section ? "both" : section ? "semantic" : "text";
+        // A hit the vectors ranked names its best section and that section's first body line (AC 21, G13).
+        return section ? { ...hit, score, via, section: section.section, line: section.line } : { ...hit, score, via };
       });
   }
 }

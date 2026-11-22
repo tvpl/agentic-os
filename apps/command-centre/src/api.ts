@@ -885,6 +885,11 @@ export interface RecallResult {
   opened: number;
   candidates: Array<{ path: string; score: number; why: string }>;
   durationMs: number;
+  /** Nothing answers (cerebro-busca-significado, door 4): `answerContext` is empty and the reason says why. */
+  abstained: boolean;
+  abstainReason: "no_match" | "weak" | null;
+  /** What the local reranker did (door 5). */
+  rerank: "off" | "used" | "skipped" | "timeout" | "failed";
 }
 
 export interface RecallStats {

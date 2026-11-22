@@ -125,6 +125,7 @@ export {
 } from "./objectives/objectiveStore.js";
 export { linksOf } from "./memory/links.js";
 export {
+  appendTask,
   classifyNotePath,
   createNote,
   planNewNote,
@@ -139,9 +140,18 @@ export { scanCleanupScope } from "./memory/cleanupScan.js";
 export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from "./memory/cleanupApply.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
+// cerebro-busca-significado: `mordomo eval` (door 6)
+export { runEval, formatEvalText, EvalFormatError } from "./memory/eval.js";
+// cerebro-busca-significado: the local models (doors 2, 3 and 8)
+export { testProvider } from "./memory/embeddings.js";
+export { ModelRefusal } from "./models/downloads.js";
+export { LocalModels, type LocalModelsOptions } from "./models/localModels.js";
 export { ESCOPOS, NATUREZAS, parseEscopoList, parseNaturezaList } from "./memory/natureza.js";
 export { reviewsDue } from "./memory/reviews.js";
 export { decideReview } from "./memory/reviewDecisions.js";
+export { decideLoop } from "./memory/loops.js";
+export { archiveWeek, finishWeek, weeklyReview } from "./memory/weeklyReview.js";
+export { linkMention, mentionsOf } from "./memory/mentions.js";
 export { getVersion, listVersions, recordFileVersion, recordMove, restoreVersion } from "./memory/history.js";
 export { visibleHistoryPaths } from "./memory/historyStore.js";
 export {

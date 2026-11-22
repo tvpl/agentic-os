@@ -1,18 +1,20 @@
 /**
  * The note panel (.specs/features/cerebro-vista-notas, AC 22; design.md "Painel da nota"): sections that fold,
- * in this order: the links section of `cerebro-v2` ("Backlinks" and "Links quebrados", unchanged), "Relacionadas" from
+ * in this order: the links section of `cerebro-v2` ("Backlinks" and "Links quebrados", unchanged), "Menções sem link"
+ * (cerebro-rituais, AC 70), "Relacionadas" from
  * the index (`useRelatedFiles` of `brain/memoryData.ts`) in the active context with each `why`, and "Nesta nota", the `##` headings of the body
  * (choosing one scrolls to it), then "Histórico", the note's versions (cerebro-memoria-confiavel, AC 39). Each section
  * loads and fails on its own.
  */
-import { useId, useMemo, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { useMemo } from "react";
 import { useT } from "../../i18n";
 import { LinksSection } from "../LinksSection";
 import { RequestFailed } from "../RequestFailed";
 import { parseMarkdown } from "../markdown";
 import { useRelatedFiles } from "../memoryData";
+import { Fold } from "./Fold";
 import { HistoryFold } from "./HistoryFold";
+import { MentionsFold } from "./MentionsFold";
 import { bodyOf, outlineOf } from "./NoteReader";
 import { useNoteLinks, useNoteRead, withoutExt } from "./notesData";
 import type { NoteMeta } from "./useNotesState";
@@ -43,6 +45,7 @@ export function NotePanel({ path, id, context, onOpen }: NotePanelProps) {
           </p>
         )}
       </Fold>
+      <MentionsFold id={id} context={context} />
       <Fold title={t("notes.panel.related")}>
         <Related id={id} context={context} onOpen={onOpen} />
       </Fold>
@@ -53,24 +56,6 @@ export function NotePanel({ path, id, context, onOpen }: NotePanelProps) {
         <HistoryFold path={path} />
       </Fold>
     </div>
-  );
-}
-
-function Fold({ title, children }: { title: string; children: ReactNode }) {
-  const [open, setOpen] = useState(true);
-  const body = useId();
-  return (
-    <section className="notes-fold">
-      <h3 className="notes-fold-head">
-        <button type="button" aria-expanded={open} aria-controls={body} onClick={() => setOpen((v) => !v)}>
-          {open ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
-          {title}
-        </button>
-      </h3>
-      <div id={body} hidden={!open}>
-        {children}
-      </div>
-    </section>
   );
 }
 

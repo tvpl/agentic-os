@@ -117,7 +117,13 @@ export interface BudgetCrossedPayload {
 }
 
 export type SentinelId =
-  "fsWatch" | "repeatedFailure" | "silentRoutine" | "connectorDelta" | "reviewDue" | "proposalsPending";
+  | "fsWatch"
+  | "repeatedFailure"
+  | "silentRoutine"
+  | "connectorDelta"
+  | "reviewDue"
+  | "proposalsPending"
+  | "weeklyReview";
 
 export const SENTINEL_IDS: readonly SentinelId[] = [
   "fsWatch",
@@ -128,6 +134,8 @@ export const SENTINEL_IDS: readonly SentinelId[] = [
   "reviewDue",
   /** The agent's proposals waiting for review, once a day (.specs/features/cerebro-memoria-confiavel, door 11). */
   "proposalsPending",
+  /** The weekly review not yet done, once a week from its day and hour (.specs/features/cerebro-rituais, door 4). */
+  "weeklyReview",
 ];
 
 export type SentinelSeverity = "info" | "warn" | "danger";

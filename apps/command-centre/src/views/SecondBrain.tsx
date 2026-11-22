@@ -65,6 +65,7 @@ import {
   BrainViewSwitch,
   NotesView,
   ReviewsView,
+  WeeklyView,
   useBrainMode,
   useBrainViewCommands,
 } from "../brain/BrainViewSwitch";
@@ -119,6 +120,10 @@ export default function SecondBrain() {
       ) : brain.mode === "reviews" ? (
         <Suspense fallback={<Skeleton lines={6} />}>
           <ReviewsView />
+        </Suspense>
+      ) : brain.mode === "weekly" ? (
+        <Suspense fallback={<Skeleton lines={6} />}>
+          <WeeklyView />
         </Suspense>
       ) : (
         <SecondBrainGraph />

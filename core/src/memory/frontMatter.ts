@@ -11,6 +11,8 @@ export interface FrontMatter {
   fields: Record<string, string>;
   /** `children-digest` of an index note (`_index.md`, .specs/features/cerebro-organizar door 3). */
   childrenDigest?: string;
+  /** The other names of the note (`aliases`, .specs/features/cerebro-rituais door 6): terms of its unlinked mentions. */
+  aliases: string[];
 }
 
 /**
@@ -50,11 +52,17 @@ function unquote(raw: string): string {
   return value;
 }
 
-function tagList(raw: string): string[] {
+function listItems(raw: string): string[] {
   const inner = raw.trim().replace(/^\[/, "").replace(/\]$/, "");
   return inner
     .split(",")
-    .map((tag) => unquote(tag).replace(/^#/, "").trim())
+    .map((item) => unquote(item).trim())
+    .filter((item) => item !== "");
+}
+
+function tagList(raw: string): string[] {
+  return listItems(raw)
+    .map((tag) => tag.replace(/^#/, "").trim())
     .filter((tag) => tag !== "");
 }
 
@@ -65,7 +73,7 @@ export function parseFrontMatter(content: string): FrontMatter | null {
   const lines = head.split(/\r?\n/);
   const end = lines.findIndex((line, i) => i > 0 && /^---[ \t]*$/.test(line));
   if (end === -1) return null;
-  const out: FrontMatter = { tags: [], fields: {} };
+  const out: FrontMatter = { tags: [], fields: {}, aliases: [] };
   for (let i = 1; i < end; i++) {
     const match = /^([a-z][a-z_-]*)[ \t]*:[ \t]*(.*)$/.exec(lines[i]!);
     if (!match) continue;
@@ -81,16 +89,19 @@ export function parseFrontMatter(content: string): FrontMatter | null {
     } else if (match[1] === "title") {
       const title = unquote(value);
       if (title !== "") out.title = title;
-    } else if (match[1] !== "tags") {
+    } else if (match[1] !== "tags" && match[1] !== "aliases") {
       continue;
-    } else if (value.trim() !== "") {
-      out.tags.push(...tagList(value));
     } else {
-      // A block list: the "- tag" lines that follow.
-      for (let j = i + 1; j < end; j++) {
-        const item = /^[ \t]*-[ \t]+(.*)$/.exec(lines[j]!);
-        if (!item) break;
-        out.tags.push(...tagList(item[1]!));
+      const read = match[1] === "tags" ? tagList : listItems;
+      const into = match[1] === "tags" ? out.tags : out.aliases;
+      if (value.trim() !== "") into.push(...read(value));
+      else {
+        // A block list: the "- item" lines that follow.
+        for (let j = i + 1; j < end; j++) {
+          const item = /^[ \t]*-[ \t]+(.*)$/.exec(lines[j]!);
+          if (!item) break;
+          into.push(...read(item[1]!));
+        }
       }
     }
   }

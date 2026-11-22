@@ -55,6 +55,12 @@ export const SETTINGS_FAIL_CLOSED: readonly FailClosedField[] = [
   { path: "memory.embeddings.sendRemote", closed: false },
   // An embedder that cannot be read is not replaced by another one the owner did not choose: the search goes off.
   { path: "memory.embeddings.provider", closed: "hash", also: [{ sibling: "enabled", value: false }] },
+  // A local model that cannot be read (or is not in the catalog) is no model: the `local` provider reads
+  // `blocked: "model_missing"` and nothing is embedded (cerebro-busca-significado, door 7).
+  { path: "memory.embeddings.local.model", closed: undefined },
+  { path: "memory.embeddings.local", closed: undefined },
+  // The reranker starts a child process with a model of 1.8 GB: an unreadable switch leaves it off (G34).
+  { path: "memory.recall.rerank.enabled", closed: false },
   // A flag that switches something ON reads OFF when it cannot be read. These are the ones whose default is on:
   // the model run of the triage and the hourly read of connectors start processes; the rest only notify, and are
   // closed with them so that no unreadable flag ever turns anything on.
@@ -65,6 +71,7 @@ export const SETTINGS_FAIL_CLOSED: readonly FailClosedField[] = [
   { path: "sentinels.repeatDetector.enabled", closed: false },
   { path: "sentinels.reviewDue.enabled", closed: false },
   { path: "sentinels.proposalsPending.enabled", closed: false },
+  { path: "sentinels.weeklyReview.enabled", closed: false },
   // The access of folders (cerebro-memoria-confiavel, door 12, AC 89 and 90). An entry's level this version cannot
   // read makes that entry `hide` for both audiences, and the other entries stay as written; these two come before the
   // field's own rule, which the first matching rule wins over. Anything else unreadable in the list (a path that is not

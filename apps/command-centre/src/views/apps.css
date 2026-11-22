@@ -703,7 +703,7 @@
 }
 @container (max-width: 640px) {
   .settings-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .settings-nav {
     position: static;

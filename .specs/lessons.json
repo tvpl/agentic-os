@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 67,
+  "next_id": 71,
   "lessons": [
     {
       "id": "L-001",
@@ -963,6 +963,62 @@
       "evidence": ["C176 doctor.ts:189 (security)"],
       "created": "2026-11-07T02:12:12Z",
       "last_seen": "2026-11-07T02:12:12Z"
+    },
+    {
+      "id": "L-067",
+      "key": "ac_gap::a layout claim with a breakpoint needs a browser case on each side of the boundary one pixel under and exactly on it or any breakpoint between the two measured widths passes",
+      "text": "A layout claim with a breakpoint needs a browser case on each side of the boundary, one pixel under and exactly on it, or any breakpoint between the two measured widths passes.",
+      "signal": "ac_gap",
+      "scope": "layout",
+      "status": "candidate",
+      "features": ["cerebro-rituais"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["tests/e2e/weekly.spec.ts:622 C106 round 2 gap 1 (layout)"],
+      "created": "2026-11-14T02:44:30Z",
+      "last_seen": "2026-11-14T02:44:30Z"
+    },
+    {
+      "id": "L-068",
+      "key": "ac_gap::a coverage row that names two attributes of a member such as class and icon needs a proof of each attribute for each member not an icon assertion standing for both",
+      "text": "A Coverage row that names two attributes of a member, such as class and icon, needs a proof of each attribute for each member, not an icon assertion standing for both.",
+      "signal": "ac_gap",
+      "scope": "screens",
+      "status": "candidate",
+      "features": ["cerebro-rituais"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["WeeklyReview.test.tsx:933 C88 round 2 gap 2 (screens)"],
+      "created": "2026-11-14T02:44:30Z",
+      "last_seen": "2026-11-14T02:44:30Z"
+    },
+    {
+      "id": "L-069",
+      "key": "ac_gap::a check that says an element sits to the right of another needs a rendered geometry assertion in a browser because an element order assertion passes while the layout wraps below",
+      "text": "A check that says an element sits to the right of another needs a rendered-geometry assertion in a browser, because an element-order assertion passes while the layout wraps below.",
+      "signal": "ac_gap",
+      "scope": "layout",
+      "status": "candidate",
+      "features": ["cerebro-rituais"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C106 round 2, WeeklyReview.test.tsx item actions (layout)"],
+      "created": "2026-11-14T02:44:30Z",
+      "last_seen": "2026-11-14T02:44:30Z"
+    },
+    {
+      "id": "L-070",
+      "key": "ac_gap::when the built screen differs from a binding design on a component choice the owner decides which one yields and the design is amended in a dated list never silently",
+      "text": "When the built screen differs from a binding design on a component choice, the owner decides which one yields and the design is amended in a dated list, never silently.",
+      "signal": "ac_gap",
+      "scope": "design",
+      "status": "candidate",
+      "features": ["cerebro-rituais"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["verification.md round 1 gap 1, C84/C85 notice vs primitivas row (design)"],
+      "created": "2026-11-14T02:44:30Z",
+      "last_seen": "2026-11-14T02:44:30Z"
     }
   ]
 }

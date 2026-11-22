@@ -224,6 +224,7 @@ type SentinelKey =
   | "connectorDelta"
   | "repeatDetector"
   | "reviewDue"
+  | "weeklyReview"
   | "triage"
   | "proposalsPending";
 const SENTINEL_KEYS: SentinelKey[] = [
@@ -234,6 +235,8 @@ const SENTINEL_KEYS: SentinelKey[] = [
   "fsWatch",
   // The reviews that fell due, once a day (cerebro-natureza, amendment 16).
   "reviewDue",
+  // The weekly review not done yet, once a week (cerebro-rituais, door 4, G25).
+  "weeklyReview",
   "triage",
   // What agents proposed, once a day (cerebro-memoria-confiavel, door 11, G19).
   "proposalsPending",

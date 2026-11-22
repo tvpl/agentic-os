@@ -11,17 +11,22 @@ import { STOPWORDS, stemLite } from "./recall.js";
  */
 
 export interface EmbeddingProvider {
-  /** What `file_vectors.provider` records: a change of this string recomputes every vector. */
+  /** What `section_vectors.provider` records: a change of this string recomputes every vector. */
   readonly id: string;
   readonly dim: number;
   /** True when the text never leaves this process. */
   readonly local: boolean;
-  /** Most characters of one note the provider is given. */
+  /** Most characters of one section's text the provider is given. */
   readonly maxChars: number;
   /** Cosine similarity under which a file is not a semantic hit at all (noise of a 256-slot hash, say). */
   readonly minSimilarity?: number;
-  /** Unit-length vectors (`dim` numbers each), in the order of `texts`. */
-  embed(texts: readonly string[], signal: AbortSignal): Promise<Float32Array[]>;
+  /** How many texts one call should carry (the `local` provider's batch of 8); the pass's default otherwise. */
+  readonly batch?: number;
+  /**
+   * Unit-length vectors (`dim` numbers each), in the order of `texts`. `purpose` says whether the texts are sections
+   * (`document`, the default) or a question (`query`): a local model puts its card's prefix before each (door 3).
+   */
+  embed(texts: readonly string[], signal: AbortSignal, purpose?: "document" | "query"): Promise<Float32Array[]>;
 }
 
 export type EmbeddingSettings = Settings["memory"]["embeddings"];
@@ -29,7 +34,7 @@ export type EmbeddingSettings = Settings["memory"]["embeddings"];
 /** The provider could not do what was asked; `kind` says how, for `semantic.error`. */
 export class EmbeddingError extends Error {
   constructor(
-    readonly kind: "timeout" | "status" | "dimension" | "malformed" | "network",
+    readonly kind: "timeout" | "status" | "dimension" | "malformed" | "network" | "local_crashed",
     message: string,
   ) {
     super(message);
@@ -248,6 +253,67 @@ async function postBatch(
   });
 }
 
+// ----------------------------------------------------------------------------------------------------- local
+
+/** The batch the child process is given (Assumptions "Lote do embedder local"). */
+export const LOCAL_BATCH = 8;
+
+/** A catalog embedder as the `local` provider reads it (door 3). */
+export interface LocalModelEntry {
+  id: string;
+  kind: "embedder" | "reranker";
+  dtype: string;
+  dimensions?: number;
+  maxChars?: number;
+  minSimilarity?: number;
+  pooling?: "mean" | "last_token";
+  queryPrefix?: string;
+  documentPrefix?: string;
+}
+
+/**
+ * What the `local` provider needs of the engine (door 2): whether this computer can run the runtime, the catalog entry
+ * of a model that is ready, and the child process that embeds. The service gives its own; the index worker gets one
+ * that reaches the service's child through the host (G18).
+ */
+export interface LocalEmbedding {
+  platform: () => { ok: true } | { ok: false; reason: "platform_unsupported" };
+  /** The entry of this embedder when it is downloaded and verified; null when it is not (or is not an embedder). */
+  ready: (id: string) => LocalModelEntry | null;
+  /** The state of a catalog model (`absent` for an id outside it). */
+  state: (id: string) => "absent" | "downloading" | "ready" | "failed";
+  /** One call to the child: the vectors of `texts`, as the model gives them. */
+  embed: (entry: LocalModelEntry, texts: string[], signal: AbortSignal) => Promise<number[][]>;
+}
+
+/** The `local` provider: `local:<id>:<dimensions>` (G16), the card's prefix before each text, cut at `maxChars` with it (G25). */
+export function localProvider(entry: LocalModelEntry, local: LocalEmbedding): EmbeddingProvider {
+  const dim = entry.dimensions!;
+  const maxChars = entry.maxChars!;
+  return {
+    id: `local:${entry.id}:${dim}`,
+    dim,
+    local: true,
+    maxChars,
+    ...(entry.minSimilarity !== undefined ? { minSimilarity: entry.minSimilarity } : {}),
+    batch: LOCAL_BATCH,
+    async embed(texts, signal, purpose = "document") {
+      const prefix = (purpose === "query" ? entry.queryPrefix : entry.documentPrefix) ?? "";
+      const sent = texts.map((text) => `${prefix}${text}`.slice(0, maxChars));
+      const out: Float32Array[] = [];
+      for (let from = 0; from < sent.length; from += LOCAL_BATCH) {
+        for (const vector of await local.embed(entry, sent.slice(from, from + LOCAL_BATCH), signal)) {
+          if (!Array.isArray(vector) || !vector.every((n) => typeof n === "number" && Number.isFinite(n)))
+            throw new EmbeddingError("malformed", "a local vector is not a list of numbers");
+          if (vector.length !== dim) throw new EmbeddingError("dimension", `a local vector has ${vector.length} numbers, not ${dim}`);
+          out.push(normalized(vector));
+        }
+      }
+      return out;
+    },
+  };
+}
+
 // ------------------------------------------------------------------------------------------------ the choice
 
 export type ProviderChoice =
@@ -255,15 +321,50 @@ export type ProviderChoice =
   | { state: "blocked"; reason: string }
   | { state: "ready"; provider: EmbeddingProvider };
 
-/** The provider these settings ask for, or why there is none. Pure: nothing is sent, nothing is loaded. */
-export function chooseProvider(config: EmbeddingSettings): ProviderChoice {
+/**
+ * The provider these settings ask for, or why there is none. Pure: nothing is sent, nothing is loaded. `local` needs
+ * the engine's `LocalEmbedding`; without one (a caller that has none), it reads `platform_unsupported`. Its two
+ * blocked reasons are door 7's: `platform_unsupported` and `model_missing` (a model that is not ready, or none named).
+ */
+export function chooseProvider(config: EmbeddingSettings, local?: LocalEmbedding): ProviderChoice {
   if (!config.enabled) return { state: "off" };
   if (config.provider === "hash") return { state: "ready", provider: hashProvider };
+  if (config.provider === "local") {
+    if (!local || !local.platform().ok) return { state: "blocked", reason: "platform_unsupported" };
+    const entry = config.local?.model ? local.ready(config.local.model) : null;
+    if (!entry) return { state: "blocked", reason: "model_missing" };
+    return { state: "ready", provider: localProvider(entry, local) };
+  }
   const verdict = endpointPolicy(config);
   if (!verdict.ok) return { state: "blocked", reason: verdict.reason };
   if (!config.model) return { state: "blocked", reason: "the model is missing" };
   if (config.dimensions === undefined) return { state: "blocked", reason: "dimensions is missing: the length of one vector" };
   return { state: "ready", provider: httpProvider(verdict.url, config, config.dimensions) };
+}
+
+/** The phrase `action: "test"` embeds (AC 38): no note text leaves for a test. */
+export const TEST_PHRASE = "MordomoOS: teste de conexão.";
+
+export type ProviderTest =
+  | { ok: true; dimensions: number; ms: number }
+  | { ok: false; kind: EmbeddingError["kind"] }
+  | { blocked: string };
+
+/**
+ * Embed `TEST_PHRASE` once through the provider the settings name, on or off (G24): its length and the time it took,
+ * or the kind of failure. A provider the policy blocks is not tried (`blocked`, nothing sent).
+ */
+export async function testProvider(config: EmbeddingSettings, local?: LocalEmbedding): Promise<ProviderTest> {
+  const choice = chooseProvider({ ...config, enabled: true }, local);
+  if (choice.state === "blocked") return { blocked: choice.reason };
+  if (choice.state !== "ready") return { blocked: "the semantic search is off" };
+  const started = performance.now();
+  try {
+    const [vector] = await choice.provider.embed([TEST_PHRASE], new AbortController().signal);
+    return { ok: true, dimensions: vector!.length, ms: Math.max(0, Math.round(performance.now() - started)) };
+  } catch (error) {
+    return { ok: false, kind: error instanceof EmbeddingError ? error.kind : "network" };
+  }
 }
 
 /** Vectors as the database stores them: Float32, little-endian, whatever the machine. */

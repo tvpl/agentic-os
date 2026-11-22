@@ -33,6 +33,29 @@ const IndexStatsSchema = z.object({
   embedded: z.number().optional(),
 });
 
+const LocalModelEntrySchema = z.object({
+  id: z.string(),
+  kind: z.enum(["embedder", "reranker"]),
+  dtype: z.string(),
+  dimensions: z.number().int().positive().optional(),
+  maxChars: z.number().int().positive().optional(),
+  minSimilarity: z.number().optional(),
+  pooling: z.enum(["mean", "last_token"]).optional(),
+  queryPrefix: z.string().optional(),
+  documentPrefix: z.string().optional(),
+});
+
+/**
+ * The local models as the pass sees them (cerebro-busca-significado, door 2, G18): whether this computer has the
+ * runtime and the embedders that are ready when the pass starts. The worker never starts a child: it asks the host
+ * (`EmbedRequest`), which uses the service's own.
+ */
+const LocalSnapshotSchema = z.object({
+  platform: z.union([z.object({ ok: z.literal(true) }), z.object({ ok: z.literal(false), reason: z.literal("platform_unsupported") })]),
+  ready: z.array(LocalModelEntrySchema),
+});
+export type LocalSnapshot = z.infer<typeof LocalSnapshotSchema>;
+
 /** Service to worker: do this pass. `settings` is a copy taken when the pass started. */
 export const StartMessage = z.object({
   t: z.literal("start"),
@@ -48,6 +71,7 @@ export const StartMessage = z.object({
   cancel: z.custom<SharedArrayBuffer>((value) => value instanceof SharedArrayBuffer),
   /** Milliseconds the worker sleeps between two chunks, so it does not take a whole core. */
   paceMs: z.number().int().min(0),
+  local: LocalSnapshotSchema.optional(),
 });
 export type StartMessage = z.infer<typeof StartMessage>;
 
@@ -61,6 +85,21 @@ export const FailedMessage = z.object({
   previousIndexPreserved: z.boolean(),
 });
 
+/** Worker to service: embed these texts with the service's local child (one batch of the `local` provider). */
+export const EmbedRequest = z.object({
+  t: z.literal("embed"),
+  rid: z.number().int(),
+  entry: LocalModelEntrySchema,
+  texts: z.array(z.string()),
+});
+
+/** Service to worker: the answer to an `EmbedRequest`. */
+export const EmbedReply = z.discriminatedUnion("t", [
+  z.object({ t: z.literal("embedded"), rid: z.number().int(), vectors: z.array(z.array(z.number())) }),
+  z.object({ t: z.literal("embedFailed"), rid: z.number().int(), kind: z.string(), message: z.string() }),
+]);
+export type EmbedReply = z.infer<typeof EmbedReply>;
+
 /** Worker to service. */
-export const WorkerMessage = z.discriminatedUnion("t", [ProgressMessage, DoneMessage, FailedMessage]);
+export const WorkerMessage = z.discriminatedUnion("t", [ProgressMessage, DoneMessage, FailedMessage, EmbedRequest]);
 export type WorkerMessage = z.infer<typeof WorkerMessage>;

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
-import { AppContext } from "../../apps/api/src/context.js";
+import { AppContext, type AppContextOptions } from "../../apps/api/src/context.js";
 import { buildServer } from "../../apps/api/src/server.js";
 import type { Settings } from "../../core/src/config/schema.js";
 import { makeTempHome } from "../helpers.js";
@@ -48,9 +48,12 @@ export interface NotesViewWorld {
 export const sha = (bytes: string | Buffer): string =>
   `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
 
-export async function notesViewWorld(prefix: string): Promise<NotesViewWorld> {
+export async function notesViewWorld(
+  prefix: string,
+  options: AppContextOptions = {},
+): Promise<NotesViewWorld> {
   const temp = makeTempHome(prefix);
-  const ctx = new AppContext(temp.paths.home);
+  const ctx = new AppContext(temp.paths.home, options);
   const settings = ctx.settings();
   settings.setupCompleted = true;
   settings.remote.enabled = true;

@@ -196,6 +196,9 @@ export const en = {
     "Re-index when the indexed folders change (off by default on big trees).",
   "apps.settings.sentinel.reviewDue": "Reviews due",
   "apps.settings.sentinel.reviewDueHint": "Once a day, the notes due for review.",
+  "apps.settings.sentinel.weeklyReview": "Weekly review",
+  "apps.settings.sentinel.weeklyReviewHint":
+    "Reminds you once a week, on the chosen day and hour, if the review is not done yet.",
   "apps.settings.sentinel.triage": "Triage with a model",
   "apps.settings.sentinel.triageHint":
     "A short read-only run decides ignore / notify / propose, within its own daily budget.",
@@ -458,6 +461,9 @@ export const ptBR = {
     "Reindexa quando as pastas indexadas mudam (desligado por padrão em árvores grandes).",
   "apps.settings.sentinel.reviewDue": "Revisões vencidas",
   "apps.settings.sentinel.reviewDueHint": "Uma vez por dia, as notas que venceram a revisão.",
+  "apps.settings.sentinel.weeklyReview": "Revisão semanal",
+  "apps.settings.sentinel.weeklyReviewHint":
+    "Lembra uma vez por semana, no dia e hora escolhidos, se a revisão ainda não foi feita.",
   "apps.settings.sentinel.triage": "Triagem com modelo",
   "apps.settings.sentinel.triageHint":
     "Uma execução curta somente leitura decide ignorar / notificar / propor, dentro do próprio orçamento diário.",

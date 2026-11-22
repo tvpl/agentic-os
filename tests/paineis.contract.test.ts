@@ -553,9 +553,11 @@ describe("C60 the eight routes in docs/security.md", () => {
     }
     // the counts of after this feature: two reads and six writes on top of those of before (and, on top of them,
     // cerebro-memoria-confiavel's two reads and one write of the history of memory/, and its two reads and two writes
-    // of the review inbox, and its export and import of a folder)
-    expect(Number(/^\| `content` \((\d+)\)/.exec(rowOf("content"))?.[1])).toBe(32 + 2 + 2);
-    expect(Number(/^\| `owner` \((\d+)\)/.exec(rowOf("owner"))?.[1])).toBe(81 + 1 + 2 + 2);
+    // of the review inbox, and its export and import of a folder; and cerebro-rituais' list and loop decisions of the
+    // weekly review and its POST /api/memory/tasks, and the week's archive and finish, and its unlinked mentions and
+    // "Linkar"; and cerebro-busca-significado's two embedder routes)
+    expect(Number(/^\| `content` \((\d+)\)/.exec(rowOf("content"))?.[1])).toBe(32 + 2 + 2 + 1);
+    expect(Number(/^\| `owner` \((\d+)\)/.exec(rowOf("owner"))?.[1])).toBe(81 + 1 + 2 + 2 + 3 + 2 + 1 + 2);
     const base = atBase("docs/security.md");
     const baseRow = (scope: string) => base.split("\n").find((l) => l.startsWith(`| \`${scope}\` (`)) ?? "";
     expect(Number(/\((\d+)\)/.exec(baseRow("content"))?.[1])).toBe(30);
@@ -600,15 +602,33 @@ describe("C62 legal/PRIVACY.md and legal/network-policy.json", () => {
     expect(section(privacy, "## 4. O que sai do seu computador", "## 5.")).not.toContain("painel");
 
     const policy = JSON.parse(fs.readFileSync(path.join(repoRoot, "legal", "network-policy.json"), "utf8"));
-    expect(policy).toEqual(JSON.parse(atBase("legal/network-policy.json")));
+    // Moved by exactly cerebro-busca-significado's C67 (batch C): the model repository's entry, its one site (the
+    // downloader's fetch) and the two license addresses it ignores are new, and the embeddings entry's data says
+    // sections and the recall's question. Everything else is the base's.
+    const MODELS = "core/src/models/";
+    const unmoved = (doc: any) => ({
+      ...doc,
+      hosts: doc.hosts
+        .filter((h: any) => h.id !== "model-repository")
+        .map((h: any) => (h.id === "embeddings" ? { ...h, data: "<C67>" } : h)),
+      sites: doc.sites.filter((site: any) => !site.file.startsWith(MODELS)),
+      ignored: doc.ignored.filter((i: any) => !(i.files ?? []).some((f: string) => f.startsWith(MODELS))),
+    });
+    const base = JSON.parse(atBase("legal/network-policy.json"));
+    expect(unmoved(policy)).toEqual(unmoved(base));
+    expect(policy.hosts.length).toBe(base.hosts.length + 1);
+    expect(policy.sites.length).toBe(base.sites.length + 1);
+    expect(policy.ignored.length).toBe(base.ignored.length + 2);
     const table = (text: string) =>
-      section(text, "### 4.1. Destinos a que o MordomoOS se conecta", "### 4.2.");
-    expect(table(privacy)).toEqual(table(atBase("legal/PRIVACY.md")));
-    expect(
-      table(privacy)
+      section(text, "### 4.1. Destinos a que o MordomoOS se conecta", "### 4.2.")
         .split("\n")
-        .filter((l) => l.startsWith("| ")).length,
-    ).toBeGreaterThan(10);
+        .filter(
+          (l) =>
+            !l.startsWith("| Embeddings da busca semântica") &&
+            !l.startsWith("| Repositório dos modelos locais"),
+        );
+    expect(table(privacy)).toEqual(table(atBase("legal/PRIVACY.md")));
+    expect(table(privacy).filter((l) => l.startsWith("| ")).length).toBeGreaterThan(10);
   });
 });
 

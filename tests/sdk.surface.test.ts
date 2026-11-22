@@ -197,6 +197,28 @@ describe("S5 the surface is a closed list", () => {
         // cerebro-memoria-confiavel batch B2: export and import a folder (doors 14 and 15)
         "exportFolder",
         "importFolder",
+        // cerebro-rituais, batch A: the weekly review's list, a loop's decision and a project's next action (doors 1 to 3)
+        "appendTask",
+        "decideLoop",
+        "weeklyReview",
+        // cerebro-rituais, batch B: the week's archive and its finish (doors 1 and 5)
+        "archiveWeek",
+        "finishWeek",
+        // cerebro-rituais, batch C: a note's unlinked mentions and "Linkar" (doors 6 and 7)
+        "linkMention",
+        "mentionsOf",
+        // cerebro-busca-significado, batch A: `mordomo eval` runs, prints and refuses a file by these (door 6)
+        "EvalFormatError",
+        "formatEvalText",
+        "runEval",
+        // cerebro-busca-significado, batch C: the local models of an engine, their refusals and the connection test
+        // (doors 2, 3 and 8)
+        "LocalModels",
+        "LocalModelsOptions",
+        "ModelRefusal",
+        "testProvider",
+        // cerebro-busca-significado, batch D: the recall with vectors, abstention and the reranker (doors 4 and 5)
+        "hybridRecall",
       ].sort(),
     );
   });

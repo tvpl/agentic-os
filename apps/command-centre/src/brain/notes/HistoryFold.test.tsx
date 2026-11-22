@@ -145,15 +145,22 @@ const ORIGINS: Array<[string, string]> = [
 ];
 
 describe("C97 the fourth fold, Histórico", () => {
-  it("C97 the fold heads in order, Histórico the fourth and open", async () => {
+  it("C97 the fold heads in order, Histórico the last and open", async () => {
     history.list = [version()];
     mountPanel();
     await waitFor(() => expect(rows()).toHaveLength(1));
     const heads = [
       ...document.querySelectorAll<HTMLElement>(".notes-panel-body > .notes-fold .notes-fold-head"),
     ];
-    expect(heads.map((h) => h.textContent)).toEqual(["Links", "Relacionadas", "Nesta nota", "Histórico"]);
-    expect(heads[3]!.querySelector("button")!.getAttribute("aria-expanded")).toBe("true");
+    // cerebro-rituais AC 70 adds "Menções sem link" after the links (MentionsFold C93), its count unknown while it loads
+    expect(heads.map((h) => h.textContent)).toEqual([
+      "Links",
+      "Menções sem link (…)",
+      "Relacionadas",
+      "Nesta nota",
+      "Histórico",
+    ]);
+    expect(heads[4]!.querySelector("button")!.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("C97 each row in order: há 3 horas (its Tooltip the date and time), the author's icon and label, the origin in 12px; one origin per row of the table; newest first as answered", async () => {

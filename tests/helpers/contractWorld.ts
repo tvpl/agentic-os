@@ -422,6 +422,14 @@ async function cleanupReady(w: World, archive = false): Promise<{ scanId: string
   return { scanId, key };
 }
 
+/** The Monday (`AAAA-MM-DD`, local) of the current week: the `week` the weekly review's writes take. */
+function mondayOfNow(): string {
+  const d = new Date();
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${monday.getFullYear()}-${two(monday.getMonth() + 1)}-${two(monday.getDate())}`;
+}
+
 export const SCENARIOS: Record<string, Scenario> = {
   // ---- reads
   [key("GET", "/api/system/info")]: { run: (w) => w.call("GET", "/api/system/info") },
@@ -608,6 +616,19 @@ export const SCENARIOS: Record<string, Scenario> = {
     run: async (w) => {
       const hits = (await w.call("GET", "/api/memory/search?q=Alfa")).body as Array<{ id: number }>;
       return w.call("GET", `/api/memory/links?id=${hits[0]?.id ?? 1}`);
+    },
+  },
+  // cerebro-busca-significado, batch C: the model catalog and the connection test of the default provider (door 8),
+  // which embeds the fixed phrase with hash, in this process and with no network.
+  [key("GET", "/api/memory/embedder")]: { run: (w) => w.call("GET", "/api/memory/embedder") },
+  [key("POST", "/api/memory/embedder")]: {
+    run: (w) => w.call("POST", "/api/memory/embedder", { action: "test" }),
+  },
+  // cerebro-rituais, batch C: the unlinked mentions of the file the links read (door 6).
+  [key("GET", "/api/memory/mentions")]: {
+    run: async (w) => {
+      const hits = (await w.call("GET", "/api/memory/search?q=Alfa")).body as Array<{ id: number }>;
+      return w.call("GET", `/api/memory/mentions?id=${hits[0]?.id ?? 1}`);
     },
   },
   [key("GET", "/api/memory/note")]: {
@@ -863,6 +884,72 @@ export const SCENARIOS: Record<string, Scenario> = {
         baseVersion: note.version,
       });
     },
+  },
+  // cerebro-rituais, batch A: a project's next action added to a new note (door 3).
+  [key("POST", "/api/memory/tasks")]: {
+    run: (w) => {
+      const note = createNote(
+        { paths: w.ctx.paths, settings: w.ctx.settings() },
+        { title: "Cenário de próxima ação", content: "Texto do cenário" },
+      );
+      return w.call("POST", "/api/memory/tasks", {
+        path: note.path,
+        text: "Ligar",
+        baseVersion: note.version,
+      });
+    },
+  },
+  // cerebro-rituais, batch C: "Linkar" on a note that names another by its title (door 7).
+  [key("POST", "/api/memory/mentions/link")]: {
+    run: async (w) => {
+      const env = { paths: w.ctx.paths, settings: w.ctx.settings() };
+      const target = createNote(env, { title: "Cenário de menção", content: "O alvo" });
+      const source = createNote(env, { title: "Fonte da menção", content: "o cenario de mencao atrasou" });
+      await w.ctx.indexer.requestIndexPaths([target.path]);
+      const row = w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(target.path) as
+        { id: number } | undefined;
+      const line =
+        fs
+          .readFileSync(source.path, "utf8")
+          .split("\n")
+          .findIndex((l) => l.includes("atrasou")) + 1;
+      return w.call("POST", "/api/memory/mentions/link", {
+        source: source.path,
+        line,
+        term: "Cenário de menção",
+        target: row?.id ?? 0,
+        baseVersion: source.version,
+      });
+    },
+  },
+  // cerebro-rituais, batch A: the weekly review, and "Fechar" on an open loop of today's journal.
+  [key("GET", "/api/memory/weekly-review")]: { run: (w) => w.call("GET", "/api/memory/weekly-review") },
+  [key("POST", "/api/memory/weekly-review/loops")]: {
+    run: async (w) => {
+      const d = new Date();
+      const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const journal = path.join(w.ctx.paths.memory, "journal", `${day}.md`);
+      fs.mkdirSync(path.dirname(journal), { recursive: true });
+      fs.appendFileSync(journal, "\n## Open loops\n\n- 09:00 Laço do cenário\n");
+      await w.ctx.indexer.requestIndexPaths([journal]);
+      return w.call("POST", "/api/memory/weekly-review/loops", {
+        key: sha("laco do cenario"),
+        action: "close",
+      });
+    },
+  },
+  // cerebro-rituais, batch B: a file of memory/inbox/ archived in the current week, and the week finished.
+  [key("POST", "/api/memory/weekly-review/archive")]: {
+    run: async (w) => {
+      const file = path.join(w.ctx.paths.memory, "inbox", "cenario-do-arquivo.md");
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, "# Cenário do arquivo\n");
+      await w.ctx.indexer.requestIndexPaths([file]);
+      return w.call("POST", "/api/memory/weekly-review/archive", { week: mondayOfNow(), paths: [file] });
+    },
+  },
+  [key("POST", "/api/memory/weekly-review/finish")]: {
+    run: (w) => w.call("POST", "/api/memory/weekly-review/finish", { week: mondayOfNow() }),
   },
   [key("POST", "/api/contexts")]: {
     run: (w) => w.call("POST", "/api/contexts", { name: "Cenário de contexto", paths: [w.workspace] }),

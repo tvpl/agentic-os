@@ -126,7 +126,7 @@ const reviewsUp = () =>
   });
 
 describe("C70 the entries, each in its place", () => {
-  it("C70 the moldura's graph: Revisões (3) is the fourth .btn.sm of .brain-topbar-actions, after Atualizar índice, Modo apresentação (p) and Faxina, before the os-chips, with the context's total, and opens /brain/reviews", async () => {
+  it("C70 the moldura's graph: Revisões (3) is the fourth .btn.sm of .brain-topbar-actions, after Atualizar índice, Modo apresentação (p) and Faxina, before Revisão semanal (cerebro-rituais G17) and the os-chips, with the context's total, and opens /brain/reviews", async () => {
     withContext();
     count(3);
     renderWith(<BrainChrome {...chrome()} />, { lang: "pt-BR" });
@@ -136,7 +136,13 @@ describe("C70 the entries, each in its place", () => {
         (b) => b.getAttribute("aria-label") ?? b.textContent!.trim(),
       );
     await waitFor(() =>
-      expect(names()).toEqual(["Atualizar índice", "Modo apresentação (p)", "Faxina", "Revisões (3)"]),
+      expect(names()).toEqual([
+        "Atualizar índice",
+        "Modo apresentação (p)",
+        "Faxina",
+        "Revisões (3)",
+        "Revisão semanal",
+      ]),
     );
     const buttons = [...row.querySelectorAll("button.btn.sm")];
     const chips = [...row.querySelectorAll(".os-chip")];
@@ -144,7 +150,7 @@ describe("C70 the entries, each in its place", () => {
     for (const chip of chips) expect(before(buttons[3]!, chip)).toBe(true);
   });
 
-  it("C70 the moldura's graph: no Revisões when the context's total is 0", async () => {
+  it("C70 the moldura's graph: no Revisões when the context's total is 0 (Revisão semanal follows Faxina, cerebro-rituais G17)", async () => {
     withContext();
     count(0);
     renderWith(<BrainChrome {...chrome()} />, { lang: "pt-BR" });
@@ -157,7 +163,7 @@ describe("C70 the entries, each in its place", () => {
     const names = [...document.querySelectorAll(".brain-topbar-actions button.btn.sm")].map(
       (b) => b.getAttribute("aria-label") ?? b.textContent!.trim(),
     );
-    expect(names).toEqual(["Atualizar índice", "Modo apresentação (p)", "Faxina"]);
+    expect(names).toEqual(["Atualizar índice", "Modo apresentação (p)", "Faxina", "Revisão semanal"]);
   });
 
   it("C70 the moldura's Revisões (3) opens the screen at /brain/reviews", async () => {
@@ -171,7 +177,7 @@ describe("C70 the entries, each in its place", () => {
   });
 
   for (const n of [3, 0])
-    it(`C70 the Núcleo's brain scene menu: ${n ? "Revisões (3) is the last row of bs-menu-acts, after Faxina, and opens the screen" : "no Revisões row with 0"}`, async () => {
+    it(`C70 the Núcleo's brain scene menu: ${n ? "Revisões (3) is the row before Revisão semanal (cerebro-rituais G17) in bs-menu-acts, after Faxina, and opens the screen" : "no Revisões row with 0"}`, async () => {
       withContext();
       count(n);
       await scene();
@@ -179,14 +185,16 @@ describe("C70 the entries, each in its place", () => {
       fireEvent.click(more ?? document.querySelector(".bs-more")!);
       const acts = () => [...document.querySelectorAll(".bs-menu-acts > button")].map((b) => b.textContent);
       if (n === 0) {
-        await waitFor(() => expect(acts().at(-1)).toBe("Faxina"));
+        await waitFor(() => expect(acts().at(-2)).toBe("Faxina"));
         await new Promise((r) => setTimeout(r, 50));
-        expect(acts().at(-1)).toBe("Faxina");
+        expect(acts().at(-2)).toBe("Faxina");
+        expect(acts().at(-1)).toBe("Revisão semanal");
         expect(acts()).not.toContain("Revisões (99)");
         return;
       }
-      await waitFor(() => expect(acts().at(-1)).toBe("Revisões (3)"));
-      expect(acts().at(-2)).toBe("Faxina");
+      await waitFor(() => expect(acts().at(-2)).toBe("Revisões (3)"));
+      expect(acts().at(-1)).toBe("Revisão semanal");
+      expect(acts().at(-3)).toBe("Faxina");
       fireEvent.click(screen.getByRole("button", { name: "Revisões (3)" }));
       await reviewsUp();
       expect(window.location.hash).toBe("#/brain/reviews");

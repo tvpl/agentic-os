@@ -251,6 +251,18 @@ export const SentinelSettingsSchema = z.object({
       enabled: z.boolean().default(true),
     })
     .default({}),
+  /**
+   * The weekly review's reminder (.specs/features/cerebro-rituais, door 4): from the first hourly pass at or after
+   * `weekday` (0 Sunday to 6 Saturday) at `hour` local time until the week ends on Sunday, one notification a week while
+   * the review is not finished. On by default, Friday 16:00 (owner question 1); no model and no network.
+   */
+  weeklyReview: z
+    .object({
+      enabled: z.boolean().default(true),
+      weekday: z.number().int().min(0).max(6).default(5),
+      hour: z.number().int().min(0).max(23).default(16),
+    })
+    .default({}),
   /** Short, cheap run that answers a `triage: true` sentinel with ignore/notify/propose. */
   triage: z
     .object({
@@ -308,6 +320,13 @@ export type ChannelSettings = z.infer<typeof ChannelSettingsSchema>;
  * configured endpoint on every request, so the name is the whole of the setting's reach.
  */
 export const EMBEDDINGS_KEY_ENV = /^(?!MORDOMO_)[A-Z][A-Z0-9_]{0,63}$/;
+
+/**
+ * The embedders of the model catalog (.specs/features/cerebro-busca-significado, door 3), in its order: the only values
+ * `memory.embeddings.local.model` takes (door 7). The catalog itself (files, sums, hosts) is the engine's
+ * (`core/src/models/catalog.ts`), which holds exactly these embedders.
+ */
+export const LOCAL_EMBEDDER_IDS = ["embeddinggemma-300m-q4", "qwen3-embedding-0.6b-q4f16"] as const;
 
 export const CURRENT_SETTINGS_VERSION = 2;
 
@@ -556,6 +575,19 @@ export const SettingsSchema = z.object({
         })
         .default({}),
       /**
+       * The weekly review (.specs/features/cerebro-rituais, door 4): how long a project holds before its review is due
+       * (`projectEvery`, a note's own `review_every` wins), how many local days of the journal the open loops are read
+       * from, and how many items each list shows. `PUT /api/settings` replaces `memory.weeklyReview` whole, like the
+       * other fields of `memory`; the list reads it at each request.
+       */
+      weeklyReview: z
+        .object({
+          projectEvery: ReviewCadenceSchema.default("7d"),
+          loopsWindowDays: z.number().int().min(7).max(3650).default(90),
+          maxItems: z.number().int().min(1).max(200).default(50),
+        })
+        .default({}),
+      /**
        * The internal history of `memory/` (.specs/features/cerebro-memoria-confiavel, door 4): above `maxBytes` of stored
        * (deflated) blobs, the oldest versions that are not among the newest 5 of their path are dropped. It writes no
        * file and opens nothing; an unreadable value reads its default.
@@ -575,7 +607,7 @@ export const SettingsSchema = z.object({
       embeddings: z
         .object({
           enabled: z.boolean().default(false),
-          provider: z.enum(["hash", "http"]).default("hash"),
+          provider: z.enum(["hash", "http", "local"]).default("hash"),
           endpoint: z.string().max(2000).optional(),
           model: z.string().max(200).optional(),
           /**
@@ -595,6 +627,35 @@ export const SettingsSchema = z.object({
           dimensions: z.number().int().min(8).max(4096).optional(),
           /** A non-loopback endpoint receives note text only when this is on. */
           sendRemote: z.boolean().default(false),
+          /**
+           * The `local` provider (.specs/features/cerebro-busca-significado, door 2): the catalog model it runs in a
+           * child process, from `<home>/models/<id>/` (door 3). An id outside the catalog is refused (door 7).
+           */
+          local: z
+            .object({
+              model: z.enum(LOCAL_EMBEDDER_IDS).optional(),
+            })
+            .optional(),
+        })
+        .default({}),
+      /**
+       * The recall (.specs/features/cerebro-busca-significado, door 4): abstain when no section answers, follow links up
+       * to `hops` levels, stop adding excerpts at `tokenBudget` tokens, and optionally reorder the best `candidates`
+       * sections with the local reranker (door 5), within `timeoutMs`. `PUT /api/settings` replaces `memory.recall`
+       * whole, like the other fields of `memory` (G43).
+       */
+      recall: z
+        .object({
+          abstain: z.boolean().default(true),
+          hops: z.number().int().min(1).max(3).default(2),
+          tokenBudget: z.number().int().min(500).max(20_000).default(3000),
+          rerank: z
+            .object({
+              enabled: z.boolean().default(false),
+              candidates: z.number().int().min(1).max(50).default(20),
+              timeoutMs: z.number().int().min(1000).max(120_000).default(15_000),
+            })
+            .default({}),
         })
         .default({}),
     })

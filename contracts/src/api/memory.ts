@@ -67,6 +67,10 @@ const SearchHitSchema = FileRowSchema.extend({
   /** The file's nature and scope (cerebro-natureza, AC 10): null when it has none, or a value outside the lists. */
   natureza: NaturezaSchema,
   escopo: EscopoSchema,
+  /** A hit the vectors ranked: the heading path of the file's best section (joined by " > "); absent on a text hit. */
+  section: z.string().optional(),
+  /** That section's first body line (1-based); absent on a text hit. */
+  line: z.number().int().optional(),
 });
 
 const SemanticStatusSchema = z.object({
@@ -74,11 +78,26 @@ const SemanticStatusSchema = z.object({
   provider: z.string().nullable(),
   /** Where the cosine is computed; null while the search is off (nothing is loaded then). */
   backend: z.enum(["sqlite-vec", "js"]).nullable(),
+  /** The files with at least one section vector the caller may see. */
   vectors: z.number(),
-  /** Why an enabled search has no endpoint it may use. */
+  /** The section vectors the caller may see (one per section, cerebro-busca-significado door 1). */
+  sections: z.number(),
+  /** The id of the local model in use; null for `hash` and `http`. */
+  model: z.string().nullable(),
+  /** Why an enabled search has no endpoint it may use, or door 7's `model_missing` / `platform_unsupported`. */
   blocked: z.string().nullable(),
   error: z.string().nullable(),
+  /** Only while the provider is `local` (G15): its model's state and whether this computer has the runtime. */
+  local: z
+    .object({
+      state: z.enum(["absent", "downloading", "ready", "failed"]),
+      platform: z.object({ ok: z.boolean(), reason: z.literal("platform_unsupported").optional() }),
+    })
+    .optional(),
 });
+
+/** A model's state in `<home>/models/` (cerebro-busca-significado, door 8). */
+const ModelStateSchema = z.enum(["absent", "downloading", "ready", "failed"]);
 
 /** The version of a note: `sha256:` plus the hex digest of its exact bytes. */
 export const NoteVersionSchema = z
@@ -275,6 +294,15 @@ const RecallResultSchema = z.object({
   opened: z.number(),
   candidates: z.array(z.object({ path: z.string(), score: z.number(), why: z.string() })),
   durationMs: z.number(),
+  /**
+   * The recall found no section that answers (.specs/features/cerebro-busca-significado, door 4): `no_match` with no
+   * keyword or no candidate, `weak` when no section matches half of the keywords and none is near enough in meaning;
+   * `answerContext` is then empty.
+   */
+  abstained: z.boolean(),
+  abstainReason: z.enum(["no_match", "weak"]).nullable(),
+  /** What the local reranker did (door 5): `off`, `used`, `skipped` (none ready), `timeout` or `failed`. */
+  rerank: z.enum(["off", "used", "skipped", "timeout", "failed"]),
 });
 
 const RecallStatsSchema = z.object({
@@ -845,6 +873,70 @@ const ReviewStateSchema = z.object({
 
 const REVIEW_ACTIONS = ["keep", "snooze", "never", "abandon", "became_fact", "classify", "restore"] as const;
 
+/** The weekly review (.specs/features/cerebro-rituais, doors 1 to 3). */
+const LOOP_ACTIONS = ["close", "keep", "someday", "project", "task", "restore"] as const;
+const LOOP_STATES = ["closed", "keep", "someday", "project", "task"] as const;
+
+/** An open loop: one per normalized text, with its oldest day and every place it is written. */
+const LoopItemSchema = z.object({
+  /** The SHA-256 hex of the normalized text (door 1). */
+  key: z.string(),
+  text: z.string(),
+  day: DaySchema,
+  ageDays: z.number().int(),
+  sources: z.array(z.object({ path: z.string(), line: z.number().int() })),
+});
+
+/** One stored loop decision, as a decision answers it in `previous` and `restore` takes it back. */
+const LoopDecisionSchema = z.object({
+  action: z.enum(LOOP_STATES),
+  /** The Monday of the local week it was stored in. */
+  week: DaySchema,
+  /** The note a `project` made or a `task` was added to. */
+  target: z.string().nullable(),
+  decidedAt: z.number().int(),
+});
+
+const ProjectHealthSchema = z.enum(["done", "paused", "behind", "due_today", "in_review", "on_track"]);
+
+/** A `type: project` note of the weekly review (AC 16, G20). */
+const WeeklyProjectSchema = z.object({
+  path: z.string(),
+  title: z.string(),
+  status: z.string().nullable(),
+  due: DaySchema.nullable(),
+  health: ProjectHealthSchema,
+  /** The first unchecked task of the note (door 3), or null. */
+  nextAction: z.object({ line: z.number().int(), text: z.string() }).nullable(),
+  lastReviewed: DaySchema.nullable(),
+  /** The last review day plus the cadence; null for `review_every: never`. */
+  reviewBy: DaySchema.nullable(),
+  reviewDue: z.boolean(),
+  /** A note of memory/ the screen may write; the others keep the decision in the database. */
+  editable: z.boolean(),
+  /** The version of the note when listed, which the screen sends as `baseVersion`; null when not editable. */
+  version: NoteVersionSchema.nullable(),
+});
+
+/** The week's numbers (AC 51, G22): loop decisions stored, projects reviewed, files archived. */
+const WeekCountsSchema = z.object({
+  loops: z.number().int().min(0),
+  projects: z.number().int().min(0),
+  archived: z.number().int().min(0),
+});
+
+const weekMismatch = err(
+  409,
+  "week_mismatch",
+  "week is not the Monday of the current local week; nothing was written",
+);
+
+const TaskWrittenSchema = z.object({
+  path: z.string(),
+  version: NoteVersionSchema,
+  task: z.object({ line: z.number(), done: z.boolean(), text: z.string() }),
+});
+
 // ---- routes ----------------------------------------------------------------------------------------------------
 
 export const memoryRoutes = {
@@ -869,6 +961,87 @@ export const memoryRoutes = {
       }),
     },
     errors: [contextNotFound],
+  }),
+  "memory.embedder": route({
+    method: "GET",
+    path: "/api/memory/embedder",
+    summary:
+      "The model catalog of the local search (.specs/features/cerebro-busca-significado, door 8): each model with its license and its state in the home, whether this computer can run them, and the embedder in use",
+    tag: "memory",
+    scope: "owner",
+    responses: {
+      200: z.object({
+        /** The catalog id in `memory.embeddings.local.model` while the provider is `local`, on or off (G23); else null. */
+        active: z.string().nullable(),
+        platform: z.object({ ok: z.boolean(), reason: z.literal("platform_unsupported").optional() }),
+        /** One per catalog entry, in its order. */
+        models: z.array(
+          z.object({
+            id: z.string(),
+            kind: z.enum(["embedder", "reranker"]),
+            name: z.string(),
+            /** The sum of its files. */
+            bytes: z.number().int(),
+            /** Embedders only: the length of one vector. */
+            dimensions: z.number().int().optional(),
+            license: z.object({ name: z.string(), acceptRequired: z.boolean() }),
+            state: ModelStateSchema,
+            /** While `downloading`: bytes written and the sum of the files. */
+            progress: z.object({ done: z.number().int(), total: z.number().int() }).optional(),
+            /** While `failed`: `checksum`, `host_not_allowed` or `network: <message>`. */
+            reason: z.string().optional(),
+          }),
+        ),
+      }),
+    },
+  }),
+  "memory.embedder.action": route({
+    method: "POST",
+    path: "/api/memory/embedder",
+    summary:
+      "Download (with the license accepted when it asks), cancel or remove a catalog model, or embed one fixed phrase through the configured provider (.specs/features/cerebro-busca-significado, door 8); one download at a time",
+    tag: "memory",
+    scope: "owner",
+    body: z
+      .object({
+        action: z.enum(["install", "cancel", "remove", "test"]),
+        /** A catalog id: required to `install` and `remove`. */
+        id: z.string().min(1).max(200).optional(),
+        /** `true` accepts the model's license; a model whose license asks for it is not downloaded without it. */
+        acceptTerms: z.boolean().optional(),
+      })
+      .refine((body) => (body.action !== "install" && body.action !== "remove") || body.id !== undefined, {
+        message: "id is required to install or remove a model",
+        path: ["id"],
+      }),
+    responses: {
+      200: z.object({
+        /** The state of the model the action is about (`absent` when there is none). */
+        state: ModelStateSchema,
+        /** That model's id, when there is one. */
+        model: z.string().optional(),
+        /** `test`: the fixed phrase embedded once, or the kind of failure. */
+        test: z
+          .object({
+            ok: z.boolean(),
+            dimensions: z.number().int().optional(),
+            ms: z.number().optional(),
+            kind: z.string().optional(),
+          })
+          .optional(),
+      }),
+    },
+    errors: [
+      err(
+        400,
+        "terms_not_accepted",
+        "The model's license asks to be accepted (acceptTerms: true); nothing was downloaded",
+      ),
+      err(404, "model_not_found", "No model of the catalog has this id"),
+      err(409, "local_unavailable", "This computer has no runtime for local models; nothing was downloaded"),
+      err(409, "model_in_use", "The model is the embedder the settings name; nothing was deleted"),
+      err(409, "download_in_progress", "A model is downloading; one at a time"),
+    ],
   }),
   "memory.index": route({
     method: "POST",
@@ -1371,6 +1544,256 @@ export const memoryRoutes = {
       err(413, "note_too_large", "The note is larger than the editing limit"),
     ],
   }),
+  "memory.weeklyReview.list": route({
+    method: "GET",
+    path: "/api/memory/weekly-review",
+    summary:
+      "The weekly review (.specs/features/cerebro-rituais): the open loops of the journal window and MEMORY.md, the active projects with their next action and review day, someday, what ended and the inbox, from the index rows and the stored decisions",
+    tag: "memory",
+    scope: "owner",
+    query: z.object({ context: ContextQuery }),
+    responses: {
+      200: z.object({
+        /** The Monday of the current local week. */
+        week: DaySchema,
+        /** When this week's review was finished, or null. */
+        finishedAt: z.number().int().nullable(),
+        /** The week so far, or as stored when it was finished (G22). */
+        counts: WeekCountsSchema,
+        /** The epoch ms of the next weekly reminder, strictly after now (G23); null when it is off. */
+        nextReminder: z.number().int().nullable(),
+        loops: z.object({ items: z.array(LoopItemSchema), total: z.number().int().min(0) }),
+        projects: z.object({ items: z.array(WeeklyProjectSchema), total: z.number().int().min(0) }),
+        someday: z.object({ loops: z.array(LoopItemSchema), projects: z.array(WeeklyProjectSchema) }),
+        archive: z.object({
+          items: z.array(
+            z.object({ path: z.string(), title: z.string(), editable: z.boolean(), doneSince: DaySchema }),
+          ),
+          total: z.number().int().min(0),
+        }),
+        inbox: z.object({
+          items: z.array(z.object({ path: z.string(), title: z.string(), ageDays: z.number().int() })),
+          total: z.number().int().min(0),
+        }),
+        /** How many notes the review queue of cerebro-natureza holds due today. */
+        reviewsDue: z.number().int().min(0),
+      }),
+    },
+  }),
+  "memory.weeklyReview.loops": route({
+    method: "POST",
+    path: "/api/memory/weekly-review/loops",
+    summary:
+      "Decide an open loop (close, keep this week, someday, make it a project, make it a task of a project, or restore what a decision answered); only a project or a task writes a file",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      key: z.string().regex(/^[0-9a-f]{64}$/, "expected the 64 hex digits of a loop's key"),
+      action: z.enum(LOOP_ACTIONS),
+      /** `project`: the note's title, 1 to 120 characters (the loop's text cut at 120 without it). */
+      name: z.string().max(2000).optional(),
+      /** `task`: the `type: project` note of memory/ the line is added to. */
+      project: z.string().min(1).max(4096).optional(),
+      /** `task`: the version of that note the caller read. */
+      baseVersion: NoteVersionSchema.optional(),
+      /** `restore`: the `previous` a decision answered (null removes the stored decision). */
+      previous: LoopDecisionSchema.nullable().optional(),
+      /** `project`: the active work context, whose notes folder the note goes to (memory/notes/ without it). */
+      context: ContextQuery,
+    }),
+    responses: {
+      200: z.object({
+        key: z.string(),
+        /** The stored decision after this one, or null. */
+        state: z.enum(LOOP_STATES).nullable(),
+        /** The stored decision before this one, or null: what `restore` takes to undo it. */
+        previous: LoopDecisionSchema.nullable(),
+        /** `project` and `task`: the note made or written, with its new version. */
+        created: z.object({ path: z.string(), version: NoteVersionSchema }).optional(),
+      }),
+    },
+    errors: [
+      err(
+        403,
+        "note_not_editable",
+        "task: the project is not a .md note of memory/ the engine does not generate, or has no type: project",
+      ),
+      err(404, "loop_not_found", "The key is in neither list and has no stored decision; nothing was stored"),
+      err(
+        409,
+        "edit_conflict",
+        "task: the project note changed after it was read; nothing was written or stored",
+      ),
+    ],
+  }),
+  "memory.weeklyReview.archive": route({
+    method: "POST",
+    path: "/api/memory/weekly-review/archive",
+    summary:
+      "Archive what the week's list shows in archive or inbox (.specs/features/cerebro-rituais, door 5): the cleanup's move to memory/archive/AAAA-MM-DD-<id>/ with a manifest of scope weekly:<week>, and a proposal for what lies outside memory/",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      /** The Monday of the current local week. */
+      week: DaySchema,
+      /** 1 to 100 paths, each listed in archive or inbox of the list with no context. */
+      paths: z.array(z.string().min(1).max(4096)).min(1).max(100),
+    }),
+    responses: {
+      200: z.object({
+        /** The manifest of the moves; null when nothing moved. */
+        manifest: z.string().nullable(),
+        moved: CleanupMovesSchema,
+        skipped: CleanupSkippedSchema,
+        /** The proposal list under artifacts/cleanup/; null when there is none. */
+        proposals: z.string().nullable(),
+      }),
+    },
+    errors: [weekMismatch, cleanupRestoreInProgress],
+  }),
+  "memory.weeklyReview.finish": route({
+    method: "POST",
+    path: "/api/memory/weekly-review/finish",
+    summary:
+      "Finish the week's review: store its counts and the time once, and add one line under ## Today of today's journal; again, it answers what was stored and writes nothing",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      /** The Monday of the current local week. */
+      week: DaySchema,
+    }),
+    responses: {
+      200: z.object({
+        week: DaySchema,
+        /** When the week was first finished. */
+        finishedAt: z.number().int(),
+        counts: WeekCountsSchema,
+        /** The journal file and the bullet written to it (as written the first time). */
+        journal: z.object({ path: z.string(), line: z.string() }),
+      }),
+    },
+    errors: [
+      weekMismatch,
+      err(
+        403,
+        "forbidden_path",
+        "Today's journal is reached through a link or is a private file; nothing was written",
+      ),
+      err(
+        404,
+        "not_a_file",
+        "Today's journal names something that is not a regular file; nothing was written",
+      ),
+      err(413, "file_too_large", "Today's journal is larger than what is read of it; nothing was written"),
+    ],
+  }),
+  "memory.tasks.add": route({
+    method: "POST",
+    path: "/api/memory/tasks",
+    summary:
+      "Add `- [ ] <text>` as the last line of a note under memory/ (.specs/features/cerebro-rituais, door 3), only if the note is still the version the caller read",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      path: z.string().min(1).max(4096),
+      /** 1 to 300 characters, with no line break. */
+      text: z.string().max(2000),
+      baseVersion: NoteVersionSchema,
+    }),
+    responses: { 200: TaskWrittenSchema },
+    errors: [
+      err(403, "forbidden_path", "A link on the way or a private file would be written through"),
+      err(
+        403,
+        "note_not_editable",
+        "Not a .md file under memory/, or a file the engine generates (ROUTER.md, areas/, journal/, contexts/)",
+      ),
+      err(404, "note_missing", "The note does not exist"),
+      err(409, "edit_conflict", "The file changed after it was read; nothing was written"),
+      err(413, "note_too_large", "The note is larger than the editing limit"),
+    ],
+  }),
+  "memory.mentions.list": route({
+    method: "GET",
+    path: "/api/memory/mentions",
+    summary:
+      "The unlinked mentions of an indexed note (.specs/features/cerebro-rituais, door 6): the lines of other notes that name it by its title, its file name or an alias, as a whole word outside code and links, from notes that do not link to it",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      id: z.coerce.number().int(),
+      /** Only sources inside this work context (`400 validation` for an id that names none). */
+      context: ContextQuery,
+      /** 1 to 50, 20 without it. */
+      limit: z.coerce.number().int().min(1).max(50).optional(),
+    }),
+    responses: {
+      200: z.object({
+        /** The note the mentions name. */
+        file: FileRowSchema,
+        /** Its terms: the title, the file name, the aliases, each of 4 characters or more, one per fold. */
+        terms: z.array(z.string()),
+        items: z.array(
+          z.object({
+            file: FileRowSchema,
+            line: z.number().int().min(1),
+            /** At most 160 characters of the line, around the term as written. */
+            excerpt: z.string(),
+            /** The entry of `terms` the line holds. */
+            term: z.string(),
+            editable: z.boolean(),
+            /** The source's version when it was read, for "Linkar"; null when it is not editable. */
+            version: NoteVersionSchema.nullable(),
+          }),
+        ),
+        /** Every mention, beyond the `limit` answered. */
+        total: z.number().int().min(0),
+      }),
+    },
+    errors: [notFound("The file")],
+  }),
+  "memory.mentions.link": route({
+    method: "POST",
+    path: "/api/memory/mentions/link",
+    summary:
+      "Turn the first match of a term on one line of a note into a wikilink to the target (.specs/features/cerebro-rituais, door 7), only if the note is still the version the caller read",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      /** The note under memory/ that names the target. */
+      source: z.string().min(1).max(4096),
+      /** 1-based. */
+      line: z.number().int().min(1),
+      term: z.string().min(1).max(2000),
+      /** The id of the indexed file the link leads to. */
+      target: z.number().int(),
+      baseVersion: NoteVersionSchema,
+    }),
+    responses: {
+      200: z.object({
+        path: z.string(),
+        version: NoteVersionSchema,
+        /** The wikilink written. */
+        link: z.string(),
+      }),
+    },
+    errors: [
+      err(
+        403,
+        "note_not_editable",
+        "Not a .md file under memory/, a file the engine generates (ROUTER.md, areas/, journal/, contexts/), or one reached through a link",
+      ),
+      err(404, "note_missing", "The note does not exist"),
+      err(404, "not_found", "The target is no indexed file"),
+      err(409, "edit_conflict", "The file changed after it was read; nothing was written"),
+      err(
+        409,
+        "mention_gone",
+        "The line no longer holds the term outside code and links; nothing was written",
+      ),
+      err(413, "note_too_large", "The note is larger than the editing limit"),
+    ],
+  }),
   "memory.routers": route({
     method: "POST",
     path: "/api/memory/routers",
@@ -1404,6 +1827,8 @@ export const memoryRoutes = {
       /** Only excerpts of these natures (one with none is not returned) / of files of these scopes (AC 12). */
       natureza: NaturezaQuery,
       escopo: EscopoQuery,
+      /** `false` (or `0`): the reranker is not called for this recall; `true` cannot turn on a disabled one (door 5). */
+      rerank: QueryFlag,
     }),
     responses: { 200: RecallResultSchema },
     errors: [contextNotFound],

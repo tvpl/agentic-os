@@ -4,7 +4,13 @@ import type { Settings } from "../config/schema.js";
 import { EditConflictError, PathAccessError } from "../errors.js";
 import type { MordomoPaths } from "../paths.js";
 import { realpathLenient } from "../security/paths.js";
-import { homeReadScope, openWorkspaceFile, statWorkspacePath, type ReadScope } from "../security/safeFs.js";
+import {
+  NotRegularFileError,
+  homeReadScope,
+  openWorkspaceFile,
+  statWorkspacePath,
+  type ReadScope,
+} from "../security/safeFs.js";
 import { createWorkspaceFile, writeWorkspaceFile, type CreatedFile } from "../security/safeWrite.js";
 import {
   parseProperties,
@@ -16,7 +22,7 @@ import {
 } from "./frontMatter.js";
 import { workspaceScope } from "./preview.js";
 import { areaSlug } from "./routers.js";
-import { parseTasks } from "./tasks.js";
+import { TASK_TEXT_MAX, parseTaskLine, parseTasks } from "./tasks.js";
 
 /**
  * Notes: the Markdown files the owner creates and edits under `memory/` (.specs/features/cerebro-v2).
@@ -138,6 +144,11 @@ export interface CreateNoteInput {
   content?: string | undefined;
   frontMatter?: boolean | undefined;
   tags?: string[] | undefined;
+  /**
+   * More `key: value` lines of the front matter, written as given after `title` and `tags` (a project made from a loop,
+   * .specs/features/cerebro-rituais AC 8). Only with `frontMatter`; the caller gives keys and one-line values.
+   */
+  properties?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface SaveNoteInput {
@@ -337,9 +348,15 @@ function readClassified(ctx: NoteContext, candidate: string): NoteRead {
   }
 }
 
-function frontMatterBlock(title: string, tags: readonly string[], now: Date): string {
+function frontMatterBlock(
+  title: string,
+  tags: readonly string[],
+  now: Date,
+  properties: Readonly<Record<string, string>> = {},
+): string {
   const lines = ["---", `title: ${JSON.stringify(title)}`];
   if (tags.length > 0) lines.push(`tags: [${tags.join(", ")}]`);
+  for (const [key, value] of Object.entries(properties)) lines.push(`${key}: ${value}`);
   lines.push(`created: ${now.toISOString()}`, "---", "");
   return lines.join("\n");
 }
@@ -368,7 +385,7 @@ function validateTags(tags: readonly string[]): void {
 /** The text of a new note: optional front matter, the heading, then the body the caller gave. */
 export function newNoteText(input: CreateNoteInput, title: string, now: Date = new Date()): string {
   const body = input.content === undefined || input.content.trim() === "" ? "" : `${input.content.replace(/\s+$/, "")}\n`;
-  return `${input.frontMatter ? frontMatterBlock(title, input.tags ?? [], now) : ""}# ${title}\n\n${body}`;
+  return `${input.frontMatter ? frontMatterBlock(title, input.tags ?? [], now, input.properties) : ""}# ${title}\n\n${body}`;
 }
 
 /**
@@ -605,3 +622,85 @@ export function saveTask(ctx: NoteContext, input: SaveTaskInput): TaskWritten {
   return { path: classified.logical, version: versionOf(nextBytes), task: result };
 }
 
+
+export interface AppendTaskInput {
+  path: string;
+  /** 1 to `TASK_TEXT_MAX` characters, with no line break. */
+  text: string;
+  baseVersion: string;
+}
+
+/**
+ * Add `- [ ] <text>` as the last line of a note (.specs/features/cerebro-rituais, door 3), only if the note is still the
+ * version the caller read: a blank line goes before it when the last line is neither a task nor blank, a line break is
+ * added first when the file has none at its end, and the line takes the file's own line break (G36). The text is
+ * checked first (`400 validation`), then the note as a save checks it (`403`, `404`, `413`), then its version
+ * (`409 edit_conflict`); every byte already there is kept.
+ */
+export function appendTask(ctx: NoteContext, input: AppendTaskInput): TaskWritten {
+  const chars = [...input.text].length;
+  if (chars < 1 || chars > TASK_TEXT_MAX || /[\r\n]/.test(input.text)) {
+    throw new NoteValidationError("validation", `text: 1 to ${TASK_TEXT_MAX} characters on one line`);
+  }
+  const match = VERSION_PATTERN.exec(input.baseVersion);
+  if (!match) throw new NoteValidationError("validation", "baseVersion: expected sha256: and 64 hex digits");
+  const classified = classifyNotePath(ctx, input.path);
+  if (!classified.editable) throw new NoteNotEditableError(classified.reason ?? "This file cannot be edited.");
+  const limit = noteLimitBytes(ctx.settings);
+  const scope = memoryScope(ctx);
+  const missing = (err: unknown): never => {
+    // A folder where the note was is no note either (the door's codes have no not_a_file).
+    if ((err as NodeJS.ErrnoException).code === "ENOENT" || err instanceof NotRegularFileError) {
+      throw new NoteMissingError("The note does not exist.");
+    }
+    throw err;
+  };
+  let bytes: Buffer;
+  try {
+    bytes = unnameableIsForbidden(input.path, () => {
+      const file = openWorkspaceFile(scope, classified.logical);
+      try {
+        if (file.stat.size > limit) throw new NoteTooLargeError(limit);
+        return file.readBytes(limit).bytes;
+      } finally {
+        file.close();
+      }
+    });
+  } catch (err) {
+    return missing(err);
+  }
+  const text = assertText(bytes);
+  if (text === null) throw new NoteNotEditableError("The file is not UTF-8 text.");
+  if (versionOf(bytes) !== input.baseVersion) throw new EditConflictError();
+  const next = withTaskAppended(text, input.text);
+  const nextBytes = Buffer.from(next.text, "utf8");
+  if (nextBytes.length > limit) throw new NoteTooLargeError(limit);
+  try {
+    unnameableIsForbidden(input.path, () =>
+      writeWorkspaceFile(scope, classified.logical, nextBytes, { mode: "replace", expectSha256: match[1]! }),
+    );
+  } catch (err) {
+    missing(err);
+  }
+  ctx.history?.(classified.logical, nextBytes, "task");
+  const task = parseTaskLine(`- [ ] ${input.text}`);
+  return {
+    path: classified.logical,
+    version: versionOf(nextBytes),
+    task: { line: next.line, done: false, text: task?.text ?? input.text },
+  };
+}
+
+/** Door 3's tails: the text with `- [ ] <task>` as its last line, and that line's 1-based number. */
+export function withTaskAppended(text: string, task: string): { text: string; line: number } {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  let out = text;
+  if (out !== "" && !out.endsWith("\n")) out += eol;
+  const lines = out === "" ? [] : out.replace(/\r?\n$/, "").split(/\r?\n/);
+  const last = lines.at(-1);
+  if (last !== undefined && last.trim() !== "" && parseTaskLine(last) === null) {
+    out += eol;
+    lines.push("");
+  }
+  return { text: `${out}- [ ] ${task}${eol}`, line: lines.length + 1 };
+}

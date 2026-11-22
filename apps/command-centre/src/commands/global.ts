@@ -10,6 +10,7 @@ import {
   Activity,
   Archive,
   BrainCircuit,
+  CalendarCheck,
   CalendarClock,
   CircleCheck,
   FilePlus,
@@ -44,6 +45,7 @@ import { openNoteEditor } from "../brain/noteEvents";
 import { openCleanup } from "../brain/cleanupEvents";
 import { openMemoryHistory } from "../brain/memoria";
 import { REVIEWS_PATH } from "../brain/natureza";
+import { WEEKLY_PATH } from "../brain/BrainViewSwitch";
 import { useCommands, type Command } from "./registry";
 
 /** Opens the palette (and closes it: the palette registers the same keys in its own `modal` scope). */
@@ -242,6 +244,18 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["reviews", "revisoes", "revisões", "revisar", "review", "natureza"],
         palette: true,
         run: go(REVIEWS_PATH),
+      },
+      {
+        // "Revisão semanal" (cerebro-rituais, AC 39): the page at /brain/weekly, the frame's page and the Núcleo's
+        // brain panel.
+        id: "action:weekly-review",
+        title: "weekly.title",
+        group: "actions",
+        scope: "global",
+        icon: CalendarCheck,
+        keywords: ["weekly", "review", "semanal", "revisao", "revisão", "gtd", "laços", "lacos", "projetos"],
+        palette: true,
+        run: go(WEEKLY_PATH),
       },
       {
         // "Histórico da memória" (cerebro-memoria-confiavel, AC 44): the newest changes of memory/, in a dialog.

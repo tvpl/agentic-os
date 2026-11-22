@@ -3,6 +3,7 @@ import path from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   appendJournal,
+  appendTask,
   assertFact,
   buildGraph,
   checkRouters,
@@ -20,6 +21,7 @@ import {
   decideProposal,
   exportFolder,
   importFolder,
+  testProvider,
   listProposals,
   planNewNote,
   readProposal,
@@ -33,6 +35,9 @@ import {
   journalSections,
   listFacets,
   linksOf,
+  linkMention,
+  mentionsOf,
+  findContext,
   listJournalDates,
   memoryTree,
   localDateString,
@@ -41,7 +46,7 @@ import {
   queryFacts,
   queryFilesByField,
   readNote,
-  recall,
+  hybridRecall,
   recallStats,
   recentJournals,
   recordRecall,
@@ -191,6 +196,54 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       indexing: redact ? { ...indexing, scanned: 0, total: indexing.total === null ? null : 0 } : indexing,
       semantic: ctx.semantic.status(redact && policy ? policy : undefined),
     };
+  });
+
+  /**
+   * The local models (.specs/features/cerebro-busca-significado, door 8): the catalog with each model's state, whether
+   * this computer has the runtime, and the embedder the settings name (G23). Owner only: a download and the home's
+   * folders are not a device's.
+   */
+  const activeModel = (): string | null => {
+    const config = ctx.settings().memory.embeddings;
+    return config.provider === "local" ? (config.local?.model ?? null) : null;
+  };
+  bind(app, "memory.embedder", async () => {
+    const local = ctx.localModels;
+    return {
+      active: activeModel(),
+      platform: local.platform(),
+      models: local.catalog.map((entry) => ({
+        id: entry.id,
+        kind: entry.kind,
+        name: entry.name,
+        bytes: entry.files.reduce((sum, file) => sum + file.bytes, 0),
+        ...(entry.dimensions !== undefined ? { dimensions: entry.dimensions } : {}),
+        license: { name: entry.license.name, acceptRequired: entry.license.acceptRequired },
+        ...local.downloads.view(entry.id),
+      })),
+    };
+  });
+
+  bind(app, "memory.embedder.action", async ({ body }) => {
+    const local = ctx.localModels;
+    const about = (id: string | null | undefined) =>
+      id ? { state: local.downloads.view(id).state, model: id } : { state: "absent" as const };
+    if (body.action === "install") {
+      return { state: local.downloads.install(body.id!, body.acceptTerms, local.platform().ok).state };
+    }
+    if (body.action === "cancel") {
+      const id = local.downloads.downloading() ?? body.id;
+      await local.downloads.cancel();
+      return { state: about(id).state };
+    }
+    if (body.action === "remove") {
+      return { state: local.downloads.remove(body.id!, activeModel() === body.id).state };
+    }
+    // `test` (AC 38, G24): the provider the settings name, on or off; one the policy blocks is not tried.
+    const test = await testProvider(ctx.settings().memory.embeddings, local);
+    if ("blocked" in test)
+      throw httpError(400, `The provider cannot be tested: ${test.blocked}.`, "validation");
+    return { ...about(activeModel()), test };
   });
 
   bind(app, "memory.index", async () => {
@@ -368,6 +421,49 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     return written;
   });
 
+  // The next action of a project (cerebro-rituais, door 3): `- [ ] <text>` as the note's last line.
+  bind(app, "memory.tasks.add", async ({ body }) => {
+    const written = appendTask(noteContext(), body);
+    reindex(written.path);
+    return written;
+  });
+
+  /**
+   * The unlinked mentions of a note (.specs/features/cerebro-rituais, door 6): read as `GET /api/memory/links` is, by
+   * today's policy over the caller's view, and found through the caller's own full-text index (door 19).
+   */
+  bind(app, "memory.mentions.list", async ({ query: q }, req) => {
+    const view = accessView(ctx, req.principal);
+    const context = findContext(view.settings, q.context);
+    if (context === undefined) throw httpError(400, `No work context is called ${q.context}.`, "validation");
+    const mentions = mentionsOf(
+      {
+        db: ctx.db,
+        paths: ctx.paths,
+        settings: view.settings,
+        ...(view.audience ? { index: ctx.indexer.audienceTable(view.audience) } : {}),
+      },
+      { id: q.id, context, ...(q.limit !== undefined ? { limit: q.limit } : {}) },
+    );
+    if (!mentions) throw httpError(404, "File not found", "not_found");
+    return mentions;
+  });
+
+  /** "Linkar" (door 7): the next list reads the new link, so the answer waits for the pass over the note (up to 2 s). */
+  bind(app, "memory.mentions.link", async ({ body }) => {
+    const written = linkMention({ ...noteContext(), db: ctx.db }, body);
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      ctx.indexer.requestIndexPaths([written.path]).catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, 2_000);
+        timer.unref?.();
+      }),
+    ]);
+    clearTimeout(timer);
+    return written;
+  });
+
   /**
    * One level of the notes tree (.specs/features/cerebro-vista-notas, door 1), from the index rows alone: no file is
    * opened, and a row today's policy hides is neither listed nor counted.
@@ -429,7 +525,8 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     const view = accessView(ctx, req.principal);
     const reach = runReach(ctx, req, view);
     const within = contextFilter(ctx, q.context ?? reach?.context, view.settings);
-    const result = recall(ctx.db, ctx.paths, view.settings, q.q, {
+    // The sections nearest to the question and the reranker are judged by the same filters as the words (AC 43, AC 58).
+    const result = await hybridRecall(ctx.db, ctx.paths, view.settings, q.q, {
       k: q.k,
       area: q.area,
       excerptChars: q.excerptChars,
@@ -437,6 +534,9 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       ...(within ? { within } : {}),
       ...(view.audience ? { index: ctx.indexer.audienceTable(view.audience) } : {}),
       ...natureFilters(q),
+      semantic: ctx.semantic,
+      local: ctx.localModels,
+      ...(q.rerank === false ? { rerank: false } : {}),
     });
     if (q.record !== false) recordRecall(ctx.db, result);
     // Anyone but the owner is given scores by place in each list (amendment 4).

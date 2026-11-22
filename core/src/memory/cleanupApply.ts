@@ -223,44 +223,31 @@ function reasonOf(f: CleanupFinding): string {
   }
 }
 
+/** A file the archive mover is asked to move, with the tail of its proposal line when it lies outside `memory/`. */
+export interface ArchiveMoveFile {
+  path: string;
+  /** The bytes it must still have (the cleanup's scan saw them); without it the file moves as it is now. */
+  sha256?: string | undefined;
+  /** What follows the path on its line of the proposal list (`- [ ] <path> — <proposal>`). */
+  proposal: string;
+}
+
 /**
- * Apply what was decided on the findings of a finished scan (AC 27 to AC 31): each file under `memory/` marked
- * `archive`, or not kept by a `merge`, moves to `memory/archive/AAAA-MM-DD-<id>/<its path under memory/>` if its bytes
- * are still the ones the scan saw, and the moves are written to `manifest.json` there; a file outside `memory/`, and
- * an empty folder anywhere, is never touched and goes to the proposal list `artifacts/cleanup/AAAA-MM-DD-<id>.md`.
- * Holds the shared restore lock while it works. The index is asked for every origin and destination.
+ * The mover of the cleanup's apply, shared with the weekly review's archive (.specs/features/cerebro-rituais, door 5):
+ * each file under `memory/` moves to `memory/archive/AAAA-MM-DD-<id>/<its path under memory/>` (with its bytes still
+ * `sha256` when given), and the moves are written to `manifest.json` there with `scope`; a file outside `memory/` (or
+ * already under `memory/archive/`) is never touched and goes to the proposal list
+ * `artifacts/cleanup/AAAA-MM-DD-<id>.md`, after which come the `extra` lines. Holds the shared restore lock while it
+ * works. The index is asked for every origin and destination.
  */
-export function applyCleanup(
+export function moveToArchive(
   deps: CleanupMoveDeps,
-  scan: CleanupScanRecord,
-  options: { now?: number } = {},
+  files: Iterable<ArchiveMoveFile>,
+  options: { now: number; scope: string; heading: string; extra?: readonly string[] },
 ): CleanupApplyResult {
-  const now = options.now ?? Date.now();
+  const { now } = options;
   const lock = RestoreLock.acquire(deps.paths, 0, "shared");
   try {
-    const decided = new Map(
-      (
-        deps.db.prepare("SELECT key, decision, keep_file_id FROM cleanup_decisions WHERE scope = ?").all(scan.scopeKey) as Array<{
-          key: string;
-          decision: string;
-          keep_file_id: number | null;
-        }>
-      ).map((d) => [d.key, d]),
-    );
-    // What the decisions ask for, one line per file (the first finding that asks for it gives the reason).
-    const plan = new Map<string, { file: CleanupFindingFile; decision: string; finding: CleanupFinding }>();
-    const folders: Array<{ folder: string; decision: string; finding: CleanupFinding }> = [];
-    for (const finding of scan.findings) {
-      const d = decided.get(finding.key);
-      if (!d || (d.decision !== "archive" && d.decision !== "merge")) continue;
-      if (finding.kind === "empty-folder") {
-        if (d.decision === "archive") folders.push({ folder: finding.detail.folder!, decision: d.decision, finding });
-        continue;
-      }
-      const leaving = d.decision === "merge" ? finding.files.filter((f) => f.id !== d.keep_file_id) : finding.files;
-      for (const file of leaving) if (!plan.has(file.path)) plan.set(file.path, { file, decision: d.decision, finding });
-    }
-
     const memory = deps.paths.memory;
     const realMemory = realpathLenient(path.resolve(memory));
     const realArchive = path.join(realMemory, "archive");
@@ -274,10 +261,10 @@ export function applyCleanup(
     const proposals: string[] = [];
 
     try {
-      for (const { file, decision, finding } of plan.values()) {
+      for (const file of files) {
         const real = realpathLenient(path.resolve(file.path));
         if (!isInside(realMemory, real) || isInside(realArchive, real)) {
-          proposals.push(`- [ ] ${file.path} — ${decision} — ${reasonOf(finding)}`);
+          proposals.push(`- [ ] ${file.path} — ${file.proposal}`);
           continue;
         }
         const to = path.join(folder, path.relative(realMemory, real));
@@ -286,7 +273,7 @@ export function applyCleanup(
           continue;
         }
         try {
-          const moved = moveWorkspaceFile(scope, file.path, to, { expectSha256: file.sha256 });
+          const moved = moveWorkspaceFile(scope, file.path, to, file.sha256 === undefined ? {} : { expectSha256: file.sha256 });
           entries.push({ from: file.path, to, sha256: moved.sha256, size: moved.size });
           result.moved.push({ from: file.path, to });
           deps.history?.moved(file.path, to);
@@ -299,21 +286,21 @@ export function applyCleanup(
     } finally {
       // The manifest is written whatever happened after the first move: it is the only way back (door 4).
       if (entries.length > 0) {
-        const manifest: CleanupManifest = { v: 1, createdAt: now, scope: scan.scopeKey, entries };
+        const manifest: CleanupManifest = { v: 1, createdAt: now, scope: options.scope, entries };
         writeWorkspaceFile(scope, manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: "create" });
         result.manifest = manifestPath;
         deps.indexer.requestIndexPaths(entries.flatMap((e) => [e.from, e.to])).catch(() => undefined);
       }
     }
 
-    for (const { folder: dir, decision, finding } of folders) proposals.push(`- [ ] ${dir}${path.sep} — ${decision} — ${reasonOf(finding)}`);
+    proposals.push(...(options.extra ?? []));
     if (proposals.length > 0) {
       const artifacts = path.join(deps.paths.artifacts, "cleanup");
       const list = path.join(artifacts, `${name}.md`);
       const text = [
-        `# Faxina: propostas de ${dayOf(now)}`,
+        `# ${options.heading}`,
         "",
-        `Escopo: ${scan.scopeKey}. Nada aqui foi movido nem apagado: marque o que fizer.`,
+        `Escopo: ${options.scope}. Nada aqui foi movido nem apagado: marque o que fizer.`,
         "",
         ...proposals,
         "",
@@ -325,6 +312,57 @@ export function applyCleanup(
   } finally {
     lock.release();
   }
+}
+
+/**
+ * Apply what was decided on the findings of a finished scan (AC 27 to AC 31): each file under `memory/` marked
+ * `archive`, or not kept by a `merge`, moves to `memory/archive/AAAA-MM-DD-<id>/<its path under memory/>` if its bytes
+ * are still the ones the scan saw, and the moves are written to `manifest.json` there; a file outside `memory/`, and
+ * an empty folder anywhere, is never touched and goes to the proposal list `artifacts/cleanup/AAAA-MM-DD-<id>.md`.
+ * The moving is `moveToArchive`'s.
+ */
+export function applyCleanup(
+  deps: CleanupMoveDeps,
+  scan: CleanupScanRecord,
+  options: { now?: number } = {},
+): CleanupApplyResult {
+  const now = options.now ?? Date.now();
+  const decided = new Map(
+    (
+      deps.db.prepare("SELECT key, decision, keep_file_id FROM cleanup_decisions WHERE scope = ?").all(scan.scopeKey) as Array<{
+        key: string;
+        decision: string;
+        keep_file_id: number | null;
+      }>
+    ).map((d) => [d.key, d]),
+  );
+  // What the decisions ask for, one line per file (the first finding that asks for it gives the reason).
+  const plan = new Map<string, { file: CleanupFindingFile; decision: string; finding: CleanupFinding }>();
+  const folders: Array<{ folder: string; decision: string; finding: CleanupFinding }> = [];
+  for (const finding of scan.findings) {
+    const d = decided.get(finding.key);
+    if (!d || (d.decision !== "archive" && d.decision !== "merge")) continue;
+    if (finding.kind === "empty-folder") {
+      if (d.decision === "archive") folders.push({ folder: finding.detail.folder!, decision: d.decision, finding });
+      continue;
+    }
+    const leaving = d.decision === "merge" ? finding.files.filter((f) => f.id !== d.keep_file_id) : finding.files;
+    for (const file of leaving) if (!plan.has(file.path)) plan.set(file.path, { file, decision: d.decision, finding });
+  }
+  return moveToArchive(
+    deps,
+    [...plan.values()].map(({ file, decision, finding }) => ({
+      path: file.path,
+      sha256: file.sha256,
+      proposal: `${decision} — ${reasonOf(finding)}`,
+    })),
+    {
+      now,
+      scope: scan.scopeKey,
+      heading: `Faxina: propostas de ${dayOf(now)}`,
+      extra: folders.map(({ folder: dir, decision, finding }) => `- [ ] ${dir}${path.sep} — ${decision} — ${reasonOf(finding)}`),
+    },
+  );
 }
 
 export interface CleanupUndoResult {

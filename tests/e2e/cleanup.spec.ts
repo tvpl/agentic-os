@@ -175,10 +175,11 @@ test("C51 the moldura: the selector's item after the actions separator and befor
   await expect(wizard(page).locator(".cln-scope-line")).toHaveText(ctx.name);
   await closeWizard(page);
 
-  // The graph's action row: the third .btn.sm, by name and by place.
+  // The graph's action row: the third .btn.sm, by name and by place (cerebro-rituais G17: "Revisão semanal" follows it
+  // when "Revisões" is absent).
   const row = page.locator(".brain-topbar-actions");
   const buttons = row.locator("button.btn.sm");
-  await expect(buttons).toHaveCount(3);
+  await expect(buttons).toHaveCount(4);
   await expect(buttons.nth(0)).toHaveAccessibleName("Atualizar índice");
   await expect(buttons.nth(1)).toHaveAccessibleName("Modo apresentação (p)");
   await expect(buttons.nth(2)).toHaveAccessibleName("Faxina");
@@ -188,8 +189,13 @@ test("C51 the moldura: the selector's item after the actions separator and befor
       b.classList.contains("os-chip") ? "chip" : (b.getAttribute("aria-label") ?? b.textContent!.trim()),
     ),
   );
-  expect(order.slice(0, 3)).toEqual(["Atualizar índice", "Modo apresentação (p)", "Faxina"]);
-  expect(order.slice(3).every((x) => x === "chip")).toBe(true);
+  expect(order.slice(0, 4)).toEqual([
+    "Atualizar índice",
+    "Modo apresentação (p)",
+    "Faxina",
+    "Revisão semanal",
+  ]);
+  expect(order.slice(4).every((x) => x === "chip")).toBe(true);
   const boxes = await Promise.all([0, 1, 2].map((i) => buttons.nth(i).boundingBox()));
   expect(boxes[0]!.x).toBeLessThan(boxes[1]!.x);
   expect(boxes[1]!.x).toBeLessThan(boxes[2]!.x);
@@ -216,7 +222,7 @@ test("C51 the moldura: the selector's item after the actions separator and befor
   await chosen(page, null);
 });
 
-test("C51 the Núcleo: Faxina the last row of bs-menu-acts after Salvar como visão padrão, and the palette, both at step 1 with the context", async ({
+test("C51 the Núcleo: Faxina the row of bs-menu-acts after Salvar como visão padrão and before Revisão semanal, and the palette, both at step 1 with the context", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -227,10 +233,12 @@ test("C51 the Núcleo: Faxina the last row of bs-menu-acts after Salvar como vis
   await expect(page.locator(".bs canvas").first()).toBeVisible();
   await page.locator(".bs-more").click();
   const acts = page.locator(".bs-menu .bs-menu-acts > button");
-  await expect(acts.last()).toHaveText("Faxina");
+  // cerebro-rituais G17: "Revisão semanal" is the last row now, right after Faxina (no Revisões here)
+  await expect(acts.last()).toHaveText("Revisão semanal");
   const texts = await acts.allTextContents();
-  expect(texts.at(-2)).toBe("Salvar como visão padrão");
-  await acts.last().click();
+  expect(texts.at(-2)).toBe("Faxina");
+  expect(texts.at(-3)).toBe("Salvar como visão padrão");
+  await acts.nth(texts.length - 2).click();
   await stepIs(page, "Etapa 1 de 5 · Escopo");
   await chosen(page, ctx.name);
   await closeWizard(page);

@@ -122,6 +122,7 @@ import {
   BrainViewSwitch,
   NotesView,
   ReviewsView,
+  WeeklyView,
   useBrainMode,
   useBrainViewCommands,
   type BrainModeState,
@@ -237,6 +238,8 @@ function NotesMode({ brain }: { brain: BrainModeState }) {
       <Suspense fallback={<Skeleton lines={6} />}>
         {brain.mode === "reviews" ? (
           <ReviewsView />
+        ) : brain.mode === "weekly" ? (
+          <WeeklyView />
         ) : (
           <NotesView onShowInGraph={(id) => brain.go("graph", `?sel=${id}&local=1&hops=1`)} />
         )}
@@ -1765,6 +1768,10 @@ function Constellation({ onClassic, view }: { onClassic: () => void; view: Brain
             onReviews={() => {
               setMenuOpen(false);
               view.go("reviews");
+            }}
+            onWeekly={() => {
+              setMenuOpen(false);
+              view.go("weekly");
             }}
             onNote={(id) => {
               setMenuOpen(false);

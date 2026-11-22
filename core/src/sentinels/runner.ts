@@ -10,6 +10,7 @@ import { checkSilentRoutines } from "./silentRoutine.js";
 import { checkConnectorDeltas, type ConnectorDeltaDeps } from "./connectorDelta.js";
 import { checkReviewDue } from "./reviewDue.js";
 import { checkProposalsPending } from "./proposalsPending.js";
+import { checkWeeklyReview } from "./weeklyReview.js";
 import { FsWatchSentinel } from "./fsWatch.js";
 import { installSentinelTriage, type TriageInbox, type TriageRunner } from "./triage.js";
 import { detectRepeatedPrompts } from "../skills/repeatDetector.js";
@@ -22,7 +23,8 @@ import type { DedupeLookup, SentinelFiredPayload } from "./types.js";
  *  - the bus subscription that reacts to a run finishing badly;
  *  - the file-system watcher (off unless the settings turn it on);
  *  - the hourly pass (silent routines, connector deltas, the reviews that fell
- *    due, the agent's proposals pending, the did-it-twice detector), which the service drives from its
+ *    due, the agent's proposals pending, the weekly review's reminder, the did-it-twice detector), which the
+ *    service drives from its
  *    existing hourly sweep.
  *
  * Every timer is unref'd: sentinels must never be the reason a process
@@ -57,6 +59,7 @@ export interface HourlyReport {
   connectorDeltas: SentinelFiredPayload[];
   reviewDue: SentinelFiredPayload[];
   proposalsPending: SentinelFiredPayload[];
+  weeklyReview: SentinelFiredPayload[];
   repeatSuggestions: number;
 }
 
@@ -162,6 +165,7 @@ export class SentinelRunner {
       connectorDeltas: [],
       reviewDue: [],
       proposalsPending: [],
+      weeklyReview: [],
       repeatSuggestions: 0,
     };
     const settings = this.deps.getSettings();
@@ -217,6 +221,19 @@ export class SentinelRunner {
         });
       } catch (err) {
         this.report(err, "proposalsPending");
+      }
+    }
+    if (settings.sentinels.weeklyReview.enabled) {
+      try {
+        report.weeklyReview = checkWeeklyReview({
+          db: this.deps.db,
+          paths: this.deps.paths,
+          getSettings: this.deps.getSettings,
+          bus: this.bus,
+          ...(this.deps.now ? { now: this.deps.now } : {}),
+        });
+      } catch (err) {
+        this.report(err, "weeklyReview");
       }
     }
     try {

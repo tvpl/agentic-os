@@ -21,8 +21,9 @@
  * Output (per platform) — nothing in it is source code:
  *   lib/mordomo.mjs            the whole API + CLI as one minified bundle
  *   lib/indexWorker.mjs        the memory index worker (a worker_thread the service starts; next to mordomo.mjs)
+ *   lib/localChild.mjs         the child process of the local models (cerebro-busca-significado, door 2; next to mordomo.mjs)
  *   lib/node_modules/          the SQLite native addon (the only required non-bundled dependency) and, for the machine that
- *                              packages, the optional sqlite-vec extension
+ *                              packages, the optional sqlite-vec extension and the local models' runtime (CPU files only)
  *   ui/                        the built Command Centre
  *   seed/                      default skills, routines and connectors (copied to the user home on first run)
  *   runtime/                   an official Node.js binary (unless --node none)
@@ -119,6 +120,21 @@ await build({
   },
 });
 
+// The child process of the local models (cerebro-busca-significado, door 2): its own entry, started with
+// `child_process.fork`; the only file that loads `@huggingface/transformers`, which stays a package of its own.
+await build({
+  input: path.join(ROOT, "core", "dist", "models", "localChild.js"),
+  platform: "node",
+  external: ["@huggingface/transformers"],
+  logLevel: "silent",
+  output: {
+    file: path.join(payload, "lib", "localChild.mjs"),
+    format: "esm",
+    minify: true,
+    sourcemap: false,
+  },
+});
+
 // ---- 2. the native SQLite addon (kept outside the bundle) --------------------
 log("Copying the SQLite addon…");
 const nm = path.join(payload, "lib", "node_modules");
@@ -152,6 +168,48 @@ if (platform === process.platform && arch === process.arch) {
   log(
     `No sqlite-vec for ${platform}/${arch} (packaged on ${process.platform}/${process.arch}): the installer ranks in JavaScript`,
   );
+
+// The runtime of the local models (cerebro-busca-significado, door 2, Impact "instalador"): optional, exact, and only
+// the CPU files of the target (its tokenizer and template packages are bundled inside its node build). `onnxruntime-node` ships every platform's binaries in one package: the target's folder
+// is copied without the CUDA and TensorRT providers; `sharp` (a static import of the runtime) has its natives in
+// per-platform packages, so like sqlite-vec only the machine that packages can supply them. `onnxruntime-web` is
+// bundled inside the runtime's own build and is never copied; no model weight goes in the installer. macOS Intel and
+// Windows ARM have no runtime (the screen says so and `http` and `hash` stay).
+const RUNTIME_TARGETS = ["linux/x64", "linux/arm64", "darwin/arm64", "win32/x64"];
+if (
+  platform === process.platform &&
+  arch === process.arch &&
+  RUNTIME_TARGETS.includes(`${platform}/${arch}`) &&
+  fs.existsSync(path.join(ROOT, "node_modules", "@huggingface", "transformers"))
+) {
+  log("Copying the local models' runtime (CPU files of this platform)…");
+  copyPackage("@huggingface/transformers", nm, ["package.json", "LICENSE", "dist/transformers.node.mjs"]);
+  copyPackage("onnxruntime-common", nm, ["package.json", "dist"]);
+  copyPackage("onnxruntime-node", nm, ["package.json", "dist"]);
+  const ortFrom = path.join(ROOT, "node_modules", "onnxruntime-node", "bin", "napi-v6", platform, arch);
+  const ortTo = path.join(nm, "onnxruntime-node", "bin", "napi-v6", platform, arch);
+  fs.mkdirSync(ortTo, { recursive: true });
+  for (const name of fs.readdirSync(ortFrom))
+    if (!/cuda|tensorrt|providers_shared/i.test(name))
+      fs.cpSync(path.join(ortFrom, name), path.join(ortTo, name));
+  copyPackage("sharp", nm, ["package.json", "LICENSE", "dist"]);
+  copyPackage("sharp/node_modules/semver", nm, [
+    "package.json",
+    "LICENSE",
+    "index.js",
+    "classes",
+    "functions",
+    "internal",
+    "ranges",
+  ]);
+  copyPackage("detect-libc", nm, ["package.json", "LICENSE", "lib"]);
+  copyPackage("@img/colour", nm, ["package.json", "LICENSE.md", "index.cjs", "color.cjs"]);
+  for (const native of [`sharp-${platform}-${arch}`, `sharp-libvips-${platform}-${arch}`])
+    if (fs.existsSync(path.join(ROOT, "node_modules", "@img", native)))
+      fs.cpSync(path.join(ROOT, "node_modules", "@img", native), path.join(nm, "@img", native), {
+        recursive: true,
+      });
+} else log(`No local models' runtime for ${platform}/${arch}: the search offers http and hash there`);
 
 // ---- 3. UI, seeds, manifest, docs ------------------------------------------------
 log("Copying the Command Centre and seed data…");
