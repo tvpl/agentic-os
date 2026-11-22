@@ -918,3 +918,11 @@ command }`, the only place C60's `TOKEN=[hidden]` can be read; (e) `GET /api/mem
   "two lines" of codex lists three, and the command is those three lines; C69's single factory for the usage recorder
   is not built (the routes call `recordAgentUsage` over `ctx.db`), for batch C.
 - **Abandoned:** nothing.
+
+Status of batch C (updated in the commit that closes each piece):
+
+- the route table, the pins, the migrations, the settings, the skill and the events (C61-C64, C66-C68): closed, the
+  pins already at 177 routes, 98 owner routes and 97 raised codes from batches A and B; the new cases are C61, C63,
+  C64, C66 and C68 in `tests/perguntar.contract.test.ts` and C66 in `tests/skills-parse.test.ts`; C61's "(status,
+  code) pairs of Coverage" is read as: what a route declares (its success answers and its own errors) is the Coverage
+  rows of `checks.md` less the common errors that apply to it, and every status a row names is declared or common

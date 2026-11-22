@@ -2,7 +2,14 @@ import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SkillCatalog, parseSkillFile, publishRegistry } from "@mordomo/core/internal";
+import { execFileSync } from "node:child_process";
+import {
+  SkillCatalog,
+  parseSkillFile,
+  publishRegistry,
+  resolvePaths,
+  seedHome,
+} from "@mordomo/core/internal";
 import { startSecureServer, type SecureServer } from "./helpers/securityHarness.js";
 import { makeTempHome } from "./helpers.js";
 
@@ -177,6 +184,58 @@ describe.skipIf(!POSIX)("C52 importing a folder whose SKILL.md tries to run code
       expect(res.body).not.toContain(s.ownerToken);
       expect(fs.existsSync(mark), `${language} ran`).toBe(false);
       expect(fs.existsSync(path.join(s.home, "skills", `evil-${language}`))).toBe(false);
+    }
+  });
+});
+
+describe("C66 the built-in skill brain-ask (cerebro-perguntar, door 2)", () => {
+  const repo = path.resolve(import.meta.dirname, "..");
+
+  it("C66 its SKILL.md is YAML the one parser reads as data, a seeded home's catalog loads it read_only with its five inputs and three providers, and the built-in skills are one more than at the feature's base", () => {
+    const raw = fs.readFileSync(path.join(repo, "skills", "brain-ask", "SKILL.md"), "utf8");
+    expect(raw.startsWith("---\n")).toBe(true);
+    const { data, content } = parseSkillFile(raw);
+    expect([data.name, data.mode, data.enabled]).toEqual(["Brain Ask", "read_only", true]);
+    expect((data.inputs as Array<{ name: string }>).map((i) => i.name)).toEqual([
+      "question",
+      "mode",
+      "take",
+      "scope",
+      "sources",
+    ]);
+    expect(data.providers).toEqual(["claude", "cursor", "codex"]);
+    expect(content).toContain("# Perguntar ao Cérebro");
+
+    // a home seeded from the bundle, as a first run does
+    const { paths, cleanup } = makeTempHome("mordomo-skills-c66-");
+    try {
+      seedHome(paths, repo);
+      const catalog = new SkillCatalog(paths);
+      const skill = catalog.load("brain-ask")!;
+      expect(skill).not.toBeNull();
+      expect([skill.mode, skill.enabled, skill.thick]).toEqual(["read_only", true, false]);
+      expect(skill.inputs.map((i) => [i.name, i.required])).toEqual([
+        ["question", true],
+        ["mode", true],
+        ["take", false],
+        ["scope", true],
+        ["sources", true],
+      ]);
+      expect(skill.providers).toEqual(["claude", "cursor", "codex"]);
+      // the built-in count: the feature's base shipped 16 and this one adds brain-ask
+      const base = execFileSync("git", ["ls-tree", "--name-only", "5f6c7ba:skills"], {
+        cwd: repo,
+        encoding: "utf8",
+      })
+        .split("\n")
+        .filter(Boolean);
+      expect(base).toHaveLength(16);
+      const seeded = catalog.list().map((s) => s.slug);
+      expect(seeded).toHaveLength(base.length + 1);
+      expect([...seeded].sort()).toEqual([...base, "brain-ask"].sort());
+      expect(new SkillCatalog(resolvePaths(repo)).list()).toHaveLength(17);
+    } finally {
+      cleanup();
     }
   });
 });
