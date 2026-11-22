@@ -15,12 +15,14 @@ import {
 } from "@mordomo/contracts";
 import { MIGRATIONS, SkillCatalog, parseSkillFile, resolvePaths } from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
+import { notesViewWorld } from "./helpers/notesViewWorld.js";
 import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
 
 /**
  * .specs/features/cerebro-perguntar, the contracts and the documents. Batch B: what docs/security.md says of
  * `mordomo mcp` (C49). Batch C, the cross-cutting checks of the API: the four routes in the table, the scopes and
- * docs/security.md (C61), no migration (C63), the settings (C64), the skill's words (C66) and no event (C68).
+ * docs/security.md (C61), no migration (C63), the settings (C64), the UI preferences (C65), the skill's words (C66) and
+ * no event (C68).
  */
 
 const repo = path.resolve(import.meta.dirname, "..");
@@ -307,5 +309,76 @@ describe("C68 no event is added", () => {
     const baseDoc = execFileSync("git", ["show", `${FEATURE_BASE}:docs/events.md`], { cwd: repo });
     expect(doc.length).toBe(baseDoc.length);
     expect(doc.equals(baseDoc)).toBe(true);
+  });
+});
+
+// ---- C65: the UI preferences ---------------------------------------------------------------------------------------
+
+describe("C65 UiPreferences.brain.ask", () => {
+  it("C65 { mode: reason_first, scope: folder } goes through PUT /api/ui-preferences and comes back the same (answer, GET and file); a stored mode other reads as direct and a scope of an unknown kind as null, the other preferences kept", async () => {
+    const w = await notesViewWorld("mordomo-perguntar-c65-");
+    try {
+      const folder = path.join(w.memory, "projetos");
+      const ask = { mode: "reason_first", scope: { kind: "folder", path: folder } };
+      const put = await w.call("PUT", "/api/ui-preferences", {
+        themePreset: "forest",
+        activeContext: null,
+        brain: { layout: "grid", ask },
+      });
+      expect(put.status, JSON.stringify(put.body)).toBe(200);
+      expect(put.body.brain.ask).toEqual(ask);
+      const got = await w.call("GET", "/api/ui-preferences");
+      expect([got.status, got.body.brain.ask]).toEqual([200, ask]);
+      const file = w.ctx.paths.uiPreferencesFile;
+      const stored = JSON.parse(fs.readFileSync(file, "utf8"));
+      expect(stored.brain.ask).toEqual(ask);
+      // the other kinds of scope and null go and come back too
+      for (const scope of [
+        { kind: "all" },
+        { kind: "context", id: "projeto-x" },
+        { kind: "notes", paths: [path.join(w.memory, "notes", "a.md")] },
+        null,
+      ]) {
+        const next = { mode: "direct", scope };
+        const again = await w.call("PUT", "/api/ui-preferences", { brain: { ask: next } });
+        expect([again.status, again.body.brain.ask], JSON.stringify(scope)).toEqual([200, next]);
+        expect(JSON.parse(fs.readFileSync(file, "utf8")).brain.ask, JSON.stringify(scope)).toEqual(next);
+      }
+
+      // a stored value this version cannot read: the part reads its default, nothing else is lost
+      for (const [stored, read] of [
+        [
+          { mode: "other", scope: { kind: "folder", path: folder } },
+          { mode: "direct", scope: { kind: "folder", path: folder } },
+        ],
+        [
+          { mode: "reason_first", scope: { kind: "galaxy", path: folder } },
+          { mode: "reason_first", scope: null },
+        ],
+        [
+          { mode: "other", scope: { kind: "galaxy" } },
+          { mode: "direct", scope: null },
+        ],
+      ] as const) {
+        fs.writeFileSync(
+          file,
+          JSON.stringify({
+            themePreset: "forest",
+            activeContext: "projeto-x",
+            brain: { layout: "grid", ask: stored },
+          }),
+        );
+        const loaded = await w.call("GET", "/api/ui-preferences");
+        expect(loaded.status).toBe(200);
+        expect(loaded.body.brain.ask, JSON.stringify(stored)).toEqual(read);
+        expect([loaded.body.themePreset, loaded.body.activeContext, loaded.body.brain.layout]).toEqual([
+          "forest",
+          "projeto-x",
+          "grid",
+        ]);
+      }
+    } finally {
+      await w.close();
+    }
   });
 });

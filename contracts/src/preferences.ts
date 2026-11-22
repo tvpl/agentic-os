@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import { BrainSettingsSchema, MicroAppSchema } from "./settings.js";
+import { ASK_MODES, AskScopeSchema } from "./api/memory.js";
 
 /**
  * One desktop window: stage pixels, stacking order and per-widget config.
@@ -89,6 +90,16 @@ export const UI_SHELLS = ["moldura", "nucleo"] as const;
 export const UiShellSchema = z.enum(UI_SHELLS);
 export type UiShell = z.infer<typeof UiShellSchema>;
 
+/**
+ * The last ask of this machine (.specs/features/cerebro-perguntar, door 6): the mode and the scope the view Perguntar
+ * opens with. A mode this version cannot read is `direct`, a scope it cannot read is `null` (the whole brain), and an
+ * unreadable value is no value; the other preferences are kept.
+ */
+const BrainAskSchema = z.object({
+  mode: z.enum(ASK_MODES).catch("direct"),
+  scope: AskScopeSchema.nullable().catch(null),
+});
+
 /** How many dashboards `UiPreferences.dashboards.lastViewed` remembers (amendment 28). */
 const DASHBOARDS_LAST_VIEWED_MAX = 200;
 
@@ -124,7 +135,7 @@ export const UiPreferencesSchema = z.object({
   /** The pod arcs: editable, persisted, one HUD for every space. */
   hud: SafeHudSchema.default(DEFAULT_HUD),
   /** Second Brain view preferences; the shape is owned by the frontend (`brain/engine/world.ts`). */
-  brain: BrainSettingsSchema.default({}),
+  brain: BrainSettingsSchema.extend({ ask: BrainAskSchema.optional().catch(undefined) }).default({}),
   /**
    * The active work context of this machine (.specs/features/cerebro-contextos, door 5): one for the frame, the Núcleo
    * and the CLI; `null` is "the whole brain". Deleting the context it names sets it back to `null`.

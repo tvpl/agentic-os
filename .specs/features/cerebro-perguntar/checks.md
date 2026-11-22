@@ -926,3 +926,6 @@ Status of batch C (updated in the commit that closes each piece):
   C64, C66 and C68 in `tests/perguntar.contract.test.ts` and C66 in `tests/skills-parse.test.ts`; C61's "(status,
   code) pairs of Coverage" is read as: what a route declares (its success answers and its own errors) is the Coverage
   rows of `checks.md` less the common errors that apply to it, and every status a row names is declared or common
+- the UI preferences (C65, door 6): closed; `UiPreferences.brain.ask` is `{ mode, scope }` in
+  `contracts/src/preferences.ts` (the brain's schema extended there, since `AskScopeSchema` lives in
+  `contracts/src/api/memory.ts`, which `settings.ts` cannot import without a cycle), each part read tolerantly
