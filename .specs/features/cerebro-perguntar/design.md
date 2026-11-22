@@ -2,7 +2,7 @@
 
 Decide a vista "Perguntar" do cérebro (escopo, modo, pergunta, visão do dono, espera, resposta com citações, retorno sobre a
 visão, provocação, perguntas recentes), as entradas que a abrem, a ação "Perguntar sobre esta nota" da vista de notas e a
-seção "Agentes (MCP)" das Configurações, com os estados, o texto nas duas línguas e o movimento. Ficam fora daqui: o texto que
+aba "Agentes (MCP)" das Configurações, com os estados, o texto nas duas línguas e o movimento. Ficam fora daqui: o texto que
 as ferramentas MCP devolvem a um agente e o formato de `answer.json` (são do `plan.md`, doors 3 e 4), e o `SKILL.md` de
 `brain-ask` (lido por um agente, não por uma pessoa).
 
@@ -18,7 +18,7 @@ as ferramentas MCP devolvem a um agente e o formato de `answer.json` (são do `p
 | `.specs/features/cerebro-paineis/design.md` (Pergunta) | a citação é `nome § seção`, abre `/brain?sel=<fileId>`; o cartão "Como esta resposta foi feita" é o mesmo do painel de pergunta |
 | `.specs/features/cerebro-natureza/design.md` | o rótulo de natureza (`plano`, `hipotese`, `opiniao`) é o mesmo chip das listas de busca e de revisões |
 | `.specs/features/cerebro-natureza/design.md` e `cerebro-rituais/design.md` | o estado de erro (mensagem e "Tentar de novo"), o de carregando (spinner e "Carregando…") e o `role="status"` para o estado lido por leitor de tela |
-| `apps/command-centre/src/views/Settings.tsx` | a seção nova é mais uma `settings-section` com o título em `h2.settings-section-title`, com cartões `.card.stack` |
+| `apps/command-centre/src/views/Settings.tsx` | a tela nova é mais uma aba (`TabId` `agents-mcp`) do grupo `think`, logo depois de `memory`, com rótulo e palavras de busca (`settings.keys.agentsMcp`); o título é o `h2.settings-section-title` da aba e o conteúdo são cartões `.card.stack` |
 | `.specs/features/limpeza-legado/design.md` | um só renderizador de Markdown (`components/Markdown.tsx`); nada de CSS ou chave de tradução sem uso |
 
 ## Vista - Perguntar
@@ -102,9 +102,9 @@ Rota `/brain/ask` na moldura; no Núcleo, o mesmo conteúdo num painel da cena d
 - **Vista de notas:** no menu de ações da nota aberta, a linha "Perguntar sobre esta nota" (`MessageSquarePlus`), que abre
   `/brain/ask` com o escopo `notes` dela e o foco na pergunta.
 
-## Seção - Agentes (MCP) das Configurações
+## Aba - Agentes (MCP) das Configurações
 
-Uma `settings-section` nova, "Agentes (MCP)", logo depois de "Memória". Três cartões `.card.stack`, nesta ordem:
+Uma aba nova, "Agentes (MCP)", no grupo "O que pensa" (`think`), logo depois de "Memória"; a busca das Configurações a acha também por "mcp claude cursor codex conectar agentes" (en "mcp claude cursor codex connect agents"). Três cartões `.card.stack`, nesta ordem:
 
 1. **Conectar.** Frase de apoio, 12px: "Ligue o MordomoOS ao Claude Code, ao Cursor ou ao Codex para que eles busquem e leiam
    o seu cérebro." Um bloco por CLI (Claude Code, Cursor, Codex), cada um com: o nome (13px, peso 600); o estado à direita
@@ -139,7 +139,7 @@ Uma `settings-section` nova, "Agentes (MCP)", logo depois de "Memória". Três c
 - Tudo dentro de `@media (prefers-reduced-motion: no-preference)`; fora dela nada se move e tudo aparece pronto. Nenhum
   estado depende do movimento: cada um tem texto.
 
-## Texto (as duas línguas; as chaves da vista entram em `locales/brain.ts` e as da seção em `locales/settings.ts`, `en` e `ptBR` com as mesmas chaves)
+## Texto (as duas línguas; as chaves da vista entram em `locales/brain.ts` e as da aba em `locales/apps.ts`, `en` e `ptBR` com as mesmas chaves)
 
 | Onde | pt-BR | en |
 | ---- | ----- | -- |
@@ -164,8 +164,8 @@ Uma `settings-section` nova, "Agentes (MCP)", logo depois de "Memória". Três c
 | vazio | Nenhuma pergunta ainda. · O que eu já decidi sobre {area}? · O que eu já decidi este mês? · Quais planos meus ainda não viraram realidade? · O que está parado há mais tempo? | No questions yet. · What have I already decided about {area}? · What have I decided this month? · Which of my plans have not become real yet? · What has been stalled the longest? |
 | lista | Carregando… · Não deu para carregar as perguntas. | Loading… · Could not load the questions. |
 | entradas | Perguntar · Perguntar ao cérebro · Perguntar sobre esta nota | Ask · Ask the brain · Ask about this note |
-| seção | Agentes (MCP) | Agents (MCP) |
+| aba | Agentes (MCP) · mcp claude cursor codex conectar agentes | Agents (MCP) · mcp claude cursor codex connect agents |
 | conectar | Ligue o MordomoOS ao Claude Code, ao Cursor ou ao Codex para que eles busquem e leiam o seu cérebro. · Ligado · Não ligado · Cole em {file}. · Copiar · Copiado · Depois de ligar, reabra o programa. · Não deu para ler {file}. | Connect MordomoOS to Claude Code, Cursor or Codex so they can search and read your brain. · Connected · Not connected · Paste into {file}. · Copy · Copied · After connecting, reopen the program. · Could not read {file}. |
 | ferramentas | As ferramentas leem como um agente: pastas escondidas dos agentes ficam de fora. · lê · propõe · do dono · vai para a caixa de revisão | Tools read as an agent: folders hidden from agents are left out. · reads · proposes · owner's · goes to the review inbox |
 | uso | O que os agentes mais leem · {n} leituras desde {date} · Por ferramenta · Por programa · Mais lidos · última vez {time} · Execuções do {provider} · Nenhum agente leu o cérebro ainda. | What agents read most · {n} reads since {date} · By tool · By program · Most read · last {time} · {provider} runs · No agent has read the brain yet. |
-| erro da seção | Não deu para carregar os agentes. · Tentar de novo | Could not load the agents. · Try again |
+| erro da aba | Não deu para carregar os agentes. · Tentar de novo | Could not load the agents. · Try again |

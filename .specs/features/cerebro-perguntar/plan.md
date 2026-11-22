@@ -86,7 +86,7 @@ flowchart TD
    `GET /api/memory/hygiene` (exist)
 7. cada leitura de um agente (principal `mcp` ou credencial de execução, exists) por recall, busca, links ou `note_read` soma
    chamadas por ferramenta, por cliente e por caminho num registro em `meta` (door 7)
-8. a seção Agentes (MCP) das Configurações (door 6) lê `GET /api/mcp` (door 7): o estado de cada CLI pelo
+8. a aba Agentes (MCP) das Configurações (door 6) lê `GET /api/mcp` (door 7): o estado de cada CLI pelo
    `discoverMcpServers` (exists), o comando de cada um, as ferramentas e o uso
 
 ## Impact
@@ -144,7 +144,7 @@ Só as rotas que esta feature acrescenta ou cuja assinatura muda.
 | 3. O arquivo da resposta e a conferência | `artifacts/<run>/answer.json`, no máximo 64 KB: `{ "v": 1, "paragraphs": [{ "text": ≤ 1200 caracteres, "citations": [{ "path", "section" }] (1 a 6) }] (1 a 8), "takeFeedback"?: { "agrees": [item], "disagrees": [item], "missing": [item] } com item = { "text": ≤ 400, "citations": [1 a 3] }, ao menos um item no total, só em `reason_first`, "provocation"?: { "kind": "contradiz" \| "complica" \| "falta", "text": ≤ 300 caracteres e no máximo 2 frases, "citation": { "path", "section" } } }`; a conferência recusa a resposta inteira, com o motivo, por: tamanho, JSON inválido, esquema, `takeFeedback` em `direct` ou ausente em `reason_first`, caminho fora do índice, excluído pela política de hoje, numa pasta escondida dos agentes, fora do escopo, ou `section` que não é um título de seção do arquivo segundo `splitSections`; a natureza (`plano`, `hipotese`, `opiniao`) de cada citação é posta pelo servidor a partir do índice, nunca lida da resposta | guardar a resposta já conferida: uma pasta escondida depois continuaria citada numa resposta antiga; aceitar a resposta e só tirar as citações ruins: uma resposta com uma citação inventada é uma resposta em que não se pode confiar, e cortá-la em silêncio esconde o defeito |
 | 4. As ferramentas MCP novas | `search` (`query` obrigatório, `mode?` `auto`/`text`/`semantic`, `context?`, `limit?` 1 a 20, padrão 10) → uma linha por arquivo `<caminho> (<seção>?) — <trecho>`; `links` (`path` obrigatório) → `Backlinks:` e `Links:` com os quebrados marcados `(quebrado)`; `hygiene` (`perKind?` 1 a 20, padrão 10) → as listas de órfãos, links quebrados, ponteiros de roteador quebrados e arquivos parados; `GET /api/memory/links` aceita `p` (caminho absoluto ou relativo a `memory/`) e exatamente um de `id` e `p` (`400 validation` com os dois ou nenhum) | expor `graph` pelo MCP: devolve até milhares de nós e arestas, que não cabem no contexto de um agente e que `links` e `search` respondem por partes |
 | 5. O principal `mcp` | o `mordomo mcp` manda `x-mordomo-as: mcp` e `x-mordomo-client: <nome>` (o `clientInfo.name` do `initialize`, `[a-z0-9._-]{1,40}` ou `desconhecido`) com o token do dono; o servidor só aceita `x-mordomo-as` junto do token do dono, e então o principal é `{ kind: "mcp", client }` com público `agents`; `MCP_ROUTES` é a lista fixa das rotas que as 13 ferramentas chamam, e qualquer outra rota é `403 forbidden`; um `x-mordomo-as` com outro valor é `400 validation`; **não é contenção**: quem tem o token do dono pode não mandar o cabeçalho, e `docs/security.md` diz isso | uma credencial própria do MCP (`mcp_…`) emitida pela tela: o processo do `mordomo mcp` roda como o usuário e lê o token do dono no disco de qualquer jeito, então um segundo segredo custaria rotação, revogação e armazenamento sem fechar nada; manter o token do dono sem público: é o furo da C7 que o dono pediu para fechar |
-| 6. Rota e lugar das telas | a vista Perguntar é o modo `ask` de `BrainMode`, na rota `/brain/ask` nos dois shells, com as entradas da Revisão semanal (botão da barra do cérebro, linha do menu da cena, comando `global` da paleta) e a tecla `a` do escopo `view:brain`; a seção nova `Agentes (MCP)` das Configurações tem o id `agents-mcp`; `UiPreferences.brain.ask = { mode: "direct" \| "reason_first", scope: AskScope \| null }` | uma caixa de pergunta solta no grafo: não tem onde mostrar a resposta longa, o histórico nem a visão do dono, e o grafo já tem a busca |
+| 6. Rota e lugar das telas | a vista Perguntar é o modo `ask` de `BrainMode`, na rota `/brain/ask` nos dois shells, com as entradas da Revisão semanal (botão da barra do cérebro, linha do menu da cena, comando `global` da paleta) e a tecla `a` do escopo `view:brain`; a aba nova `Agentes (MCP)` das Configurações tem o `TabId` `agents-mcp`, no grupo `think`, depois de `memory`; `UiPreferences.brain.ask = { mode: "direct" \| "reason_first", scope: AskScope \| null }` | uma caixa de pergunta solta no grafo: não tem onde mostrar a resposta longa, o histórico nem a visão do dono, e o grafo já tem a busca |
 | 7. O registro de uso dos agentes | a chave `agents.usage` de `meta`: `{ "v": 1, "since": <ms>, "calls": <n>, "byTool": { <ferramenta>: { "calls", "lastAt" } }, "byClient": { <cliente>: { "calls", "lastAt" } }, "paths": { <caminho absoluto>: { "reads", "lastAt" } } }` com no máximo 500 caminhos (sai o de menos leituras e, no empate, o mais antigo, como `recordRecall`) e 50 clientes; a ferramenta de uma execução é o nome da rota (`recall`, `search`, `links`, `note_read`) e o cliente é `run:<provedor>`; `GET /api/mcp` devolve os 20 caminhos mais lidos que a política de hoje mostra | contar dentro de `memory.recall.stats`: aquele registro é de todo recall, inclusive o da interface, e mudar o que ele conta muda um número que a tela de Configurações da C9 já mostra |
 
 - Nothing else in this change is hard to reverse: os textos e a ordem da tela, quantas perguntas a lista mostra, o tamanho do
@@ -298,7 +298,7 @@ O dono vê se cada CLI tem o MordomoOS ligado, copia o comando para ligar e vê 
 74. WHEN o dono abre Configurações › Agentes (MCP) THEN o sistema SHALL mostrar a lista das ferramentas com o que cada uma faz e a marca "lê", "propõe" ou "do dono", e a linha "As ferramentas leem como um agente: pastas escondidas dos agentes ficam de fora."
 75. WHEN `usage.calls` é 0 THEN o sistema SHALL mostrar o estado vazio "Nenhum agente leu o cérebro ainda." e, com chamadas, as chamadas por ferramenta, por cliente com a última vez, e os 20 caminhos mais lidos, cada um abrindo o arquivo
 76. IF `GET /api/mcp` falha THEN o sistema SHALL mostrar a linha de erro de Configurações com "Tentar de novo"
-77. The system SHALL ter os textos da seção nas duas línguas e passar no axe WCAG A/AA, nos temas claro e escuro
+77. The system SHALL ter os textos da aba nas duas línguas e passar no axe WCAG A/AA, nos temas claro e escuro
 
 **Independent test:** com um `~/.claude.json` de teste que tem `mcpServers.mordomo`, a seção mostra Claude Code "Ligado" e os
 outros dois "Não ligado"; depois de duas chamadas `search` pelo servidor MCP de teste, o uso mostra `search` com 2 e o caminho
@@ -321,21 +321,14 @@ lido.
 
 | Assumption | Chosen default | Rationale | Confirmed? |
 | ---------- | -------------- | --------- | ---------- |
-| Quantas provocações por resposta | zero ou uma, nunca genérica; sem nota que contradiga, complique ou complete, não há provocação | o roteiro diz "uma provocação por resposta", mas a pesquisa que ele cita mostra que a genérica cansa e é ignorada; forçar uma faz o modelo inventar | n |
-| As ferramentas do MCP leem como agente | sim (door 5), já nesta feature | é o furo de segurança da C7 que o status deixou para a C10; muda o que quem já usa o MCP vê | n |
 | Modo padrão | `direct`, com o último modo lembrado por máquina | o "raciocine primeiro" pede escrever antes; como padrão, viraria atrito em toda pergunta rápida | n |
 | Casas que já gravam `memorySkills` | mantêm a lista; a vista mostra "Perguntar está desligado" com "Ligar" | é o que a C6b fez com `dashboard-answer`; nunca mudar sozinho a lista do que lê a memória | n |
 | Uma pergunta por vez | `409 ask_in_progress`, e a vista abre a que está em andamento | cada pergunta gasta uma execução paga do provedor; duas ao mesmo tempo por um clique duplo custam o dobro | n |
 | Abstenção sem registro | uma pergunta que o recall abstém não entra em "Perguntas recentes" | não houve execução; guardar exigiria a tabela que a door 1 rejeita | n |
-| Teto de peso | 16 KB de JS gzip e 2 KB de CSS gzip acima de `cerebro-busca-significado` (vista Perguntar, entradas nos dois shells, seção Agentes (MCP), a história da galeria e os textos) | a C8 mediu 13,1 KB para uma vista de cinco passos e a C9 7,3 KB para um bloco de Configurações; esta tem uma vista e um bloco | n |
+| Teto de peso | 16 KB de JS gzip e 2 KB de CSS gzip acima de `cerebro-busca-significado` (vista Perguntar, entradas nos dois shells, aba Agentes (MCP), a história da galeria e os textos) | a C8 mediu 13,1 KB para uma vista de cinco passos e a C9 7,3 KB para um bloco de Configurações; esta tem uma vista e um bloco | n |
 | Sessão de telas com o dono | junto da sessão pendente da C8 e da C9 (AD-048 c), depois da construção e antes do verificador | a sessão de andar as telas nunca rodou; juntar as três custa uma sessão só | n |
 
-**Open questions:**
-
-| # | Kind | Question | Until answered |
-| - | ---- | -------- | -------------- |
-| 1 | blocks | As ferramentas do MCP passam a ler como agente nesta feature (door 5, padrão), ou ficam com o token do dono e só o limite escrito? | AC 55 a 58 e 64 não têm forma; o resto da S6 e a S7 não dependem |
-| 2 | open | Zero ou uma provocação, nunca genérica (padrão), ou sempre exatamente uma, como a linha do roteiro? | AC 31 e 34 estão escritos com o padrão |
+**Open questions:** none - all resolved or logged above. As duas perguntas do plano foram respondidas pelo dono em 22/11/2026 pelas recomendações (AD-052): o MCP lê como agente nesta feature (door 5) e a provocação é zero ou uma, nunca genérica (AC 31, AC 34).
 
 ## Observable
 
@@ -365,7 +358,7 @@ lido.
 | ferramentas MCP `search`, `links`, `hygiene` | what it prints when it fails | AC 60; o `isError` com a mensagem que o servidor MCP já devolve (`stdio.ts:73-76`) |
 | ferramentas MCP `search`, `links`, `hygiene` | flags and defaults | AC 59, 60, 62 |
 | copy `SKILL.md` de `brain-ask` | structure, tone, what the reader does next | door 2; a skill é lida por um agente: o formato de `answer.json`, as regras de citação e a de não inventar provocação |
-| copy da vista e da seção | structure, tone | `design.md`, seção "Texto" |
+| copy da vista e da aba | structure, tone | `design.md`, seção "Texto" |
 
 ## Sources
 
