@@ -871,3 +871,39 @@ Status of batch B (updated in the commit that closes each piece):
 - the agents' usage and `GET /api/mcp` (S7 API, door 7: C51-C60) and C42: closed, every proof green in
   `tests/perguntar.usage.test.ts`, `tests/perguntar.layer.test.ts` (C51, C55) and `tests/perguntar.mcp.test.ts` (C42),
   each proof line run alone and running only its check's cases; the pins moved with the route (176 -> 177)
+
+- **Boundary (batch B):** C36-C60 and C8's case of the principal `mcp` closed at `7c05e9a` (doors 4 and 5 in
+  `491cc7f`, door 7 in `7c05e9a`), so C8 is now closed whole. On that tree `npm run build`, `npm run typecheck` and
+  `npm run lint` exit 0, every `Proof:` line of C8 and C36-C60 passes and runs only its check's cases (C38 after the
+  build), and `npx vitest run` at the root has one failure, `tests/paineis.refresh.test.ts` C13 (date-dependent, as on
+  the base). Pins batch B moved: routes 176 -> 177 (`api.contract` C1 and C53, `contracts.api` C2 and C58,
+  `api.openapi` C15, `device-scopes` C43), non-public 174 -> 175 (`device-scopes` C1, C3, C9), owner 97 -> 98
+  (`api.contract` C3, `device-scopes`, the owner row of `docs/security.md` and the counts `paineis.contract` C60 and
+  `memoria.contract` C82 read off it), checked answers 174 -> 175 (`api.openapi` C21), refusal and event scenarios
+  176 -> 177 (`contractWorld.ts` gains `GET /api/mcp`), `EXPECTED_ROUTE_SCOPES`, the `sdk.api-thin` amendments of
+  `device-scopes`, the internal barrel (`sdk.surface` C38: `agentUsage`, `mcpClients`, `recordAgentUsage`, completing
+  C67's list), `api.openapi` C17 (a `400` on every guarded route, see (b) below) and `rituais.access` C73 (the MCP tool
+  list gains `search`, `links` and `hygiene`). Raised codes stay 97: no new code. No migration, setting key or event.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) `principalFromHeaders`,
+  `MCP_ROUTES` and the gate are in `apps/api/src/server.ts`; `mcpClientName`, `MCP_TOOL_KINDS` and the three tools in
+  `apps/api/src/mcp/mordomo.ts` (`httpApi(base, token, client)` reads the name on each call, set by `initialize`
+  through `McpServer.onInitialize`); the principal is named `mcp:<client>` in the log, and `startedByOf` names it
+  `owner` (C48); (b) an `x-mordomo-as` other than `mcp` is refused by the gate before any route, so the common
+  `400 validation` now applies to every guarded route (`contracts/src/api/errors.ts`), and the OpenAPI document lists
+  a `400` on each; (c) Landing row 8: the hygiene route had no list of broken note links (its `dangling-link` is the
+  router checker), so it answers `brokenLinks: { count, items }` beside `items` (the kinds two suites and the screen
+  fix are unchanged), and its stale files are now judged by the same row filter as its orphans (they ignored it, so a
+  folder hidden from the caller showed there); (d) Landing row 9: a connected client carries `server: { name,
+command }`, the only place C60's `TOKEN=[hidden]` can be read; (e) `GET /api/memory/note` answers a note hidden from
+  the agents (the MCP) as it answers a device, `404 not_found` as a missing note; the `links` tool turns a `404` into
+  `File not found: <path>`; (f) usage: a read counts once per call with its distinct paths, also when `record=false`
+  and when the recall abstains, and only on success; the client of a run is `run:<provider of its row>`; `byTool` and
+  `byClient` are lists `{ name, calls, lastAt }` by calls, `paths` by reads, then the newest `lastAt`, then the path;
+  (g) GET /api/mcp is `mcp.overview` in `contracts/src/api/system.ts` (tag `system`), its route in
+  `apps/api/src/routes/mcp.ts`, `mcpClients` in `core/src/connectors/mcpClients.ts` (a command is the program when its
+  whole text or its first word has the file name `mordomo`, `.cmd` or `.exe`, either path spelling), `agentUsage` and
+  `recordAgentUsage` in `core/src/memory/agentUsage.ts`; (h) readings of the claims: C40's "nothing of segredo.md" for
+  `note_read` and `links`, which name the file in their own argument, is an error with none of its content; C52's
+  "two lines" of codex lists three, and the command is those three lines; C69's single factory for the usage recorder
+  is not built (the routes call `recordAgentUsage` over `ctx.db`), for batch C.
+- **Abandoned:** nothing.
