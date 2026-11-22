@@ -634,6 +634,15 @@ Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.
 `reduce` (design.md "Movimento")
 Proof: `npm run test -w apps/command-centre -- src/views/settings/agentsMcp.test.tsx -t "C108 "`
 
+## Correções do lote A
+
+- **C13, literal corrected by the orchestrator on 22/11/2026:** the check names the preamble's section as "`(início)`, the
+  recall's own label", but `splitSections` and the recall both label it `(top)` (`core/src/memory/sections.ts:27`). The
+  claim's rule ("only the section name `splitSections` gives its preamble") is unchanged and is what the proof asserts; only
+  the quoted literal was wrong, so the proof stands with `(top)`. Reported by the builder of batch A, not edited by it.
+- **C8, the `mcp` case moves to batch B:** the principal `mcp` is door 5, which batch B builds; until then the header is
+  ignored. C8 closes when that case is green.
+
 ## Coverage
 
 | Set (size)                                                            | Member -> proof                                                                                                                                                                                                                                                                                                                                                             | Unproven |
