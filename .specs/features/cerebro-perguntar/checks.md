@@ -1226,8 +1226,8 @@ Status of batch F2, the round 2 fixes (updated in the commit that closes each pi
   class `ask` in its first compound) and `tests/e2e/ask.spec.ts` (the Núcleo at 1280×800: `/brainstorm` in the console
   opens its skill-input form, whose `.ask-fields` is `display: grid` with two non-empty column tracks and its two fields
   side by side; `/brain/ask` opened once, its column measured at `max-width: 720px`, and back on `/brain`, the same
-  display, two tracks, fields side by side and box within 1px). The stylesheet changed for it: every selector is
-  `.ask …`; the console's form is itself a `form.ask` holding an `.ask-fields`, so the view's root and its fields are
+  display, two tracks, fields side by side and box within 1px, and the form's own padding, overflow, least height,
+  font size and colour as they were). The stylesheet changed for it: every selector is `.ask …`; the console's form is itself a `form.ask` holding an `.ask-fields`, so the view's root and its fields are
   named `.ask:has(.ask-col)` (the `.ask` that holds the column), which keeps both the root's padding and the fields'
   flex column off the console; the folder popover, portalled to `#modal-root`, carries `ask` beside `ask-folders`
   (`.ask.ask-folders`). The suites that read the stylesheet by selector moved with it, no assertion or value changed:

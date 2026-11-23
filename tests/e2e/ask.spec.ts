@@ -739,10 +739,24 @@ for (const shell of SHELLS)
     await arranged(true);
   });
 
-/** The console's skill-input form's fields container: its display, its non-empty column tracks and its box. */
+/**
+ * The console's skill-input form's fields container: its display, its non-empty column tracks and its box; and the
+ * form's own box properties, which a rule of the view's root (`.ask`, the form's class too) would reach.
+ */
 const consoleFields = async (page: Page) => {
-  const fields = page.locator('[data-testid="console-ask"] .ask-fields');
+  const form = page.locator('[data-testid="console-ask"]');
+  const fields = form.locator(".ask-fields");
   await expect(fields).toBeVisible();
+  const own = await form.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      padding: s.padding,
+      overflow: s.overflow,
+      minHeight: s.minHeight,
+      fontSize: s.fontSize,
+      color: s.color,
+    };
+  });
   const style = await fields.evaluate((el) => {
     const s = getComputedStyle(el);
     return { display: s.display, columns: s.gridTemplateColumns };
@@ -754,6 +768,7 @@ const consoleFields = async (page: Page) => {
     tracks: style.columns.split(/\s+/).filter((t) => t !== "" && parseFloat(t) > 0).length,
     box: await box(fields),
     tops: [(await box(labels.nth(0))).y, (await box(labels.nth(1))).y],
+    own,
   };
 };
 
@@ -795,4 +810,5 @@ test("C117 the Núcleo at 1280×800: the console's skill-input form keeps its tw
   expect(Math.abs(after.tops[0]! - after.tops[1]!), "the two fields side by side after").toBeLessThanOrEqual(
     1,
   );
+  expect(after.own, "the form's own padding, overflow, least height, size and colour").toEqual(before.own);
 });
