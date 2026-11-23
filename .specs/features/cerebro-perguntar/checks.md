@@ -941,3 +941,24 @@ Status of batch C (updated in the commit that closes each piece):
 - the docs (C71): closed; `docs/memory-guide.md` gains `### Perguntar ao cérebro` at the end of section 7 (after
   "Busca por significado"), and `docs/user-manual.md` a bullet "Ask the brain" in 3.1 and a section `3.2 Agents through
 MCP` with the tab **Agentes (MCP)** and C52's three commands byte for byte
+
+- **Boundary (batch C):** C61-C71 closed at `802411c` (C61, C63, C64, C66 and C68 in `0d6b96a`, C65 in `9e2a498`,
+  C69 in `2c9c140`, C70 in `90708de`, C71 in `802411c`). On that tree `npm run build`, `npm run typecheck` and
+  `npm run lint` exit 0, every `Proof:` line of C61-C71 (27 lines) passes and runs only its check's cases, and
+  `npx vitest run` at the root has one failure, `tests/paineis.refresh.test.ts` C13 (date-dependent, as on the base).
+  No pin moved in this batch: the routes stay 177, the owner routes 98, the raised codes 97, the migrations 34, the
+  settings' top-level keys 30, the events 29; the built-in skills are 17 (16 at the base). No Landing row added, no
+  new door, no migration, setting key or event; the internal barrel is unchanged (C67's seven names, from A and B).
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) C61's "(status, code)
+  pairs of Coverage" is checked against the Coverage rows of this file: a route's own declarations (success answers
+  and own errors) are Coverage's less the common errors that apply to it, and every status a row names is declared or
+  common; a route whose Coverage has no codes row (`GET /api/memory/ask`, `GET /api/memory/ask/:id`, `GET /api/mcp`,
+  `memory.links`) is checked by its statuses; (b) `UiPreferences.brain.ask` is `BrainSettingsSchema.extend({ ask })` in
+  `contracts/src/preferences.ts`, each part with its own `catch` (`direct`, `null`) and the whole optional with
+  `catch(undefined)`; (c) C69's factory is `agentServices(engine)` in `apps/api/src/context.ts`, which builds
+  `AppContext.ask` and the new `AppContext.agentUsage` (`record`, `read`); `routes/memory.ts` and `routes/mcp.ts`
+  reach `agents.usage` only through it; (d) C70's ask leaves `recall.stats` as it was (batch A's (b)), asserted beside
+  the UI's recall being counted; (e) the docs: `### Perguntar ao cérebro` at the end of section 7 of the memory guide,
+  and in the user manual a bullet in 3.1 and a new `3.2 Agents through MCP`, which names the view Perguntar and the tab
+  Agentes (MCP) that batches D and E build.
+- **Abandoned:** nothing.
