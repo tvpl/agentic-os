@@ -1132,3 +1132,10 @@ Status of batch F1, the round 1 fixes (updated in the commit that closes each pi
   `tests/perguntar.layer.test.ts` (`memoryHygiene` with an `allow` and an `allowPath` that refuse `privado/`, and with
   neither); the mutant F4 of round 1 (`(link) => true || ...` at `core/src/memory/hygiene.ts:201-202`), re-injected in a
   scratch `git worktree`, fails both
+- every run status mapped to an ask status (C113) and a real restart (C114): closed, every proof green, each run alone
+  and running only its check's cases: C113 in `tests/perguntar.layer.test.ts` (ten cases, one per `RunStatus` member and
+  three for `done`: answered, refused and failed by the file) and in `tests/perguntar.routes.test.ts` (`timed_out` and
+  `interrupted` through `GET /api/memory/ask/:id`); C114 in `tests/perguntar.routes.test.ts` through `startServer` over
+  the world's home on a free port, so `ctx.start()` runs `recoverInterrupted`; `judge` in `apps/api/src/routes/ask.ts`
+  is exported as it was, its env typed as the core's (`Parameters<typeof resolveAskScope>[0]`) so its declaration can be
+  emitted, with no change of behaviour

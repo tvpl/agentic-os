@@ -38,7 +38,8 @@ function askEnv(ctx: AppContext) {
   const view = audienceView(ctx, "agents");
   return { view, env: { db: ctx.db, paths: ctx.paths, settings: ctx.settings(), hidden: view.hidden } };
 }
-type AskEnv = ReturnType<typeof askEnv>["env"];
+/** What `judge` reads: the environment of the core's ask (`askEnv`'s `env`). */
+type AskEnv = Parameters<typeof resolveAskScope>[0];
 
 /** The scope a run's `scope` input names (the inverse of what `resolveAskScope` writes); null for one it cannot read. */
 function scopeFromInput(input: string | undefined): AskScope | null {
@@ -63,9 +64,10 @@ interface Judgement {
 
 /**
  * What an ask reads as today (AC 7-13, door 3): `running` while its run is open (its file is not read), `failed` when
- * the run ended otherwise than `done` or wrote no `answer.json`, else the answer's verdict by today's rules.
+ * the run ended otherwise than `done` or wrote no `answer.json`, else the answer's verdict by today's rules. Exported
+ * for its own layer (`tests/perguntar.layer.test.ts` C113), which calls it with no HTTP.
  */
-function judge(env: AskEnv, run: RunRecord, inputs: Readonly<Record<string, string>>): Judgement {
+export function judge(env: AskEnv, run: RunRecord, inputs: Readonly<Record<string, string>>): Judgement {
   if (OPEN.has(run.status)) return { status: "running" };
   if (run.status !== "done") return { status: "failed", reason: `A execução terminou em ${run.status}.` };
   let bytes: Buffer;

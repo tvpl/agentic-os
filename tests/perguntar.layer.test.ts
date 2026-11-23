@@ -13,6 +13,7 @@ import {
 } from "@mordomo/core/internal";
 import { audienceOf, audienceView } from "../apps/api/src/access.js";
 import { mcpClientName } from "../apps/api/src/mcp/mordomo.js";
+import { judge } from "../apps/api/src/routes/ask.js";
 import { principalFromHeaders } from "../apps/api/src/server.js";
 import { askWorld, paragraph, threeNotes, type AskWorld, type Json } from "./helpers/perguntarWorld.js";
 
@@ -799,4 +800,55 @@ describe("C112 the hygiene's broken links never name a file hidden from the call
       await own.close();
     }
   });
+});
+
+describe("C113 every run status maps to an ask status, at its own layer (judge)", () => {
+  const NOW_C113 = Date.now();
+  /** A brain-ask row of `status` in the shared world, its answer written when `content` is given; the judgement. */
+  const judged = (status: string, content?: unknown) => {
+    const id = `c113-${status}-${++seq}`;
+    w.askRow({
+      id,
+      status,
+      createdAt: NOW_C113 - 1000,
+      ...(status === "done" ? { finishedAt: NOW_C113 } : {}),
+    });
+    if (content !== undefined) w.writeAnswer(id, content);
+    const run = w.ctx.runs.get(id)!;
+    const inputs = run.request?.kind === "skill" ? run.request.inputs : {};
+    return judge(envOf(w), run, inputs);
+  };
+  const valid = () => ({ v: 1, paragraphs: [paragraph(notes.onboarding, "Decisão")] });
+
+  for (const status of ["queued", "running", "waiting_approval"]) {
+    it(`C113 ${status} → running, its file not read`, () => {
+      expect(judged(status, valid())).toEqual({ status: "running" });
+    });
+  }
+  it("C113 done with a valid answer.json → answered", () => {
+    const j = judged("done", valid());
+    expect(j.status).toBe("answered");
+    expect(j.answer?.paragraphs.map((p) => p.citations.map((c) => [c.path, c.section]))).toEqual([
+      [[notes.onboarding, "Decisão"]],
+    ]);
+    expect(j.reason).toBeUndefined();
+  });
+  it("C113 done with an answer citing a path the index does not have → refused, with its reason", () => {
+    const missing = path.join(w.memory, "notes", "nao-existe.md");
+    const j = judged("done", { v: 1, paragraphs: [paragraph(missing, "Decisão")] });
+    expect(j.status).toBe("refused");
+    expect(j.reason).toBe(`A citação do parágrafo 1 nomeia ${missing}, que o índice não tem.`);
+    expect(j.answer).toBeUndefined();
+  });
+  it("C113 done with no answer.json → failed, A execução não escreveu answer.json.", () => {
+    expect(judged("done")).toEqual({ status: "failed", reason: "A execução não escreveu answer.json." });
+  });
+  for (const status of ["failed", "cancelled", "timed_out", "interrupted"]) {
+    it(`C113 ${status} → failed, A execução terminou em ${status}., even with a valid answer.json`, () => {
+      expect(judged(status, valid())).toEqual({
+        status: "failed",
+        reason: `A execução terminou em ${status}.`,
+      });
+    });
+  }
 });

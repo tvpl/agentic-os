@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import net, { type AddressInfo } from "node:net";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { AppContext } from "../apps/api/src/context.js";
-import { buildServer } from "../apps/api/src/server.js";
+import { buildServer, startServer } from "../apps/api/src/server.js";
 import { askWorld, paragraph, threeNotes, type AskWorld, type Json } from "./helpers/perguntarWorld.js";
 
 /**
@@ -890,6 +891,110 @@ describe("C35 no provocation", () => {
       const body = await askAndRead(w, direct(), { v: 1, paragraphs: [paragraph(onboarding, "Decisão")] });
       expect(body.status).toBe("answered");
       expect("provocation" in body.answer).toBe(false);
+    });
+  });
+});
+
+/* ---------------- Round 1 fixes (batch F1): C113 at the boundary, C114 ---------------- */
+
+describe("C113 the ends timed_out and interrupted, at the boundary", () => {
+  for (const status of ["timed_out", "interrupted"]) {
+    it(`C113 a run in ${status} reads 200 failed, A execução terminou em ${status}., no answer`, async () => {
+      await fresh(async (w) => {
+        const { onboarding } = await threeNotes(w);
+        const id = uuid();
+        w.askRow({ id, status, createdAt: Date.now() - 1000, finishedAt: Date.now() });
+        // a valid answer is on disk: the run's end alone decides
+        w.writeAnswer(id, { v: 1, paragraphs: [paragraph(onboarding, "Decisão")] });
+        const res = await w.read(id);
+        expect(res.status, JSON.stringify(res.body)).toBe(200);
+        expect([res.body.status, res.body.reason]).toEqual(["failed", `A execução terminou em ${status}.`]);
+        expect("answer" in res.body).toBe(false);
+      });
+    });
+  }
+});
+
+describe("C114 a real restart releases the lock of a run it interrupts, and keeps the one waiting for approval", () => {
+  /** A port nobody holds now, for the started service's own listener. */
+  const freePort = () =>
+    new Promise<number>((resolve) => {
+      const server = net.createServer().listen(0, "127.0.0.1", () => {
+        const { port } = server.address() as AddressInfo;
+        server.close(() => resolve(port));
+      });
+    });
+  /** The world's home, served by the real start path (`startServer`, which runs `ctx.start()` and so `recoverInterrupted`). */
+  async function restart(w: AskWorld) {
+    const port = await freePort();
+    w.update((s) => {
+      s.port = port;
+      s.remote.enabled = false;
+    });
+    const handle = await startServer(w.home);
+    const token = handle.ctx.token();
+    const call = async (method: string, p: string, body?: unknown) => {
+      const res = await fetch(`${handle.url}${p}`, {
+        method,
+        headers: {
+          "x-mordomo-token": token,
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const text = await res.text();
+      return { status: res.status, body: (text ? JSON.parse(text) : null) as Json };
+    };
+    return { handle, call };
+  }
+
+  it("C114 a brain-ask run left running and one left queued each read failed, A execução terminou em interrupted., after the restart, and the next POST answers 202", async () => {
+    await fresh(async (w) => {
+      await threeNotes(w);
+      const running = uuid();
+      const queued = uuid();
+      w.askRow({ id: running, status: "running", createdAt: Date.now() - 2000 });
+      w.askRow({ id: queued, status: "queued", createdAt: Date.now() - 1000 });
+      // before the restart both hold the lock
+      expect(statusAndCode(await w.ask(direct()))).toEqual([409, "ask_in_progress"]);
+      const { handle, call } = await restart(w);
+      try {
+        for (const id of [running, queued]) {
+          const res = await call("GET", `/api/memory/ask/${id}`);
+          expect(res.status, JSON.stringify(res.body)).toBe(200);
+          expect([res.body.status, res.body.reason]).toEqual([
+            "failed",
+            "A execução terminou em interrupted.",
+          ]);
+          expect(handle.ctx.runs.get(id)!.status).toBe("interrupted");
+        }
+        const next = await call("POST", "/api/memory/ask", direct());
+        expect(next.status, JSON.stringify(next.body)).toBe(202);
+        expect(next.body.status).toBe("running");
+        await handle.ctx.execution.wait(next.body.id);
+      } finally {
+        await handle.close();
+      }
+    });
+  });
+
+  it("C114 a brain-ask run left waiting_approval is still open after the restart (reads running) and the next POST answers 409 ask_in_progress", async () => {
+    await fresh(async (w) => {
+      await threeNotes(w);
+      const waiting = uuid();
+      w.askRow({ id: waiting, status: "waiting_approval", createdAt: Date.now() - 1000 });
+      const { handle, call } = await restart(w);
+      try {
+        expect(handle.ctx.runs.get(waiting)!.status).toBe("waiting_approval");
+        const read = await call("GET", `/api/memory/ask/${waiting}`);
+        expect([read.status, read.body.status]).toEqual([200, "running"]);
+        const before = (handle.ctx.db.prepare("SELECT COUNT(*) c FROM runs").get() as { c: number }).c;
+        const next = await call("POST", "/api/memory/ask", direct());
+        expect(statusAndCode(next), JSON.stringify(next.body)).toEqual([409, "ask_in_progress"]);
+        expect((handle.ctx.db.prepare("SELECT COUNT(*) c FROM runs").get() as { c: number }).c).toBe(before);
+      } finally {
+        await handle.close();
+      }
     });
   });
 });
