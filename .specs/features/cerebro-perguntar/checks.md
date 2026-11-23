@@ -929,3 +929,8 @@ Status of batch C (updated in the commit that closes each piece):
 - the UI preferences (C65, door 6): closed; `UiPreferences.brain.ask` is `{ mode, scope }` in
   `contracts/src/preferences.ts` (the brain's schema extended there, since `AskScopeSchema` lives in
   `contracts/src/api/memory.ts`, which `settings.ts` cannot import without a cycle), each part read tolerantly
+- the startup assemblies (C69): closed; `agentServices(engine)` in `apps/api/src/context.ts` builds `ctx.ask` and
+  `ctx.agentUsage` (`record`, `read`) for every `AppContext`, the service's, the CLI's of `mordomo mcp` and the
+  harness's, and the routes record and read the agents' usage only through `ctx.agentUsage` (no route calls
+  `recordAgentUsage` or `agentUsage` on `ctx.db` any more); the proof asserts the objects the three build: their keys,
+  the factory's code, and that each is bound to its own database, skills and settings

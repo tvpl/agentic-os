@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { agentUsage, mcpClients } from "@mordomo/core/internal";
+import { mcpClients } from "@mordomo/core/internal";
 import { audienceView } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
@@ -24,7 +24,7 @@ export function registerMcpRoutes(app: FastifyInstance, ctx: AppContext): void {
     return {
       clients: mcpClients(ctx.providers.manifests()),
       tools: mordomoTools(NO_CALLS).map((tool) => ({ name: tool.name, kind: MCP_TOOL_KINDS[tool.name]! })),
-      usage: agentUsage(ctx.db, (p) => view.allowsPath(p)),
+      usage: ctx.agentUsage.read((p) => view.allowsPath(p)),
     };
   });
 }

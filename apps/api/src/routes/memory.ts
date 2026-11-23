@@ -50,7 +50,6 @@ import {
   recallStats,
   recentJournals,
   recordRecall,
-  recordAgentUsage,
   relatedFiles,
   resolveOpenablePath,
   retractFact,
@@ -110,7 +109,7 @@ function recordAgentRead(ctx: AppContext, req: FastifyRequest, tool: string, pat
       : principal?.kind === "run"
         ? `run:${ctx.runs.get(principal.runId)?.provider ?? "desconhecido"}`
         : null;
-  if (client !== null) recordAgentUsage(ctx.db, { tool, client, paths });
+  if (client !== null) ctx.agentUsage.record({ tool, client, paths });
 }
 
 /**

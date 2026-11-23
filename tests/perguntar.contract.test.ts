@@ -22,7 +22,7 @@ import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
  * .specs/features/cerebro-perguntar, the contracts and the documents. Batch B: what docs/security.md says of
  * `mordomo mcp` (C49). Batch C, the cross-cutting checks of the API: the four routes in the table, the scopes and
  * docs/security.md (C61), no migration (C63), the settings (C64), the UI preferences (C65), the skill's words (C66) and
- * no event (C68).
+ * no event (C68), and the three assemblies of the ask service and the usage recorder (C69).
  */
 
 const repo = path.resolve(import.meta.dirname, "..");
@@ -381,4 +381,88 @@ describe("C65 UiPreferences.brain.ask", () => {
       await w.close();
     }
   });
+});
+
+// ---- C69: the startup assemblies -----------------------------------------------------------------------------------
+
+describe("C69 the ask service and the usage recorder are built by one factory", () => {
+  it("C69 the service's AppContext, the CLI's of mordomo mcp and the test harness's build ctx.ask and ctx.agentUsage through agentServices, each bound to its own database and skills; the routes reach the usage only through it", async () => {
+    const { AppContext, agentServices } = await import("../apps/api/src/context.js");
+    const { askWorld } = await import("./helpers/perguntarWorld.js");
+    const { agentUsage, seedHome } = await import("@mordomo/core/internal");
+    const source = (file: string) => fs.readFileSync(path.join(repo, file), "utf8");
+
+    // how each assembly builds its context: the service and the CLI's `mordomo mcp` as their sources say
+    expect(source("apps/api/src/server.ts")).toContain(
+      "new AppContext(homeOverride, { applyPendingRestore: true })",
+    );
+    const cli = source("apps/api/src/cli.ts");
+    const cmdMcp = cli.slice(
+      cli.indexOf("async function cmdMcp("),
+      cli.indexOf("\n}\n", cli.indexOf("async function cmdMcp(")),
+    );
+    expect(cmdMcp).toContain("const ctx = new AppContext();");
+    // the constructor builds both through the factory, once; nothing else calls the usage record's functions
+    const context = source("apps/api/src/context.ts");
+    expect(context.match(/agentServices\(this\)/g)).toHaveLength(1);
+    const routes = fs
+      .readdirSync(path.join(repo, "apps", "api", "src", "routes"))
+      .map((f) => source(path.join("apps", "api", "src", "routes", f)));
+    for (const text of [...routes, source("apps/api/src/server.ts"), cli])
+      expect(/\b(recordAgentUsage|agentUsage)\(/.test(text)).toBe(false);
+
+    const service = makeTempHome("mordomo-perguntar-c69-service-");
+    const cliHome = makeTempHome("mordomo-perguntar-c69-cli-");
+    const before = process.env.MORDOMO_HOME;
+    process.env.MORDOMO_HOME = cliHome.paths.home;
+    const contexts = {
+      service: new AppContext(service.paths.home, { applyPendingRestore: true }),
+      cli: new AppContext(),
+    };
+    if (before === undefined) delete process.env.MORDOMO_HOME;
+    else process.env.MORDOMO_HOME = before;
+    const harness = await askWorld("mordomo-perguntar-c69-harness-");
+    try {
+      expect(contexts.cli.paths.home).toBe(cliHome.paths.home);
+      const all = { ...contexts, harness: harness.ctx };
+      const fresh = agentServices(harness.ctx);
+      for (const [name, ctx] of Object.entries(all)) {
+        // the object the factory builds: the same keys and the same functions' code as a fresh build
+        expect(Object.keys(ctx.ask), name).toEqual(Object.keys(fresh.ask));
+        expect(Object.keys(ctx.agentUsage), name).toEqual(Object.keys(fresh.usage));
+        expect(Object.keys(ctx.ask), name).toEqual(["available", "start"]);
+        expect(Object.keys(ctx.agentUsage), name).toEqual(["record", "read"]);
+        for (const key of ["available", "start"] as const)
+          expect(String(ctx.ask[key]), `${name} ask.${key}`).toBe(String(fresh.ask[key]));
+        for (const key of ["record", "read"] as const)
+          expect(String(ctx.agentUsage[key]), `${name} usage.${key}`).toBe(String(fresh.usage[key]));
+        // bound to its own database: a read recorded through it is in its own `agents.usage`, and only there
+        const file = path.join(ctx.paths.memory, "notes", "a.md");
+        ctx.agentUsage.record({ tool: "recall", client: `c69-${name}`, paths: [file] });
+        expect(
+          agentUsage(ctx.db).byClient.map((c) => c.name),
+          name,
+        ).toEqual([`c69-${name}`]);
+        expect(ctx.agentUsage.read().calls, name).toBe(1);
+        expect(ctx.agentUsage.read((p) => p !== file).paths, name).toEqual([]);
+        expect(
+          ctx.agentUsage.read().paths.map((p) => p.path),
+          name,
+        ).toEqual([file]);
+        // bound to its own skills and settings: available once the skill is seeded and named by memorySkills
+        seedHome(ctx.paths, repo);
+        expect(ctx.ask.available(), name).toBe(true);
+        const settings = ctx.settings();
+        settings.memorySkills = settings.memorySkills.filter((s) => s !== "brain-ask");
+        ctx.settingsStore.save(settings);
+        expect(ctx.ask.available(), name).toBe(false);
+      }
+    } finally {
+      contexts.service.close();
+      contexts.cli.close();
+      await harness.close();
+      service.cleanup();
+      cliHome.cleanup();
+    }
+  }, 60_000);
 });

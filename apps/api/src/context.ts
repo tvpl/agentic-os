@@ -5,6 +5,8 @@ import {
   ASK_SKILL,
   ConnectorDataCache,
   DashboardService,
+  agentUsage,
+  recordAgentUsage,
   DashboardStore,
   MordomoEngine,
   ProviderSettingsSchema,
@@ -84,6 +86,59 @@ export interface AppContextOptions {
 const MEMORY_WRITES_PER_RUN = 100;
 const MEMORY_WRITES_PER_DAY = 500;
 
+/**
+ * The skill an ask runs (cerebro-perguntar, doors 1 and 2): whether it can run now (it exists, is enabled and is a
+ * memory skill of the settings), and its start, read-only like any skill run, which answers the run's id.
+ */
+export interface AskService {
+  available: () => boolean;
+  start: (input: { inputs: Record<string, string>; contextId?: string }) => string;
+}
+
+/** The agents' usage record of an engine (door 7): add one read, and read what was recorded, `allow`'s paths only. */
+export interface AgentUsageRecorder {
+  record: (read: Parameters<typeof recordAgentUsage>[1]) => void;
+  read: (allow?: (absolute: string) => boolean) => ReturnType<typeof agentUsage>;
+}
+
+/**
+ * The one factory of the ask service and the usage recorder (cerebro-perguntar, C69): every `AppContext` builds them
+ * here, the service's, the CLI's (`mordomo mcp`) and the tests', so the routes never reach the record but through it.
+ */
+export function agentServices(engine: Pick<MordomoEngine, "db" | "skills" | "execution" | "settings">): {
+  ask: AskService;
+  usage: AgentUsageRecorder;
+} {
+  return {
+    ask: {
+      available: () => {
+        // A SKILL.md the safe reader refuses (a link out of skills/, a file too large) is a skill that cannot run.
+        let skill: ReturnType<typeof engine.skills.load>;
+        try {
+          skill = engine.skills.load(ASK_SKILL);
+        } catch {
+          return false;
+        }
+        return skill !== null && skill.enabled && engine.settings().memorySkills.includes(ASK_SKILL);
+      },
+      start: ({ inputs, contextId }) =>
+        engine.execution.startSkill(
+          {
+            slug: ASK_SKILL,
+            inputs,
+            ...(contextId !== undefined ? { contextId } : {}),
+            startedBy: "owner",
+          },
+          { folderCheck: "launch" },
+        ).runId,
+    },
+    usage: {
+      record: (read) => recordAgentUsage(engine.db, read),
+      read: (allow) => agentUsage(engine.db, allow),
+    },
+  };
+}
+
 export class AppContext extends MordomoEngine {
   /** Telegram inbound poller; created and started by the server (needs the approval actions). */
   telegramPoller: TelegramPoller | null = null;
@@ -104,10 +159,10 @@ export class AppContext extends MordomoEngine {
    * The skill an ask runs (cerebro-perguntar, doors 1 and 2): whether it can run now (it exists, is enabled and is a
    * memory skill of the settings), and its start, read-only like any skill run, which answers the run's id.
    */
-  readonly ask: {
-    available: () => boolean;
-    start: (input: { inputs: Record<string, string>; contextId?: string }) => string;
-  };
+  readonly ask: AskService;
+
+  /** What the agents read (cerebro-perguntar, door 7): a read of the principal `mcp` or of a run's credential, recorded. */
+  readonly agentUsage: AgentUsageRecorder;
 
   private healthCache = new Map<ProviderId, { at: number; health: HealthStatus }>();
   private healthInFlight = new Map<ProviderId, Promise<HealthStatus>>();
@@ -162,28 +217,9 @@ export class AppContext extends MordomoEngine {
           ).runId,
       },
     });
-    this.ask = {
-      available: () => {
-        // A SKILL.md the safe reader refuses (a link out of skills/, a file too large) is a skill that cannot run.
-        let skill: ReturnType<typeof this.skills.load>;
-        try {
-          skill = this.skills.load(ASK_SKILL);
-        } catch {
-          return false;
-        }
-        return skill !== null && skill.enabled && this.settings().memorySkills.includes(ASK_SKILL);
-      },
-      start: ({ inputs, contextId }) =>
-        this.execution.startSkill(
-          {
-            slug: ASK_SKILL,
-            inputs,
-            ...(contextId !== undefined ? { contextId } : {}),
-            startedBy: "owner",
-          },
-          { folderCheck: "launch" },
-        ).runId,
-    };
+    const agents = agentServices(this);
+    this.ask = agents.ask;
+    this.agentUsage = agents.usage;
     this.unsubscribeCredentials = this.events.subscribe((e) => {
       if (e.type !== "run.finished") return;
       const runId = (e.payload as { runId?: string }).runId;
