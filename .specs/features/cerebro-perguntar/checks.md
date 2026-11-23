@@ -982,3 +982,30 @@ Status of batch D (updated in the commit that closes each piece):
 - the weight (C100): closed; `scripts/bundle-baseline.json` gains `cerebro-perguntar` after `cerebro-busca-significado`
   with the numbers of batch D's build (622 877 B JS gzip, 85 361 B CSS gzip: 10 541 B and 1 168 B above it), which
   leaves 5 843 B of JS gzip and 880 B of CSS gzip of the ceiling for the tab of batch E; `bundle:check` exits 0
+
+- **Boundary (batch D):** C72-C100 closed at `5e8c47d` (the view, its entries and its story in `6ba3b2c`, the browser
+  proofs in `d865b52`, the weight in `5e8c47d`); C99's tab stories and C107's e2e stay for batch E. On that tree
+  `npm run build`, `npm run typecheck` and `npm run lint` exit 0, every `Proof:` line of C72-C100 passes and runs only its
+  check's cases (the e2e ones after the build), `npm run test -w apps/command-centre` passes whole (201 files, 2070
+  tests; the base's 197 and 1982 all passed) and `npx vitest run` at the root has one failure,
+  `tests/paineis.refresh.test.ts` C13 (date-dependent, as on the base). The weight: 622 877 B JS gzip and 85 361 B CSS
+  gzip, 10 541 B and 1 168 B above `cerebro-busca-significado`, so batch E has 5 843 B of JS gzip and 880 B of CSS gzip
+  of the plan's ceiling. No Landing row, door, route, migration, setting key or event added; `Flow` and `Impact` hold.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) "Perguntar sobre esta
+  nota" opens `/brain/ask?note=<absolute path>` (`brain/ask/askLink.ts`), which the view reads as the scope `notes` of
+  that note, the focus in the question, and does not save as the preference; (b) the token `--line-strong` the design
+  names did not exist: it is `var(--border-strong)` in `theme.css`'s `:root`, beside `--surface-2`; (c) the "most-cited
+  area" of the empty state is the area with the most files in `GET /api/memory/status`'s `facets.areas`; (d) the
+  provider's name in "Isso usa uma execução do …" and "Respondida por …" is its id with a capital (Claude, Cursor,
+  Codex), the duration `formatDuration` of the run's start to its end, the time the start's `HH:MM`; (e) `a` opens the
+  view from every brain view but "Revisões" (where `a` is "Adiar", C71 of cerebro-natureza) and the view itself,
+  registered once (`exclusive`) for the classic map that mounts two brains; `Mod+Enter` is a `view:ask` command live
+  only with the focus in the view's fields; (f) `409 ask_in_progress` opens the newest running ask as a click on its
+  line does (read-only, "Nova pergunta"); (g) "Uma pasta…" is a `Popover` with the notes view's `NotesTree` for each
+  root of `GET /api/memory/tree`; a folder's click chooses it (and saves it) and keeps the popover open to go deeper;
+  "Ver a resposta do cérebro" is the notes view's `Fold`; (h) the view's 12px lines are one class, `.ask-small`, in
+  `typography`'s exemptions with the design's reason; (i) the e2e's fake run writes `answer.json` through the fake
+  CLI's new `[[answer]]` marker; the notes it cites carry the markers' words so the recall finds every keyword; (j) the
+  pins of earlier features that this design moves (C51 of cerebro-faxina-guiada, C70 of cerebro-natureza, C76 of
+  cerebro-rituais, C86 of cerebro-vista-notas) gain the new entry in their exact lists and titles, no case dropped.
+- **Abandoned:** nothing.
