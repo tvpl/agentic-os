@@ -4,7 +4,7 @@ Profile: ui
 Plan: `.specs/features/cerebro-perguntar/plan.md`
 Design: `.specs/features/cerebro-perguntar/design.md` (binding for the screens of S5 and S7)
 
-115 checks (C1-C108, and C109-C115 of `## Correções da rodada 1`) in 7 slices + cross-cutting · 7 one-way doors · open questions: none, the plan's two answered by the
+117 checks (C1-C108, C109-C115 of `## Correções da rodada 1` and C116-C117 of `## Correções da rodada 2`) in 7 slices + cross-cutting · 7 one-way doors · open questions: none, the plan's two answered by the
 owner on 22/11/2026 with their recommended defaults (AD-052)
 
 The plan's slices are kept: S1-S4 are the ask's core and routes, S6 and the API half of S7 are the MCP, "Cross-cutting, API"
@@ -717,6 +717,33 @@ Readings of round 1's precision gaps, settled by the orchestrator: C88's "área 
 most files of `GET /api/memory/status` (kept; the empty state has no citation history to count); C103's tool descriptions
 have no words in design.md, so their presence and language are what binds (kept); C58's transaction cannot be observed under
 the synchronous driver (kept as a code reading, not a proof).
+
+## Correções da rodada 2
+
+Written by the orchestrator on 23/11/2026 from `verification.md` round 2 (FAIL at `9526b1d`: every check proven, every fault
+killed, two arrangement findings). The fix is one batch (F2), sequential, only on green; round 3 is the last before the
+owner.
+
+**C116** - The off state replaces only the fields (design.md "Estados", "Desligado": "no lugar dos campos"): after
+`POST /api/memory/ask` answers `409 skill_unavailable`, the view's regions are, in this order, header, scope, mode (the
+`Tabs` list with its two tabs present and selectable, and the hint with "Raciocine primeiro"), the off card (`Lock`, the
+text and "Ligar") where the fields were, and recent questions; switching the mode in the off state keeps the off card; after
+"Ligar" the fields return in the mode then selected; in the browser the six-region order of C109 holds with the off card in
+the fields' place (round 2 gap 1)
+Proof: `npm run test -w apps/command-centre -- src/brain/ask/AskView.test.tsx -t "C116 "`
+Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts ask.spec.ts -g "C116 "`
+
+**C117** - The view's stylesheet changes no other screen: every selector of `apps/command-centre/src/brain/ask/ask.css` is
+scoped under the view's root class `.ask` (a static read of the stylesheet, every rule's selector list, none unscoped); and in
+the browser, in the Núcleo with the console's skill-input form on screen, the form's fields container keeps
+`display: grid` with two columns (`grid-template-columns` with two tracks) and the same `boundingBox` within 1px before and
+after `/brain/ask` has been opened once (round 2 gap 2, introduced in `6ba3b2c`)
+Proof: `npm run test -w apps/command-centre -- src/brain/ask/askMotion.test.ts -t "C117 "`
+Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts ask.spec.ts -g "C117 "`
+
+Round 2's precision notes, settled by the orchestrator: C110's growth and C111's clamp count lines by newlines (and C111 by
+480 characters), as the checks' values are counted; a long wrapped line not growing the field is kept as a known limit for
+the owner's screen session (AD-048 c), not a gap.
 
 ## Coverage
 
