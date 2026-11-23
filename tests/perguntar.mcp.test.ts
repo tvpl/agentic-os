@@ -790,3 +790,43 @@ describe("C50 the tool list", () => {
     ]);
   });
 });
+
+/* ---------------- Round 1 fixes (batch F1): C112 at the boundary ---------------- */
+
+describe("C112 the hygiene never names a file hidden from agents to an agent", () => {
+  it("C112 a.md links to privado/segredo.md (agents hide) and to the missing zz.md: the tool hygiene and GET /api/memory/hygiene under the principal mcp list zz.md among the broken links and nothing of privado or segredo.md", async () => {
+    await fresh(async (w) => {
+      const notes = path.join(w.memory, "notes");
+      const a = w.put(
+        path.join(notes, "a.md"),
+        "# A\n\nVeja [o segredo](privado/segredo.md) e [zz](zz.md).\n",
+      );
+      const secret = w.put(path.join(notes, "privado", "segredo.md"), "# Segredo\n\nO texto secreto.\n");
+      await w.index();
+      await w.hideFromAgents(path.dirname(secret));
+      const zz = path.join(notes, "zz.md");
+
+      // the tool: zz.md among the broken links, and no line naming privado or segredo.md
+      const answer = await w.mcp("hygiene", { perKind: 20 });
+      expect(answer.isError, answer.text).toBe(false);
+      const lines = answer.text.split("\n");
+      const head = lines.findIndex((l) => /^Broken links \(\d+\):$/.test(l));
+      expect(head, answer.text).toBeGreaterThanOrEqual(0);
+      const broken: string[] = [];
+      for (const line of lines.slice(head + 1)) {
+        if (!line.startsWith("- ")) break;
+        broken.push(line);
+      }
+      expect(broken).toEqual([`- ${a}:3 → ${zz}`]);
+      expect(lines.filter((l) => l.includes("privado") || l.includes("segredo.md"))).toEqual([]);
+
+      // the route, as the principal mcp calls it
+      const res = await w.fetchAs("GET", "/api/memory/hygiene", w.mcpHeaders());
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body.brokenLinks.items.map((l: Json) => [l.path, l.target])).toEqual([[a, zz]]);
+      expect(res.body.brokenLinks.count).toBe(1);
+      expect(JSON.stringify(res.body)).not.toContain("privado");
+      expect(JSON.stringify(res.body)).not.toContain("segredo.md");
+    });
+  });
+});

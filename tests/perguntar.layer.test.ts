@@ -7,6 +7,7 @@ import {
   checkAskAnswer,
   countSentences,
   mcpClients,
+  memoryHygiene,
   recordAgentUsage,
   resolveAskScope,
 } from "@mordomo/core/internal";
@@ -757,5 +758,45 @@ describe("C55 the usage record at its own layer (recordAgentUsage, batch B)", ()
     expect(stored().since).toBe(100);
     expect(stored().calls).toBe(52);
     expect(agentUsage(w.ctx.db).since).toBe(100);
+  });
+});
+
+/* ---------------- Round 1 fixes (batch F1): C112, C113 and C115 at their own layers ---------------- */
+
+describe("C112 the hygiene's broken links never name a file hidden from the caller, at its own layer (memoryHygiene)", () => {
+  it("C112 a.md links to privado/segredo.md and to the missing zz.md: with an allow and an allowPath that refuse privado/, the link to segredo.md is dropped and zz.md kept; with neither (the owner), segredo.md is not broken", async () => {
+    const own = await askWorld(`mordomo-perguntar-layer-c112-${++seq}-`);
+    try {
+      const dir = path.join(own.memory, "notes");
+      const privado = path.join(dir, "privado");
+      const a = own.put(
+        path.join(dir, "a.md"),
+        "# A\n\nVeja [o segredo](privado/segredo.md) e [zz](zz.md).\n",
+      );
+      own.put(path.join(privado, "segredo.md"), "# Segredo\n\nO texto secreto.\n");
+      await own.index();
+      const inside = (absolute: string) => absolute.startsWith(`${privado}${path.sep}`);
+      const sources = { skills: [], routines: [], connectors: [] };
+      const zz = path.join(dir, "zz.md");
+      const segredo = path.join(privado, "segredo.md");
+
+      // the caller the hidden folder is hidden from: its rows and its paths are refused
+      const agents = memoryHygiene(own.ctx.db, own.ctx.paths, own.ctx.settings(), sources, {
+        allow: (row) => !inside(path.join(row.root, row.rel)),
+        allowPath: (absolute) => !inside(absolute),
+      });
+      const ofA = agents.brokenLinks.items.filter((l) => l.path === a);
+      expect(ofA.map((l) => l.target)).toEqual([zz]);
+      expect(agents.brokenLinks.count).toBe(1);
+      expect(JSON.stringify(agents.brokenLinks)).not.toContain("privado");
+      expect(JSON.stringify(agents.brokenLinks)).not.toContain("segredo.md");
+
+      // the owner: no row and no path refused, segredo.md exists, so only zz.md is broken
+      const owner = memoryHygiene(own.ctx.db, own.ctx.paths, own.ctx.settings(), sources, {});
+      expect(owner.brokenLinks.items.filter((l) => l.path === a).map((l) => l.target)).toEqual([zz]);
+      expect(owner.brokenLinks.items.some((l) => l.target === segredo)).toBe(false);
+    } finally {
+      await own.close();
+    }
   });
 });

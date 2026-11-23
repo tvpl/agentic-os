@@ -1123,3 +1123,12 @@ Status of batch E (updated in the commit that closes each piece):
   case in `tests/perguntar.usage.test.ts`; (i) C107's `GET /api/mcp` is answered by the browser, since the clients the
   real route reports depend on the machine's home.
 - **Abandoned:** nothing.
+
+Status of batch F1, the round 1 fixes (updated in the commit that closes each piece):
+
+- the hygiene's broken links to a file hidden from agents (C112): closed, both proofs green, each run alone and running
+  only C112's cases: `tests/perguntar.mcp.test.ts` (the tool `hygiene` and `GET /api/memory/hygiene` under the principal
+  `mcp`: `a.md`'s one broken link is `zz.md`, nothing names `privado` or `segredo.md`) and
+  `tests/perguntar.layer.test.ts` (`memoryHygiene` with an `allow` and an `allowPath` that refuse `privado/`, and with
+  neither); the mutant F4 of round 1 (`(link) => true || ...` at `core/src/memory/hygiene.ts:201-202`), re-injected in a
+  scratch `git worktree`, fails both
