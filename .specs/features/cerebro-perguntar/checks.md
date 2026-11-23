@@ -1159,3 +1159,26 @@ Status of batch F1, the round 1 fixes (updated in the commit that closes each pi
   rows; the bundle moved by 20 B of JS gzip and 2 B of CSS gzip, and the `cerebro-perguntar` entry of
   `scripts/bundle-baseline.json` says so (14 360 B and 1 643 B above `cerebro-busca-significado`, under 16 384 B and
   2 048 B)
+
+- **Boundary (batch F1):** C109-C115 closed at `5b9aac2` (C112 in `001e697`, C113 and C114 in `41afbf9`, C115 in
+  `4dd553e`, C109-C111 in `5b9aac2`). On that tree `npm run build`, `npm run typecheck`, `npm run lint` and
+  `npm run bundle:check` exit 0; every `Proof:` line of C109-C115 passes run alone and runs only its check's cases
+  (C109 3 + 2 in the browser, C110 3 + 1 in the browser, C111 2, C112 1 + 1, C113 10 + 2, C114 2, C115 4 + 1); the whole
+  of `tests/e2e/ask.spec.ts` passes (12); the UI suite passes whole (202 files, 2106 tests) and `npx vitest run` at the
+  root has one failure, `tests/paineis.refresh.test.ts` C13 (date-dependent, as on the base). The mutant F4 of round 1
+  is killed by both proofs of C112. The weight of the whole feature: 626 696 B JS gzip and 85 836 B CSS gzip, 14 360 B
+  and 1 643 B above `cerebro-busca-significado`. No route, migration, setting key, event or door added.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) C113's "function behind
+  `GET /api/memory/ask/:id`" is `judge`, exported as it was rather than extracted (it already takes the run and its
+  inputs and needs no HTTP); its env is typed as the core's `AskEnv` through `resolveAskScope` because the inferred
+  type could not be emitted in a declaration; (b) C109's regions are the column's direct children, so the mode's
+  hint moved out of the fields and the tabs are used as their parts (`Tabs.Root`, `.List`, `.Panel`); the panel's
+  own top padding (`.ask-panel`) is gone, the column's gap parts the two regions; (c) C110's rows in the browser are
+  the textarea's inner height over its line height, which needed the view's textareas to drop the inputs' 72px least
+  height; "grows with its text" stays by lines (`rowsFor`), as the check's concrete values are lines; (d) C114 runs
+  `startServer` over the world's home on a free port (`remote.enabled` off), the world's own context never started;
+  (e) C115's "error table" is read as the raised codes of the error scan (`tests/helpers/errorScan.ts`, the table
+  `api.contract` C13 pins by its count) and the errors `memory.ask` documents. Noted, not touched: `.ask-fields` is also
+  a class of `desktop/console/Console.tsx`, so `ask.css`'s `.ask-fields` rules reach the console once the view's chunk
+  is loaded (the new textarea rule is scoped under `.ask` and does not).
+- **Abandoned:** nothing.
