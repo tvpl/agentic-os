@@ -979,3 +979,6 @@ Status of batch D (updated in the commit that closes each piece):
   after `npm run build`; the fake CLI gains the marker `[[answer]]`, which copies `artifacts/e2e-answer.json` (written
   by the spec) into the run's own artifacts directory as `answer.json`, so C79 and C98 run the real route, the real
   skill run and the real answer check; C95's four states are the routes' answers given by the browser
+- the weight (C100): closed; `scripts/bundle-baseline.json` gains `cerebro-perguntar` after `cerebro-busca-significado`
+  with the numbers of batch D's build (622 877 B JS gzip, 85 361 B CSS gzip: 10 541 B and 1 168 B above it), which
+  leaves 5 843 B of JS gzip and 880 B of CSS gzip of the ceiling for the tab of batch E; `bundle:check` exits 0

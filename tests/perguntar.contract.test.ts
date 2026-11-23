@@ -585,3 +585,37 @@ describe("C71 the docs", () => {
     expect(manual).toContain('[mcp_servers.mordomo]\ncommand = "mordomo"\nargs = ["mcp"]');
   });
 });
+
+// ---- C100: the weight of the view (batch D) -------------------------------------------------------------------------
+
+describe("C100 the bundle ceiling", () => {
+  it("C100 the baseline's cerebro-perguntar entry follows cerebro-busca-significado with a reason that names what it adds and the four numbers, at most 16 KB of JS gzip and 2 KB of CSS gzip above it (612 336 B and 84 193 B: at most 628 720 B and 86 241 B)", () => {
+    type Entry = {
+      feature: string;
+      reason: string;
+      jsRaw: number;
+      jsGzip: number;
+      cssRaw: number;
+      cssGzip: number;
+    };
+    const baseline = JSON.parse(
+      fs.readFileSync(path.join(repo, "scripts", "bundle-baseline.json"), "utf8"),
+    ) as { after: Entry[] };
+    const i = baseline.after.findIndex((e) => e.feature === "cerebro-perguntar");
+    expect(i, "the entry exists").toBeGreaterThan(0);
+    const entry = baseline.after[i]!;
+    const before = baseline.after[i - 1]!;
+    expect(before.feature).toBe("cerebro-busca-significado");
+    expect([before.jsGzip, before.cssGzip]).toEqual([612_336, 84_193]);
+    // the reason names what the build adds: the view as a chunk of its own, its entries, the gallery's story, the texts
+    for (const words of ["Perguntar", "chunk", "entries", "gallery", "strings"])
+      expect(entry.reason, words).toContain(words);
+    for (const k of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
+      expect(Number.isInteger(entry[k]) && entry[k] > 0, k).toBe(true);
+    // the ceiling of the plan's Assumptions ("Teto de peso"): 16 KB of JS gzip and 2 KB of CSS gzip
+    expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(16 * 1024);
+    expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(2 * 1024);
+    expect(entry.jsGzip).toBeLessThanOrEqual(628_720);
+    expect(entry.cssGzip).toBeLessThanOrEqual(86_241);
+  });
+});

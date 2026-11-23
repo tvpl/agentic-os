@@ -119,6 +119,14 @@
       "jsGzip": 612336,
       "cssRaw": 378823,
       "cssGzip": 84193
+    },
+    {
+      "feature": "cerebro-perguntar",
+      "reason": "the view Perguntar of the Second Brain as a chunk of its own (AskView, its scope menu with the notes view's folder tree in a popover, the two modes and their fields, the answering, answered, abstained, refused, failed and off states, the provocation, the card of how the answer was made, the recent questions and its stylesheet, fetched the first time /brain/ask is opened; the notes view's tree and Fold now in chunks shared with it; the gallery's ask story loads that same chunk), its entries in both shells (the toolbar button, the scene menu row, the palette command, the key a and the notes view's Perguntar sobre esta nota) and the strings in two languages; measured on the build of batch D: 10.3 KB JS gzip (10 541 B) and 1.1 KB CSS gzip (1 168 B) above cerebro-busca-significado, leaving 5.7 KB of JS and 0.9 KB of CSS of the ceiling for the tab Agentes (MCP) of batch E",
+      "jsRaw": 1901643,
+      "jsGzip": 622877,
+      "cssRaw": 382767,
+      "cssGzip": 85361
     }
   ]
 }
