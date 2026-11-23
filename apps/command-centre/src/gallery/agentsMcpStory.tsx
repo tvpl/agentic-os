@@ -26,6 +26,7 @@ const DATA: McpOverview = {
       id: "cursor",
       name: "Cursor",
       connected: false,
+      pasteInto: "~/.cursor/mcp.json",
       command:
         '{\n  "mcpServers": {\n    "mordomo": {\n      "command": "mordomo",\n      "args": [\n        "mcp"\n      ]\n    }\n  }\n}',
     },
@@ -35,6 +36,7 @@ const DATA: McpOverview = {
       connected: false,
       source: "/fixture/.codex/config.toml",
       unreadable: true,
+      pasteInto: "~/.codex/config.toml",
       command: '[mcp_servers.mordomo]\ncommand = "mordomo"\nargs = ["mcp"]',
     },
   ],

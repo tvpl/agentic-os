@@ -183,6 +183,27 @@ describe("C52 the command of each client", () => {
   });
 });
 
+describe("C102 the file each block is pasted into (batch E, plan.md Landing row 10)", () => {
+  it("C102 GET /api/mcp names ~/.cursor/mcp.json for Cursor and ~/.codex/config.toml for Codex, connected or not, and nothing for Claude Code, whose command is a command", async () => {
+    await fresh(async (w) => {
+      for (const files of [
+        {},
+        { ".cursor/mcp.json": servers({ mordomo: { command: "mordomo", args: ["mcp"] } }) },
+      ])
+        await withUserHome(files, async () => {
+          const res = await w.overview();
+          expect(res.status).toBe(200);
+          expect((res.body.clients as Json[]).map((c) => [c.id, c.connected, c.pasteInto])).toEqual([
+            ["claude", false, undefined],
+            ["cursor", Object.keys(files).length > 0, "~/.cursor/mcp.json"],
+            ["codex", false, "~/.codex/config.toml"],
+          ]);
+          expect((res.body.clients as Json[])[0]).not.toHaveProperty("pasteInto");
+        });
+    });
+  });
+});
+
 describe("C53 the tools of GET /api/mcp", () => {
   it("C53 the 13 tools in tools/list order, each read, propose or owner", async () => {
     await fresh(async (w) => {

@@ -23,16 +23,24 @@ export interface McpClient {
   server?: { name: string; command: string };
   /** What connects it, to copy: a command for Claude Code, the block of its config file for Cursor and Codex. */
   command: string;
+  /** For a block (Cursor, Codex): the config file to paste it into, `~/` and the manifest's first `homeConfigFiles`. */
+  pasteInto?: string;
 }
 
-const CLIENTS: ReadonlyArray<{ id: McpClientId; name: string; command: string }> = [
+const CLIENTS: ReadonlyArray<{ id: McpClientId; name: string; command: string; paste?: true }> = [
   { id: "claude", name: "Claude Code", command: "claude mcp add mordomo -- mordomo mcp" },
   {
     id: "cursor",
     name: "Cursor",
     command: JSON.stringify({ mcpServers: { mordomo: { command: "mordomo", args: ["mcp"] } } }, null, 2),
+    paste: true,
   },
-  { id: "codex", name: "Codex", command: ['[mcp_servers.mordomo]', 'command = "mordomo"', 'args = ["mcp"]'].join("\n") },
+  {
+    id: "codex",
+    name: "Codex",
+    command: ['[mcp_servers.mordomo]', 'command = "mordomo"', 'args = ["mcp"]'].join("\n"),
+    paste: true,
+  },
 ];
 
 /** What `discoverMcpServers` reports for a file that does not parse. */
@@ -48,15 +56,23 @@ function isMordomo(command: string): boolean {
 
 /** The three clients in order, each judged over the config files of its manifest under `home` (the user's by default). */
 export function mcpClients(manifests: readonly ProviderManifest[], home?: string): McpClient[] {
-  return CLIENTS.map(({ id, name, command }) => {
+  return CLIENTS.map(({ id, name, command: block, paste }) => {
     const files = manifests.find((m) => m.id === id)?.homeConfigFiles ?? [];
+    const command = { command: block, ...(paste && files[0] ? { pasteInto: `~/${files[0]}` } : {}) };
     const { servers } = discoverMcpServers(home, files);
     const found = servers.find((s) => s.name !== UNPARSEABLE && (s.name === "mordomo" || isMordomo(s.target)));
     if (found) {
-      return { id, name, connected: true, source: found.source, server: { name: found.name, command: found.target }, command };
+      return {
+        id,
+        name,
+        connected: true,
+        source: found.source,
+        server: { name: found.name, command: found.target },
+        ...command,
+      };
     }
     const broken = servers.find((s) => s.name === UNPARSEABLE);
-    if (broken) return { id, name, connected: false, source: broken.source, unreadable: true, command };
-    return { id, name, connected: false, command };
+    if (broken) return { id, name, connected: false, source: broken.source, unreadable: true, ...command };
+    return { id, name, connected: false, ...command };
   });
 }

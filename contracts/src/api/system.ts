@@ -265,6 +265,8 @@ const McpOverviewSchema = z.object({
       /** The server found: its name and its command, a credential-shaped part read `[hidden]`. */
       server: z.object({ name: z.string(), command: z.string() }).optional(),
       command: z.string(),
+      /** For a block to paste (Cursor, Codex): the config file it goes in, `~/<file>` (lote E, Landing row 10). */
+      pasteInto: z.string().optional(),
     }),
   ),
   tools: z.array(z.object({ name: z.string(), kind: z.enum(["read", "propose", "owner"]) })),

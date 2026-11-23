@@ -30,8 +30,6 @@ export type McpOverview = ApiCallResult<"GET /api/mcp">;
 type McpClient = McpOverview["clients"][number];
 
 const KINDS = { read: Eye, propose: Inbox, owner: KeyRound };
-/** Where Cursor and Codex read their servers (their manifests' `homeConfigFiles`). */
-const FILES: Record<string, string> = { cursor: "~/.cursor/mcp.json", codex: "~/.codex/config.toml" };
 
 export default function AgentsMcpTab() {
   const t = useT();
@@ -92,7 +90,6 @@ export function AgentsMcp({ data, root }: { data: McpOverview; root?: string }) 
 function Client({ c }: { c: McpClient }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
-  const file = FILES[c.id];
   return (
     <div className="am-col">
       <div className="am-row">
@@ -114,7 +111,7 @@ function Client({ c }: { c: McpClient }) {
       ) : (
         <>
           {c.unreadable && <p className="am-s">{t("mcp.unreadable", { file: c.source ?? "" })}</p>}
-          {file && <p className="am-s">{t("mcp.paste", { file })}</p>}
+          {c.pasteInto && <p className="am-s">{t("mcp.paste", { file: c.pasteInto })}</p>}
           <pre className="am-pre">{c.command}</pre>
           <div>
             <Button

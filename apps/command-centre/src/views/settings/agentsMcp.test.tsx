@@ -118,8 +118,14 @@ function overview(over: { clients?: unknown[]; usage?: unknown } = {}) {
         server: { name: "mordomo", command: "mordomo mcp" },
         command: CLAUDE_CMD,
       },
-      { id: "cursor", name: "Cursor", connected: false, command: CURSOR_CMD },
-      { id: "codex", name: "Codex", connected: false, command: CODEX_CMD },
+      {
+        id: "cursor",
+        name: "Cursor",
+        connected: false,
+        command: CURSOR_CMD,
+        pasteInto: "~/.cursor/mcp.json",
+      },
+      { id: "codex", name: "Codex", connected: false, command: CODEX_CMD, pasteInto: "~/.codex/config.toml" },
     ],
     tools: TOOLS.map(([name, kind]) => ({ name, kind })),
     usage: over.usage ?? NO_USAGE,
@@ -259,8 +265,20 @@ describe("C102 the card Conectar", () => {
     net.mcp = overview({
       clients: [
         { id: "claude", name: "Claude Code", connected: false, command: CLAUDE_CMD },
-        { id: "cursor", name: "Cursor", connected: false, command: CURSOR_CMD },
-        { id: "codex", name: "Codex", connected: false, command: CODEX_CMD },
+        {
+          id: "cursor",
+          name: "Cursor",
+          connected: false,
+          command: CURSOR_CMD,
+          pasteInto: "~/.cursor/mcp.json",
+        },
+        {
+          id: "codex",
+          name: "Codex",
+          connected: false,
+          command: CODEX_CMD,
+          pasteInto: "~/.codex/config.toml",
+        },
       ],
     });
     const [connect] = await tab();
@@ -321,8 +339,15 @@ describe("C102 the card Conectar", () => {
           source: "/home/ana/.cursor/mcp.json",
           unreadable: true,
           command: CURSOR_CMD,
+          pasteInto: "~/.cursor/mcp.json",
         },
-        { id: "codex", name: "Codex", connected: false, command: CODEX_CMD },
+        {
+          id: "codex",
+          name: "Codex",
+          connected: false,
+          command: CODEX_CMD,
+          pasteInto: "~/.codex/config.toml",
+        },
       ],
     });
     const [connect] = await tab();

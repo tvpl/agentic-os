@@ -469,6 +469,7 @@ function mcpOverview(withUsage: boolean) {
         id: "cursor",
         name: "Cursor",
         connected: false,
+        pasteInto: "~/.cursor/mcp.json",
         command: JSON.stringify({ mcpServers: { mordomo: { command: "mordomo", args: ["mcp"] } } }, null, 2),
       },
       {
@@ -477,6 +478,7 @@ function mcpOverview(withUsage: boolean) {
         connected: false,
         source: `${E2E_HOME}/.codex/config.toml`,
         unreadable: true,
+        pasteInto: "~/.codex/config.toml",
         command: '[mcp_servers.mordomo]\ncommand = "mordomo"\nargs = ["mcp"]',
       },
     ],

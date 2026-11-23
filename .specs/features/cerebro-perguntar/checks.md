@@ -1021,3 +1021,7 @@ Status of batch E (updated in the commit that closes each piece):
 - the tab in the browser (C107): closed, green in `tests/e2e/ask.spec.ts` after `npm run build`, in the moldura in both
   themes, with usage and with none; `GET /api/mcp` is answered by the browser (Claude Code connected, Cursor not
   connected, Codex's config unreadable), since the clients the real route reports depend on the machine's home
+- Landing row 10 (the file each block is pasted into): the tab's first cut kept a map of the two config files keyed by
+  the built-in provider ids, which `providers.pluggable` C28 forbids in the interface; `GET /api/mcp` now gives
+  `pasteInto` (`~/` and the manifest's first `homeConfigFiles`) for Cursor and Codex, the tab reads "Cole em <arquivo>."
+  from it, and `tests/perguntar.usage.test.ts` proves it at the boundary (titled C102, an extra case beside the proof)
