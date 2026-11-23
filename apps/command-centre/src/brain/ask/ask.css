@@ -19,6 +19,7 @@
 
 .ask-head,
 .ask-scope,
+.ask-mode,
 .ask-fields,
 .ask-answer,
 .ask-wait,
@@ -106,12 +107,13 @@
   cursor: pointer;
 }
 
-.ask-panel {
-  padding-top: var(--s-3);
-}
-
 .ask-fields textarea {
   resize: vertical;
+}
+
+/* a textarea is as tall as its rows ("Pergunta" 2 to 6, "Sua visão" 4 to 12), not the inputs' least height */
+.ask textarea.input {
+  min-height: 0;
 }
 
 .ask-send {

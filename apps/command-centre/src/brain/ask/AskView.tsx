@@ -337,7 +337,6 @@ export default function AskView() {
     <Off onTurnOn={() => void turnOn()} />
   ) : (
     <div className="ask-fields" ref={fieldsRef}>
-      {shown.mode === "reason_first" && <p className="ask-small">{t("ask.mode.hint")}</p>}
       {shown.mode === "reason_first" && (
         <Field
           htmlFor={`${ids}-take`}
@@ -462,86 +461,98 @@ export default function AskView() {
     }
   }
 
+  // Six regions, one under the other (design.md "Vista - Perguntar" 1-6): the mode's tabs and its hint are one region
+  // and the fields, the tabs' panel, the next, so the tabs' root wraps the column (it lays nothing out).
   return (
     <div className="ask">
-      <div className="ask-col">
-        <header className="ask-head">
-          <h1 className="ask-h1">{t("ask.title")}</h1>
-          <p className="ask-small">{t("ask.lede")}</p>
-        </header>
+      <Tabs.Root
+        value={shown.mode}
+        onChange={(id) => !readOnly && remember({ mode: id as AskMode, scope })}
+        ids={{ panel: () => `${ids}-panel` }}
+      >
+        <div className="ask-col">
+          <header className="ask-head">
+            <h1 className="ask-h1">{t("ask.title")}</h1>
+            <p className="ask-small">{t("ask.lede")}</p>
+          </header>
 
-        <section className="ask-scope">
-          <div className="ask-scope-row">
-            <span className="ask-small">{t("ask.scope.about")}</span>
-            <DropdownMenu
-              align="start"
-              items={menu}
-              trigger={
-                <button type="button" className="btn sm" ref={scopeButton}>
-                  {label(scope)}
-                  <ChevronDown aria-hidden />
-                </button>
-              }
-            />
-          </div>
-          {scope.kind === "notes" && (
-            <ul className="ask-chips">
-              {scope.paths.map((p) => (
-                <li key={p} className="ask-chip">
-                  <span>{baseName(p)}</span>
-                  <button
-                    type="button"
-                    className="ask-chip-x"
-                    aria-label={t("ask.scope.remove", { name: baseName(p) })}
-                    onClick={() => removeNote(p)}
-                  >
-                    <X aria-hidden />
+          <section className="ask-scope">
+            <div className="ask-scope-row">
+              <span className="ask-small">{t("ask.scope.about")}</span>
+              <DropdownMenu
+                align="start"
+                items={menu}
+                trigger={
+                  <button type="button" className="btn sm" ref={scopeButton}>
+                    {label(scope)}
+                    <ChevronDown aria-hidden />
                   </button>
-                </li>
-              ))}
-            </ul>
+                }
+              />
+            </div>
+            {scope.kind === "notes" && (
+              <ul className="ask-chips">
+                {scope.paths.map((p) => (
+                  <li key={p} className="ask-chip">
+                    <span>{baseName(p)}</span>
+                    <button
+                      type="button"
+                      className="ask-chip-x"
+                      aria-label={t("ask.scope.remove", { name: baseName(p) })}
+                      onClick={() => removeNote(p)}
+                    >
+                      <X aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {showHidden && (
+              <p className="ask-small ask-line">
+                <EyeOff aria-hidden />
+                <span>{t("ask.hidden")}</span>
+              </p>
+            )}
+            <FolderPicker
+              open={folderOpen}
+              anchor={scopeButton}
+              chosen={scope.kind === "folder" ? scope.path : null}
+              onClose={() => setFolderOpen(false)}
+              onChoose={(path) => chooseScope({ kind: "folder", path })}
+            />
+          </section>
+
+          {off ? (
+            fields
+          ) : (
+            <>
+              <div className="ask-mode">
+                <Tabs.List>
+                  {tabs.map((tab) => (
+                    <Tabs.Tab key={tab.id} value={tab.id}>
+                      {tab.label}
+                    </Tabs.Tab>
+                  ))}
+                </Tabs.List>
+                {shown.mode === "reason_first" && <p className="ask-small">{t("ask.mode.hint")}</p>}
+              </div>
+              <Tabs.Panel>{fields}</Tabs.Panel>
+            </>
           )}
-          {showHidden && (
-            <p className="ask-small ask-line">
-              <EyeOff aria-hidden />
-              <span>{t("ask.hidden")}</span>
-            </p>
-          )}
-          <FolderPicker
-            open={folderOpen}
-            anchor={scopeButton}
-            chosen={scope.kind === "folder" ? scope.path : null}
-            onClose={() => setFolderOpen(false)}
-            onChoose={(path) => chooseScope({ kind: "folder", path })}
+
+          {result !== null && <div className="ask-result">{result}</div>}
+
+          <Recent
+            list={list}
+            openId={openId}
+            label={label}
+            lang={lang}
+            onOpen={open}
+            onExample={fill}
+            onRetry={() => void list.refetch()}
           />
-        </section>
-
-        {off ? (
-          fields
-        ) : (
-          <Tabs
-            tabs={tabs}
-            active={shown.mode}
-            onChange={(id) => !readOnly && remember({ mode: id as AskMode, scope })}
-            ids={{ panel: () => `${ids}-panel` }}
-            panelClassName="ask-panel"
-          >
-            {fields}
-          </Tabs>
-        )}
-
-        {result !== null && <div className="ask-result">{result}</div>}
-
-        <Recent
-          list={list}
-          openId={openId}
-          label={label}
-          lang={lang}
-          onOpen={open}
-          onExample={fill}
-          onRetry={() => void list.refetch()}
-        />
-      </div>
+        </div>
+      </Tabs.Root>
     </div>
   );
 }

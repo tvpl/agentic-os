@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The view "Perguntar" in rendered components (.specs/features/cerebro-perguntar, C74-C93; design.md "Vista -
+ * The view "Perguntar" in rendered components (.specs/features/cerebro-perguntar, C74-C93, C109-C111; design.md "Vista -
  * Perguntar"): the first open and the remembered mode and scope, the fields of each mode and `Mod+Enter`, the answering
  * state and "Cancelar", the answer of each mode with its citations, nature chips, provocation and "Como esta resposta foi
  * feita", the abstention, the refused, failed and off states, the ask in progress, the recent questions and their empty,
@@ -897,6 +897,178 @@ describe("C93 how this answer was made", () => {
     expect(within(card).getByText("Respondida por Claude em 42 s · 10:00")).toBeTruthy();
     const link = within(card).getByRole("link", { name: "Ver a execução" });
     expect(link.getAttribute("href")).toBe("/runs/run-1");
+  });
+});
+
+/* ---------------- Round 1 fixes (batch F1): C109-C111, the arrangement ---------------- */
+
+/** The view's column and its direct children, the regions of design.md "Vista - Perguntar". */
+const column = () => document.querySelector<HTMLElement>(".ask .ask-col")!;
+const regions = () => [...column().children] as HTMLElement[];
+const HINT =
+  "Escreva o que você pensa antes. O cérebro responde dizendo onde as suas notas concordam, discordam e o que falta.";
+/** Open the reason-first ask `run-2` of the list, with this take; the view settled with its result. */
+async function openReasonFirst(take: string) {
+  listed([item("run-2", "Por que mudei?", { mode: "reason_first" })]);
+  shows(reasonFirst({ missing: [para("Nenhuma nota fala do custo.", PLANO)] }, { id: "run-2", take }));
+  mountAsk();
+  await up();
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  fireEvent.click(rows()[0]!);
+  return waitFor(() => {
+    const el = document.querySelector<HTMLElement>(".ask-take-text");
+    expect(el).not.toBeNull();
+    return el!;
+  });
+}
+const lines = (n: number, word = "linha") =>
+  Array.from({ length: n }, (_, i) => `${word} ${i + 1} da visão`).join("\n");
+
+describe("C109 the six regions of the view", () => {
+  it("C109 with an open reason-first ask the column holds exactly six regions in order: header, scope, mode with its hint, fields, result, recent questions", async () => {
+    await openReasonFirst(TAKE);
+    const [head, scope, mode, fields, res, recent] = regions();
+    expect(regions()).toHaveLength(6);
+    // 1. header: the title, and below it the line
+    const h1 = within(head!).getByRole("heading", { level: 1, name: "Perguntar ao cérebro" });
+    const lede = within(head!).getByText("As respostas citam as suas notas. Confira as fontes.");
+    expect(before(h1, lede)).toBe(true);
+    // 2. scope: "Sobre:" and a .btn.sm whose label is the scope, with ChevronDown
+    const about = within(scope!).getByText("Sobre:");
+    const trigger = within(scope!).getByRole("button", { name: "Todo o cérebro" });
+    expect(trigger.matches(".btn.sm")).toBe(true);
+    expect(icons(trigger)).toEqual(["lucide lucide-chevron-down"]);
+    expect(before(about, trigger)).toBe(true);
+    // 3. mode: the two tabs and, with Raciocine primeiro selected, its hint below them
+    const tabs = within(mode!).getByRole("tablist");
+    expect(
+      within(tabs)
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Perguntar direto", "Raciocine primeiro"]);
+    expect(tab("Raciocine primeiro").getAttribute("aria-selected")).toBe("true");
+    const hint = within(mode!).getByText(HINT);
+    expect(before(tabs, hint)).toBe(true);
+    // 4. fields: the tabs' panel, with Sua visão, Pergunta and the button
+    expect(fields!.getAttribute("role")).toBe("tabpanel");
+    expect(within(fields!).getByLabelText("Sua visão")).toBeTruthy();
+    expect(within(fields!).getByLabelText("Pergunta")).toBeTruthy();
+    expect(fields!.contains(sendButton())).toBe(true);
+    // 5. result, present with an open ask
+    expect(res!.matches(".ask-result")).toBe(true);
+    expect(res!.querySelector(".ask-answer")).not.toBeNull();
+    // 6. recent questions, headed PERGUNTAS RECENTES
+    expect(within(recent!).getByRole("heading", { name: "PERGUNTAS RECENTES" })).toBeTruthy();
+    expect(recent!.contains(rows()[0]!)).toBe(true);
+  });
+
+  it("C109 with no open ask there is no result: five regions, and in Perguntar direto the mode holds no hint", async () => {
+    mountAsk();
+    await up();
+    await waitFor(() => expect(document.querySelector(".ask-empty")).not.toBeNull());
+    expect(regions()).toHaveLength(5);
+    expect(document.querySelector(".ask-result")).toBeNull();
+    const [, , mode, fields, recent] = regions();
+    expect(within(mode!).getByRole("tablist")).toBeTruthy();
+    expect(within(mode!).queryByText(HINT)).toBeNull();
+    expect(fields!.getAttribute("role")).toBe("tabpanel");
+    expect(within(recent!).getByRole("heading", { name: "PERGUNTAS RECENTES" })).toBeTruthy();
+  });
+
+  it("C109 the column is one reading column of at most 720px, centred; the title 13px weight 600, the line 12px secondary", () => {
+    expect(rule(CSS, ".ask-col")).toMatchObject({
+      display: "flex",
+      "flex-direction": "column",
+      "max-width": "720px",
+      margin: "0 auto",
+    });
+    expect(rule(CSS, ".ask-h1")).toMatchObject({ "font-size": "var(--fs-3)", "font-weight": "600" });
+    expect(rule(CSS, ".ask-small")).toMatchObject({ "font-size": "var(--fs-2)", color: "var(--text-dim)" });
+    expect(rule(THEME, ":root")).toMatchObject({ "--fs-2": "12px", "--fs-3": "13px" });
+  });
+});
+
+describe("C110 the fields' arrangement", () => {
+  it("C110 Raciocine primeiro: Sua visão 4 rows growing with its lines to 12 (20 lines show 12), Pergunta 2 rows growing to 6", async () => {
+    net.prefs.brain.ask = { mode: "reason_first", scope: null };
+    mountAsk();
+    await up();
+    await waitFor(() => expect(fieldLabels()).toEqual(["Sua visão", "Pergunta"]));
+    expect(takeField().rows).toBe(4);
+    type(takeField(), lines(7));
+    expect(takeField().rows).toBe(7);
+    type(takeField(), lines(12));
+    expect(takeField().rows).toBe(12);
+    type(takeField(), lines(20));
+    expect(takeField().rows).toBe(12);
+    expect(questionField().rows).toBe(2);
+    type(questionField(), lines(4, "pergunta"));
+    expect(questionField().rows).toBe(4);
+    type(questionField(), lines(10, "pergunta"));
+    expect(questionField().rows).toBe(6);
+  });
+
+  it("C110 Perguntar direto: Pergunta 2 rows growing to 6", async () => {
+    mountAsk();
+    await up();
+    expect(fieldLabels()).toEqual(["Pergunta"]);
+    expect(questionField().rows).toBe(2);
+    type(questionField(), lines(3, "pergunta"));
+    expect(questionField().rows).toBe(3);
+    type(questionField(), lines(9, "pergunta"));
+    expect(questionField().rows).toBe(6);
+  });
+
+  it("C110 Perguntar is .btn.primary with Send, below the fields, at their right", async () => {
+    net.prefs.brain.ask = { mode: "reason_first", scope: null };
+    mountAsk();
+    await up();
+    await waitFor(() => expect(fieldLabels()).toEqual(["Sua visão", "Pergunta"]));
+    const button = sendButton();
+    expect(button.textContent).toBe("Perguntar");
+    expect(button.matches(".btn.primary")).toBe(true);
+    expect(icons(button)).toEqual(["lucide lucide-send"]);
+    expect(before(takeField(), button)).toBe(true);
+    expect(before(questionField(), button)).toBe(true);
+    expect(button.parentElement!.matches(".ask-send")).toBe(true);
+    expect(rule(CSS, ".ask-send")).toMatchObject({ display: "flex", "justify-content": "flex-end" });
+    // a textarea is as tall as its rows, not the inputs' least height
+    expect(rule(CSS, ".ask textarea.input")).toMatchObject({ "min-height": "0" });
+  });
+});
+
+describe("C111 the card Sua visão", () => {
+  it("C111 a 10-line take is 12px secondary text clamped to 6 lines with Mostrar tudo, which shows the whole take", async () => {
+    const take = lines(10);
+    const text = await openReasonFirst(take);
+    const card = text.closest<HTMLElement>(".ask-take")!;
+    expect(within(card).getByRole("heading", { name: "Sua visão" })).toBeTruthy();
+    expect(text.textContent).toBe(take);
+    expect(text.hasAttribute("data-clamped")).toBe(true);
+    expect(rule(CSS, ".ask-take-text")).toMatchObject({
+      "font-size": "var(--fs-2)",
+      color: "var(--text-dim)",
+    });
+    expect(rule(CSS, ".ask-take-text[data-clamped]")).toMatchObject({
+      display: "-webkit-box",
+      overflow: "hidden",
+      "-webkit-box-orient": "vertical",
+      "-webkit-line-clamp": "6",
+    });
+    fireEvent.click(within(card).getByRole("button", { name: "Mostrar tudo" }));
+    expect(text.hasAttribute("data-clamped")).toBe(false);
+    expect(text.textContent).toBe(take);
+    expect(within(card).queryByRole("button", { name: "Mostrar tudo" })).toBeNull();
+  });
+
+  it("C111 a 3-line take shows no Mostrar tudo and is not clamped", async () => {
+    const take = "Acho que é uma etapa só.\nSem formulário.\nE já decidimos isso.";
+    const text = await openReasonFirst(take);
+    expect(text.textContent).toBe(take);
+    expect(text.hasAttribute("data-clamped")).toBe(false);
+    expect(
+      within(text.closest<HTMLElement>(".ask-take")!).queryByRole("button", { name: "Mostrar tudo" }),
+    ).toBeNull();
   });
 });
 

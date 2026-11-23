@@ -1145,3 +1145,17 @@ Status of batch F1, the round 1 fixes (updated in the commit that closes each pi
   call, one tool, one client, one path) and `tests/perguntar.contract.test.ts` (`409 ask_in_progress`,
   `400 folder_outside_index` and `400 unknown_note` each a key of the raised codes the error scan reads, raised in the
   ask's own files, and each an error of `memory.ask` with a description)
+- the view's arrangement (C109, C110, C111): closed, every proof green, each run alone and running only its check's
+  cases: C109 in `AskView.test.tsx` (three cases: the six regions with an open reason-first ask, five with none, the
+  column's and the text's CSS) and in `tests/e2e/ask.spec.ts` (the moldura and the Núcleo at 1280×800: six regions,
+  each top strictly under the previous one, the column at most 720px with equal gaps to the view's box, no sideways
+  scroll of the view nor of the page at 360px); C110 in `AskView.test.tsx` (three cases: the rows of each field in each
+  mode, the button) and in `tests/e2e/ask.spec.ts` (the rows measured on screen, 20 lines scrolling inside, the
+  button's right edge on each field's within 1px and below them); C111 in `AskView.test.tsx` (a 10-line take clamped
+  with "Mostrar tudo", which shows it whole; a 3-line take with neither). The view changed for it: the hint of
+  "Raciocine primeiro" left the fields for the mode's region, the tabs are `Tabs.Root` (around the column, laid out as
+  `display: contents`), `Tabs.List` and `Tabs.Panel`, so the column's children are the six regions, and the view's
+  textareas lose the inputs' 72px least height (`.ask textarea.input { min-height: 0 }`), which drew "Pergunta" as three
+  rows; the bundle moved by 20 B of JS gzip and 2 B of CSS gzip, and the `cerebro-perguntar` entry of
+  `scripts/bundle-baseline.json` says so (14 360 B and 1 643 B above `cerebro-busca-significado`, under 16 384 B and
+  2 048 B)

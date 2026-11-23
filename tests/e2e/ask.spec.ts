@@ -1,6 +1,8 @@
 /**
- * "Perguntar" in a real browser (.specs/features/cerebro-perguntar, C79, C95, C97, C98, C107; design.md "Vista -
- * Perguntar" and "Aba - Agentes (MCP) das Configurações"): the citations wrap at 320px and lead to `/brain?sel=<fileId>`;
+ * "Perguntar" in a real browser (.specs/features/cerebro-perguntar, C79, C95, C97, C98, C107, and C109 and
+ * C110 of the round 1 fixes; design.md "Vista - Perguntar" and "Aba - Agentes (MCP) das Configurações"): the view's six
+ * regions in one centred column of at most 720px and its fields' rows and button, measured on screen; the citations wrap
+ * at 320px and lead to `/brain?sel=<fileId>`;
  * no serious axe violation in both shells and both themes, empty, answering, a reason-first answer with its provocation
  * (the Fold open) and refused; the view's own chunk, fetched only when `/brain/ask` opens; the plan's independent test
  * of S5 on the real service, whose provider is the fake CLI: `[[answer]]` in the question makes the fake run copy
@@ -529,3 +531,142 @@ for (const theme of THEMES)
     await expect(cards.nth(2)).toContainText("Nenhum agente leu o cérebro ainda.");
     expect(await serious(page)).toEqual([]);
   });
+
+/* ---------------- Round 1 fixes (batch F1): C109 and C110, the arrangement in a real browser ---------------- */
+
+type Box = { x: number; y: number; width: number; height: number };
+const box = async (l: ReturnType<Page["locator"]>): Promise<Box> => {
+  const b = await l.boundingBox();
+  expect(b, "a box on screen").not.toBeNull();
+  return b!;
+};
+/** A textarea's height in rows of its own line height (its padding taken away). */
+const shownRows = (l: ReturnType<Page["locator"]>) =>
+  l.evaluate((el) => {
+    const s = getComputedStyle(el);
+    const line = parseFloat(s.lineHeight);
+    const inner = el.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom);
+    return Math.round(inner / line);
+  });
+const linesOf = (n: number, word: string) =>
+  Array.from({ length: n }, (_, i) => `${word} ${i + 1}`).join("\n");
+
+for (const shell of SHELLS)
+  test(`C109 /brain/ask in the ${shell} at 1280×800: six regions one under the other, a centred column of at most 720px, no horizontal scroll at 360px`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await open(page, shell, "dark", "/brain", 1280);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await states(page, ITEMS);
+    await page.goto("/#/brain/ask");
+    const v = view(page);
+    await expect(v.locator("h1")).toHaveText("Perguntar ao cérebro");
+    await expect(v.locator(".ask-row")).toHaveCount(3);
+    // an open reason-first ask: the result is there, and Raciocine primeiro with its hint
+    await v.locator(".ask-row", { hasText: "O que decidi sobre o onboarding?" }).click();
+    await expect(v.locator(".ask-take")).toBeVisible();
+    await expect(v.getByRole("tab", { name: "Raciocine primeiro" })).toHaveAttribute("aria-selected", "true");
+
+    const col = v.locator(".ask-col");
+    const regions = col.locator(":scope > *");
+    await expect(regions).toHaveCount(6);
+    const [head, scope, mode, fields, result, recent] = [0, 1, 2, 3, 4, 5].map((i) => regions.nth(i));
+    // what each region holds
+    await expect(head!.locator("h1")).toHaveText("Perguntar ao cérebro");
+    await expect(head!.getByText("As respostas citam as suas notas. Confira as fontes.")).toBeVisible();
+    await expect(scope!.getByText("Sobre:")).toBeVisible();
+    const trigger = scope!.locator("button.btn.sm", { hasText: "Todo o cérebro" });
+    await expect(trigger.locator("svg.lucide-chevron-down")).toHaveCount(1);
+    await expect(mode!.getByRole("tablist")).toBeVisible();
+    const hint = mode!.getByText("Escreva o que você pensa antes.", { exact: false });
+    await expect(hint).toBeVisible();
+    await expect(fields!.getByRole("textbox", { name: "Pergunta", exact: true })).toBeVisible();
+    await expect(result!).toHaveClass(/\bask-result\b/);
+    await expect(recent!.getByRole("heading", { name: "PERGUNTAS RECENTES" })).toBeVisible();
+    // one under the other: each region's top strictly greater than the previous one's, and below its bottom
+    const boxes = await Promise.all([head, scope, mode, fields, result, recent].map((r) => box(r!)));
+    for (let i = 1; i < boxes.length; i++) {
+      expect(boxes[i]!.y, `region ${i + 1} under region ${i}`).toBeGreaterThan(boxes[i - 1]!.y);
+      expect(boxes[i]!.y, `region ${i + 1} starts below the end of region ${i}`).toBeGreaterThanOrEqual(
+        boxes[i - 1]!.y + boxes[i - 1]!.height - 1,
+      );
+    }
+    // inside the header and the mode, the line below the title and the hint below the tabs
+    const title = await box(head!.locator("h1"));
+    const lede = await box(head!.getByText("As respostas citam as suas notas. Confira as fontes."));
+    expect(lede.y).toBeGreaterThanOrEqual(title.y + title.height - 1);
+    const tabs = await box(mode!.getByRole("tablist"));
+    expect((await box(hint)).y).toBeGreaterThanOrEqual(tabs.y + tabs.height - 1);
+    // one column of at most 720px, centred in the content area (the view's own box, its scrollbar left out)
+    const column = await box(col);
+    expect(column.width).toBeLessThanOrEqual(720);
+    const area = await v.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left + el.clientLeft, right: r.left + el.clientLeft + el.clientWidth };
+    });
+    const gaps = { left: column.x - area.left, right: area.right - (column.x + column.width) };
+    expect(gaps.left).toBeGreaterThanOrEqual(0);
+    expect(Math.abs(gaps.left - gaps.right), JSON.stringify(gaps)).toBeLessThanOrEqual(1);
+    // at 360px wide, no horizontal scroll
+    await page.setViewportSize({ width: 360, height: 800 });
+    await expect(v.locator("h1")).toBeVisible();
+    const fits = await v.evaluate((el) => el.scrollWidth <= el.clientWidth);
+    expect(fits, "the view scrolls sideways at 360px").toBe(true);
+    const page360 = await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    );
+    expect(page360, "the page scrolls sideways at 360px").toBe(true);
+  });
+
+test("C110 the moldura at 1280×800: Sua visão 4 rows to 12 (20 lines scroll inside), Pergunta 2 to 6, and Perguntar's right edge on the fields' right edge, below them", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await open(page, "moldura", "light", "/brain", 1280);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await states(page, []);
+  await page.goto("/#/brain/ask");
+  const v = view(page);
+  await expect(v.locator("h1")).toHaveText("Perguntar ao cérebro");
+  const question = v.getByRole("textbox", { name: "Pergunta", exact: true });
+  const send = v.getByRole("button", { name: "Perguntar", exact: true });
+  await expect(send).toHaveClass(/\bbtn\b.*\bprimary\b|\bprimary\b.*\bbtn\b/);
+  await expect(send.locator("svg.lucide-send")).toHaveCount(1);
+
+  const edges = async (fieldsList: Array<ReturnType<Page["locator"]>>) => {
+    const button = await box(send);
+    for (const f of fieldsList) {
+      const b = await box(f);
+      expect(
+        Math.abs(button.x + button.width - (b.x + b.width)),
+        "Perguntar's right edge",
+      ).toBeLessThanOrEqual(1);
+      expect(button.y, "Perguntar is below the fields").toBeGreaterThanOrEqual(b.y + b.height - 1);
+    }
+  };
+
+  // Perguntar direto: Pergunta 2 rows, growing to 6
+  expect(await shownRows(question)).toBe(2);
+  await question.fill(linesOf(4, "pergunta"));
+  expect(await shownRows(question)).toBe(4);
+  await question.fill(linesOf(10, "pergunta"));
+  expect(await shownRows(question)).toBe(6);
+  await edges([question]);
+
+  // Raciocine primeiro: Sua visão 4 rows to 12, and Pergunta 2 to 6
+  await question.fill("");
+  await v.getByRole("tab", { name: "Raciocine primeiro" }).click();
+  const take = v.getByRole("textbox", { name: "Sua visão", exact: true });
+  await expect(take).toBeVisible();
+  expect(await shownRows(take)).toBe(4);
+  expect(await shownRows(question)).toBe(2);
+  await take.fill(linesOf(8, "visão"));
+  expect(await shownRows(take)).toBe(8);
+  await take.fill(linesOf(20, "visão"));
+  expect(await shownRows(take)).toBe(12);
+  expect(await take.evaluate((el) => el.scrollHeight > el.clientHeight), "20 lines scroll inside").toBe(true);
+  await question.fill(linesOf(10, "pergunta"));
+  expect(await shownRows(question)).toBe(6);
+  await edges([take, question]);
+});
