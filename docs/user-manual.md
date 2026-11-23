@@ -118,9 +118,51 @@ Today (the frame), the pendências (the Núcleo) and in the run's page.
   never run, silent routines and connectors unused for 30 days.
 - **Inline fields**: write `owner:: Ana` in any note and query it with
   `GET /api/memory/query?where=owner:Ana`.
+- **Ask the brain**: Second Brain → Perguntar (key `a`) answers a question in a
+  few paragraphs that cite the notes they came from, about the whole brain, a
+  work context, a folder or some notes, directly or after you write your own
+  take ("raciocine primeiro"). Folders hidden from agents are never read nor
+  cited. See *Perguntar ao cérebro* in the memory guide.
 
 Full details, including how to measure the token saving before and after:
 [docs/memory-guide.md](./memory-guide.md).
+
+### 3.2 Agents through MCP
+
+`mordomo mcp` gives Claude Code, Cursor and Codex the second brain as MCP
+tools (`recall`, `search`, `links`, `hygiene`, `note_read` and the others). They
+read as agents read: a folder marked "esconder dos agentes" is not shown to
+them. Settings → **Agentes (MCP)** shows, for each of the three, whether
+`mordomo` is configured (its config file is only read, never written), the
+command that connects it, the tools by kind, and what the agents read most.
+The commands, for Claude Code:
+
+```bash
+claude mcp add mordomo -- mordomo mcp
+```
+
+for Cursor, in `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "mordomo": {
+      "command": "mordomo",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
+```
+
+and for Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.mordomo]
+command = "mordomo"
+args = ["mcp"]
+```
 
 ## 4. Routines (scheduled work)
 

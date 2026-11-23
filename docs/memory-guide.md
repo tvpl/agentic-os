@@ -388,6 +388,34 @@ Measure it on your own questions with `mordomo eval <file> [--json]`. The file i
 `semantic`, `hybrid` (and `rerank` when the reranker is on), then `abstainCorrect=<n>/<total>`, and exits 2 with
 `eval: <position>: <reason>` on a file that does not follow the format.
 
+### Perguntar ao cérebro
+
+Ask the second brain a question and get a few paragraphs back, each citing the files and sections it came from
+(`POST /api/memory/ask`, owner only; in the interface, the view Perguntar of the Second Brain, `/brain/ask`). The
+question has 3 to 500 characters. An ask is a run of the read-only built-in skill `brain-ask`, which must exist, be
+enabled and be named in `memorySkills` (it is in the default list; a home that stores its own list adds it), or the
+ask answers `409 skill_unavailable`. One ask runs at a time (`409 ask_in_progress`).
+
+- **Scope**: what the ask is about. `all` is the whole brain the agents read; `context` (with `id`) a work context;
+  `folder` (with an absolute `path`) only files inside that folder, which must be inside `memory/` or an indexed
+  folder; `notes` (with `paths`, 1 to 20) only those notes.
+- **Mode**: `direct` answers the question. `reason_first` asks for your own take first (`take`, 20 to 4000
+  characters) and answers with where the notes agree with it, where they disagree and what is missing, before the
+  paragraphs.
+- **Abstention**: the recall of the scope runs first, as agents read. When it finds nothing (`no_match`) or nothing
+  strong enough (`weak`), the answer is `200` with `status: "abstained"` and `consulted` (how many indexed files the
+  scope holds that agents may read), and no run is spent.
+- **Provocation**: at most one per answer, up to two sentences, anchored in exactly one cited section. No provocation
+  unless a note contradicts, complicates or completes the answer; never a generic one.
+- **Checked on read**: the skill writes `answer.json` in the run's artifacts, and `GET /api/memory/ask/:id` checks it
+  with today's rules every time it is read: size, format, and every citation must name an index row and a heading the
+  file has, inside the scope, not excluded by the policy. An answer never cites a folder hidden from agents: a folder
+  marked "esconder dos agentes" is not given to the skill, and a citation of it, even one written before the folder
+  was hidden, makes the whole answer `refused` with the reason. A cited note of nature `plano`, `hipotese` or
+  `opiniao` is labelled from the index, never from the answer.
+- **History**: `GET /api/memory/ask?limit=` (1 to 100, default 30) lists the asks, newest first, each with its status
+  (`running`, `answered`, `refused`, `failed`). An ask is not counted in the recall's statistics.
+
 ---
 
 ## 8. Where things live

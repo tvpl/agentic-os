@@ -938,3 +938,6 @@ Status of batch C (updated in the commit that closes each piece):
   `tests/perguntar.contract.test.ts` C70 asserts by value the owner's recall (its keywords, its first section) and its
   count in `GET /api/memory/recall/stats`, which an ask leaves as it was, and `GET /api/memory/links?id=` (backlinks,
   outgoing links, a broken one, `404` for an unknown id)
+- the docs (C71): closed; `docs/memory-guide.md` gains `### Perguntar ao cérebro` at the end of section 7 (after
+  "Busca por significado"), and `docs/user-manual.md` a bullet "Ask the brain" in 3.1 and a section `3.2 Agents through
+MCP` with the tab **Agentes (MCP)** and C52's three commands byte for byte

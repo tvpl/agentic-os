@@ -23,7 +23,7 @@ import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
  * `mordomo mcp` (C49). Batch C, the cross-cutting checks of the API: the four routes in the table, the scopes and
  * docs/security.md (C61), no migration (C63), the settings (C64), the UI preferences (C65), the skill's words (C66) and
  * no event (C68), the three assemblies of the ask service and the usage recorder (C69), and what the feature must not
- * change (C70).
+ * change (C70), and the two documents (C71).
  */
 
 const repo = path.resolve(import.meta.dirname, "..");
@@ -548,4 +548,40 @@ describe("C70 what this feature must not change", () => {
       await w.close();
     }
   }, 60_000);
+});
+
+// ---- C71: the docs -------------------------------------------------------------------------------------------------
+
+/** The section of `page` under the heading whose text is `title`, to the next heading of its level or above. */
+function sectionOf(page: string, title: string): string {
+  const lines = page.split("\n");
+  const at = lines.findIndex((l) => /^#{2,4} /.test(l) && l.replace(/^#+ /, "") === title);
+  if (at < 0) return "";
+  const level = /^#+/.exec(lines[at]!)![0].length;
+  let end = at + 1;
+  while (end < lines.length && !(/^#+ /.test(lines[end]!) && /^#+/.exec(lines[end]!)![0].length <= level))
+    end += 1;
+  return lines.slice(at, end).join("\n");
+}
+
+describe("C71 the docs", () => {
+  it("C71 docs/memory-guide.md has a section Perguntar ao cérebro with the four scopes, the two modes, the provocation rule and no citation of a folder hidden from agents; docs/user-manual.md names the tab Agentes (MCP) and the three commands", () => {
+    const guide = fs.readFileSync(path.join(repo, "docs", "memory-guide.md"), "utf8");
+    // the section's prose read with its line breaks as spaces
+    const ask = sectionOf(guide, "Perguntar ao cérebro").replace(/\s+/g, " ");
+    expect(ask.startsWith("### Perguntar ao cérebro ")).toBe(true);
+    for (const scope of ["`all`", "`context`", "`folder`", "`notes`"]) expect(ask, scope).toContain(scope);
+    for (const mode of ["`direct`", "`reason_first`"]) expect(ask, mode).toContain(mode);
+    expect(ask).toContain("No provocation unless a note contradicts, complicates or completes the answer");
+    expect(ask).toContain("An answer never cites a folder hidden from agents");
+
+    const manual = fs.readFileSync(path.join(repo, "docs", "user-manual.md"), "utf8");
+    expect(manual).toContain("**Agentes (MCP)**");
+    // the three commands of C52, byte for byte
+    expect(manual).toContain("claude mcp add mordomo -- mordomo mcp");
+    expect(manual).toContain(
+      JSON.stringify({ mcpServers: { mordomo: { command: "mordomo", args: ["mcp"] } } }, null, 2),
+    );
+    expect(manual).toContain('[mcp_servers.mordomo]\ncommand = "mordomo"\nargs = ["mcp"]');
+  });
 });
