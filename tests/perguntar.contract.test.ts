@@ -586,7 +586,7 @@ describe("C71 the docs", () => {
   });
 });
 
-// ---- C100: the weight of the view (batch D) -------------------------------------------------------------------------
+// ---- C100: the weight of the view (batch D) and of the tab (batch E) ------------------------------------------------
 
 describe("C100 the bundle ceiling", () => {
   it("C100 the baseline's cerebro-perguntar entry follows cerebro-busca-significado with a reason that names what it adds and the four numbers, at most 16 KB of JS gzip and 2 KB of CSS gzip above it (612 336 B and 84 193 B: at most 628 720 B and 86 241 B)", () => {
@@ -608,7 +608,8 @@ describe("C100 the bundle ceiling", () => {
     expect(before.feature).toBe("cerebro-busca-significado");
     expect([before.jsGzip, before.cssGzip]).toEqual([612_336, 84_193]);
     // the reason names what the build adds: the view as a chunk of its own, its entries, the gallery's story, the texts
-    for (const words of ["Perguntar", "chunk", "entries", "gallery", "strings"])
+    // and the Settings tab Agentes (MCP) of batch E
+    for (const words of ["Perguntar", "chunk", "entries", "gallery", "strings", "Agentes (MCP)"])
       expect(entry.reason, words).toContain(words);
     for (const k of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
       expect(Number.isInteger(entry[k]) && entry[k] > 0, k).toBe(true);

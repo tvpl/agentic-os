@@ -1025,3 +1025,7 @@ Status of batch E (updated in the commit that closes each piece):
   the built-in provider ids, which `providers.pluggable` C28 forbids in the interface; `GET /api/mcp` now gives
   `pasteInto` (`~/` and the manifest's first `homeConfigFiles`) for Cursor and Codex, the tab reads "Cole em <arquivo>."
   from it, and `tests/perguntar.usage.test.ts` proves it at the boundary (titled C102, an extra case beside the proof)
+- the weight (C100, the tab's part): closed; the `cerebro-perguntar` entry of `scripts/bundle-baseline.json` now holds
+  batch E's build, 626 676 B JS gzip and 85 834 B CSS gzip, 14 340 B and 1 641 B above `cerebro-busca-significado`
+  (the ceiling is 16 384 B and 2 048 B; the tab, its story and its strings are 3 799 B and 473 B of it), with a reason
+  that names the tab; C100's proof also asks the reason for "Agentes (MCP)"; `bundle:check` exits 0
