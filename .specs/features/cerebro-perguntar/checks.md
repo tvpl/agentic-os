@@ -1235,3 +1235,28 @@ Status of batch F2, the round 2 fixes (updated in the commit that closes each pi
   `typography` C15's two exemptions (`.ask .ask-small`, `.ask .ask-take-text`). The bundle moved by 19 B of JS gzip and
   26 B of CSS gzip, and the `cerebro-perguntar` entry of `scripts/bundle-baseline.json` says so (14 379 B and 1 669 B
   above `cerebro-busca-significado`, under 16 384 B and 2 048 B)
+
+- **Boundary (batch F2):** C116-C117 closed at `68f9843` (C116 in `83aebc7`, C117 in `4041862`, its e2e holding the
+  console form's own box in `68f9843`). On that tree `npm run build`, `npm run typecheck`, `npm run lint` and
+  `npm run bundle:check` exit 0; every `Proof:` line of C116-C117 passes run alone and runs only its check's cases
+  (C116 2 + 2 in the browser, C117 2 + 1 in the browser); the whole of `tests/e2e/ask.spec.ts` passes (15); the UI suite
+  passes whole (202 files, 2110 tests) and `npx vitest run` at the root has one failure, `tests/paineis.refresh.test.ts`
+  C13 (date-dependent, as on the base). Reverted in a scratch `git worktree`, each fix fails its proofs: without C116's
+  (the off card in place of the mode and the panel) both C116 cases fail in `AskView.test.tsx` and both in the browser
+  (4 regions, not 5); without C117's (`ask.css` and the popover's class as at `58195ef`) the static C117 case fails and
+  the browser case reads `display: flex`; with only the root left as `.ask` the browser case reads the form's
+  `overflow: auto` and `min-height: 0px`, and with only the fields left as `.ask .ask-fields` it reads `flex`. The weight
+  of the whole feature: 626 715 B JS gzip and 85 862 B CSS gzip, 14 379 B and 1 669 B above
+  `cerebro-busca-significado`. No route, migration, setting key, event or door added.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) C116: the mode's
+  region and `Tabs.Panel` are always rendered, and the panel holds `Off` instead of the fields, so the tabs keep their
+  panel and "Ligar" returns the fields in the mode then selected; (b) C117: scoping alone under `.ask` would not free the
+  console, whose form is itself `form.console-msg.agent.ask` (`Console.tsx`), so the view's root and its `.ask-fields`
+  are `.ask:has(.ask-col)` and every other selector `.ask …`; "scoped" is read as the class `ask` in the selector's first
+  compound; (c) the folder popover is portalled to `#modal-root`, outside `.ask`: it carries `ask` beside `ask-folders`
+  (`.ask.ask-folders`) rather than `portal={false}`, which would put it inside the view's scrolling box; (d) the suites
+  that read `ask.css` by selector (`AskView.test.tsx` C79, C82, C87, C109-C111, `askMotion.test.ts` C96, `typography`
+  C15's two exemptions) name the scoped selectors now, no assertion or value changed; (e) the C117 browser case also
+  holds the form's own padding, overflow, least height, font size and colour, an extra assertion beyond the claim, which
+  the root-only mutant needs to fail.
+- **Abandoned:** nothing.
