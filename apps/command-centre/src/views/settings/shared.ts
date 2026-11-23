@@ -30,6 +30,7 @@ export type TabId =
   | "theme"
   | "providers"
   | "memory"
+  | "agents-mcp"
   | "desktop"
   | "security"
   | "notifications"
@@ -41,6 +42,7 @@ export const TAB_IDS: TabId[] = [
   "theme",
   "providers",
   "memory",
+  "agents-mcp",
   "desktop",
   "security",
   "notifications",

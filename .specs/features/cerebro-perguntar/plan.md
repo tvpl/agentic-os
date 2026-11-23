@@ -86,8 +86,9 @@ flowchart TD
    `GET /api/memory/hygiene` (exist)
 7. cada leitura de um agente (principal `mcp` ou credencial de execução, exists) por recall, busca, links ou `note_read` soma
    chamadas por ferramenta, por cliente e por caminho num registro em `meta` (door 7)
-8. a aba Agentes (MCP) das Configurações (door 6) lê `GET /api/mcp` (door 7): o estado de cada CLI pelo
-   `discoverMcpServers` (exists), o comando de cada um, as ferramentas e o uso
+8. a aba Agentes (MCP) das Configurações (door 6), um pedaço próprio carregado na primeira vez, lê `GET /api/mcp` (door 7): o
+   estado de cada CLI pelo `discoverMcpServers` (exists), o comando de cada um, as ferramentas e o uso; e `GET /api/system/info`
+   (exists, a mesma entrada de cache da aba Identidade) para mostrar o caminho de um arquivo lido relativo a `memory/`
 
 ## Impact
 
@@ -103,7 +104,7 @@ flowchart TD
 | configurações     | `memorySkills` ganha `brain-ask` no padrão; **uma casa que já grava a lista a mantém**, e a vista diz como ligar (C6b fez o mesmo com `dashboard-answer`); `UiPreferences.brain.ask` guarda, por máquina, o último modo e o último escopo                                                                                                                                                                                                                                                                                                        |
 | custo             | cada pergunta que não se abstém gasta uma execução do provedor padrão das configurações; a abstenção antes da execução não gasta nada                                                                                                                                                                                                                                                                                                                                                                                                            |
 | contratos e pinos | 4 rotas novas (173 → 177); 1 rota com assinatura nova (`memory.links`); a resposta de `memory.hygiene` ganha `brokenLinks` (door 8, lote B); o `400 validation` comum passa a valer em toda rota guardada (um `x-mordomo-as` que não é `mcp`, door 5); códigos de erro novos por recusa nomeada; 3 ferramentas MCP novas (10 → 13); 1 skill embutida nova; o padrão de `memorySkills` muda; exportações novas de `@mordomo/contracts`; `docs/security.md` (o MCP deixa de ler como o dono), `docs/memory-guide.md` e `docs/user-manual.md` mudam |
-| peso              | teto novo acima de `cerebro-busca-significado` (AD-047 h), proposto em Assumptions; a vista Perguntar é um pedaço próprio, carregado na primeira vez                                                                                                                                                                                                                                                                                                                                                                                             |
+| peso              | teto novo acima de `cerebro-busca-significado` (AD-047 h), proposto em Assumptions; a vista Perguntar e a aba Agentes (MCP) são pedaços próprios, carregados na primeira vez                                                                                                                                                                                                                                                                                                                                                                     |
 
 ## Relations
 

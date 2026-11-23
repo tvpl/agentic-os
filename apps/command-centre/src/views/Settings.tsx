@@ -1,6 +1,6 @@
 import { OnboardingButton } from "../onboarding/Onboarding";
 import { useCurrentShell } from "../moldura/shell";
-import { Fragment, useContext, useEffect, useState } from "react";
+import { Fragment, Suspense, lazy, useContext, useEffect, useState } from "react";
 import { usePanelSearchParams } from "../desktop/appRoute";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type SettingsPatch } from "../api";
@@ -27,6 +27,9 @@ import { TAB_IDS, isValidMicroAppHref, type Approval, type TabId } from "./setti
 import type { SettingsShape } from "./settings/shared";
 
 export { isValidMicroAppHref };
+
+/** "Agentes (MCP)" (cerebro-perguntar, S7): the tab's own chunk, fetched the first time it opens. */
+const AgentsMcpTab = lazy(() => import("./settings/AgentsMcp"));
 
 export default function Settings({ onMetaChanged }: { onMetaChanged: () => void }) {
   const t = useT();
@@ -117,6 +120,7 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
       items: [
         { id: "providers", label: t("settings.providers"), keys: t("settings.keys.providers") },
         { id: "memory", label: t("settings.memory"), keys: t("settings.keys.memory") },
+        { id: "agents-mcp", label: t("settings.agentsMcp"), keys: t("settings.keys.agentsMcp") },
       ],
     },
     {
@@ -206,6 +210,11 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
             {tab === "theme" && <ThemeTab s={s} put={put} />}
             {tab === "providers" && <ProvidersTab s={s} put={put} />}
             {tab === "memory" && <MemoryTab s={s} put={put} />}
+            {tab === "agents-mcp" && (
+              <Suspense fallback={<Skeleton lines={8} />}>
+                <AgentsMcpTab />
+              </Suspense>
+            )}
             {tab === "desktop" && <DesktopTab s={s} put={put} />}
             {tab === "security" && <SecurityTab s={s} put={put} />}
             {tab === "notifications" && (

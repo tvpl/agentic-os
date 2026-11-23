@@ -36,6 +36,8 @@ export const qk = {
   memoryStatus: ["memory", "status"] as const,
   /** The local models' catalog and their state (cerebro-busca-significado, door 8). */
   memoryEmbedder: ["memory", "embedder"] as const,
+  /** Settings › Agentes (MCP): the clients, the tools and the agents' usage (cerebro-perguntar, door 7). */
+  mcp: ["mcp"] as const,
   contexts: ["contexts"] as const,
   memoryGraph: (params?: Record<string, string | number | undefined>) =>
     ["memory", "graph", params ?? {}] as const,

@@ -280,6 +280,8 @@ const MICROCOPY: Record<string, string> = {
     "the view's secondary lines, in 12px as the design names each: the lede, the mode's hint, the hidden folders, where it looked, the reason, the run's cost, the provocation's kind and how the answer was made (cerebro-perguntar design.md, Vista - Perguntar)",
   ".ask-take-text":
     "the owner's view, in 12px secondary, up to 6 lines (cerebro-perguntar design.md, Resposta)",
+  ".am-s":
+    "the tab's secondary lines, in 12px as the design names each: the connect line, where to paste, an unreadable file, the closing note, the tools' line and descriptions, a read path (cerebro-perguntar design.md, Aba - Agentes (MCP))",
   ".file-path": "a file path",
   ".microapp-row .ma-desc": "a file path (the row's `rel`)",
   ".run-id": "a run id",

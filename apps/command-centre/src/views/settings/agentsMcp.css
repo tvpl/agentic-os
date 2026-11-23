@@ -1,0 +1,83 @@
+/* Settings › Agentes (MCP) (.specs/features/cerebro-perguntar, design.md "Aba - Agentes (MCP) das Configurações"). */
+.am-s {
+  margin: 0;
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.am p,
+.am h3,
+.am h4 {
+  margin: 0;
+}
+.am b,
+.am h4 {
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+.am svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.am-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+.am-col,
+.am-list {
+  display: grid;
+  gap: var(--s-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.am-grow {
+  flex: 1;
+  min-width: 0;
+}
+.am-ok {
+  color: var(--ok);
+}
+.am-muted {
+  color: var(--text-dim);
+}
+/* design.md "Conectar": the command wraps, never scrolls sideways */
+.am-pre {
+  margin: 0;
+  padding: var(--s-2);
+  border-radius: 4px;
+  background: var(--surface-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.am-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 9em) 1fr auto;
+  align-items: center;
+  gap: var(--s-2);
+}
+.am-track {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.am-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .am-fill {
+    animation: am-grow 240ms ease-out;
+  }
+  @keyframes am-grow {
+    from {
+      transform: scaleX(0);
+    }
+  }
+}

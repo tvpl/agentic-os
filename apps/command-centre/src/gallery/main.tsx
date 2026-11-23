@@ -66,6 +66,8 @@ const WeeklyStory = lazy(() => import("./weeklyStory"));
 const AskStory = lazy(() => import("./askStory"));
 /** "Busca por significado" (cerebro-busca-significado, C134): the Settings block's own module. */
 const SemanticStory = lazy(() => import("./semanticStory"));
+/** "Agentes (MCP)" (cerebro-perguntar, C99): through the Settings tab's chunk, as it is in the app. */
+const AgentsMcpStory = lazy(() => import("./agentsMcpStory"));
 
 /* ---------- fixtures (plainly synthetic; the gallery never talks to the API) ---------- */
 const NOW = Date.UTC(2026, 8, 2, 14, 30);
@@ -916,6 +918,12 @@ function Gallery() {
       <Story id="semantic" title="Busca por significado">
         <Suspense fallback={null}>
           <SemanticStory />
+        </Suspense>
+      </Story>
+
+      <Story id="agents-mcp" title="Agentes (MCP)">
+        <Suspense fallback={null}>
+          <AgentsMcpStory />
         </Suspense>
       </Story>
 

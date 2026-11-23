@@ -1009,3 +1009,12 @@ Status of batch D (updated in the commit that closes each piece):
   pins of earlier features that this design moves (C51 of cerebro-faxina-guiada, C70 of cerebro-natureza, C76 of
   cerebro-rituais, C86 of cerebro-vista-notas) gain the new entry in their exact lists and titles, no case dropped.
 - **Abandoned:** nothing.
+
+Status of batch E (updated in the commit that closes each piece):
+
+- the tab Agentes (MCP), its story and its copy (S7 screen: C101-C106, C108, and C99's tab stories): closed, every proof
+  green in `src/views/settings/agentsMcp.test.tsx` and `src/brain/ask/askEntries.test.tsx` (C99), each proof line run
+  alone and running only its check's cases; the tab is `views/settings/AgentsMcp.tsx`, a chunk of its own that
+  `Settings.tsx` fetches through `lazy` the first time the tab opens; pins of earlier features this design moves (each
+  list gains the new entry, no assertion dropped): the dictionary's dynamic prefixes gain `mcp.kind.` and `mcp.tool.`
+  (`i18n.orphans` C7), and the 12px exemptions gain the tab's secondary lines, `.am-s` (`typography` C15)

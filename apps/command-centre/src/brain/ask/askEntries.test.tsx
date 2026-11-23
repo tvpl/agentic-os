@@ -396,3 +396,46 @@ describe("C99 the gallery's story of the view", () => {
     expect(before(parts[0]!, parts[6]!)).toBe(true);
   });
 });
+
+describe("C99 the gallery's story of the tab Agentes (MCP)", () => {
+  it("C99 the gallery holds the story Agentes (MCP) through the tab's chunk, with its states: connected, not connected, no usage, with usage", async () => {
+    const tree = loadTree();
+    expect(tree.get("gallery/main.tsx")).toContain(
+      'const AgentsMcpStory = lazy(() => import("./agentsMcpStory"));',
+    );
+    expect(tree.get("gallery/main.tsx")).toMatch(
+      /<Story id="agents-mcp" title="Agentes \(MCP\)">\s*<Suspense fallback=\{null\}>\s*<AgentsMcpStory \/>/,
+    );
+    expect(tree.get("gallery/agentsMcpStory.tsx")).toContain('from "../views/settings/AgentsMcp"');
+    const Story = lazy(() => import("../../gallery/agentsMcpStory"));
+    renderWith(
+      <Suspense fallback={null}>
+        <Story />
+      </Suspense>,
+      { lang: "pt-BR" },
+    );
+    const cards = await waitFor(() => {
+      const els = [...document.querySelectorAll(".am > .card.stack")];
+      expect(els.length).toBeGreaterThan(3);
+      return els;
+    });
+    const states = [
+      ...[...cards[0]!.querySelectorAll(":scope > .am-col")].map((b) =>
+        b.querySelector(".am-ok") ? "connected" : b.querySelector("pre") ? "not connected" : b.className,
+      ),
+      ...cards
+        .filter((c) => c.querySelector("h3"))
+        .map((c) =>
+          c.textContent!.includes("Nenhum agente leu o cérebro ainda.")
+            ? "no usage"
+            : c.textContent!.includes("leituras desde")
+              ? "with usage"
+              : c.textContent,
+        ),
+    ];
+    expect(states).toEqual(["connected", "not connected", "not connected", "no usage", "with usage"]);
+    expect(cards[0]!.textContent).toContain("Não deu para ler /fixture/.codex/config.toml.");
+    expect(cards[1]!.querySelectorAll("li")).toHaveLength(13);
+    expect(cards.at(-1)!.querySelectorAll(".am-fill").length).toBeGreaterThan(0);
+  });
+});
