@@ -1029,3 +1029,33 @@ Status of batch E (updated in the commit that closes each piece):
   batch E's build, 626 676 B JS gzip and 85 834 B CSS gzip, 14 340 B and 1 641 B above `cerebro-busca-significado`
   (the ceiling is 16 384 B and 2 048 B; the tab, its story and its strings are 3 799 B and 473 B of it), with a reason
   that names the tab; C100's proof also asks the reason for "Agentes (MCP)"; `bundle:check` exits 0
+
+- **Boundary (batch E):** C101-C108 closed, and with them C99 and C100 whole, at `8a13f9d` (the tab, its story and its
+  copy in `08072c9`, the browser proof in `f93ab4b`, Landing row 10 in `d17b4d1`, the weight in `8a13f9d`). On that
+  tree `npm run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0; every `Proof:` line of
+  C99, C100 and C101-C108 passes run alone and runs only its check's cases (C107 after the build); the UI suite
+  (`npm run test -w apps/command-centre`) passes whole (202 files, 2098 tests) and `npx vitest run` at the root has one
+  failure, `tests/paineis.refresh.test.ts` C13 (date-dependent, as on the base). The weight of the whole feature: 626 676 B JS
+  gzip and 85 834 B CSS gzip, 14 340 B and 1 641 B above `cerebro-busca-significado`, under the 16 384 B and 2 048 B of
+  the plan's ceiling. One Landing row added (10, `pasteInto` in `GET /api/mcp`, with its Surface row); no route,
+  migration, setting key or event added; `Flow` (hop 8) and `Impact` (peso) kept true.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) the tab is
+  `views/settings/AgentsMcp.tsx` and `agentsMcp.css` (class prefix `am-`), loaded by `Settings.tsx` through `lazy` with
+  the settings skeleton as its fallback; its query key is `qk.mcp`; (b) design.md asks for a short description per
+  tool and its table gives none: the tab carries one key per tool, `mcp.tool.<name>`, in both languages, the only keys
+  of the tab outside the table (C106 asserts exactly that set); the strings of the table are `mcp.*`,
+  `settings.agentsMcp` and `settings.keys.agentsMcp`; (c) cards 1 and 2 have no title of their own (the table gives
+  none; "Conectar" and "Ferramentas" are design.md's names for them), card 3 is titled by its `h3` "O que os agentes
+  mais leem", and its three parts by `h4`; (d) the error line is the settings `.error-box` with `role="alert"`, the
+  table's message and its own "Tentar de novo" key (the shared `ErrorBox` reads "Retry" in en and adds "Algo deu
+  errado"); (e) "Ligado" is `--ok` and "Não ligado" `--text-dim` (design.md's `--tone-ok`/`--tone-muted` name no token
+  of `theme.css`; `--text-faint` would fail contrast), at the text's size; the 12px lines are the design's (`.am-s`);
+  (f) "N leituras desde <data>" formats the date in the language's locale (`19/11/2026` in both, the app's en is
+  en-GB), "última vez" is `timeAgo`, `run:<provider>` reads the provider with a capital, as batch D does; (g) "Mais
+  lidos" shows the path relative to `<home>/memory/`, read from `GET /api/system/info` (the identity tab's cache
+  entry), and the whole line is the link; (h) Landing row 10: the first cut kept the two config files in a map keyed by
+  the built-in provider ids, which `providers.pluggable` C28 forbids in the interface, so `GET /api/mcp` gives
+  `pasteInto` for Cursor and Codex (`~/` and the manifest's first `homeConfigFiles`), proven at the boundary by an extra
+  case in `tests/perguntar.usage.test.ts`; (i) C107's `GET /api/mcp` is answered by the browser, since the clients the
+  real route reports depend on the machine's home.
+- **Abandoned:** nothing.
