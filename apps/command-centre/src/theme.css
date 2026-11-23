@@ -108,6 +108,8 @@
   /* opaque surfaces for panels that sit over live canvases (no backdrop-filter) */
   --surface: color-mix(in srgb, var(--bg-raise) 90%, var(--bg));
   --surface-2: color-mix(in srgb, var(--bg-raise-2) 92%, var(--bg));
+  /* the strong line of a quiet block (cerebro-perguntar design.md "Provocação"): the strong border of the theme */
+  --line-strong: var(--border-strong);
   /* chart marks (cerebro-paineis design.md "Cores dos gráficos"): one series per chart, never the accent; the same
      for every preset (amendment 23) */
   --chart-mark: #ea580c;

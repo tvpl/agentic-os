@@ -62,6 +62,8 @@ const ReviewsStory = lazy(() => import("./reviewsStory"));
 const DashboardsStory = lazy(() => import("./dashboardsStory"));
 /** "Revisão semanal" (cerebro-rituais, C99): through the page's chunk, as it is in the app. */
 const WeeklyStory = lazy(() => import("./weeklyStory"));
+/** "Perguntar" (cerebro-perguntar, C99): through the view's chunk, as it is in the app. */
+const AskStory = lazy(() => import("./askStory"));
 /** "Busca por significado" (cerebro-busca-significado, C134): the Settings block's own module. */
 const SemanticStory = lazy(() => import("./semanticStory"));
 
@@ -902,6 +904,12 @@ function Gallery() {
       <Story id="weekly" title="Weekly review">
         <Suspense fallback={null}>
           <WeeklyStory />
+        </Suspense>
+      </Story>
+
+      <Story id="ask" title="Perguntar">
+        <Suspense fallback={null}>
+          <AskStory />
         </Suspense>
       </Story>
 

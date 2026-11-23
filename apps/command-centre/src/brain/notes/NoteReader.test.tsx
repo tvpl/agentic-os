@@ -304,7 +304,7 @@ describe("C55 the callouts of a note's nature", () => {
 });
 
 describe("C86 the note's header", () => {
-  it("C86 the title then, under it, the path in mono 12px; the actions on the right as .btn.sm; Mais holds Definir como Home, Exportar Markdown, Abrir no editor do sistema and Copiar caminho in that order", async () => {
+  it("C86 the title then, under it, the path in mono 12px; the actions on the right as .btn.sm; Mais holds Definir como Home, Exportar Markdown, Abrir no editor do sistema and Copiar caminho in that order, then Perguntar sobre esta nota (cerebro-perguntar, AC 50)", async () => {
     const f = note(1, MEM, "notes/plano.md", { title: "Plano", content: "# Plano\n" });
     read(f, { onEdit: () => undefined });
     const article = await screen.findByRole("article", { name: "Plano" });
@@ -339,6 +339,12 @@ describe("C86 the note's header", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((m) => m.textContent),
-    ).toEqual(["Definir como Home", "Exportar Markdown", "Abrir no editor do sistema", "Copiar caminho"]);
+    ).toEqual([
+      "Definir como Home",
+      "Exportar Markdown",
+      "Abrir no editor do sistema",
+      "Copiar caminho",
+      "Perguntar sobre esta nota",
+    ]);
   });
 });

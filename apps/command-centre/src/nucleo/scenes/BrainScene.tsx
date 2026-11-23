@@ -119,6 +119,7 @@ import { graphRequest, useBrainSearch, useRelatedFiles } from "../../brain/memor
 import { NatureBadge, NatureSearchFilters, useReviewsDue, type Natureza } from "../../brain/natureza";
 import { useWorkContext } from "../../contexts/useWorkContext";
 import {
+  AskView,
   BrainViewSwitch,
   NotesView,
   ReviewsView,
@@ -240,6 +241,8 @@ function NotesMode({ brain }: { brain: BrainModeState }) {
           <ReviewsView />
         ) : brain.mode === "weekly" ? (
           <WeeklyView />
+        ) : brain.mode === "ask" ? (
+          <AskView />
         ) : (
           <NotesView onShowInGraph={(id) => brain.go("graph", `?sel=${id}&local=1&hops=1`)} />
         )}
@@ -1760,6 +1763,10 @@ function Constellation({ onClassic, view }: { onClassic: () => void; view: Brain
               setMenuOpen(false);
             }}
             onBake={bake}
+            onAsk={() => {
+              setMenuOpen(false);
+              view.go("ask");
+            }}
             onCleanup={() => {
               setMenuOpen(false);
               openCleanup();

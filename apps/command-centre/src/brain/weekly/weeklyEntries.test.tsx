@@ -160,13 +160,14 @@ describe("C76 the entries, each in its place", () => {
         "Atualizar índice",
         "Modo apresentação (p)",
         "Faxina",
+        "Perguntar",
         "Revisões (3)",
         "Revisão semanal",
       ]),
     );
     const row = document.querySelector(".brain-topbar-actions")!;
     const buttons = [...row.querySelectorAll("button.btn.sm")];
-    const weeklyButton = buttons[4]!;
+    const weeklyButton = buttons[5]!;
     expect(weeklyButton.querySelector("svg.lucide-calendar-check")).not.toBeNull();
     expect(weeklyButton.getAttribute("title")).toBeNull();
     const chips = [...row.querySelectorAll(".os-chip")];
@@ -174,7 +175,7 @@ describe("C76 the entries, each in its place", () => {
     for (const chip of chips) expect(before(weeklyButton, chip)).toBe(true);
   });
 
-  it("C76 the moldura's graph with Revisões absent (N = 0): Revisão semanal is right after Faxina", async () => {
+  it("C76 the moldura's graph with Revisões absent (N = 0): Revisão semanal is right after Faxina and Perguntar (cerebro-perguntar)", async () => {
     withContext();
     due(0);
     answer(weekly(), { context: "proj-x" });
@@ -185,7 +186,13 @@ describe("C76 the entries, each in its place", () => {
       ).toBe(true),
     );
     await new Promise((r) => setTimeout(r, 50));
-    expect(rowNames()).toEqual(["Atualizar índice", "Modo apresentação (p)", "Faxina", "Revisão semanal"]);
+    expect(rowNames()).toEqual([
+      "Atualizar índice",
+      "Modo apresentação (p)",
+      "Faxina",
+      "Perguntar",
+      "Revisão semanal",
+    ]);
   });
 
   it("C76 with the week finished (12/11) the button's icon is Check and its title Concluída em 12/11", async () => {

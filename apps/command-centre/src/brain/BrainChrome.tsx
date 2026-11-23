@@ -10,6 +10,7 @@ import {
   Diamond,
   Maximize2,
   Menu,
+  MessageSquare,
   Minus,
   Plus,
   RefreshCw,
@@ -102,6 +103,7 @@ const KIND_KEYS: Record<
 
 export function BrainChrome(p: BrainChromeProps) {
   const t = useT();
+  const { go } = useBrainMode();
   const inPanel = useContext(AppRouteContext) !== null;
   const { ui, patch, presenting, progress } = p;
 
@@ -180,6 +182,10 @@ export function BrainChrome(p: BrainChromeProps) {
             {/* The guided cleanup, at its step 1 (cerebro-faxina-guiada, amendment 11). */}
             <button className="btn sm" onClick={() => openCleanup()}>
               <Sparkles aria-hidden /> {t("cleanup.open.button")}
+            </button>
+            {/* "Perguntar" (cerebro-perguntar, design.md "Entradas"): before "Revisões (N)". */}
+            <button className="btn sm" onClick={() => go("ask")}>
+              <MessageSquare aria-hidden /> {t("ask.send")}
             </button>
             {/* "Revisões (N)" when something fell due (cerebro-natureza, amendment 10). */}
             <ReviewsButton />

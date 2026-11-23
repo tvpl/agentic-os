@@ -7,7 +7,7 @@
  */
 import { useCallback, useContext, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { FileText, Network } from "lucide-react";
+import { FileText, MessageSquare, Network } from "lucide-react";
 import { useT } from "../i18n";
 import "./viewSwitch.css";
 import { lazyRoute } from "../lazyRoute";
@@ -15,11 +15,13 @@ import { AppRouteContext } from "../desktop/appRoute";
 import { useCommands, type Command } from "../commands/registry";
 import { REVIEWS_PATH } from "./natureza";
 
-export type BrainMode = "graph" | "notes" | "reviews" | "weekly";
+export type BrainMode = "graph" | "notes" | "reviews" | "weekly" | "ask";
 export const GRAPH_PATH = "/brain";
 export const NOTES_PATH = "/brain/notes";
 /** "Revisão semanal" (.specs/features/cerebro-rituais, S5): the page's route, in both shells. */
 export const WEEKLY_PATH = "/brain/weekly";
+/** "Perguntar" (.specs/features/cerebro-perguntar, S5, door 6): the view's route, in both shells. */
+export const ASK_PATH = "/brain/ask";
 
 /** The notes view, its own chunk: fetched the first time "Notas" is chosen (AC 51). */
 export const NotesView = lazyRoute(() => import("./notes/NotesView"));
@@ -27,6 +29,8 @@ export const NotesView = lazyRoute(() => import("./notes/NotesView"));
 export const ReviewsView = lazyRoute(() => import("./reviews/ReviewsScreen"));
 /** "Revisão semanal" (.specs/features/cerebro-rituais, S5), its own chunk: fetched the first time it is opened. */
 export const WeeklyView = lazyRoute(() => import("./weekly/WeeklyReview"));
+/** "Perguntar" (.specs/features/cerebro-perguntar, AC 54), its own chunk: fetched the first time /brain/ask opens. */
+export const AskView = lazyRoute(() => import("./ask/AskView"));
 
 export interface BrainModeState {
   mode: BrainMode;
@@ -46,7 +50,9 @@ export function useBrainMode(): BrainModeState {
       ? "reviews"
       : pathname.startsWith(WEEKLY_PATH)
         ? "weekly"
-        : "graph";
+        : pathname.startsWith(ASK_PATH)
+          ? "ask"
+          : "graph";
   const setLocation = panel?.setLocation;
   const go = useCallback(
     (next: BrainMode, search = "") => {
@@ -57,7 +63,9 @@ export function useBrainMode(): BrainModeState {
             ? REVIEWS_PATH
             : next === "weekly"
               ? WEEKLY_PATH
-              : GRAPH_PATH;
+              : next === "ask"
+                ? ASK_PATH
+                : GRAPH_PATH;
       if (setLocation) setLocation({ pathname: path, search });
       else navigate(`${path}${search}`);
     },
@@ -66,8 +74,30 @@ export function useBrainMode(): BrainModeState {
   return { mode, go };
 }
 
-/** "Ver notas" on the graph and "Ver grafo" on the notes, each answering `v` (amendment 13: the scope's keys are lower case). */
+/**
+ * "Ver notas" on the graph and "Ver grafo" on the notes, each answering `v` (amendment 13: the scope's keys are lower
+ * case), and `a`, which opens "Perguntar" (cerebro-perguntar, AC 35) from every view of the brain but "Revisões", where
+ * `a` is "Adiar" (cerebro-natureza, C71), and "Perguntar" itself.
+ */
 export function useBrainViewCommands({ mode, go }: BrainModeState): void {
+  const ask = useMemo<Command[]>(
+    () =>
+      mode === "reviews" || mode === "ask"
+        ? []
+        : [
+            {
+              id: "brain.view.ask",
+              title: "ask.title",
+              group: "view",
+              scope: "view:brain",
+              icon: MessageSquare,
+              keys: ["a"],
+              run: () => go("ask"),
+            },
+          ],
+    [mode, go],
+  );
+  useCommands(ask, { exclusive: "brain.view.ask" });
   const commands = useMemo<Command[]>(
     () =>
       mode === "graph"

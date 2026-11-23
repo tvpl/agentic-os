@@ -431,6 +431,8 @@ const TITLE_STAYS: Record<string, [reason: "DATA" | "WORDS" | "BINDING" | "DECK"
   'views/Skills/SkillDetail.tsx :: {t("skills.notes.promoteHint")}': ["WORDS", 1],
   // cerebro-rituais (design.md "Entradas" and "Etapa 1"): "Revisão semanal" says when the week was finished, and a
   // disabled "Virar tarefa" says why.
+  // cerebro-perguntar, design.md "Campos": the disabled "Perguntar" says in its title what is missing
+  "brain/ask/AskView.tsx :: {missing !== null ? t(missing) : undefined}": ["WORDS", 1],
   'brain/weeklyEntry.tsx :: {at === null ? undefined : t("weekly.finishedButton", { day: shortDay(new Date(at)) })}':
     ["WORDS", 1],
   'brain/weekly/WeeklyReview.tsx :: {t("weekly.noProject")}': ["WORDS", 1],

@@ -8,7 +8,7 @@
  * says so, with its reason, and has no "Editar" (AC 40).
  */
 import { useMemo, type ReactNode } from "react";
-import { BookOpen, MoreHorizontal, Network, Pencil, Unlink } from "lucide-react";
+import { BookOpen, MessageSquarePlus, MoreHorizontal, Network, Pencil, Unlink } from "lucide-react";
 import { ApiError } from "../../api";
 import { apiCall } from "../../apiCall";
 import { useT } from "../../i18n";
@@ -19,6 +19,8 @@ import { DropdownMenu, Tooltip } from "../../ui";
 import { copyText, downloadUrl, errorMessage } from "../../views/shared";
 import { parseMarkdown, type Block } from "../markdown";
 import { NoteEditInPlace, type NoteDraft } from "./NoteEditInPlace";
+import { askAboutNote } from "../ask/askLink";
+import { useBrainMode } from "../BrainViewSwitch";
 import { linkResolver } from "./noteLinks";
 import { PropertiesTable } from "./PropertiesTable";
 import { baseName, useNoteLinks, useNoteRead, withoutExt } from "./notesData";
@@ -73,6 +75,7 @@ export function NoteReader(p: NoteReaderProps) {
   const toast = useToast();
   const note = useNoteRead(p.path);
   const links = useNoteLinks(p.id);
+  const brain = useBrainMode();
   const title = p.meta.title ?? withoutExt(baseName(p.path));
 
   const content = note.data?.content ?? null;
@@ -195,6 +198,13 @@ export function NoteReader(p: NoteReaderProps) {
               { id: "export", label: t("notes.reader.export"), onSelect: exportMarkdown },
               { id: "open", label: t("notes.reader.open"), onSelect: openInEditor },
               { id: "copy", label: t("notes.reader.copyPath"), onSelect: copyPath },
+              {
+                // cerebro-perguntar, AC 50: the view Perguntar about this note alone, the focus in the question.
+                id: "ask",
+                icon: <MessageSquarePlus aria-hidden size={14} />,
+                label: t("ask.aboutNote"),
+                onSelect: () => brain.go("ask", askAboutNote(p.path)),
+              },
             ]}
             trigger={
               <button type="button" className="btn sm" aria-label={t("notes.reader.more")}>

@@ -62,6 +62,7 @@ import { useWorkContext } from "../contexts/useWorkContext";
 import { useCommands, type Command } from "../commands/registry";
 import { openNoteEditor } from "../brain/noteEvents";
 import {
+  AskView,
   BrainViewSwitch,
   NotesView,
   ReviewsView,
@@ -124,6 +125,10 @@ export default function SecondBrain() {
       ) : brain.mode === "weekly" ? (
         <Suspense fallback={<Skeleton lines={6} />}>
           <WeeklyView />
+        </Suspense>
+      ) : brain.mode === "ask" ? (
+        <Suspense fallback={<Skeleton lines={6} />}>
+          <AskView />
         </Suspense>
       ) : (
         <SecondBrainGraph />

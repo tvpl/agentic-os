@@ -126,7 +126,7 @@ const reviewsUp = () =>
   });
 
 describe("C70 the entries, each in its place", () => {
-  it("C70 the moldura's graph: Revisões (3) is the fourth .btn.sm of .brain-topbar-actions, after Atualizar índice, Modo apresentação (p) and Faxina, before Revisão semanal (cerebro-rituais G17) and the os-chips, with the context's total, and opens /brain/reviews", async () => {
+  it("C70 the moldura's graph: Revisões (3) is the fifth .btn.sm of .brain-topbar-actions, after Atualizar índice, Modo apresentação (p), Faxina and Perguntar (cerebro-perguntar, Entradas), before Revisão semanal (cerebro-rituais G17) and the os-chips, with the context's total, and opens /brain/reviews", async () => {
     withContext();
     count(3);
     renderWith(<BrainChrome {...chrome()} />, { lang: "pt-BR" });
@@ -140,6 +140,7 @@ describe("C70 the entries, each in its place", () => {
         "Atualizar índice",
         "Modo apresentação (p)",
         "Faxina",
+        "Perguntar",
         "Revisões (3)",
         "Revisão semanal",
       ]),
@@ -147,10 +148,10 @@ describe("C70 the entries, each in its place", () => {
     const buttons = [...row.querySelectorAll("button.btn.sm")];
     const chips = [...row.querySelectorAll(".os-chip")];
     expect(chips.length).toBeGreaterThan(0);
-    for (const chip of chips) expect(before(buttons[3]!, chip)).toBe(true);
+    for (const chip of chips) expect(before(buttons[4]!, chip)).toBe(true);
   });
 
-  it("C70 the moldura's graph: no Revisões when the context's total is 0 (Revisão semanal follows Faxina, cerebro-rituais G17)", async () => {
+  it("C70 the moldura's graph: no Revisões when the context's total is 0 (Revisão semanal follows Faxina and Perguntar, cerebro-rituais G17, cerebro-perguntar)", async () => {
     withContext();
     count(0);
     renderWith(<BrainChrome {...chrome()} />, { lang: "pt-BR" });
@@ -163,7 +164,13 @@ describe("C70 the entries, each in its place", () => {
     const names = [...document.querySelectorAll(".brain-topbar-actions button.btn.sm")].map(
       (b) => b.getAttribute("aria-label") ?? b.textContent!.trim(),
     );
-    expect(names).toEqual(["Atualizar índice", "Modo apresentação (p)", "Faxina", "Revisão semanal"]);
+    expect(names).toEqual([
+      "Atualizar índice",
+      "Modo apresentação (p)",
+      "Faxina",
+      "Perguntar",
+      "Revisão semanal",
+    ]);
   });
 
   it("C70 the moldura's Revisões (3) opens the screen at /brain/reviews", async () => {

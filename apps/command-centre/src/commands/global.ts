@@ -20,6 +20,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   ListTree,
+  MessageSquare,
   Palette,
   Plug,
   Plus,
@@ -45,7 +46,7 @@ import { openNoteEditor } from "../brain/noteEvents";
 import { openCleanup } from "../brain/cleanupEvents";
 import { openMemoryHistory } from "../brain/memoria";
 import { REVIEWS_PATH } from "../brain/natureza";
-import { WEEKLY_PATH } from "../brain/BrainViewSwitch";
+import { ASK_PATH, WEEKLY_PATH } from "../brain/BrainViewSwitch";
 import { useCommands, type Command } from "./registry";
 
 /** Opens the palette (and closes it: the palette registers the same keys in its own `modal` scope). */
@@ -256,6 +257,18 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["weekly", "review", "semanal", "revisao", "revisão", "gtd", "laços", "lacos", "projetos"],
         palette: true,
         run: go(WEEKLY_PATH),
+      },
+      {
+        // "Perguntar ao cérebro" (cerebro-perguntar, AC 35, design.md "Entradas"): the view at /brain/ask, the frame's
+        // page and the Núcleo's brain panel.
+        id: "action:ask-brain",
+        title: "ask.title",
+        group: "actions",
+        scope: "global",
+        icon: MessageSquare,
+        keywords: ["ask", "perguntar", "pergunta", "question", "cérebro", "cerebro", "brain", "notas"],
+        palette: true,
+        run: go(ASK_PATH),
       },
       {
         // "Histórico da memória" (cerebro-memoria-confiavel, AC 44): the newest changes of memory/, in a dialog.

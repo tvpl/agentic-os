@@ -139,7 +139,7 @@ describe("C51 the four entries, each in its place, and where each opens", () => 
   });
 
   for (const active of ["alfa", null] as const) {
-    it(`C51 the graph's Faxina is the third .btn.sm of .brain-topbar-actions, after Atualizar índice and Modo apresentação (p), before Revisão semanal (cerebro-rituais G17) and the os-chips, and opens step 1 ${active ? "with the active context chosen" : "with nothing chosen under Todo o cérebro"}`, async () => {
+    it(`C51 the graph's Faxina is the third .btn.sm of .brain-topbar-actions, after Atualizar índice and Modo apresentação (p), before Perguntar (cerebro-perguntar, Entradas), Revisão semanal (cerebro-rituais G17) and the os-chips, and opens step 1 ${active ? "with the active context chosen" : "with nothing chosen under Todo o cérebro"}`, async () => {
       net.prefs.activeContext = active;
       mountHost(<BrainChrome {...chrome()} />);
       const row = document.querySelector(".brain-topbar-actions")!;
@@ -148,6 +148,7 @@ describe("C51 the four entries, each in its place, and where each opens", () => 
         "Atualizar índice",
         "Modo apresentação (p)",
         "Faxina",
+        "Perguntar",
         "Revisão semanal",
       ]);
       const chips = [...row.querySelectorAll(".os-chip")];
@@ -168,13 +169,14 @@ describe("C51 the four entries, each in its place, and where each opens", () => 
   }
 
   for (const active of ["alfa", null] as const) {
-    it(`C51 the Núcleo's Faxina is the row before Revisão semanal (cerebro-rituais G17) in bs-menu-acts, after Salvar como visão padrão, and opens step 1 ${active ? "with the active context chosen" : "with nothing chosen"}`, async () => {
+    it(`C51 the Núcleo's Faxina is the row before Revisão semanal (cerebro-rituais G17) in bs-menu-acts, after Perguntar ao cérebro (cerebro-perguntar, Entradas), itself after Salvar como visão padrão, and opens step 1 ${active ? "with the active context chosen" : "with nothing chosen"}`, async () => {
       net.prefs.activeContext = active;
       mountHost(<SceneMenu />);
       const rows = [...document.querySelectorAll(".bs-menu-acts > button")].map((b) => b.textContent);
       expect(rows.at(-1)).toBe("Revisão semanal");
       expect(rows.at(-2)).toBe("Faxina");
-      expect(rows.at(-3)).toBe("Salvar como visão padrão");
+      expect(rows.at(-3)).toBe("Perguntar ao cérebro");
+      expect(rows.at(-4)).toBe("Salvar como visão padrão");
       fireEvent.click(screen.getByRole("button", { name: "Faxina" }));
       await atStep("Etapa 1 de 5 · Escopo");
       await waitFor(() => expect(radios()).toHaveLength(2));

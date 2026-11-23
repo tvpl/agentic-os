@@ -962,3 +962,16 @@ MCP` with the tab **Agentes (MCP)** and C52's three commands byte for byte
   and in the user manual a bullet in 3.1 and a new `3.2 Agents through MCP`, which names the view Perguntar and the tab
   Agentes (MCP) that batches D and E build.
 - **Abandoned:** nothing.
+
+Status of batch D (updated in the commit that closes each piece):
+
+- the view Perguntar, its entries and its story (S5: C72-C78, C80-C94, C96, C99's view stories, and the proofs in
+  rendered components of C79, C90 and C97): closed, every proof green in `src/brain/ask/AskView.test.tsx`,
+  `src/brain/ask/askEntries.test.tsx`, `src/brain/ask/askCopy.test.ts` and `src/brain/ask/askMotion.test.ts`, each
+  proof line run alone and running only its check's cases; pins of earlier features moved by this design (each list
+  gains the new entry, no assertion dropped): the brain toolbar's exact rows gain "Perguntar" before "Revisões (N)"
+  (`cleanupEntries` C51, `reviewsEntries` C70, `weeklyEntries` C76), the Núcleo menu's rows gain "Perguntar ao cérebro"
+  above "Faxina" (`cleanupEntries` C51), the note's "Mais" gains "Perguntar sobre esta nota" at its end (`NoteReader`
+  C86); the closed lists gain the view's test material (`legacy.graph` C1), the disabled "Perguntar"'s `title`
+  (`ui.source` C25) and the view's 12px lines the design names (`typography` C15); the token `--line-strong` the
+  design names for the provocation did not exist and is `var(--border-strong)` in `theme.css`'s `:root`
