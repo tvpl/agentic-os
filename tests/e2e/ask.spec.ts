@@ -1,7 +1,8 @@
 /**
- * "Perguntar" in a real browser (.specs/features/cerebro-perguntar, C79, C95, C97, C98, C107, and C109 and
- * C110 of the round 1 fixes; design.md "Vista - Perguntar" and "Aba - Agentes (MCP) das Configurações"): the view's six
- * regions in one centred column of at most 720px and its fields' rows and button, measured on screen; the citations wrap
+ * "Perguntar" in a real browser (.specs/features/cerebro-perguntar, C79, C95, C97, C98, C107, C109 and C110 of the
+ * round 1 fixes, and C116 of the round 2 fixes; design.md "Vista - Perguntar" and "Aba - Agentes (MCP) das
+ * Configurações"): the view's six regions in one centred column of at most 720px (the off card in the fields' place) and
+ * its fields' rows and button, measured on screen; the citations wrap
  * at 320px and lead to `/brain?sel=<fileId>`;
  * no serious axe violation in both shells and both themes, empty, answering, a reason-first answer with its provocation
  * (the Fold open) and refused; the view's own chunk, fetched only when `/brain/ask` opens; the plan's independent test
@@ -670,3 +671,69 @@ test("C110 the moldura at 1280×800: Sua visão 4 rows to 12 (20 lines scroll in
   expect(await shownRows(question)).toBe(6);
   await edges([take, question]);
 });
+
+/* ---------------- Round 2 fixes (batch F2): C116, in a real browser ---------------- */
+
+for (const shell of SHELLS)
+  test(`C116 /brain/ask in the ${shell} at 1280×800: after 409 skill_unavailable the regions keep C109's order with the off card in the fields' place, in either mode`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await open(page, shell, "dark", "/brain", 1280);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await states(page, ITEMS);
+    await page.route(/\/api\/v1\/memory\/ask(\?.*)?$/, (route) =>
+      route.request().method() === "POST"
+        ? route.fulfill({
+            status: 409,
+            json: {
+              error: {
+                code: "skill_unavailable",
+                message: "A skill brain-ask não pode ler a memória.",
+              },
+            },
+          })
+        : route.fallback(),
+    );
+    await page.goto("/#/brain/ask");
+    const v = view(page);
+    await expect(v.locator("h1")).toHaveText("Perguntar ao cérebro");
+    await expect(v.locator(".ask-row")).toHaveCount(3);
+    await v.getByRole("textbox", { name: "Pergunta", exact: true }).fill("O que decidi sobre o onboarding?");
+    await v.getByRole("button", { name: "Perguntar", exact: true }).click();
+    await expect(v.locator(".ask-off")).toBeVisible();
+
+    const regions = v.locator(".ask-col").locator(":scope > *");
+    const arranged = async (hint: boolean) => {
+      await expect(regions).toHaveCount(5);
+      const [head, scope, mode, off, recent] = [0, 1, 2, 3, 4].map((i) => regions.nth(i));
+      await expect(head!.locator("h1")).toHaveText("Perguntar ao cérebro");
+      await expect(scope!.getByText("Sobre:")).toBeVisible();
+      await expect(mode!.getByRole("tablist")).toBeVisible();
+      await expect(mode!.getByRole("tab")).toHaveText(["Perguntar direto", "Raciocine primeiro"]);
+      await expect(mode!.getByText("Escreva o que você pensa antes.", { exact: false })).toHaveCount(
+        hint ? 1 : 0,
+      );
+      // the off card where the fields were: Lock, the sentence and Ligar, and no field
+      const card = off!.locator(".ask-off");
+      await expect(card).toBeVisible();
+      await expect(card.locator("svg.lucide-lock")).toHaveCount(1);
+      await expect(card).toContainText("Perguntar está desligado: a skill brain-ask não pode ler a memória.");
+      await expect(card.getByRole("button", { name: "Ligar" })).toBeVisible();
+      await expect(off!.locator("textarea")).toHaveCount(0);
+      await expect(recent!.getByRole("heading", { name: "PERGUNTAS RECENTES" })).toBeVisible();
+      // C109's order: each region's top strictly greater than the previous one's, and below its bottom
+      const boxes = await Promise.all([head, scope, mode, off, recent].map((r) => box(r!)));
+      for (let i = 1; i < boxes.length; i++) {
+        expect(boxes[i]!.y, `region ${i + 1} under region ${i}`).toBeGreaterThan(boxes[i - 1]!.y);
+        expect(boxes[i]!.y, `region ${i + 1} starts below the end of region ${i}`).toBeGreaterThanOrEqual(
+          boxes[i - 1]!.y + boxes[i - 1]!.height - 1,
+        );
+      }
+    };
+    await arranged(false);
+    // switching the mode keeps the off card, the hint in the mode's region
+    await v.getByRole("tab", { name: "Raciocine primeiro" }).click();
+    await expect(v.getByRole("tab", { name: "Raciocine primeiro" })).toHaveAttribute("aria-selected", "true");
+    await arranged(true);
+  });

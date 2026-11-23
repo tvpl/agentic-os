@@ -1072,5 +1072,90 @@ describe("C111 the card Sua visão", () => {
   });
 });
 
+/* ---------------- Round 2 fixes (batch F2): C116, the off state's arrangement ---------------- */
+
+describe("C116 the off state replaces only the fields", () => {
+  /** Send `Q` directly and get `409 skill_unavailable`; the off card on screen. */
+  async function turnedOff() {
+    kit.settings = { memorySkills: ["recall", "minha-skill"], folderAccess: [] };
+    on(
+      "ask",
+      only({ question: Q, mode: "direct", scope: { kind: "all" } }, new NetError(409, "skill_unavailable")),
+    );
+    on("settings", only({ memorySkills: ["recall", "minha-skill", "brain-ask"] }, {}));
+    mountAsk();
+    await up();
+    await waitFor(() => expect(document.querySelector(".ask-empty")).not.toBeNull());
+    type(questionField(), Q);
+    fireEvent.click(sendButton());
+    await waitFor(() => expect(document.querySelector(".ask-off")).not.toBeNull());
+  }
+  /** The five regions of the off state, each checked for what it holds; the mode region and the off region. */
+  function offRegions() {
+    expect(regions()).toHaveLength(5);
+    const [head, scope, mode, off, recent] = regions();
+    expect(within(head!).getByRole("heading", { level: 1, name: "Perguntar ao cérebro" })).toBeTruthy();
+    expect(within(scope!).getByText("Sobre:")).toBeTruthy();
+    expect(within(scope!).getByRole("button", { name: "Todo o cérebro" }).matches(".btn.sm")).toBe(true);
+    const tabs = within(mode!).getByRole("tablist");
+    expect(
+      within(tabs)
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Perguntar direto", "Raciocine primeiro"]);
+    // the off card where the fields were: Lock, the sentence and Ligar, and no field
+    const card = off!.querySelector<HTMLElement>(".ask-off");
+    expect(card).not.toBeNull();
+    expect(icons(card!)).toEqual(["lucide lucide-lock"]);
+    expect(
+      within(card!).getByText("Perguntar está desligado: a skill brain-ask não pode ler a memória."),
+    ).toBeTruthy();
+    expect(within(card!).getByRole("button", { name: "Ligar" }).matches(".btn.primary")).toBe(true);
+    expect(off!.querySelector("textarea")).toBeNull();
+    expect(document.querySelector(".ask-fields")).toBeNull();
+    expect(document.querySelector(".ask-result")).toBeNull();
+    expect(within(recent!).getByRole("heading", { name: "PERGUNTAS RECENTES" })).toBeTruthy();
+    return { mode: mode!, off: off! };
+  }
+
+  it("C116 after 409 skill_unavailable the regions are header, scope, mode (two tabs, selectable), the off card in the fields' place, recent questions", async () => {
+    await turnedOff();
+    const { mode } = offRegions();
+    expect(tab("Perguntar direto").getAttribute("aria-selected")).toBe("true");
+    for (const t of within(mode).getAllByRole("tab")) expect(t.hasAttribute("disabled")).toBe(false);
+    expect(within(mode).queryByText(HINT)).toBeNull();
+  });
+
+  it("C116 switching the mode in the off state keeps the off card, with Raciocine primeiro's hint in the mode; Ligar brings the fields back in that mode, with the question", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await turnedOff();
+    await user.click(tab("Raciocine primeiro"));
+    await waitFor(() => expect(tab("Raciocine primeiro").getAttribute("aria-selected")).toBe("true"));
+    const { mode, off } = offRegions();
+    const hint = within(mode).getByText(HINT);
+    expect(before(within(mode).getByRole("tablist"), hint)).toBe(true);
+    // and back: the off card stays in either mode
+    await user.click(tab("Perguntar direto"));
+    await waitFor(() => expect(tab("Perguntar direto").getAttribute("aria-selected")).toBe("true"));
+    offRegions();
+    await user.click(tab("Raciocine primeiro"));
+    await waitFor(() => expect(tab("Raciocine primeiro").getAttribute("aria-selected")).toBe("true"));
+    offRegions();
+
+    fireEvent.click(within(off).getByRole("button", { name: "Ligar" }));
+    await waitFor(() =>
+      expect(sent("settings")).toEqual([{ memorySkills: ["recall", "minha-skill", "brain-ask"] }]),
+    );
+    await waitFor(() => expect(document.querySelector(".ask-off")).toBeNull());
+    expect(tab("Raciocine primeiro").getAttribute("aria-selected")).toBe("true");
+    expect(fieldLabels()).toEqual(["Sua visão", "Pergunta"]);
+    expect(questionField().value).toBe(Q);
+    const [, , , fields] = regions();
+    expect(regions()).toHaveLength(5);
+    expect(fields!.getAttribute("role")).toBe("tabpanel");
+    expect(fields!.querySelector(".ask-fields")).not.toBeNull();
+  });
+});
+
 // A test must not leak the fake clock into another file's timers.
 afterEach(() => void act(() => undefined));

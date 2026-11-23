@@ -1209,3 +1209,14 @@ Status of batch F1, the round 1 fixes (updated in the commit that closes each pi
   a class of `desktop/console/Console.tsx`, so `ask.css`'s `.ask-fields` rules reach the console once the view's chunk
   is loaded (the new textarea rule is scoped under `.ask` and does not).
 - **Abandoned:** nothing.
+
+Status of batch F2, the round 2 fixes (updated in the commit that closes each piece):
+
+- the off state's arrangement (C116): closed, both proofs green, each run alone and running only C116's cases:
+  `AskView.test.tsx` (two cases: after `409 skill_unavailable` the column's five regions are header, scope, mode with its
+  two tabs, the off card in the tabs' panel where the fields were, and recent questions; switching to "Raciocine
+  primeiro" and back keeps the off card, with the hint in the mode's region, and "Ligar" brings back "Sua visão" and
+  "Pergunta" in that mode, with the question) and `tests/e2e/ask.spec.ts` (the moldura and the Núcleo at 1280×800: the
+  five regions after the browser answers the `POST` with `409 skill_unavailable`, each top strictly under the previous
+  one and below its end, in "Perguntar direto" and in "Raciocine primeiro"). The view changed for it: the mode's region
+  and the tabs' panel are always there, and the panel holds the off card instead of the fields

@@ -522,23 +522,18 @@ export default function AskView() {
             />
           </section>
 
-          {off ? (
-            fields
-          ) : (
-            <>
-              <div className="ask-mode">
-                <Tabs.List>
-                  {tabs.map((tab) => (
-                    <Tabs.Tab key={tab.id} value={tab.id}>
-                      {tab.label}
-                    </Tabs.Tab>
-                  ))}
-                </Tabs.List>
-                {shown.mode === "reason_first" && <p className="ask-small">{t("ask.mode.hint")}</p>}
-              </div>
-              <Tabs.Panel>{fields}</Tabs.Panel>
-            </>
-          )}
+          <div className="ask-mode">
+            <Tabs.List>
+              {tabs.map((tab) => (
+                <Tabs.Tab key={tab.id} value={tab.id}>
+                  {tab.label}
+                </Tabs.Tab>
+              ))}
+            </Tabs.List>
+            {shown.mode === "reason_first" && <p className="ask-small">{t("ask.mode.hint")}</p>}
+          </div>
+          {/* "Desligado" (design.md "Estados") is in the fields' place only: the mode stays above it */}
+          <Tabs.Panel>{fields}</Tabs.Panel>
 
           {result !== null && <div className="ask-result">{result}</div>}
 
