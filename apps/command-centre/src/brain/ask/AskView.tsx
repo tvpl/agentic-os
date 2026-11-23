@@ -914,7 +914,8 @@ function FolderPicker({
       onClose={onClose}
       anchor={anchor}
       ariaLabel={t("ask.scope.folder")}
-      className="ask-folders"
+      // portalled out of the view: it carries the view's root class to stay in the scope of ask.css
+      className="ask ask-folders"
     >
       {top.data ? (
         top.data.roots.map((r) => <RootTree key={r.path} root={r.path} chosen={chosen} onChoose={onChoose} />)

@@ -74,11 +74,11 @@ function keyframes(name: string, at: "from" | "to"): Record<string, string> {
   });
   return out;
 }
-/** Every selector of the stylesheet that names a `.ask-par:nth-child(n)`, by n. */
+/** Every selector of the stylesheet that names a `.ask .ask-par:nth-child(n)`, by n. */
 function staggers(): Map<number, string | undefined> {
   const out = new Map<number, string | undefined>();
   postcss.parse(CSS).walkRules((r) => {
-    const m = /^\.ask-par:nth-child\((\d+)\)$/.exec(r.selector);
+    const m = /^\.ask \.ask-par:nth-child\((\d+)\)$/.exec(r.selector);
     if (!m) return;
     let delay: string | undefined;
     r.walkDecls("animation-delay", (d) => void (delay = d.value));
@@ -104,21 +104,21 @@ describe("C96 the motion of the view", () => {
   });
 
   it("C96 the result enters with opacity 0 and translateY(4px) in 200 ms ease-out", () => {
-    const result = inMotion(".ask-result").animation!.split(/\s+/);
+    const result = inMotion(".ask .ask-result").animation!.split(/\s+/);
     expect(result.slice(1)).toEqual(["200ms", "ease-out", "both"]);
     expect(keyframes(result[0]!, "from")).toEqual({ opacity: "0", transform: "translateY(4px)" });
     expect(keyframes(result[0]!, "to")).toEqual({});
   });
 
   it("C96 each paragraph enters the same way, 40 ms after the one before it, at most 8", () => {
-    const par = inMotion(".ask-par").animation!.split(/\s+/);
+    const par = inMotion(".ask .ask-par").animation!.split(/\s+/);
     expect(par.slice(1)).toEqual(["200ms", "ease-out", "both"]);
     expect(keyframes(par[0]!, "from")).toEqual({ opacity: "0", transform: "translateY(4px)" });
     expect([...staggers().entries()].sort(([a], [b]) => a - b)).toEqual(
       [2, 3, 4, 5, 6, 7, 8].map((n) => [n, `${(n - 1) * 40}ms`]),
     );
     for (const n of [2, 8])
-      expect(inMotion(`.ask-par:nth-child(${n})`)["animation-delay"]).toBe(`${(n - 1) * 40}ms`);
+      expect(inMotion(`.ask .ask-par:nth-child(${n})`)["animation-delay"]).toBe(`${(n - 1) * 40}ms`);
   });
 
   it("C96 the view moves nothing from script: no animation API, frame or tween of its own", () => {
@@ -149,4 +149,63 @@ describe("C96 the motion of the view", () => {
       ]);
       cleanup();
     });
+});
+
+/* ---------------- Round 2 fixes (batch F2): C117, the stylesheet changes no other screen ---------------- */
+
+/** The first compound selector of `selector` (up to the first combinator outside brackets and parentheses). */
+function firstCompound(selector: string): string {
+  let depth = 0;
+  const s = selector.trim();
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!;
+    if (c === "(" || c === "[") depth++;
+    else if (c === ")" || c === "]") depth--;
+    else if (depth === 0 && /[\s>+~]/.test(c)) return s.slice(0, i);
+  }
+  return s;
+}
+/** Whether `selector` is scoped under the view's root class: its first compound names the class `ask` itself. */
+function scoped(selector: string): boolean {
+  const own = firstCompound(selector).replace(/\([^)]*\)|\[[^\]]*\]/g, "");
+  return [...own.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].some((m) => m[1] === "ask");
+}
+/** Every selector of `css`'s style rules (each member of each selector list) that is not scoped under `.ask`. */
+function unscoped(css: string): string[] {
+  const out: string[] = [];
+  postcss.parse(css).walkRules((r) => {
+    if (r.parent?.type === "atrule" && /keyframes$/.test((r.parent as postcss.AtRule).name)) return;
+    for (const sel of r.selectors) if (!scoped(sel)) out.push(sel);
+  });
+  return out;
+}
+
+describe("C117 the view's stylesheet changes no other screen", () => {
+  it("C117 the reader finds an unscoped selector and leaves the scoped ones", () => {
+    expect(unscoped(".ask-fields { display: flex }")).toEqual([".ask-fields"]);
+    expect(unscoped(".ask-col .ask, .asking .x, :has(.ask) .x, .x.ask-fields { color: red }")).toEqual([
+      ".ask-col .ask",
+      ".asking .x",
+      ":has(.ask) .x",
+      ".x.ask-fields",
+    ]);
+    expect(
+      unscoped(".ask .ask-head, .ask:has(.ask-col) .ask-fields, .ask.ask-folders, .ask > .x { margin: 0 }"),
+    ).toEqual([]);
+    expect(unscoped(".ask:has(> .ui-tabs-root .ask-col) { padding: 0 }")).toEqual([]);
+    expect(
+      unscoped("@media (prefers-reduced-motion: no-preference) { .ask-par { animation: x 1s } }"),
+    ).toEqual([".ask-par"]);
+    expect(unscoped("@keyframes x { from { opacity: 0 } }")).toEqual([]);
+  });
+
+  it("C117 every selector of ask.css, in every rule's selector list, is scoped under the view's root class .ask", () => {
+    let selectors = 0;
+    postcss.parse(CSS).walkRules((r) => {
+      if (!(r.parent?.type === "atrule" && /keyframes$/.test((r.parent as postcss.AtRule).name)))
+        selectors += r.selectors.length;
+    });
+    expect(selectors).toBeGreaterThan(40);
+    expect(unscoped(CSS)).toEqual([]);
+  });
 });

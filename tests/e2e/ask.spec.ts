@@ -1,8 +1,9 @@
 /**
  * "Perguntar" in a real browser (.specs/features/cerebro-perguntar, C79, C95, C97, C98, C107, C109 and C110 of the
- * round 1 fixes, and C116 of the round 2 fixes; design.md "Vista - Perguntar" and "Aba - Agentes (MCP) das
+ * round 1 fixes, and C116 and C117 of the round 2 fixes; design.md "Vista - Perguntar" and "Aba - Agentes (MCP) das
  * Configurações"): the view's six regions in one centred column of at most 720px (the off card in the fields' place) and
- * its fields' rows and button, measured on screen; the citations wrap
+ * its fields' rows and button, measured on screen; the console's skill-input form, unchanged by the view's stylesheet;
+ * the citations wrap
  * at 320px and lead to `/brain?sel=<fileId>`;
  * no serious axe violation in both shells and both themes, empty, answering, a reason-first answer with its provocation
  * (the Fold open) and refused; the view's own chunk, fetched only when `/brain/ask` opens; the plan's independent test
@@ -672,7 +673,7 @@ test("C110 the moldura at 1280×800: Sua visão 4 rows to 12 (20 lines scroll in
   await edges([take, question]);
 });
 
-/* ---------------- Round 2 fixes (batch F2): C116, in a real browser ---------------- */
+/* ---------------- Round 2 fixes (batch F2): C116 and C117, in a real browser ---------------- */
 
 for (const shell of SHELLS)
   test(`C116 /brain/ask in the ${shell} at 1280×800: after 409 skill_unavailable the regions keep C109's order with the off card in the fields' place, in either mode`, async ({
@@ -737,3 +738,61 @@ for (const shell of SHELLS)
     await expect(v.getByRole("tab", { name: "Raciocine primeiro" })).toHaveAttribute("aria-selected", "true");
     await arranged(true);
   });
+
+/** The console's skill-input form's fields container: its display, its non-empty column tracks and its box. */
+const consoleFields = async (page: Page) => {
+  const fields = page.locator('[data-testid="console-ask"] .ask-fields');
+  await expect(fields).toBeVisible();
+  const style = await fields.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { display: s.display, columns: s.gridTemplateColumns };
+  });
+  const labels = fields.locator(".ask-field");
+  await expect(labels).toHaveCount(2);
+  return {
+    display: style.display,
+    tracks: style.columns.split(/\s+/).filter((t) => t !== "" && parseFloat(t) > 0).length,
+    box: await box(fields),
+    tops: [(await box(labels.nth(0))).y, (await box(labels.nth(1))).y],
+  };
+};
+
+test("C117 the Núcleo at 1280×800: the console's skill-input form keeps its two-column grid and its box after /brain/ask has been opened once", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await open(page, "nucleo", "dark", "/brain", 1280);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await states(page, []);
+  // the console's skill-input form: a skill with a required input, run by its bare "/slug"
+  const input = page.locator(".cons-input");
+  await expect(input).toBeVisible();
+  await input.fill("/brainstorm");
+  await input.press("Enter");
+  const before = await consoleFields(page);
+  expect(before.display).toBe("grid");
+  expect(before.tracks, "two columns before").toBe(2);
+  expect(
+    Math.abs(before.tops[0]! - before.tops[1]!),
+    "the two fields side by side before",
+  ).toBeLessThanOrEqual(1);
+  // no rule of the view is loaded yet
+  await expect(page.locator(".ask .ask-col")).toHaveCount(0);
+
+  // open /brain/ask once: the view's chunk and its stylesheet load
+  await page.evaluate(() => void (location.hash = "#/brain/ask"));
+  const col = page.locator(".ask .ask-col");
+  await expect(col).toBeVisible();
+  await expect(col).toHaveCSS("max-width", "720px");
+  await page.evaluate(() => void (location.hash = "#/brain"));
+  await expect(col).toHaveCount(0);
+
+  const after = await consoleFields(page);
+  expect(after.display).toBe("grid");
+  expect(after.tracks, "two columns after").toBe(2);
+  for (const k of ["x", "y", "width", "height"] as const)
+    expect(Math.abs(after.box[k] - before.box[k]), `the fields' ${k}`).toBeLessThanOrEqual(1);
+  expect(Math.abs(after.tops[0]! - after.tops[1]!), "the two fields side by side after").toBeLessThanOrEqual(
+    1,
+  );
+});

@@ -1,7 +1,11 @@
 /* "Perguntar" (.specs/features/cerebro-perguntar, design.md "Vista - Perguntar"): one reading column of at most 720px,
    colours are tokens, sentences are 13px, nothing is under 12px, and everything that moves does so inside the
-   no-preference block at the end. */
-.ask {
+   no-preference block at the end.
+   Every selector is scoped under the view's root `.ask`, so the view's chunk restyles no other screen. The console's
+   skill-input form (desktop/console/Console.tsx) is also a `.ask` with an `.ask-fields` inside, so the root and the
+   fields are named as the `.ask` that holds the column, `.ask:has(.ask-col)`; the folder popover, portalled out of the
+   view, carries `.ask` itself. */
+.ask:has(.ask-col) {
   min-height: 0;
   padding: var(--s-4);
   overflow: auto;
@@ -9,7 +13,7 @@
   font-size: var(--fs-3);
 }
 
-.ask-col {
+.ask .ask-col {
   display: flex;
   flex-direction: column;
   gap: var(--s-4);
@@ -17,22 +21,22 @@
   margin: 0 auto;
 }
 
-.ask-head,
-.ask-scope,
-.ask-mode,
-.ask-fields,
-.ask-answer,
-.ask-wait,
-.ask-none,
-.ask-off,
-.ask-recent,
-.ask-empty {
+.ask .ask-head,
+.ask .ask-scope,
+.ask .ask-mode,
+.ask:has(.ask-col) .ask-fields,
+.ask .ask-answer,
+.ask .ask-wait,
+.ask .ask-none,
+.ask .ask-off,
+.ask .ask-recent,
+.ask .ask-empty {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
 }
 
-.ask-h1 {
+.ask .ask-h1 {
   margin: 0;
   font-size: var(--fs-3);
   font-weight: 600;
@@ -47,17 +51,17 @@
   text-transform: none;
 }
 
-.ask-small {
+.ask .ask-small {
   margin: 0;
   color: var(--text-dim);
   font-size: var(--fs-2);
 }
 
-.ask-line,
-.ask-scope-row,
-.ask-wait-row,
-.ask-acts,
-.ask-row-meta {
+.ask .ask-line,
+.ask .ask-scope-row,
+.ask .ask-wait-row,
+.ask .ask-acts,
+.ask .ask-row-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -65,19 +69,19 @@
   margin: 0;
 }
 
-.ask-wait-row {
+.ask .ask-wait-row {
   justify-content: space-between;
 }
 
-.ask-line svg,
-.ask-cite svg,
-.ask-chip-x svg {
+.ask .ask-line svg,
+.ask .ask-cite svg,
+.ask .ask-chip-x svg {
   flex: none;
   width: 14px;
   height: 14px;
 }
 
-.ask-chips {
+.ask .ask-chips {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-2);
@@ -86,7 +90,7 @@
   list-style: none;
 }
 
-.ask-chip {
+.ask .ask-chip {
   display: inline-flex;
   align-items: center;
   gap: var(--s-1);
@@ -96,7 +100,7 @@
   font-size: var(--fs-2);
 }
 
-.ask-chip-x {
+.ask .ask-chip-x {
   display: inline-grid;
   place-items: center;
   padding: 2px;
@@ -107,7 +111,7 @@
   cursor: pointer;
 }
 
-.ask-fields textarea {
+.ask:has(.ask-col) .ask-fields textarea {
   resize: vertical;
 }
 
@@ -116,28 +120,28 @@
   min-height: 0;
 }
 
-.ask-send {
+.ask .ask-send {
   display: flex;
   justify-content: flex-end;
 }
 
-.ask-pars {
+.ask .ask-pars {
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
 }
 
-.ask-md {
+.ask .ask-md {
   font-size: var(--fs-3);
   line-height: 1.55;
 }
 
-.ask-md p {
+.ask .ask-md p {
   margin: 0;
 }
 
 /* the citations wrap; they never scroll sideways */
-.ask-cites {
+.ask .ask-cites {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -145,7 +149,7 @@
   margin-top: var(--s-1);
 }
 
-.ask-cite-item {
+.ask .ask-cite-item {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
@@ -153,8 +157,8 @@
   min-width: 0;
 }
 
-.ask-cite,
-.ask-link {
+.ask .ask-cite,
+.ask .ask-link {
   display: inline-flex;
   align-items: center;
   gap: var(--s-1);
@@ -170,28 +174,28 @@
   cursor: pointer;
 }
 
-.ask-take-text {
+.ask .ask-take-text {
   margin: 0;
   color: var(--text-dim);
   font-size: var(--fs-2);
   white-space: pre-wrap;
 }
 
-.ask-take-text[data-clamped] {
+.ask .ask-take-text[data-clamped] {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 6;
 }
 
-.ask-fb {
+.ask .ask-fb {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
 }
 
 /* the provocation: a quiet block, never an alert */
-.ask-provocation {
+.ask .ask-provocation {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
@@ -200,12 +204,12 @@
   background: var(--surface-2);
 }
 
-.ask-prov-text {
+.ask .ask-prov-text {
   margin: 0;
   font-size: var(--fs-3);
 }
 
-.ask-band {
+.ask .ask-band {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
@@ -216,24 +220,24 @@
   background: var(--danger-bg);
 }
 
-.ask-band > svg {
+.ask .ask-band > svg {
   flex: none;
   width: 16px;
   height: 16px;
   color: var(--danger);
 }
 
-.ask-band-text {
+.ask .ask-band-text {
   flex: 1;
   min-width: 0;
 }
 
-.ask-band-text p {
+.ask .ask-band-text p {
   margin: 0;
   overflow-wrap: anywhere;
 }
 
-.ask-eyebrow {
+.ask .ask-eyebrow {
   margin: 0;
   color: var(--text-dim);
   font-size: var(--fs-2);
@@ -241,8 +245,8 @@
   letter-spacing: var(--track-label);
 }
 
-.ask-list,
-.ask-examples {
+.ask .ask-list,
+.ask .ask-examples {
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
@@ -251,7 +255,7 @@
   list-style: none;
 }
 
-.ask-row {
+.ask .ask-row {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -266,62 +270,62 @@
   cursor: pointer;
 }
 
-.ask-row[aria-current="true"] {
+.ask .ask-row[aria-current="true"] {
   border-color: var(--border-strong);
   background: var(--surface-2);
 }
 
-.ask-row-q {
+.ask .ask-row-q {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ask-row-meta {
+.ask .ask-row-meta {
   color: var(--text-dim);
   font-size: var(--fs-2);
 }
 
-.ask-folders {
+.ask.ask-folders {
   max-width: min(420px, calc(100vw - 32px));
   max-height: 60vh;
   overflow: auto;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .ask-result {
+  .ask .ask-result {
     animation: ask-enter 200ms ease-out both;
   }
 
-  .ask-par {
+  .ask .ask-par {
     animation: ask-enter 200ms ease-out both;
   }
 
-  .ask-par:nth-child(2) {
+  .ask .ask-par:nth-child(2) {
     animation-delay: 40ms;
   }
 
-  .ask-par:nth-child(3) {
+  .ask .ask-par:nth-child(3) {
     animation-delay: 80ms;
   }
 
-  .ask-par:nth-child(4) {
+  .ask .ask-par:nth-child(4) {
     animation-delay: 120ms;
   }
 
-  .ask-par:nth-child(5) {
+  .ask .ask-par:nth-child(5) {
     animation-delay: 160ms;
   }
 
-  .ask-par:nth-child(6) {
+  .ask .ask-par:nth-child(6) {
     animation-delay: 200ms;
   }
 
-  .ask-par:nth-child(7) {
+  .ask .ask-par:nth-child(7) {
     animation-delay: 240ms;
   }
 
-  .ask-par:nth-child(8) {
+  .ask .ask-par:nth-child(8) {
     animation-delay: 280ms;
   }
 

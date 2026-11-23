@@ -1220,3 +1220,18 @@ Status of batch F2, the round 2 fixes (updated in the commit that closes each pi
   five regions after the browser answers the `POST` with `409 skill_unavailable`, each top strictly under the previous
   one and below its end, in "Perguntar direto" and in "Raciocine primeiro"). The view changed for it: the mode's region
   and the tabs' panel are always there, and the panel holds the off card instead of the fields
+- the view's stylesheet scoped to the view (C117): closed, both proofs green, each run alone and running only C117's
+  cases: `askMotion.test.ts` (two cases: the reader, on samples, finds an unscoped selector and leaves the scoped ones,
+  `@keyframes` steps left out; and every selector of every rule's selector list of `ask.css`, 63 of them, names the
+  class `ask` in its first compound) and `tests/e2e/ask.spec.ts` (the Núcleo at 1280×800: `/brainstorm` in the console
+  opens its skill-input form, whose `.ask-fields` is `display: grid` with two non-empty column tracks and its two fields
+  side by side; `/brain/ask` opened once, its column measured at `max-width: 720px`, and back on `/brain`, the same
+  display, two tracks, fields side by side and box within 1px). The stylesheet changed for it: every selector is
+  `.ask …`; the console's form is itself a `form.ask` holding an `.ask-fields`, so the view's root and its fields are
+  named `.ask:has(.ask-col)` (the `.ask` that holds the column), which keeps both the root's padding and the fields'
+  flex column off the console; the folder popover, portalled to `#modal-root`, carries `ask` beside `ask-folders`
+  (`.ask.ask-folders`). The suites that read the stylesheet by selector moved with it, no assertion or value changed:
+  `AskView.test.tsx`'s `rule(CSS, …)` lookups (C79, C82, C87, C109, C110, C111), `askMotion.test.ts`'s C96 lookups and
+  `typography` C15's two exemptions (`.ask .ask-small`, `.ask .ask-take-text`). The bundle moved by 19 B of JS gzip and
+  26 B of CSS gzip, and the `cerebro-perguntar` entry of `scripts/bundle-baseline.json` says so (14 379 B and 1 669 B
+  above `cerebro-busca-significado`, under 16 384 B and 2 048 B)

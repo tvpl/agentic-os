@@ -259,15 +259,15 @@ describe("C79 an answered direct answer", () => {
       expect(icons(b)).toEqual(["lucide lucide-file-text"]);
     fireEvent.click(within(pars[1]!).getByRole("button", { name: "plano.md § Próximos passos" }));
     expect(view.setLocation).toHaveBeenLastCalledWith({ pathname: "/brain", search: "?sel=2" });
-    const row = rule(CSS, ".ask-cites");
+    const row = rule(CSS, ".ask .ask-cites");
     expect(row["flex-wrap"]).toBe("wrap");
-    for (const sel of [".ask-cites", ".ask-cite-item", ".ask-cite"]) {
+    for (const sel of [".ask .ask-cites", ".ask .ask-cite-item", ".ask .ask-cite"]) {
       const d = rule(CSS, sel);
       expect(d["overflow-x"], sel).toBeUndefined();
       expect(d.overflow, sel).toBeUndefined();
       expect(d["white-space"], sel).toBeUndefined();
     }
-    expect(rule(CSS, ".ask-cite")["overflow-wrap"]).toBe("anywhere");
+    expect(rule(CSS, ".ask .ask-cite")["overflow-wrap"]).toBe("anywhere");
   });
 });
 
@@ -388,7 +388,7 @@ describe("C82 the provocation", () => {
       expect(block.closest('[role="alert"]')).toBeNull();
       expect(block.querySelector('[role="alert"]')).toBeNull();
       expect(icons(block).filter((c) => /alert/.test(c))).toEqual([]);
-      const css = rule(CSS, ".ask-provocation");
+      const css = rule(CSS, ".ask .ask-provocation");
       expect(css["border-left"]).toBe("2px solid var(--line-strong)");
       expect(css.background).toBe("var(--surface-2)");
       expect(rule(THEME, ":root")["--line-strong"]).toBe("var(--border-strong)");
@@ -620,7 +620,7 @@ describe("C87 the recent questions", () => {
     expect(icons(b!)[1]).toMatch(/lucide-(triangle-alert|alert-triangle)/);
     expect(meta(c!)).toEqual(["Direto", "Todo o cérebro", "há 5 minutos", "Falhou"]);
     expect(meta(d!)).toEqual(["Direto", "Todo o cérebro", "há 5 minutos"]);
-    expect(rule(CSS, ".ask-row-q")["text-overflow"]).toBe("ellipsis");
+    expect(rule(CSS, ".ask .ask-row-q")["text-overflow"]).toBe("ellipsis");
   });
 
   it("C87 clicking a line opens it with aria-current, the fields read-only and Nova pergunta, which clears them", async () => {
@@ -976,14 +976,17 @@ describe("C109 the six regions of the view", () => {
   });
 
   it("C109 the column is one reading column of at most 720px, centred; the title 13px weight 600, the line 12px secondary", () => {
-    expect(rule(CSS, ".ask-col")).toMatchObject({
+    expect(rule(CSS, ".ask .ask-col")).toMatchObject({
       display: "flex",
       "flex-direction": "column",
       "max-width": "720px",
       margin: "0 auto",
     });
-    expect(rule(CSS, ".ask-h1")).toMatchObject({ "font-size": "var(--fs-3)", "font-weight": "600" });
-    expect(rule(CSS, ".ask-small")).toMatchObject({ "font-size": "var(--fs-2)", color: "var(--text-dim)" });
+    expect(rule(CSS, ".ask .ask-h1")).toMatchObject({ "font-size": "var(--fs-3)", "font-weight": "600" });
+    expect(rule(CSS, ".ask .ask-small")).toMatchObject({
+      "font-size": "var(--fs-2)",
+      color: "var(--text-dim)",
+    });
     expect(rule(THEME, ":root")).toMatchObject({ "--fs-2": "12px", "--fs-3": "13px" });
   });
 });
@@ -1031,7 +1034,7 @@ describe("C110 the fields' arrangement", () => {
     expect(before(takeField(), button)).toBe(true);
     expect(before(questionField(), button)).toBe(true);
     expect(button.parentElement!.matches(".ask-send")).toBe(true);
-    expect(rule(CSS, ".ask-send")).toMatchObject({ display: "flex", "justify-content": "flex-end" });
+    expect(rule(CSS, ".ask .ask-send")).toMatchObject({ display: "flex", "justify-content": "flex-end" });
     // a textarea is as tall as its rows, not the inputs' least height
     expect(rule(CSS, ".ask textarea.input")).toMatchObject({ "min-height": "0" });
   });
@@ -1045,11 +1048,11 @@ describe("C111 the card Sua visão", () => {
     expect(within(card).getByRole("heading", { name: "Sua visão" })).toBeTruthy();
     expect(text.textContent).toBe(take);
     expect(text.hasAttribute("data-clamped")).toBe(true);
-    expect(rule(CSS, ".ask-take-text")).toMatchObject({
+    expect(rule(CSS, ".ask .ask-take-text")).toMatchObject({
       "font-size": "var(--fs-2)",
       color: "var(--text-dim)",
     });
-    expect(rule(CSS, ".ask-take-text[data-clamped]")).toMatchObject({
+    expect(rule(CSS, ".ask .ask-take-text[data-clamped]")).toMatchObject({
       display: "-webkit-box",
       overflow: "hidden",
       "-webkit-box-orient": "vertical",
