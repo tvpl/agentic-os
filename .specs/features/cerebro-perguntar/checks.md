@@ -1139,3 +1139,9 @@ Status of batch F1, the round 1 fixes (updated in the commit that closes each pi
   the world's home on a free port, so `ctx.start()` runs `recoverInterrupted`; `judge` in `apps/api/src/routes/ask.ts`
   is exported as it was, its env typed as the core's (`Parameters<typeof resolveAskScope>[0]`) so its declaration can be
   emitted, with no change of behaviour
+- the usage record's unreadable states and the ask's codes by name (C115): closed, both proofs green, each run alone and
+  running only C115's cases: `tests/perguntar.layer.test.ts` (absent, not JSON, `v: 2` and `paths` a list each read by
+  `agentUsage` as the empty usage, and `recordAgentUsage` then stores a fresh record: `since` the write's time, one
+  call, one tool, one client, one path) and `tests/perguntar.contract.test.ts` (`409 ask_in_progress`,
+  `400 folder_outside_index` and `400 unknown_note` each a key of the raised codes the error scan reads, raised in the
+  ask's own files, and each an error of `memory.ask` with a description)

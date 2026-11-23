@@ -15,6 +15,7 @@ import {
 } from "@mordomo/contracts";
 import { MIGRATIONS, SkillCatalog, parseSkillFile, resolvePaths } from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
+import { scanSource, sourceFiles } from "./helpers/errorScan.js";
 import { notesViewWorld } from "./helpers/notesViewWorld.js";
 import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
 
@@ -618,5 +619,32 @@ describe("C100 the bundle ceiling", () => {
     expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(2 * 1024);
     expect(entry.jsGzip).toBeLessThanOrEqual(628_720);
     expect(entry.cssGzip).toBeLessThanOrEqual(86_241);
+  });
+});
+
+/* ---------------- Round 1 fixes (batch F1): C115, the ask's codes by name ---------------- */
+
+describe("C115 the three codes the ask raises are in the error table by name, each documented", () => {
+  it("C115 ask_in_progress, folder_outside_index and unknown_note are each a key of the raised codes, raised by the ask, and each a documented error of memory.ask", () => {
+    const raised = new Map<string, string[]>();
+    for (const root of ["apps/api/src", "core/src"])
+      for (const file of sourceFiles(path.join(repo, root)))
+        for (const r of scanSource(fs.readFileSync(file, "utf8"), file)) {
+          const key = `${r.status} ${r.code}`;
+          raised.set(key, [...(raised.get(key) ?? []), path.relative(repo, file)]);
+        }
+    const ASK_FILES = ["apps/api/src/routes/ask.ts", "core/src/memory/ask.ts"];
+    const documented = new Map(
+      (entryOf("memory.ask").errors ?? []).map((e) => [`${e.status} ${e.code}`, e.description]),
+    );
+    for (const key of ["409 ask_in_progress", "400 folder_outside_index", "400 unknown_note"]) {
+      expect(raised.has(key), `${key} is a key of the raised codes`).toBe(true);
+      expect(
+        raised.get(key)!.some((file) => ASK_FILES.includes(file)),
+        `${key} is raised by the ask (${raised.get(key)!.join(", ")})`,
+      ).toBe(true);
+      expect(documented.has(key), `${key} is an error of memory.ask`).toBe(true);
+      expect(documented.get(key)!.trim().length, `${key} has a description`).toBeGreaterThan(0);
+    }
   });
 });

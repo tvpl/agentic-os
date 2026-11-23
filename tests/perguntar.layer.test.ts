@@ -852,3 +852,58 @@ describe("C113 every run status maps to an ask status, at its own layer (judge)"
     });
   }
 });
+
+describe("C115 the usage record's unreadable states, at its own layer (agentUsage, recordAgentUsage)", () => {
+  const EMPTY = { since: null, calls: 0, byTool: [], byClient: [], paths: [] };
+  const store = (value: string) =>
+    w.ctx.db
+      .prepare(
+        "INSERT INTO meta (key, value) VALUES ('agents.usage', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run(value);
+  const stored = () =>
+    (
+      w.ctx.db.prepare("SELECT value FROM meta WHERE key = 'agents.usage'").get() as
+        { value: string } | undefined
+    )?.value;
+  const reset = () => w.ctx.db.prepare("DELETE FROM meta WHERE key = 'agents.usage'").run();
+  afterAll(reset);
+  /** A record of the right shape that has seen much: what an unreadable one is derived from. */
+  const full = {
+    v: 1,
+    since: 5,
+    calls: 99,
+    byTool: { recall: { calls: 99, lastAt: 9 } },
+    byClient: { antigo: { calls: 99, lastAt: 9 } },
+    paths: { "/m/antigo.md": { reads: 99, lastAt: 9 } },
+  };
+  const STATES: Array<[string, string | null]> = [
+    ["absent", null],
+    ["not JSON", "{ isto não é json"],
+    ["v: 2", JSON.stringify({ ...full, v: 2 })],
+    ["paths a list", JSON.stringify({ ...full, paths: ["/m/antigo.md"] })],
+  ];
+  for (const [name, value] of STATES) {
+    it(`C115 ${name}: reads as the empty usage, and the next write replaces it with a fresh record`, () => {
+      reset();
+      if (value !== null) store(value);
+      expect(agentUsage(w.ctx.db)).toEqual(EMPTY);
+      recordAgentUsage(w.ctx.db, { tool: "search", client: "claude-code", paths: ["/m/novo.md"] }, 1_000);
+      expect(JSON.parse(stored()!)).toEqual({
+        v: 1,
+        since: 1_000,
+        calls: 1,
+        byTool: { search: { calls: 1, lastAt: 1_000 } },
+        byClient: { "claude-code": { calls: 1, lastAt: 1_000 } },
+        paths: { "/m/novo.md": { reads: 1, lastAt: 1_000 } },
+      });
+      expect(agentUsage(w.ctx.db)).toEqual({
+        since: 1_000,
+        calls: 1,
+        byTool: [{ name: "search", calls: 1, lastAt: 1_000 }],
+        byClient: [{ name: "claude-code", calls: 1, lastAt: 1_000 }],
+        paths: [{ path: "/m/novo.md", reads: 1, lastAt: 1_000 }],
+      });
+    });
+  }
+});
