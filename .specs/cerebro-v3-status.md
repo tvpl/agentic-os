@@ -1,5 +1,10 @@
 # Roteiro do segundo cérebro: estado, o que falta, gaps e o que revisar
 
+> **Atualização de 23/11/2026:** a **C10 `cerebro-perguntar`** está construída e fechada com PASS na rodada 3 (117 checks,
+> AD-052 e AD-053): "Perguntar ao cérebro" com citações, "raciocine primeiro" e provocação ancorada; o MCP lê como agente
+> (fecha o limite do item 4.2.2 "`mordomo mcp` lê com o token do dono" para as ferramentas, sem ser contenção) e ganha busca,
+> links e higiene; a aba Agentes (MCP) nas Configurações. Falta a C11, a sessão de telas da C8 à C10 e a revisão jurídica.
+>
 > **Atualização de 19/11/2026:** a **C9 `cerebro-busca-significado`** está construída e fechada por escalonamento ao dono (144 checks, três
 > verificações em FAIL por lacunas de prova, AD-050 e AD-051). Faltam C10 e C11, que só têm a linha do roteiro, a sessão de telas da C8
 > e da C9 com o dono e a revisão jurídica das minutas.
@@ -39,7 +44,7 @@ empurrada. A **parte B foi interrompida** pelo dono no meio da construção:
 | C7  | `cerebro-memoria-confiavel` | **construída (A1-B2, com B1b), em correção depois de 2 rodadas em FAIL** | 171    | aberta: rodada 3, a última, ainda não rodou                          |
 | C8  | `cerebro-rituais`           | construída e fechada (111 checks)                                        | 111    | rodada 3 PASS (AD-049)                                               |
 | C9  | `cerebro-busca-significado` | construída e fechada (144 checks)                                        | 144    | rodadas 1-3 FAIL, escalonamento (AD-051)                             |
-| C10 | `cerebro-perguntar`         | **só linha no roteiro**                                                  | -      | sem plano, sem checks                                                |
+| C10 | `cerebro-perguntar`         | construída e fechada (117 checks)                                        | 117    | rodada 3 PASS (AD-053)                                               |
 | C11 | `cerebro-entidades-resumos` | **só linha no roteiro**                                                  | -      | sem plano, sem checks                                                |
 
 ## 3. O que falta, em ordem

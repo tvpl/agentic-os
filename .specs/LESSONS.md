@@ -33,209 +33,6 @@ Corroborated across multiple features. Safe to apply as guidance.
 
 Seen once or not yet corroborated. Tracked, not trusted.
 
-### L-001 - Assert an animated element's start position within a few pixels of its origin; a containment check lets a 30 px drift through.
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `e2e/animation` · harmful: 0
-- features: conceito-em-todo-sistema
-- evidence: apps/command-centre/src/nucleo/Lamina.tsx:50 (e2e/animation)
-- last seen: 2026-09-29T12:28:35Z
-
-### L-002 - Carry the AC's numeric bound (duration, px) into the check text, or the proof will only assert presence.
-
-- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: conceito-em-todo-sistema
-- evidence: C11 (checks)
-- last seen: 2026-09-29T12:28:35Z
-
-### L-003 - An 'X appears once' proof must visit every tab or section that renders X, after each one has loaded.
-
-- signal: `gate_fail` · recurrence: 1 feature(s) · scope: `e2e` · harmful: 0
-- features: conceito-em-todo-sistema
-- evidence: C18 (e2e)
-- last seen: 2026-09-29T12:28:35Z
-
-### L-004 - Every new unit test written for a check must be named as a Proof line of that check.
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: conceito-em-todo-sistema
-- evidence: apps/command-centre/src/nucleo/pending/model.ts:144 (checks)
-- last seen: 2026-09-29T12:28:36Z
-
-### L-005 - Prove a state-gated credential in every state it must accept, not only the first one a fixture can reach
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `auth` · harmful: 0
-- features: seguranca-p0
-- evidence: apps/api/src/context.ts:337 (F3, verification round 1) (auth)
-- last seen: 2026-10-06T13:30:13Z
-
-### L-006 - An allow-list check needs one case per allowed member and one asserting the set has nothing else
-
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `validation` · harmful: 0
-- features: seguranca-p0
-- evidence: apps/api/src/routes/memory.ts:52-57 (round 1 coverage) (validation)
-- last seen: 2026-10-06T13:30:13Z
-
-### L-007 - A rule applied by a shared handler must be proven on every route that reaches the handler
-
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `routes` · harmful: 0
-- features: seguranca-p0
-- evidence: apps/api/src/server.ts:313 (round 1 coverage) (routes)
-- last seen: 2026-10-06T13:30:13Z
-
-### L-008 - Assert a configuration filter by its exact value, never by a pattern that a look-alike value also matches
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `config` · harmful: 0
-- features: ci-gate
-- evidence: tests/ci.workflow.test.ts:30 (P4, round 1) (config)
-- last seen: 2026-10-06T14:01:28Z
-
-### L-009 - A claim about every event of a kind must also assert that no filter narrows it
-
-- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `config` · harmful: 0
-- features: ci-gate
-- evidence: tests/ci.workflow.test.ts:26 (P2/P3, round 1) (config)
-- last seen: 2026-10-06T14:01:28Z
-
-### L-010 - A hand-written reader of a structured file needs a proof with comments and reordered keys
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `config` · harmful: 0
-- features: ci-gate
-- evidence: tests/ci.workflow.test.ts:18 (P6, round 2) (config)
-- last seen: 2026-10-06T14:01:28Z
-
-### L-011 - Prove every state a lock or guard file can be found in, including unreadable and owned by the current process
-
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `concurrency` · harmful: 0
-- features: motor-composicao
-- evidence: core/src/engine.ts:310-322 (round 1, lock states) (concurrency)
-- last seen: 2026-10-06T14:27:38Z
-
-### L-012 - A lifecycle method needs one assertion per side effect it promises, not only the first
-
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `lifecycle` · harmful: 0
-- features: motor-composicao
-- evidence: core/src/engine.ts:279 (round 1, start effects) (lifecycle)
-- last seen: 2026-10-06T14:27:38Z
-
-### L-013 - Prove a rule by every value of the field it branches on, including the ones that must keep the old behaviour
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `policy` · harmful: 0
-- features: capacidades-aplicadas
-- evidence: core/src/runs/runManager.ts:580 (F5, round 1) (policy)
-- last seen: 2026-10-06T14:56:25Z
-
-### L-014 - A rule about every child process must be proven on each spawn path, not only the main one
-
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `security` · harmful: 0
-- features: capacidades-aplicadas
-- evidence: core/src/spawn/safeSpawn.ts:274 (round 1, probes) (security)
-- last seen: 2026-10-06T14:56:25Z
-
-### L-016 - Size a Coverage set from the AC's own list, not from the subset the author thought of: when an AC says 'each of those names', the set size is the count in the AC it points back to.
-
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: contratos
-- evidence: contratos round 1: AC3 named 14 re-exported names, Coverage sized the set at 3 (checks)
-- last seen: 2026-10-06T17:33:09Z
-
-### L-017 - A 'derives from X' claim needs a behavioral proof (stub X and show the output follows the stub); a text check that X is imported survives the old duplicated logic kept beside the import.
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: contratos
-- evidence: contratos round 1 P1: C11 text check passed with the duplicated if-chain restored (checks)
-- last seen: 2026-10-06T17:33:09Z
-
-### L-018 - When the build adds anything to a one-way door's literal shape (an extra package export, a new field), amend the Landing row in the same commit and add a check that pins the whole shape with toEqual.
-
-- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `build` · harmful: 0
-- features: contratos
-- evidence: contratos round 1: exports['./policy'] shipped beyond the Landing literal shape (build)
-- last seen: 2026-10-06T17:33:09Z
-
-### L-019 - Prove 'module M does not pull dependency D' by walking M's value-import graph (imports, re-exports, side-effect and dynamic imports, either quote style, type-only skipped) and asserting the reachable set, not by filtering lines that start with import.
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: contratos
-- evidence: contratos rounds 2-3: a value re-export, then a single-quoted import, reached zod through the ./policy subpath (checks)
-- last seen: 2026-10-06T17:33:09Z
-
-### L-020 - Build a typed envelope with an annotation or satisfies, never an as-cast: the cast lets the compiler accept a missing required field that only a runtime test would catch.
-
-- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `build` · harmful: 0
-- features: contratos
-- evidence: contratos round 1: event envelope built with 'as OsEvent<K>', tsc accepted it without v (build)
-- last seen: 2026-10-06T17:33:09Z
-
-### L-021 - When a screen switches data source, prove it with a render test where the old and new sources serve different values; a source regex misses reformatting, aliases and destructuring.
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: preferencias-ui
-- evidence: preferencias-ui round 1 P1-P3: reverting screens to read/write the old source passed a regex source check (checks)
-- last seen: 2026-10-07T00:14:29Z
-
-### L-022 - To forbid moved fields, remove them from the read type (so any read is TS2339) and give every write path one patch type with the keys as never; back it with a runtime guard at the single request function.
-
-- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `build` · harmful: 0
-- features: preferencias-ui
-- evidence: preferencias-ui round 2 N1-N3/M21: '?: never' keys still compiled reads and a Partial<> write path let spreads through (build)
-- last seen: 2026-10-07T00:14:29Z
-
-### L-023 - Prove an 'only after X succeeds' claim by making X fail and asserting the dependent step never runs; call order alone survives a missing await.
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: preferencias-ui
-- evidence: preferencias-ui round 3 S2: 'only after both writes succeed' proven by call order; dropping the await survived (checks)
-- last seen: 2026-10-07T00:14:29Z
-
-### L-024 - When a migration moves data between files, add an AC for restoring a backup made before the migration; restore bypasses the upgrade path the migration was tested on.
-
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `plan` · harmful: 0
-- features: preferencias-ui
-- evidence: preferencias-ui round 1 B2: restoring a pre-feature backup lost its UI preferences (plan)
-- last seen: 2026-10-07T00:14:29Z
-
-### L-025 - A 'kept byte for byte' claim needs a non-canonical fixture (other indentation, key order, no trailing newline), or re-serializing passes as copying.
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: preferencias-ui
-- evidence: preferencias-ui round 1 F2: byte-for-byte .bak check passed with re-serialization because the fixture was already canonical (checks)
-- last seen: 2026-10-07T00:14:30Z
-
-### L-026 - Size the 'routes that take X' set by grepping every route for X in params, bodies and the stored record it replays (retry, resolve, run-now), not from the routes the plan named.
-
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: provedores-plugaveis
-- evidence: provedores-plugaveis round 1: retry, routine run and approval resolve took a provider but were not in the route list (checks)
-- last seen: 2026-10-07T01:20:30Z
-
-### L-027 - Enforce a safety rule where the value is used (the engine building adapters), not only where it is written (the PUT route); stored, hand-edited and migrated values bypass write-time checks.
-
-- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `plan` · harmful: 0
-- features: provedores-plugaveis
-- evidence: provedores-plugaveis round 1: a stored mismatched binaryPath was still executed because only new values were checked (plan)
-- last seen: 2026-10-07T01:20:30Z
-
-### L-028 - Prove platform-dependent code by simulating process.platform and calling it the way production does (no explicit platform argument); a test that always passes the platform cannot see a wrong default.
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: provedores-plugaveis
-- evidence: provedores-plugaveis rounds 2-3: platform-dependent check passed with a hard-coded platform, first in the body then in the default parameter (checks)
-- last seen: 2026-10-07T01:20:30Z
-
-### L-029 - Write source-shape checks on the TypeScript syntax tree, with self-tests for each shape the claim covers and each false positive it must not flag; regexes over source text miss and over-match.
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: provedores-plugaveis
-- evidence: provedores-plugaveis rounds 1-3: regex source detector missed computed/shorthand/cast keys and flagged strings and destructuring (checks)
-- last seen: 2026-10-07T01:20:30Z
-
-### L-030 - When a guard covers several payload kinds, prove it table-driven over every kind; one representative lets a guard narrowed to that kind survive.
-
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
-- features: provedores-plugaveis
-- evidence: provedores-plugaveis round 3 MA2: approval guard proven only on prompt payloads (checks)
-- last seen: 2026-10-07T01:20:30Z
-
 ### L-031 - A fix that changes behaviour needs a test where the old and the new code answer differently; otherwise reverting the fix leaves every proof green.
 
 - signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `fixes` · harmful: 0
@@ -501,6 +298,48 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - features: cerebro-rituais
 - evidence: verification.md round 1 gap 1, C84/C85 notice vs primitivas row (design)
 - last seen: 2026-11-14T02:44:30Z
+
+### L-071 - Give every screen an arrangement check in the first checks pass (its regions in order, the column's width, what sits inside what); copy and state checks alone pass a different composition.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks/ui` · harmful: 0
+- features: cerebro-perguntar
+- evidence: verification.md round 1 gap 1 (AskView.tsx arrangement) (checks/ui)
+- last seen: 2026-11-23T18:36:17Z
+
+### L-072 - Prove a filter that hides what the caller may not see with a visible item that points at a hidden one; a hidden item alone never reaches the filter.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `validation/access` · harmful: 0
+- features: cerebro-perguntar
+- evidence: F4 core/src/memory/hygiene.ts:201-202 (validation/access)
+- last seen: 2026-11-23T18:36:17Z
+
+### L-073 - Take a status set's members from its type, not from the statuses the feature thought of; a mapping over a union owes one case per member.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: cerebro-perguntar
+- evidence: verification.md round 1 gap 3 (RunStatus 8 members, 6 proven) (checks)
+- last seen: 2026-11-23T18:36:17Z
+
+### L-074 - Prove a claim about a restart through the real start path; a context that was never started skips the recovery that changes the state.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: cerebro-perguntar
+- evidence: verification.md round 1 gap 3 (C6 without ctx.start, recoverInterrupted) (checks)
+- last seen: 2026-11-23T18:36:17Z
+
+### L-075 - For a state that replaces part of a screen, check what stays on screen as well as what appears.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `ui` · harmful: 0
+- features: cerebro-perguntar
+- evidence: verification.md round 2 gap 1 (C85 off state) (ui)
+- last seen: 2026-11-23T18:36:17Z
+
+### L-076 - Scope every selector of a lazily loaded view under its root and prove in a browser that another screen sharing a class name is unchanged after the view loads.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `ui/css` · harmful: 0
+- features: cerebro-perguntar
+- evidence: verification.md round 2 gap 2 (ask.css .ask-fields vs Console.tsx) (ui/css)
+- last seen: 2026-11-23T18:36:17Z
 
 ## Quarantined (failed when applied - ignore)
 
