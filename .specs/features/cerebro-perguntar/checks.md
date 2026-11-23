@@ -934,3 +934,7 @@ Status of batch C (updated in the commit that closes each piece):
   harness's, and the routes record and read the agents' usage only through `ctx.agentUsage` (no route calls
   `recordAgentUsage` or `agentUsage` on `ctx.db` any more); the proof asserts the objects the three build: their keys,
   the factory's code, and that each is bound to its own database, skills and settings
+- what the feature must not change (C70): closed; the four proof lines of the earlier features pass unchanged, and
+  `tests/perguntar.contract.test.ts` C70 asserts by value the owner's recall (its keywords, its first section) and its
+  count in `GET /api/memory/recall/stats`, which an ask leaves as it was, and `GET /api/memory/links?id=` (backlinks,
+  outgoing links, a broken one, `404` for an unknown id)

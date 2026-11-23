@@ -22,7 +22,8 @@ import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
  * .specs/features/cerebro-perguntar, the contracts and the documents. Batch B: what docs/security.md says of
  * `mordomo mcp` (C49). Batch C, the cross-cutting checks of the API: the four routes in the table, the scopes and
  * docs/security.md (C61), no migration (C63), the settings (C64), the UI preferences (C65), the skill's words (C66) and
- * no event (C68), and the three assemblies of the ask service and the usage recorder (C69).
+ * no event (C68), the three assemblies of the ask service and the usage recorder (C69), and what the feature must not
+ * change (C70).
  */
 
 const repo = path.resolve(import.meta.dirname, "..");
@@ -463,6 +464,88 @@ describe("C69 the ask service and the usage recorder are built by one factory", 
       await harness.close();
       service.cleanup();
       cliHome.cleanup();
+    }
+  }, 60_000);
+});
+
+// ---- C70: existing behaviour ---------------------------------------------------------------------------------------
+
+describe("C70 what this feature must not change", () => {
+  it("C70 the owner's recall answers its sections and GET /api/memory/recall/stats counts it (an ask adds nothing there), and GET /api/memory/links?id= answers the notes view's body", async () => {
+    const { askWorld, threeNotes, paragraph } = await import("./helpers/perguntarWorld.js");
+    const w = await askWorld("mordomo-perguntar-c70-");
+    try {
+      const { onboarding } = await threeNotes(w);
+      const ligacoes = w.note(
+        path.join(w.memory, "notes", "ligacoes.md"),
+        {},
+        "# Ligações\n\n## Veja\n\nVer [[onboarding]] e [[nada-aqui]].\n",
+      );
+      await w.index();
+      const stats = async () => (await w.call("GET", "/api/memory/recall/stats")).body;
+      expect(await stats()).toEqual({ totalRecalls: 0, totalTokens: 0, paths: [], lastAt: null });
+
+      // the UI's recall: its answer, and one more in the stats with the paths it opened
+      const recall = await w.call(
+        "GET",
+        `/api/memory/recall?q=${encodeURIComponent("o que decidi sobre o onboarding")}`,
+      );
+      expect(recall.status).toBe(200);
+      expect(recall.body.abstained ?? false).toBe(false);
+      expect(recall.body.keywords).toEqual(["decidi", "onboard"]);
+      const first = recall.body.answerContext[0];
+      expect([first.path, first.section]).toEqual([onboarding, "Decisão"]);
+      expect(first.excerpt).toContain("Decidi que o onboarding de clientes dura duas semanas.");
+      const counted = await stats();
+      expect(counted.totalRecalls).toBe(1);
+      expect(counted.totalTokens).toBe(recall.body.tokensEstimate);
+      expect(counted.paths.map((p: { path: string }) => p.path)).toContain(onboarding);
+      expect(counted.paths.find((p: { path: string }) => p.path === onboarding).count).toBe(1);
+
+      // an ask recalls as agents read, and the owner's statistics stay as they were
+      w.answer({ v: 1, paragraphs: [paragraph(onboarding, "Decisão")] });
+      const ask = await w.ask({
+        question: "O que decidi sobre o onboarding?",
+        mode: "direct",
+        scope: { kind: "all" },
+      });
+      expect(ask.status, JSON.stringify(ask.body)).toBe(202);
+      await w.settle(ask.body.id);
+      expect(await stats()).toEqual(counted);
+
+      // GET /api/memory/links?id=, as the notes view calls it
+      const fileId = (p: string) =>
+        (w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(p) as { id: number }).id;
+      const links = await w.call("GET", `/api/memory/links?id=${fileId(onboarding)}`);
+      expect(links.status).toBe(200);
+      expect([links.body.file.id, links.body.file.path]).toEqual([fileId(onboarding), onboarding]);
+      expect(
+        links.body.backlinks.map((b: { file: { path: string }; kind: string; line: number }) => [
+          b.file.path,
+          b.kind,
+          b.line,
+        ]),
+      ).toEqual([[ligacoes, "wikilink", 5]]);
+      expect(links.body.outgoing).toEqual([]);
+      const out = await w.call("GET", `/api/memory/links?id=${fileId(ligacoes)}`);
+      expect(out.status).toBe(200);
+      expect(out.body.backlinks).toEqual([]);
+      expect(
+        out.body.outgoing.map(
+          (o: { target: string; kind: string; line: number; resolved: { path: string } | null }) => [
+            o.kind,
+            o.target,
+            o.line,
+            o.resolved?.path ?? null,
+          ],
+        ),
+      ).toEqual([
+        ["wikilink", "onboarding", 5, onboarding],
+        ["wikilink", "nada-aqui", 5, null],
+      ]);
+      expect((await w.call("GET", "/api/memory/links?id=999999")).status).toBe(404);
+    } finally {
+      await w.close();
     }
   }, 60_000);
 });
