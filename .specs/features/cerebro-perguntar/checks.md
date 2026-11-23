@@ -4,7 +4,7 @@ Profile: ui
 Plan: `.specs/features/cerebro-perguntar/plan.md`
 Design: `.specs/features/cerebro-perguntar/design.md` (binding for the screens of S5 and S7)
 
-108 checks (C1-C108) in 7 slices + cross-cutting · 7 one-way doors · open questions: none, the plan's two answered by the
+115 checks (C1-C108, and C109-C115 of `## Correções da rodada 1`) in 7 slices + cross-cutting · 7 one-way doors · open questions: none, the plan's two answered by the
 owner on 22/11/2026 with their recommended defaults (AD-052)
 
 The plan's slices are kept: S1-S4 are the ask's core and routes, S6 and the API half of S7 are the MCP, "Cross-cutting, API"
@@ -654,6 +654,70 @@ Proof: `npm run test -w apps/command-centre -- src/views/settings/agentsMcp.test
 - **C69, left for batch C:** batch B calls `recordAgentUsage` on `ctx.db` from the routes; C69's single factory for the
   ask service and the usage recorder across the three assemblies is batch C's to build or to report as wrong.
 
+## Correções da rodada 1
+
+Written by the orchestrator on 23/11/2026 from `verification.md` round 1 (FAIL at `529d225`: every check proven, four
+findings). Each gap becomes a check; none of C1-C108 is edited. The fix is one batch (F1), sequential, only on green.
+
+**C109** - The arrangement of the view Perguntar, in a real browser at 1280×800 in the moldura and in the Núcleo's panel: the
+view has exactly six regions in this vertical order, each below the previous (`top` strictly greater): header (the title
+"Perguntar ao cérebro" and, below it, the line "As respostas citam as suas notas. Confira as fontes."), scope (the text
+"Sobre:" and a `.btn.sm` whose label is the scope, with `ChevronDown`), mode (the `Tabs` and, with "Raciocine primeiro"
+selected, its hint below them), fields, result (present only with an open ask), and recent questions (headed "PERGUNTAS
+RECENTES"); the column is at most 720px wide and centred (left and right gaps to the content area equal within 1px); at
+360px wide there is no horizontal scroll (`scrollWidth <= clientWidth`) (design.md "Vista - Perguntar" 1-6; round 1
+gap 1)
+Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts ask.spec.ts -g "C109 "`
+Proof: `npm run test -w apps/command-centre -- src/brain/ask/AskView.test.tsx -t "C109 "`
+
+**C110** - The fields' arrangement: in "Raciocine primeiro", "Sua visão" is a `textarea` of 4 rows that grows with its text to
+at most 12 rows (a 20-line take shows 12 rows and scrolls inside), and "Pergunta" one of 2 rows growing to at most 6; in
+"Perguntar direto", "Pergunta" is 2 rows growing to 6; "Perguntar" is `.btn.primary` with `Send`, below the fields, its
+right edge equal to the fields' right edge within 1px in the browser (design.md "Campos"; round 1 gap 1)
+Proof: `npm run test -w apps/command-centre -- src/brain/ask/AskView.test.tsx -t "C110 "`
+Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts ask.spec.ts -g "C110 "`
+
+**C111** - The card "Sua visão" of a `reason_first` answer shows the take in 12px secondary text clamped to 6 lines with
+"Mostrar tudo" when it is longer (a 10-line take), and "Mostrar tudo" shows the whole take; a 3-line take shows no "Mostrar
+tudo" (design.md "Resposta"; round 1 gap 1)
+Proof: `npm run test -w apps/command-centre -- src/brain/ask/AskView.test.tsx -t "C111 "`
+
+**C112** - A link to a file in a folder hidden from agents is never named to an agent by the hygiene: with
+`memory/notes/a.md` (readable) linking to `memory/notes/privado/segredo.md` (agents level `hide`) and to a missing
+`memory/notes/zz.md`, the MCP tool `hygiene` and `GET /api/memory/hygiene` under the principal `mcp` list `zz.md` among the
+broken links and no line naming `privado` or `segredo.md`; at its own layer, the hygiene with an `allowPath` that refuses
+the hidden folder drops that link and keeps `zz.md`, and with no `allowPath` (the owner) `segredo.md` is not broken (it
+exists) (round 1 gap 2, the surviving mutant F4 at `core/src/memory/hygiene.ts:201-202`; AC 62, Landing row 8)
+Proof: `npx vitest run tests/perguntar.mcp.test.ts -t "C112 "`
+Proof: `npx vitest run tests/perguntar.layer.test.ts -t "C112 "`
+
+**C113** - Every run status maps to an ask status, at its own layer (the function behind `GET /api/memory/ask/:id`), one
+asserted case per member of `RunStatus` (8): `queued`, `running`, `waiting_approval` → `running`; `done` → `answered`,
+`refused` or `failed` by the file (one case each); `failed`, `cancelled`, `timed_out` and `interrupted` → `failed` with
+`reason` `A execução terminou em <status>.`; at the boundary, `timed_out` and `interrupted` each read `failed` with that
+reason (round 1 gaps 3 and 4; AC 12, AC 13)
+Proof: `npx vitest run tests/perguntar.layer.test.ts -t "C113 "`
+Proof: `npx vitest run tests/perguntar.routes.test.ts -t "C113 "`
+
+**C114** - A real restart (the service's start, which runs `recoverInterrupted`): a `brain-ask` run left `running` and one left
+`queued` each read after the restart as `failed` with `A execução terminou em interrupted.`, and the next
+`POST /api/memory/ask` answers `202` (the lock is released because the run is no longer open); a run left
+`waiting_approval` is still open after the restart and the next `POST` answers `409 ask_in_progress` (round 1 gap 3; AC 4,
+which C6 proved only on a context that was never started)
+Proof: `npx vitest run tests/perguntar.routes.test.ts -t "C114 "`
+
+**C115** - At their own layers: the usage record's four unreadable states (absent, not JSON, `v: 2`, `paths` a list) each read
+as the empty usage and are replaced by a fresh record on the next write (`agentUsage` / `recordAgentUsage` with no HTTP);
+and the three error codes the ask raises are documented by name (`ask_in_progress`, `folder_outside_index`, `unknown_note`
+each a key of the error table, not only the total) (round 1 gap 4 and precision gap on C62)
+Proof: `npx vitest run tests/perguntar.layer.test.ts -t "C115 "`
+Proof: `npx vitest run tests/perguntar.contract.test.ts -t "C115 "`
+
+Readings of round 1's precision gaps, settled by the orchestrator: C88's "área mais citada" is built as the area with the
+most files of `GET /api/memory/status` (kept; the empty state has no citation history to count); C103's tool descriptions
+have no words in design.md, so their presence and language are what binds (kept); C58's transaction cannot be observed under
+the synchronous driver (kept as a code reading, not a proof).
+
 ## Coverage
 
 | Set (size)                                                            | Member -> proof                                                                                                                                                                                                                                                                                                                                                             | Unproven |
@@ -665,7 +729,7 @@ Proof: `npm run test -w apps/command-centre -- src/views/settings/agentsMcp.test
 | `GET /api/mcp` statuses (2)                                           | 200 C51 · 403 C59                                                                                                                                                                                                                                                                                                                                                           | -        |
 | `GET /api/memory/links` statuses (3)                                  | 200 C45 · 400 C45 · 404 C45                                                                                                                                                                                                                                                                                                                                                 | -        |
 | ask `status` values (6)                                               | `running` C1, C17 · `abstained` C3 · `answered` C9 · `refused` C12 · `failed` C16 · list mapping C19                                                                                                                                                                                                                                                                        | -        |
-| run end -> ask status (6)                                             | `queued` C17 · `running` C17 · `waiting_approval` C17 · `done` C9 · `failed` C16 · `cancelled` C16                                                                                                                                                                                                                                                                          | -        |
+| run end -> ask status (8)                                             | `queued` C17, C113 · `running` C17, C113 · `waiting_approval` C17, C113 · `done` C9, C113 · `failed` C16, C113 · `cancelled` C16, C113 · `timed_out` C113 · `interrupted` C113, C114                                                                                                                                                                                        | -        |
 | abstain reasons (2)                                                   | `no_match` C3 · `weak` C3                                                                                                                                                                                                                                                                                                                                                   | -        |
 | open statuses that lock (3)                                           | `queued` C5 · `running` C5 · `waiting_approval` C5                                                                                                                                                                                                                                                                                                                          | -        |
 | `skill_unavailable` conditions (3)                                    | missing C7 · disabled C7 · not in `memorySkills` C7                                                                                                                                                                                                                                                                                                                         | -        |
