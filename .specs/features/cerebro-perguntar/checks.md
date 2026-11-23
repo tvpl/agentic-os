@@ -1018,3 +1018,6 @@ Status of batch E (updated in the commit that closes each piece):
   `Settings.tsx` fetches through `lazy` the first time the tab opens; pins of earlier features this design moves (each
   list gains the new entry, no assertion dropped): the dictionary's dynamic prefixes gain `mcp.kind.` and `mcp.tool.`
   (`i18n.orphans` C7), and the 12px exemptions gain the tab's secondary lines, `.am-s` (`typography` C15)
+- the tab in the browser (C107): closed, green in `tests/e2e/ask.spec.ts` after `npm run build`, in the moldura in both
+  themes, with usage and with none; `GET /api/mcp` is answered by the browser (Claude Code connected, Cursor not
+  connected, Codex's config unreadable), since the clients the real route reports depend on the machine's home

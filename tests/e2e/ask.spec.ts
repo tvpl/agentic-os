@@ -1,10 +1,11 @@
 /**
- * "Perguntar" in a real browser (.specs/features/cerebro-perguntar, C79, C95, C97, C98; design.md "Vista - Perguntar"):
- * the citations wrap at 320px and lead to `/brain?sel=<fileId>`; no serious axe violation in both shells and both themes,
- * empty, answering, a reason-first answer with its provocation (the Fold open) and refused; the view's own chunk, fetched
- * only when `/brain/ask` opens; and the plan's independent test of S5 on the real service, whose provider is the fake
- * CLI: `[[answer]]` in the question makes the fake run copy `artifacts/e2e-answer.json` (written here) into its own
- * directory as `answer.json`, and `[[sleep:N]]` keeps it running N seconds.
+ * "Perguntar" in a real browser (.specs/features/cerebro-perguntar, C79, C95, C97, C98, C107; design.md "Vista -
+ * Perguntar" and "Aba - Agentes (MCP) das Configurações"): the citations wrap at 320px and lead to `/brain?sel=<fileId>`;
+ * no serious axe violation in both shells and both themes, empty, answering, a reason-first answer with its provocation
+ * (the Fold open) and refused; the view's own chunk, fetched only when `/brain/ask` opens; the plan's independent test
+ * of S5 on the real service, whose provider is the fake CLI: `[[answer]]` in the question makes the fake run copy
+ * `artifacts/e2e-answer.json` (written here) into its own directory as `answer.json`, and `[[sleep:N]]` keeps it running
+ * N seconds; and Settings › Agentes (MCP) with usage and with none, no serious axe violation in both themes.
  *
  * The notes are real files of the isolated e2e home (a folder under `memory/notes/`), indexed through the API with the
  * page's own token and taken away (and the index redone) after each test. The states of C95 are the routes' answers as
@@ -434,3 +435,95 @@ test("C98 the moldura: ask directly with the fake CLI, see the answering state, 
     "false",
   );
 });
+
+/* ---------------- C107: axe on Settings › Agentes (MCP), both themes, with usage and with none ---------------- */
+
+const MCP_TOOLS = [
+  ["recall", "read"],
+  ["skills_list", "read"],
+  ["skills_run", "owner"],
+  ["journal_append", "propose"],
+  ["facts_assert", "propose"],
+  ["facts_query", "read"],
+  ["note_create", "propose"],
+  ["note_read", "read"],
+  ["note_save", "propose"],
+  ["inbox_unread", "owner"],
+  ["search", "read"],
+  ["links", "read"],
+  ["hygiene", "read"],
+].map(([name, kind]) => ({ name, kind }));
+/** `GET /api/mcp` as the service answers it: Claude Code connected, Cursor not, Codex's config unreadable. */
+function mcpOverview(withUsage: boolean) {
+  return {
+    clients: [
+      {
+        id: "claude",
+        name: "Claude Code",
+        connected: true,
+        source: `${E2E_HOME}/.claude.json`,
+        server: { name: "mordomo", command: "mordomo mcp" },
+        command: "claude mcp add mordomo -- mordomo mcp",
+      },
+      {
+        id: "cursor",
+        name: "Cursor",
+        connected: false,
+        command: JSON.stringify({ mcpServers: { mordomo: { command: "mordomo", args: ["mcp"] } } }, null, 2),
+      },
+      {
+        id: "codex",
+        name: "Codex",
+        connected: false,
+        source: `${E2E_HOME}/.codex/config.toml`,
+        unreadable: true,
+        command: '[mcp_servers.mordomo]\ncommand = "mordomo"\nargs = ["mcp"]',
+      },
+    ],
+    tools: MCP_TOOLS,
+    usage: withUsage
+      ? {
+          since: NOW - 3 * 86_400_000,
+          calls: 12,
+          byTool: [
+            { name: "search", calls: 8, lastAt: NOW - 60_000 },
+            { name: "recall", calls: 4, lastAt: NOW - 120_000 },
+          ],
+          byClient: [
+            { name: "claude-code", calls: 9, lastAt: NOW - 300_000 },
+            { name: "run:claude", calls: 3, lastAt: NOW - 7_200_000 },
+          ],
+          paths: [
+            { path: `${MEMORY}/notes/onboarding.md`, reads: 5, lastAt: NOW, fileId: 1 },
+            { path: `${MEMORY}/notes/antiga.md`, reads: 2, lastAt: NOW },
+          ],
+        }
+      : { since: null, calls: 0, byTool: [], byClient: [], paths: [] },
+  };
+}
+
+for (const theme of THEMES)
+  test(`C107 Settings › Agentes (MCP), ${theme}: with usage and with none, no serious axe violation`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    let withUsage = true;
+    await page.route(/\/api\/v1\/mcp$/, (route) => route.fulfill({ json: mcpOverview(withUsage) }));
+    await open(page, "moldura", theme, "/settings?tab=agents-mcp");
+    await page.evaluate(() => document.fonts.ready);
+    await expect(page.locator("h2.settings-section-title")).toHaveText("Agentes (MCP)");
+    const cards = page.locator(".am > .card.stack");
+    await expect(cards).toHaveCount(3);
+    await expect(cards.nth(0)).toContainText("Ligado");
+    await expect(cards.nth(0)).toContainText("Não deu para ler");
+    await expect(cards.nth(1).locator("li")).toHaveCount(13);
+    // with usage
+    await expect(cards.nth(2)).toContainText("12 leituras desde");
+    await expect(cards.nth(2).locator(".am-fill")).toHaveCount(2);
+    expect(await serious(page)).toEqual([]);
+    // with none
+    withUsage = false;
+    await page.reload();
+    await expect(cards.nth(2)).toContainText("Nenhum agente leu o cérebro ainda.");
+    expect(await serious(page)).toEqual([]);
+  });
