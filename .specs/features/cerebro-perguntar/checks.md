@@ -975,3 +975,7 @@ Status of batch D (updated in the commit that closes each piece):
   C86); the closed lists gain the view's test material (`legacy.graph` C1), the disabled "Perguntar"'s `title`
   (`ui.source` C25) and the view's 12px lines the design names (`typography` C15); the token `--line-strong` the
   design names for the provocation did not exist and is `var(--border-strong)` in `theme.css`'s `:root`
+- the view in the browser (C79, C95, C97 and C98's e2e proofs): closed, every proof green in `tests/e2e/ask.spec.ts`
+  after `npm run build`; the fake CLI gains the marker `[[answer]]`, which copies `artifacts/e2e-answer.json` (written
+  by the spec) into the run's own artifacts directory as `answer.json`, so C79 and C98 run the real route, the real
+  skill run and the real answer check; C95's four states are the routes' answers given by the browser

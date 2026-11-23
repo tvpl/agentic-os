@@ -91,6 +91,13 @@ if [[ "$PROMPT" =~ \[\[artifact:([A-Za-z0-9._-]+)\]\] ]]; then
     printf '# %s\n\nWritten by the fake provider for: %s\n' "$NAME" "${PROMPT:0:60}" > "$RUN_DIR/$NAME"
   fi
 fi
+# "[[answer]]" in the prompt copies e2e-answer.json, beside the run's own artifacts directory (the home's artifacts/),
+# into that directory as answer.json: the answer a brain-ask run writes (e2e: cerebro-perguntar).
+if [[ "$PROMPT" == *"[[answer]]"* && "$PROMPT" =~ artifacts\ directory:\ ([^[:space:]]+) ]]; then
+  RUN_DIR="${BASH_REMATCH[1]}"
+  mkdir -p "$RUN_DIR"
+  cp "$(dirname "$RUN_DIR")/e2e-answer.json" "$RUN_DIR/answer.json" 2>/dev/null
+fi
 # "[[nonl-huge]]" ends the stream with a 5 MiB assistant line (over the runner's 4 MiB cap) and NO trailing newline.
 if [[ "$PROMPT" == *"[[nonl-huge]]"* ]]; then
   printf '{"type":"assistant","message":{"content":[{"type":"text","text":"'
