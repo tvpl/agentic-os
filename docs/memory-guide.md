@@ -416,6 +416,84 @@ ask answers `409 skill_unavailable`. One ask runs at a time (`409 ask_in_progres
 - **History**: `GET /api/memory/ask?limit=` (1 to 100, default 30) lists the asks, newest first, each with its status
   (`running`, `answered`, `refused`, `failed`). An ask is not counted in the recall's statistics.
 
+### Entidades
+
+Every pass of the index writes, for each Markdown note, who and what it names: an **entity** is one of four kinds,
+`perfil` (a person, a client or a business), `projeto` (a project), `tag` or `termo` (a term). They come from the notes,
+without any model: a note with `type: profile` or `type: project` in its header is the home of its entity (its title and
+its `aliases`); a link to such a note is a mention of it at the link's line; a tag (`tags:` or `#Cliente-X`) is a mention
+at the line where it is written; and a run of 2 to 4 capitalised words in the text (`Banco Central`) is a `termo`, never
+taken from the header, a code block, a code span or a link's address. At most 200 mentions per note. A `termo` is an
+entity only when it appears in 2 files or more that the reader sees.
+
+A name is compared by its normalized form (NFC, lower case, no accents, every character that is not a letter or a digit
+as a space): `#Cliente-X`, `cliente x` and `CLIENTE  X` are one name. The duplicates are joined in **three stages**:
+
+1. **Exact**: the same normalized name is one entity, of the kind that ranks first (`perfil` > `projeto` > `tag` >
+   `termo`).
+2. **The gate**: a name shorter than 6 characters without spaces, or whose characters have a Shannon entropy under
+   2.0 bits, is never joined to another by the next stage.
+3. **MinHash**: over the character 3-grams of each name (32 permutations, LSH in 8 bands of 4 rows), two names with an
+   estimated Jaccard of 0.9 or more are one entity; between 0.7 and 0.9 they stay apart and each lists the other in
+   `duplicates` with its `similarity`.
+
+An entity cited by more than 50 files is a hub: it is listed, but adds no edge to the graph. The entities are read by
+audience: a device, a run and the MCP tools see only the mentions of the files they may read, so a name found only in a
+folder hidden from agents is no entity for them. `GET /api/memory/entities` (with `kind`, `q`, `context`, `limit` and
+`offset`) and `GET /api/memory/entities/:key` (`<kind>:<normalized name>`) answer them, and the MCP tools `entities` and
+`entity` read them as agents read. `memory.entities.enabled` (on by default; the work is CPU of the index pass and sends
+nothing anywhere) turns it all off: no mention is written and the routes answer `409 entities_disabled`.
+
+**Corrections** are the owner's (`POST /api/memory/entities/corrections`): `merge` joins two entities (even ones the
+gate keeps apart), `separate` keeps two names that MinHash joined apart, `ignore` takes an entity out of the list and the
+graph (its mentions stay), `rename` changes the name shown (the key stays), and `undo` stops a correction from applying
+(it is listed with `undoneAt`, never deleted). A correction is kept by normalized names, so it outlives every reindexing;
+a `merge` of a pair with an active `separate` (or the other way round) is `409 correction_conflict`, and at most 2 000
+corrections are active (`409 too_many_corrections`).
+
+**The graph in the recall** (`memory.recall.graph.enabled`, off by default): with it on, after the recall decides not to
+abstain, a personalized PageRank runs from its first 20 fused files over the links, the related files and the entities
+two files share, as the reader sees them (damping 0.85, at most 30 iterations), and its order is fused with the recall's
+(k 60); at most 3 files that were not among the fused ones are let in, each through every filter of the recall, and each
+item says its `graph` place. Measure it on your own questions before turning it on: `mordomo eval <file>` prints a `graph`
+line right after `hybrid` while the graph is on (`modes.graph` with `--json`).
+
+### Resumos
+
+A **summary** of an area (of `settings.areas`) or of a work context is a run of the read-only built-in skill
+`brain-summarize` (`POST /api/memory/summaries` with `scope` `{ "kind": "area" | "context", "id" }`, owner only; in the
+interface, the view Resumos of the Second Brain, `/brain/summaries`). It is never a note and never enters `memory/`. The
+skill is given up to 30 sources of the scope that the agents read, in the order of the context map (most linked inside
+the scope, then newest), and writes `summary.json`: 1 to 10 paragraphs, each citing 1 to 6 sections of those sources.
+`GET /api/memory/summaries` and `GET /api/memory/summaries/:kind/:id` check it every time it is read, as an ask's answer
+is checked, and the MCP tool `summary` reads it as agents read. One summary of a scope runs at a time
+(`409 summary_in_progress`); a scope with no source is `409 empty_scope`.
+
+When the run starts, the size, `mtime` and SHA-256 of each source are recorded. The **staleness rule**: a summary is
+`stale` when a source left the index or the scope (`removed`), when a source's size or `mtime` changed **and** its
+SHA-256 changed too (`changed`; a file touched without a change of content is still the same), or when the scope gained
+files with an `mtime` after the run started that are not sources (`added`); otherwise it is `fresh`, and `missing` before
+the first one. A stale summary is still shown, with how many sources changed, left and were added, until you ask for a
+new one.
+
+### Sugestões por IA
+
+A model can propose entities the rules above miss (`memory.entities.llm.enabled`, **off by default**): a batch is a run of
+the read-only built-in skill `brain-entities` on the default provider, over up to 20 Markdown notes the agents read that
+changed since the last batch, newest first, with the names of the entities that exist and the names you rejected, so it
+does not repeat them. **The batch rhythm**: with it on, the service starts a batch at the end of an index pass when no run
+is open and the last batch started more than 24 hours ago, so at most one batch a day; you can also ask for one at any
+time, on or off (`POST /api/memory/entities/suggestions`, owner only; `409 suggestions_in_progress` while one runs,
+`409 nothing_to_read` when no note changed). The text of the notes of a batch goes to the provider; a folder hidden from
+agents never enters a batch.
+
+`GET /api/memory/entities/suggestions` checks the batch when it is read: each suggestion (a `perfil`, `projeto` or
+`termo`, its aliases, or a `mergeWith` with an entity that exists) must cite 1 to 3 lines of the batch's notes that
+contain its name or an alias as a whole word, and one that fails is dropped with its reason. **A suggestion changes
+nothing until you accept it**: `accept` stores it as a correction `add` (or a `merge`), and the next pass finds its
+names in the text of every note (the mention `nome`); `reject` keeps its name from coming back. Both go through the
+corrections route and can be undone.
+
 ---
 
 ## 8. Where things live

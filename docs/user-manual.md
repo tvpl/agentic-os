@@ -123,6 +123,15 @@ Today (the frame), the pendências (the Núcleo) and in the run's page.
   work context, a folder or some notes, directly or after you write your own
   take ("raciocine primeiro"). Folders hidden from agents are never read nor
   cited. See *Perguntar ao cérebro* in the memory guide.
+- **Entities**: Second Brain → **Entidades** lists the people, projects, tags
+  and terms your notes name, each with the lines that cite it, the entities it
+  shares files with and the names that may be the same; you join, separate,
+  ignore or rename them there, and accept or reject the AI suggestions when
+  they are on. See *Entidades* and *Sugestões por IA* in the memory guide.
+- **Summaries**: Second Brain → **Resumos** summarizes an area or a work
+  context in a few paragraphs that cite the notes they came from, and says when
+  a summary got old because its notes changed. See *Resumos* in the memory
+  guide.
 
 Full details, including how to measure the token saving before and after:
 [docs/memory-guide.md](./memory-guide.md).

@@ -1114,3 +1114,7 @@ AppContext()`, as `cmdEval` and `cmdMcp` build it) and the harness's (`sugestoes
   `scheduleSuggestionBatches`, whose only call in `apps/api/src` is in `startServer` (read on the syntax tree): a pass
   of the harness and of a CLI context with the AI extraction on starts no batch, and the service's pass starts one,
   `startedBy` null. Proof: `entidades.contract` (C99 1)
+- C100, the docs: closed. `docs/memory-guide.md` gains `### Entidades`, `### Resumos` and `### Sugestões por IA` in
+  section 7, after "Perguntar ao cérebro"; `docs/user-manual.md` names Second Brain → **Entidades** and **Resumos** in
+  3.1; AC 105's text is batch D's (`docs/security.md`, `legal/PRIVACY.md` section 5). Proof: `entidades.contract`
+  (C100 1)

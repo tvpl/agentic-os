@@ -855,3 +855,109 @@ describe("C99 the entity reader, the summary service and the suggestion service 
     }
   }, 60_000);
 });
+
+// ---- C100: the docs --------------------------------------------------------------------------------------------------
+
+/** The section of `page` under the heading whose text is `title`, to the next heading of its level or above. */
+function sectionOf(page: string, title: string): string {
+  const lines = page.split("\n");
+  const at = lines.findIndex((l) => /^#{2,4} /.test(l) && l.replace(/^#+ /, "") === title);
+  if (at < 0) return "";
+  const level = /^#+/.exec(lines[at]!)![0].length;
+  let end = at + 1;
+  while (end < lines.length && !(/^#+ /.test(lines[end]!) && /^#+/.exec(lines[end]!)![0].length <= level))
+    end += 1;
+  return lines.slice(at, end).join("\n");
+}
+
+describe("C100 the docs", () => {
+  it("C100 docs/memory-guide.md has Entidades, Resumos and Sugestões por IA with the kinds, the stages and their numbers, the corrections, the graph and its eval mode, the staleness rule and the batch rhythm; docs/security.md and legal/PRIVACY.md say AC 105; docs/user-manual.md names the two views", () => {
+    const guide = read("docs/memory-guide.md");
+    // each section's prose read with its line breaks as spaces
+    const entities = sectionOf(guide, "Entidades").replace(/\s+/g, " ");
+    const summaries = sectionOf(guide, "Resumos").replace(/\s+/g, " ");
+    const suggestions = sectionOf(guide, "Sugestões por IA").replace(/\s+/g, " ");
+    expect(entities.startsWith("### Entidades ")).toBe(true);
+    expect(summaries.startsWith("### Resumos ")).toBe(true);
+    expect(suggestions.startsWith("### Sugestões por IA ")).toBe(true);
+
+    // the four kinds
+    for (const kind of ["`perfil`", "`projeto`", "`tag`", "`termo`"]) expect(entities, kind).toContain(kind);
+    // the three dedup stages with their numbers
+    for (const words of [
+      "**three stages**",
+      "1. **Exact**: the same normalized name is one entity, of the kind that ranks first (`perfil` > `projeto` > `tag` > `termo`).",
+      "2. **The gate**: a name shorter than 6 characters without spaces, or whose characters have a Shannon entropy under 2.0 bits",
+      "3. **MinHash**: over the character 3-grams of each name (32 permutations, LSH in 8 bands of 4 rows), two names with an estimated Jaccard of 0.9 or more are one entity; between 0.7 and 0.9 they stay apart",
+    ])
+      expect(entities, words).toContain(words);
+    // the corrections
+    for (const action of ["`merge`", "`separate`", "`ignore`", "`rename`", "`undo`"])
+      expect(entities, action).toContain(action);
+    expect(entities).toContain("`POST /api/memory/entities/corrections`");
+    expect(entities).toContain("at most 2 000 corrections are active");
+    // the graph setting and mordomo eval's graph mode
+    expect(entities).toContain("`memory.recall.graph.enabled`, off by default");
+    expect(entities).toContain("`mordomo eval <file>` prints a `graph` line right after `hybrid`");
+
+    // the staleness rule
+    for (const words of [
+      "**staleness rule**",
+      "a source left the index or the scope (`removed`)",
+      "when a source's size or `mtime` changed **and** its SHA-256 changed too (`changed`",
+      "when the scope gained files with an `mtime` after the run started that are not sources (`added`)",
+      "otherwise it is `fresh`",
+    ])
+      expect(summaries, words).toContain(words);
+    expect(summaries).toContain("`brain-summarize`");
+
+    // the batch rhythm
+    for (const words of [
+      "`memory.entities.llm.enabled`, **off by default**",
+      "up to 20 Markdown notes the agents read that changed since the last batch",
+      "**The batch rhythm**: with it on, the service starts a batch at the end of an index pass when no run is open and the last batch started more than 24 hours ago",
+      "a folder hidden from agents never enters a batch",
+      "**A suggestion changes nothing until you accept it**",
+    ])
+      expect(suggestions, words).toContain(words);
+
+    // AC 105 in docs/security.md and legal/PRIVACY.md
+    const securityBullet =
+      security
+        .split("\n- ")
+        .find((b) => b.startsWith("**AI suggestions of entities.**"))
+        ?.replace(/\s+/g, " ") ?? "";
+    expect(securityBullet.length).toBeGreaterThan(0);
+    for (const words of [
+      "With `memory.entities.llm.enabled` on (off by default)",
+      "or whenever the owner asks for one (`POST /api/memory/entities/suggestions`, owner)",
+      "on the default provider reads the text of up to 20 notes per batch",
+      "that text goes to the provider",
+      "A folder hidden from agents never enters a batch",
+    ])
+      expect(securityBullet, words).toContain(words);
+    const privacy = read("legal/PRIVACY.md");
+    const paragraph =
+      privacy
+        .split("\n\n")
+        .find((p) => p.startsWith("**Sugestões de entidades por IA.**"))
+        ?.replace(/\s+/g, " ") ?? "";
+    expect(paragraph.length).toBeGreaterThan(0);
+    for (const words of [
+      "Com as sugestões por IA ligadas (`memory.entities.llm.enabled`, desligadas por padrão)",
+      "ou quando você pede um lote",
+      "no provedor padrão: o texto de até 20 notas por lote",
+      "vai ao provedor",
+      "Pastas escondidas dos agentes nunca entram no lote.",
+    ])
+      expect(paragraph, words).toContain(words);
+    // in section 5 of the privacy notice, the providers'
+    const five = privacy.slice(privacy.indexOf("\n## 5."), privacy.indexOf("\n## 6."));
+    expect(five).toContain("**Sugestões de entidades por IA.**");
+
+    // docs/user-manual.md names the two views
+    const manual = read("docs/user-manual.md").replace(/\s+/g, " ");
+    expect(manual).toContain("Second Brain → **Entidades**");
+    expect(manual).toContain("Second Brain → **Resumos**");
+  });
+});
