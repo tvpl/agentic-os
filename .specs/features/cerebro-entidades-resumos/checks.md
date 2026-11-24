@@ -848,5 +848,5 @@ The estimate exceeds the 150k budget.
   - A + B ≈ 129k fits with little room for a fix round; the batches stay apart for the same reason C10's did; the
     route-count and refusal-probe pins move with each batch to the value its routes give (180 after A, 183 after C, 185 after D),
     so the whole suite stays green between batches, and C89-C90 close in E at 185
-- Mechanism: **ask** — the estimate is over the budget; handoff (seven batches A-G, sequential, only on green) or one builder
-  (accepting compaction)
+- Mechanism: handoff - chosen by the owner on 24/11/2026 (seven batches A-G, sequential, only on green; the next builder
+  reads `checks.md` and the diff of what landed)
