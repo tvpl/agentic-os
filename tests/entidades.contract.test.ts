@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import net, { type AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
   API,
@@ -686,4 +688,170 @@ describe("C98 no event is added", () => {
     const baseDoc = execFileSync("git", ["show", `${FEATURE_BASE}:docs/events.md`], { cwd: repo });
     expect(doc.equals(baseDoc)).toBe(true);
   });
+});
+
+// ---- C99: the startup assemblies ---------------------------------------------------------------------------------------
+
+/** A port nobody holds now, for a started service's own listener. */
+const freePort = () =>
+  new Promise<number>((resolve) => {
+    const server = net.createServer().listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as AddressInfo;
+      server.close(() => resolve(port));
+    });
+  });
+
+/** Where `scheduleSuggestionBatches` is called in apps/api/src: each call's file and the function around it. */
+function scheduleCalls(): Array<[string, string]> {
+  const calls: Array<[string, string]> = [];
+  for (const file of sourceFiles(path.join(repo, "apps", "api", "src"))) {
+    const sf = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+    const visit = (node: ts.Node, fn: string): void => {
+      const name =
+        (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) && node.name
+          ? node.name.getText(sf)
+          : fn;
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "scheduleSuggestionBatches"
+      )
+        calls.push([path.relative(repo, file), name]);
+      ts.forEachChild(node, (child) => visit(child, name));
+    };
+    visit(sf, "<module>");
+  }
+  return calls;
+}
+
+describe("C99 the entity reader, the summary service and the suggestion service are built by one factory", () => {
+  it("C99 the service's AppContext, the CLI's of mordomo eval and mordomo mcp and the test harness's build them through agentServices, each bound to its own database and skills; the automatic batch is scheduled only by startServer, never by a CLI context or the harness", async () => {
+    const { AppContext, agentServices } = await import("../apps/api/src/context.js");
+    const { startServer } = await import("../apps/api/src/server.js");
+    const { EntityReader, seedHome } = await import("@mordomo/core/internal");
+    const { sugestoesWorld } = await import("./helpers/sugestoesWorld.js");
+
+    // how each assembly builds its context: the service, and the CLI's `mordomo eval` and `mordomo mcp`
+    const server = read("apps/api/src/server.ts");
+    const startBody = server.slice(server.indexOf("export async function startServer("));
+    expect(startBody).toContain("new AppContext(homeOverride, { applyPendingRestore: true })");
+    const cli = read("apps/api/src/cli.ts");
+    for (const cmd of ["cmdEval", "cmdMcp"]) {
+      const at = cli.indexOf(`async function ${cmd}(`);
+      expect(at, cmd).toBeGreaterThan(0);
+      expect(cli.slice(at, cli.indexOf("\n}\n", at)), cmd).toContain("const ctx = new AppContext();");
+    }
+    // the constructor takes the three from the factory, once; nothing else builds an entity reader
+    const context = read("apps/api/src/context.ts");
+    expect(context.match(/agentServices\(this\)/g)).toHaveLength(1);
+    for (const field of ["entities", "summaries", "suggestions"])
+      expect(context, field).toContain(`this.${field} = agents.${field};`);
+    const builders = sourceFiles(path.join(repo, "apps", "api", "src")).filter((f) =>
+      fs.readFileSync(f, "utf8").includes("new EntityReader("),
+    );
+    expect(builders.map((f) => path.relative(repo, f))).toEqual(["apps/api/src/context.ts"]);
+    expect(context.match(/new EntityReader\(/g)).toHaveLength(1);
+    // the automatic batch: one call, in startServer, and none in buildServer, the CLI or the context
+    expect(scheduleCalls()).toEqual([["apps/api/src/server.ts", "startServer"]]);
+
+    // the harness: a world over a server built by buildServer, the skill seeded, the fake CLI as the provider; the AI
+    // extraction on and notes that changed, so that a scheduled batch would start at the end of a pass
+    const w = await sugestoesWorld("mordomo-entidades-c99-");
+    const cliHome = makeTempHome("mordomo-entidades-c99-cli-");
+    const before = process.env.MORDOMO_HOME;
+    let handle: Awaited<ReturnType<typeof startServer>> | undefined;
+    const contexts: Array<InstanceType<typeof AppContext>> = [];
+    try {
+      w.llm(true);
+      w.note(path.join(w.notas, "a.md"), "# A\n\nReunião com Ana Souza.\n");
+      w.note(path.join(w.notas, "b.md"), "# B\n\nO Projeto Atlas.\n");
+      const batches = (ctx: InstanceType<typeof AppContext>) =>
+        ctx.runs.list({ limit: 200 }).filter((r) => r.skillSlug === "brain-entities");
+      const pass = async (ctx: InstanceType<typeof AppContext>) => {
+        while (ctx.indexer.isIndexing()) await new Promise((resolve) => setTimeout(resolve, 5));
+        await ctx.indexer.indexAllAsync();
+      };
+
+      // the harness's pass and a CLI context's pass over the same home start no batch
+      await w.index();
+      expect(batches(w.ctx)).toEqual([]);
+      process.env.MORDOMO_HOME = w.home;
+      const cliOnWorld = new AppContext();
+      contexts.push(cliOnWorld);
+      expect(cliOnWorld.paths.home).toBe(w.home);
+      await pass(cliOnWorld);
+      expect(batches(w.ctx)).toEqual([]);
+      cliOnWorld.close();
+      contexts.pop();
+
+      // the CLI's own context, on a home of its own
+      process.env.MORDOMO_HOME = cliHome.paths.home;
+      const cliCtx = new AppContext();
+      contexts.push(cliCtx);
+      if (before === undefined) delete process.env.MORDOMO_HOME;
+      else process.env.MORDOMO_HOME = before;
+      expect(cliCtx.paths.home).toBe(cliHome.paths.home);
+
+      // the service, through the real start path, over the world's home
+      const port = await freePort();
+      w.update((s) => {
+        s.port = port;
+        s.remote.enabled = false;
+      });
+      handle = await startServer(w.home);
+      const service = handle.ctx;
+
+      const fresh = agentServices(w.ctx);
+      const all = { service, cli: cliCtx, harness: w.ctx };
+      for (const [name, ctx] of Object.entries(all)) {
+        // the objects the factory builds: an entity reader over the context's own database, and the two skill services
+        // with the same keys and the same functions' code as a fresh build
+        expect(ctx.entities, name).toBeInstanceOf(EntityReader);
+        expect((ctx.entities as unknown as { db: unknown }).db, name).toBe(ctx.db);
+        for (const service of ["summaries", "suggestions"] as const) {
+          expect(Object.keys(ctx[service]), `${name} ${service}`).toEqual(Object.keys(fresh[service]));
+          expect(Object.keys(ctx[service]), `${name} ${service}`).toEqual(["available", "start"]);
+          for (const key of ["available", "start"] as const)
+            expect(String(ctx[service][key]), `${name} ${service}.${key}`).toBe(String(fresh[service][key]));
+        }
+        // bound to its own skills and settings: available once seeded and named by memorySkills, and not after
+        seedHome(ctx.paths, repo);
+        const settings = ctx.settings();
+        settings.memorySkills = [...new Set([...settings.memorySkills, "brain-summarize", "brain-entities"])];
+        ctx.settingsStore.save(settings);
+        expect([ctx.summaries.available(), ctx.suggestions.available()], name).toEqual([true, true]);
+        const without = ctx.settings();
+        without.memorySkills = without.memorySkills.filter(
+          (s) => s !== "brain-summarize" && s !== "brain-entities",
+        );
+        ctx.settingsStore.save(without);
+        expect([ctx.summaries.available(), ctx.suggestions.available()], name).toEqual([false, false]);
+        const back = ctx.settings();
+        back.memorySkills = settings.memorySkills;
+        ctx.settingsStore.save(back);
+      }
+      // the CLI's home has no batch of its own either, after a pass
+      cliCtx.settingsStore.save({
+        ...cliCtx.settings(),
+        memory: { ...cliCtx.settings().memory, entities: { enabled: true, llm: { enabled: true } } },
+      });
+      await pass(cliCtx);
+      expect(batches(cliCtx)).toEqual([]);
+
+      // the service's pass starts the batch, by the service itself (startedBy null)
+      expect(batches(service)).toEqual([]);
+      await pass(service);
+      const started = batches(service);
+      expect(started).toHaveLength(1);
+      expect(started[0]!.startedBy).toBeNull();
+      await service.execution.wait(started[0]!.id);
+    } finally {
+      if (before === undefined) delete process.env.MORDOMO_HOME;
+      else process.env.MORDOMO_HOME = before;
+      for (const ctx of contexts) ctx.close();
+      if (handle) await handle.close();
+      await w.close();
+      cliHome.cleanup();
+    }
+  }, 60_000);
 });

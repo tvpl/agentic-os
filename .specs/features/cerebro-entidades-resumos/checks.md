@@ -1106,3 +1106,11 @@ Status of batch E (C89-C100):
   `skills-parse` C94 1, `api.openapi` C16 1, `device-scopes` C39 1 and C3 1, `api.contract` C1 1, C12 1 and C13 1,
   `api.refusals` C45 1, `contracts.api` C58 1, `data.migration` C7 1, `data.settings` C63 1 and C46 1, `sdk.surface`
   C37 1 and C38 2
+- C99, the startup assemblies: closed. The service's `AppContext` (through the real `startServer`), the CLI's (`new
+AppContext()`, as `cmdEval` and `cmdMcp` build it) and the harness's (`sugestoesWorld`, over `buildServer`) each hold
+  the `EntityReader` over their own database and the `summaries` and `suggestions` services of `agentServices` (the
+  same keys and code as a fresh build, `available` following their own skills and `memorySkills`); "the suggestion
+  scheduler" is read as the `suggestions` service the factory builds plus its one schedule,
+  `scheduleSuggestionBatches`, whose only call in `apps/api/src` is in `startServer` (read on the syntax tree): a pass
+  of the harness and of a CLI context with the AI extraction on starts no batch, and the service's pass starts one,
+  `startedBy` null. Proof: `entidades.contract` (C99 1)
