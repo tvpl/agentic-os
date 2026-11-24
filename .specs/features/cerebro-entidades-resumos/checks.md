@@ -1061,3 +1061,28 @@ the sorted accepted names>` (`entityMentionsMarker`), so an `add` or its undo re
   (`perguntar.mcp` C42), the internal barrel (`sdk.surface` C38), the built-in skills 18 → 19 (`perguntar.contract`
   C66, `skills-parse` C66) and the default `memorySkills` (`perguntar.contract` C64, `paineis.question` C56,
   `organize.skill` C9, `builtin-context`)
+
+- **Boundary (batch D):** C73-C88 (and C26 extended) closed at `b1e238e`. On that tree `npm run build`, `npm run
+typecheck` and `npm run lint` exit 0; every `Proof:` line of C73-C88 and C26 passes run alone and runs only its
+  check's cases (counts above); `npx vitest run` at the root has one failure, `tests/paineis.refresh.test.ts` C13 (as
+  on the base: 3737 passed, 3 skipped). Routes 185, owner routes 102, raised codes 105, built-in skills 19, MCP tools
+  16; no event added, no migration added.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) Landing 9a (the batches
+  recorded in `meta` `entities.suggestions`, so the 24 h rhythm and "since the last batch" outlive the runs' retention;
+  the automatic batch scheduled only by `startServer` on `index.finished`, "no run open" read over every run; routers
+  never in a batch; `known` = names and aliases the agents see, then the rejected norms; a suggestion's id
+  `<run id>:<place>`; the list = the pending suggestions of the newest finished batch, `lastBatch` = the newest batch with
+  `reason` when it gave none, `nextBatchAt` = last start + 24 h with the extraction on; `accept`/`reject` of a suggestion
+  no longer pending is `409 correction_conflict`, `accept` with `mergeWith` stores `merge` of the entity's canonical norm
+  and the suggestion's) and Landing 10a (the `nome` rule by `findMention` outside the header, code and link addresses,
+  the row named as the `add` wrote it with the `add`'s kind; the marker is `1` with no accepted name, else `1:` and the
+  SHA-256 of the distinct names and aliases, sorted by code unit, joined by `\n`); `Flow` step 7; (b) the marker hashes
+  names only, as C85 says: an `add` undone and accepted again with the same names and another kind keeps the marker,
+  and the `nome` rows keep the earlier kind until their file changes (the entity reads by kind precedence over its
+  mentions and the `add`); (c) the GET route answers no `409 entities_disabled` (Coverage gives it 200 and 403 only);
+  the POST declares `409 budget_exhausted` and `403 forbidden_path`, as the summaries' start does; (d) the C26 case
+  rejects a suggestion that is no entity yet (the original case's `banco central` is an entity, so it can no longer be
+  a pending suggestion), and checks the rejected one listed again after the undo; (e) AC 105's text is written now in
+  `docs/security.md` (a bullet after "Agents.") and `legal/PRIVACY.md` (a paragraph at the end of section 5); its
+  proof, C100, is batch E's.
+- **Abandoned:** nothing.
