@@ -947,3 +947,24 @@ Status of batch B (C31-C40, C42-C52):
   `busca.contract` C86's two defaults, the UI's `RECALL_DEFAULTS` and its `semanticSearchNet.ts` fixture), the run's
   read routes in `device-scopes` C9 (S3's, missed in its commit) and its amendment in `sdk.api-thin` C29, the internal barrel gains `coMentionEdges`
   (`sdk.surface` C38), the recall's `answerContext` items gain `graph?` in `contracts/src/api/memory.ts`
+
+- **Boundary (batch B):** C31-C40 and C42-C52 closed at `0652004` (S3 at `fb59031`, S4 at `24650eb`, the
+  `sdk.api-thin` amendment at `0652004`). On that tree `npm run build`, `npm run typecheck` and `npm run lint` exit 0;
+  every `Proof:` line of C31-C40 and C42-C52 passes run alone and runs only its check's cases (counts above); `npx
+vitest run` at the root has one failure, `tests/paineis.refresh.test.ts` C13 (as on the base: 3666 passed, 3
+  skipped); the command-centre suite passes (2110). No route added (180), no event added.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) Landing 5a (the
+  PageRank after the abstention and before the reranker; the nodes reached from the seeds through files the recall may
+  read; the related edge as the larger of its two rows in each direction; the mass of a node with no edge back to the
+  seeds; the order of the fused files and at most 3 admitted outsiders, whose places `graph` gives) and `Flow` step 4;
+  (b) the text of the tool `entity` (`<name> (<kind>)`, `Aliases:`, `Mentions (<n>):` with up to 20 `- <path>:<line> —
+<excerpt>`, `Related:` with `- <name> (<kind>, <n> arquivos em comum)`, `- (none)` for an empty list); a name is
+  matched by `entityNorm` against an entity's key, name or aliases; (c) C43's "C9 result" is a fixture read over the
+  `pt-corpus` with the `hash` provider by the code of `2f708c7`, before this batch changed the recall, compared without
+  `durationMs`; (d) by the door's literal RRF, an outsider is only in the PageRank's list, so it ranks after every fused
+  file: it is opened only when the fusion holds fewer files than `k` (C51's corpus, as the plan's independent test
+  says); and an outsider opened first as a pointer from a chosen section and not taken is skipped as a candidate (C9's
+  "never read a file twice"), so C49 and C51 put the links in a section other than the matching one; (e) C41 (batch C)
+  says `MCP_ROUTES` is "the 14 of the C10 list plus" three routes, but the C10 list is 11 (Impact: 11 → 14), so its
+  literal should read "the 11 of the C10 list plus"; left unedited.
+- **Abandoned:** nothing.
