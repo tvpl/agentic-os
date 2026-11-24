@@ -235,6 +235,8 @@ describe("S5 the surface is a closed list", () => {
         "entityDetail",
         "listEntities",
         "writeCorrection",
+        // cerebro-entidades-resumos, batch B: the tool entity finds an entity by a name's normalized form (door 7)
+        "entityNorm",
       ].sort(),
     );
   });

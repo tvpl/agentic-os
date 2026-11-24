@@ -7,7 +7,7 @@ import { MCP_TOOL_KINDS, mordomoTools, type McpApi } from "../mcp/mordomo.js";
 
 /**
  * `GET /api/mcp` (.specs/features/cerebro-perguntar, door 7): whether each of Claude Code, Cursor and Codex has
- * `mordomo` configured (their config files, read and never written), what connects it, the 13 tools by kind, and what
+ * `mordomo` configured (their config files, read and never written), what connects it, the 15 tools by kind, and what
  * the agents read, the most read paths judged by today's policy and the folders hidden from agents.
  */
 

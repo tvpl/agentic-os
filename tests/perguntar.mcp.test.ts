@@ -125,7 +125,7 @@ async function fresh<T>(fn: (w: McpWorld) => Promise<T>): Promise<T> {
 
 const code = (r: { status: number; body: Json }) => [r.status, r.body?.error?.code];
 
-/** One valid call of each of the 13 tools (C36, C50). */
+/** One valid call of each of the 15 tools (C36, C50); cerebro-entidades-resumos batch B adds entities and entity. */
 const ONE_CALL: Array<[string, Json]> = [
   ["recall", { question: "zebra" }],
   ["skills_list", {}],
@@ -140,10 +140,12 @@ const ONE_CALL: Array<[string, Json]> = [
   ["search", { query: "zebra" }],
   ["links", { path: "/n.md" }],
   ["hygiene", {}],
+  ["entities", { query: "ana" }],
+  ["entity", { key: "perfil:ana souza" }],
 ];
 
 describe("C36 every call carries the token, the principal and the client", () => {
-  it("C36 httpApi sends x-mordomo-token, x-mordomo-as: mcp and x-mordomo-client on every call of each of the 13 tools", async () => {
+  it("C36 httpApi sends x-mordomo-token, x-mordomo-as: mcp and x-mordomo-client on every call of each of the 15 tools", async () => {
     const recorder = await mcpRecorder();
     try {
       const api = httpApi(recorder.url, "owner-token", () => "claude-code");
@@ -160,7 +162,7 @@ describe("C36 every call carries the token, the principal and the client", () =>
           ).toEqual(["owner-token", "mcp", "claude-code"]);
         }
       }
-      expect(recorder.seen.length).toBeGreaterThanOrEqual(13);
+      expect(recorder.seen.length).toBeGreaterThanOrEqual(15);
     } finally {
       await recorder.close();
     }
@@ -362,8 +364,8 @@ describe("C40 the tools read as agents", () => {
   });
 });
 
-describe("C41 MCP_ROUTES is the 11 routes of the 13 tools", () => {
-  it("C41 MCP_ROUTES equals the 11 routes, and each passes through /api and /api/v1 with the principal mcp", async () => {
+describe("C41 MCP_ROUTES is the 13 routes of the 15 tools", () => {
+  it("C41 MCP_ROUTES equals the 13 routes, and each passes through /api and /api/v1 with the principal mcp", async () => {
     expect([...MCP_ROUTES].sort()).toEqual(
       [
         "GET /api/memory/recall",
@@ -377,10 +379,17 @@ describe("C41 MCP_ROUTES is the 11 routes of the 13 tools", () => {
         "GET /api/memory/search",
         "GET /api/memory/links",
         "GET /api/memory/hygiene",
+        // cerebro-entidades-resumos, batch B (door 7)
+        "GET /api/memory/entities",
+        "GET /api/memory/entities/:key",
       ].sort(),
     );
     await fresh(async (w) => {
-      const note = w.put(path.join(w.memory, "notes", "aberto.md"), "# Aberto\n\n## Zebra\n\nA zebra.\n");
+      // the tag gives the entity tag:zebra its route reads (cerebro-entidades-resumos, batch B)
+      const note = w.put(
+        path.join(w.memory, "notes", "aberto.md"),
+        "# Aberto\n\n## Zebra\n\nA zebra. #zebra\n",
+      );
       await w.index();
       const calls: Array<[string, string, unknown]> = [
         ["GET", "/memory/recall?q=zebra&record=false", undefined],
@@ -394,6 +403,8 @@ describe("C41 MCP_ROUTES is the 11 routes of the 13 tools", () => {
         ["GET", "/memory/search?q=zebra", undefined],
         ["GET", "/memory/links?p=notes/aberto.md", undefined],
         ["GET", "/memory/hygiene", undefined],
+        ["GET", "/memory/entities", undefined],
+        ["GET", `/memory/entities/${encodeURIComponent("tag:zebra")}`, undefined],
       ];
       const reached = new Set<string>();
       for (const prefix of ["/api", "/api/v1"]) {
@@ -401,7 +412,10 @@ describe("C41 MCP_ROUTES is the 11 routes of the 13 tools", () => {
           const res = await w.fetchAs(method, `${prefix}${rest}`, w.mcpHeaders(), body);
           expect(res.status, `${method} ${prefix}${rest} ${JSON.stringify(res.body)}`).toBeLessThan(300);
           reached.add(
-            `${method} /api${rest.replace(/\?.*$/, "").replace("/skills/workspace-digest/", "/skills/:slug/")}`,
+            `${method} /api${rest
+              .replace(/\?.*$/, "")
+              .replace("/skills/workspace-digest/", "/skills/:slug/")
+              .replace(/\/entities\/.+$/, "/entities/:key")}`,
           );
         }
       }
@@ -412,14 +426,14 @@ describe("C41 MCP_ROUTES is the 11 routes of the 13 tools", () => {
 });
 
 describe("C42 every other route refuses the principal mcp", () => {
-  it("C42 table-driven over the 180 routes of the API table minus the 11 and the public ones: 403 forbidden each, through /api and /api/v1", async () => {
+  it("C42 table-driven over the 180 routes of the API table minus the 13 and the public ones: 403 forbidden each, through /api and /api/v1", async () => {
     await fresh(async (w) => {
       const entries = Object.values(API);
-      // cerebro-entidades-resumos batch A: the three entity routes (177 -> 180), none in MCP_ROUTES yet
+      // cerebro-entidades-resumos batch A: the three entity routes (177 -> 180); batch B puts the two reads in MCP_ROUTES
       expect(entries).toHaveLength(180);
       const others = entries.filter((e) => e.public !== true && !MCP_ROUTES.has(`${e.method} ${e.path}`));
-      expect(others).toHaveLength(180 - 11 - entries.filter((e) => e.public === true).length);
-      expect(others).toHaveLength(167);
+      expect(others).toHaveLength(180 - 13 - entries.filter((e) => e.public === true).length);
+      expect(others).toHaveLength(165);
       const problems: string[] = [];
       for (const entry of others) {
         for (const prefix of ["/api", "/api/v1"]) {
@@ -756,7 +770,7 @@ describe("C48 what the principal mcp keeps as today", () => {
 });
 
 describe("C50 the tool list", () => {
-  it("C50 tools/list is the 13 tools in order, and search, links and hygiene carry door 4's input schemas", async () => {
+  it("C50 tools/list is the 15 tools in order, and search, links and hygiene carry door 4's input schemas", async () => {
     const api: McpApi = {
       get: async <T>() => ({}) as T,
       post: async <T>() => ({}) as T,
@@ -768,8 +782,8 @@ describe("C50 the tool list", () => {
     )) as { result: { tools: Array<{ name: string; inputSchema: Json }> } };
     const tools = list.result.tools;
     expect(tools.map((t) => t.name)).toEqual(ONE_CALL.map(([name]) => name));
-    expect(tools.map((t) => t.name)).toHaveLength(13);
-    expect(tools.slice(10).map((t) => ({ name: t.name, inputSchema: t.inputSchema }))).toEqual([
+    expect(tools.map((t) => t.name)).toHaveLength(15);
+    expect(tools.slice(10, 13).map((t) => ({ name: t.name, inputSchema: t.inputSchema }))).toEqual([
       {
         name: "search",
         inputSchema: {

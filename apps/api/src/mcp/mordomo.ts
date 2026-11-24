@@ -12,6 +12,7 @@
  * journal line says an agent wrote it. The mark is provenance, not
  * containment: this process holds the owner's token.
  */
+import { entityNorm } from "@mordomo/core/internal";
 import { serveMcpStdio, type McpTool } from "./stdio.js";
 
 export interface McpApi {
@@ -107,7 +108,21 @@ export const MCP_TOOL_KINDS: Readonly<Record<string, "read" | "propose" | "owner
   search: "read",
   links: "read",
   hygiene: "read",
+  entities: "read",
+  entity: "read",
 };
+
+/** An entity as `GET /api/memory/entities` lists it (cerebro-entidades-resumos, door 4). */
+interface EntityLine {
+  key: string;
+  kind: string;
+  name: string;
+  aliases: string[];
+  files: number;
+}
+
+/** At most this many mentions in the answer of the tool `entity` (door 7). */
+const ENTITY_TOOL_MENTIONS = 20;
 
 export function mordomoTools(api: McpApi): McpTool[] {
   return [
@@ -405,6 +420,86 @@ export function mordomoTools(api: McpApi): McpTool[] {
             r.counts.stale,
             of("stale", (i) => `- ${i.id}: ${i.detail}`),
           ),
+        ].join("\n");
+      },
+    },
+    // cerebro-entidades-resumos, door 7: who and what the notes name, read as agents read.
+    {
+      name: "entities",
+      description:
+        "The people, projects, tags and terms the notes name, by how many files cite them: one line per entity, name (kind, files). query: a word prefix of the name; kind: perfil, projeto, tag or termo; limit: 1 to 50 (20).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string" },
+          kind: { type: "string", enum: ["perfil", "projeto", "tag", "termo"] },
+          limit: { type: "number" },
+        },
+      },
+      handler: async (a) => {
+        const params = new URLSearchParams({ limit: String(clamp(a.limit, 50, 20)) });
+        const query = optional(a.query, "query");
+        if (query !== undefined) params.set("q", query);
+        const kind = optional(a.kind, "kind");
+        if (kind !== undefined) params.set("kind", kind);
+        const r = await api.get<{ items: EntityLine[] }>(`/api/v1/memory/entities?${params.toString()}`);
+        if (r.items.length === 0) return "No entity matched.";
+        return r.items.map((e) => `${e.name} (${e.kind}, ${e.files} arquivos)`).join("\n");
+      },
+    },
+    {
+      name: "entity",
+      description:
+        "One entity the notes name: its kind, aliases, up to 20 mentions (path:line — excerpt) and the entities it shares files with. name: its name or an alias; or key: <kind>:<normalized name>, as entities gives it.",
+      inputSchema: {
+        type: "object",
+        properties: { name: { type: "string" }, key: { type: "string" } },
+      },
+      handler: async (a) => {
+        const name = optional(a.name, "name");
+        let key = optional(a.key, "key");
+        if (name === undefined && key === undefined) throw new Error("name or key is required");
+        const asked = key ?? name!;
+        if (key === undefined) {
+          // The entity one of whose names (or aliases) has the same normalized name.
+          const norm = entityNorm(name!);
+          const params = new URLSearchParams({ q: name!, limit: "200" });
+          const r =
+            norm === ""
+              ? { items: [] }
+              : await api.get<{ items: EntityLine[] }>(`/api/v1/memory/entities?${params.toString()}`);
+          key = r.items.find(
+            (e) =>
+              e.key.slice(e.key.indexOf(":") + 1) === norm ||
+              [e.name, ...e.aliases].some((n) => entityNorm(n) === norm),
+          )?.key;
+          if (key === undefined) throw new Error(`Entity not found: ${asked}`);
+        }
+        let e: {
+          name: string;
+          kind: string;
+          aliases: string[];
+          mentions: Array<{ path: string; line: number; excerpt: string }>;
+          related: Array<{ name: string; kind: string; shared: number }>;
+        };
+        try {
+          e = await api.get(`/api/v1/memory/entities/${encodeURIComponent(key)}`);
+        } catch (err) {
+          // An entity that does not exist, one only of hidden files and a key that is no key read the same (AC 34).
+          const status = (err as { status?: number }).status;
+          if (status === 404 || status === 400) throw new Error(`Entity not found: ${asked}`);
+          throw err;
+        }
+        const list = (lines: string[]) => (lines.length > 0 ? lines : ["- (none)"]);
+        return [
+          `${e.name} (${e.kind})`,
+          `Aliases: ${e.aliases.length > 0 ? e.aliases.join(", ") : "(none)"}`,
+          `Mentions (${e.mentions.length}):`,
+          ...list(
+            e.mentions.slice(0, ENTITY_TOOL_MENTIONS).map((m) => `- ${m.path}:${m.line} — ${m.excerpt}`),
+          ),
+          "Related:",
+          ...list(e.related.map((r) => `- ${r.name} (${r.kind}, ${r.shared} arquivos em comum)`)),
         ].join("\n");
       },
     },

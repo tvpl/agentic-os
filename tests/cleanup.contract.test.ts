@@ -245,7 +245,9 @@ describe("who may call the six routes", () => {
       }),
     );
     expect(now[0]!.length).toBeGreaterThan(3);
-    expect(now).toEqual(base);
+    // cerebro-entidades-resumos, batch B (door 4): a run's rc_ reads the two entity routes, as agents read
+    const ENTITY_READS = ["GET /api/memory/entities", "GET /api/memory/entities/:key"];
+    expect(now).toEqual([[...base[0]!, ...ENTITY_READS].sort(), base[1]]);
     for (const list of now) expect(list.filter((r) => r.includes("/cleanup/"))).toEqual([]);
   });
 

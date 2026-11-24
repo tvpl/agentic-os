@@ -150,6 +150,8 @@ export {
   listEntities,
   writeCorrection,
 } from "./memory/entities.js";
+// cerebro-entidades-resumos, door 7: the tool entity finds an entity by the normalized form of a name
+export { entityNorm } from "./memory/entityMentions.js";
 export { scanCleanupScope } from "./memory/cleanupScan.js";
 export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from "./memory/cleanupApply.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";

@@ -253,12 +253,15 @@ const RUN_API_READ_ROUTES = new Set([
   "GET /api/memory/facts",
   // cerebro-organizar, door 10: the folder map, read as memory/notes/ and the folders the run was handed.
   "GET /api/memory/maps",
+  // cerebro-entidades-resumos, door 4: the entities, read as agents read (the folders hidden from agents are no part).
+  "GET /api/memory/entities",
+  "GET /api/memory/entities/:key",
 ]);
 const RUN_API_WRITE_ROUTES = new Set(["POST /api/memory/journal/append", "POST /api/memory/facts"]);
 
 /**
- * The only routes the principal `mcp` may call (cerebro-perguntar, door 5): the ones the 13 tools of `mordomo mcp`
- * call, and no other; any other route is `403 forbidden`. Not containment: the process holds the owner's token and
+ * The only routes the principal `mcp` may call (cerebro-perguntar, door 5): the ones the 15 tools of `mordomo mcp`
+ * call (cerebro-entidades-resumos, door 7, adds the two entity reads), and no other; any other route is `403 forbidden`. Not containment: the process holds the owner's token and
  * can leave the header out (docs/security.md).
  */
 export const MCP_ROUTES: ReadonlySet<string> = new Set([
@@ -273,6 +276,8 @@ export const MCP_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/memory/search",
   "GET /api/memory/links",
   "GET /api/memory/hygiene",
+  "GET /api/memory/entities",
+  "GET /api/memory/entities/:key",
 ]);
 
 /** Who a credential is, with what the gate needs to judge the route (a device's scopes, whether a run may write). */

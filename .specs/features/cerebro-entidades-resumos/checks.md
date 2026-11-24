@@ -920,3 +920,18 @@ Status of batch A (C1-C30):
   (`home`, mentions with excerpts, `related`, `duplicates`, `corrections`) and `context` follow the Surface already, but
   S3's checks (C31-C40) are batch B's.
 - **Abandoned:** nothing.
+
+Status of batch B (C31-C40, C42-C52):
+
+- S3, the entities by audience and the two entity MCP tools (C31-C40, C42): closed. The routes of batch A answer the
+  list, one entity and the context as the checks say; a run's `rc_` reads the two entity routes
+  (`RUN_API_READ_ROUTES`), and `MCP_ROUTES` gains them (11 → 13); the MCP tools `entities` and `entity` (door 7) find
+  an entity by a name or an alias through `entityNorm` (now in the internal barrel). Proofs: `entidades.routes` (C31 1,
+  C32 1, C33 1, C34 1), `entidades.access` (C35 1, C36 2, C37 1, C38 1, C42 1), `entidades.mcp` (C39 2, C40 2). Pins
+  moved: the MCP tool list 13 → 15 (`perguntar.mcp` C36 and C50, `perguntar.usage` C53, `rituais.access` C73),
+  `MCP_ROUTES` 11 → 13 and the routes the principal `mcp` is refused 167 → 165 (`perguntar.mcp` C41, C42; C41's note
+  gains `#zebra` so `GET /api/memory/entities/:key` has an entity to answer), the run's route lists gain the two
+  entity reads over each feature's base (`memoria.contract` C81, `paineis.contract` C59, `natureza.contract` C66,
+  `cleanup.contract` C76, `rituais.access` C73), the recorder of `mcpRecorder.ts` answers the two entity routes, the
+  internal barrel gains `entityNorm` (`sdk.surface` C38)
+- S4, the graph in the recall and `mordomo eval` (C43-C52): open

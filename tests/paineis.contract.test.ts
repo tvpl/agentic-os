@@ -527,7 +527,10 @@ describe("C59 who may call the eight routes", () => {
     const now = lists(fs.readFileSync(path.join(repoRoot, "apps", "api", "src", "server.ts"), "utf8"));
     expect(now[0]!.length).toBeGreaterThan(3);
     expect(now[1]!.length).toBeGreaterThan(0);
-    expect(now).toEqual(lists(atBase("apps/api/src/server.ts")));
+    // cerebro-entidades-resumos, batch B (door 4): a run's rc_ reads the two entity routes, as agents read
+    const ENTITY_READS = ["GET /api/memory/entities", "GET /api/memory/entities/:key"];
+    const atFeatureBase = lists(atBase("apps/api/src/server.ts"));
+    expect(now).toEqual([[...atFeatureBase[0]!, ...ENTITY_READS].sort(), atFeatureBase[1]]);
     for (const list of now)
       expect(list.filter((r) => KEYS.includes(r) || r.includes("/dashboards"))).toEqual([]);
   }, 120_000);

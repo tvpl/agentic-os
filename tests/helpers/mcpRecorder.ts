@@ -31,6 +31,19 @@ function answer(method: string, path: string): unknown {
   if (p === "/api/v1/notifications") return { items: [] };
   if (p === "/api/v1/memory/search") return [];
   if (p === "/api/v1/memory/links") return { file: { path: "/n.md" }, backlinks: [], outgoing: [] };
+  // cerebro-entidades-resumos, door 7: the two entity reads
+  if (p === "/api/v1/memory/entities") return { items: [], total: 0 };
+  if (p.startsWith("/api/v1/memory/entities/"))
+    return {
+      key: "tag:x",
+      kind: "tag",
+      name: "x",
+      aliases: [],
+      mentions: [],
+      related: [],
+      duplicates: [],
+      corrections: [],
+    };
   if (p === "/api/v1/memory/hygiene") {
     return {
       counts: { orphan: 0, "dangling-link": 0, stale: 0 },

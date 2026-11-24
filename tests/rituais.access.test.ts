@@ -231,7 +231,10 @@ describe("C73 who may call the seven routes", () => {
     const now = lists(fs.readFileSync(path.join(repoRoot, "apps", "api", "src", "server.ts"), "utf8"));
     expect(now[0]!.length).toBeGreaterThan(3);
     expect(now[1]!.length).toBeGreaterThan(0);
-    expect(now).toEqual(lists(atBase("apps/api/src/server.ts")));
+    // cerebro-entidades-resumos, batch B (door 4): a run's rc_ reads the two entity routes, as agents read
+    const ENTITY_READS = ["GET /api/memory/entities", "GET /api/memory/entities/:key"];
+    const atFeatureBase = lists(atBase("apps/api/src/server.ts"));
+    expect(now).toEqual([[...atFeatureBase[0]!, ...ENTITY_READS].sort(), atFeatureBase[1]]);
   });
 
   it("C73 no MCP tool and no CLI command reaches the routes: the MCP tool list and the mordomo command list are unchanged by name", () => {
@@ -240,8 +243,16 @@ describe("C73 who may call the seven routes", () => {
     const mcp = fs.readFileSync(path.join(repoRoot, "apps", "api", "src", "mcp", "mordomo.ts"), "utf8");
     expect(tools(mcp).length).toBeGreaterThan(5);
     // cerebro-perguntar, batch B, adds search, links and hygiene (its door 4); they reach none of these routes
+    // cerebro-entidades-resumos, batch B, adds entities and entity (its door 7); they reach none of these routes
     expect(tools(mcp)).toEqual(
-      [...tools(atBase("apps/api/src/mcp/mordomo.ts")), "hygiene", "links", "search"].sort(),
+      [
+        ...tools(atBase("apps/api/src/mcp/mordomo.ts")),
+        "entities",
+        "entity",
+        "hygiene",
+        "links",
+        "search",
+      ].sort(),
     );
     const commands = (source: string) =>
       [...(/const COMMANDS = \[([\s\S]*?)\] as const;/.exec(source)?.[1] ?? "").matchAll(/"([a-z-]+)"/g)].map(
