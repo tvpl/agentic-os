@@ -1095,3 +1095,14 @@ Status of batch E (C89-C100):
   `routes/memory.ts`); the owner and a device add nothing, and the list `GET /api/memory/entities` is not counted (it
   names no file), so `entity` by name is one call. Proofs: `entidades.mcp` (C95 1, C96 2), `perguntar.mcp` C50 1,
   `perguntar.usage` C53 1
+- C89-C94, C97, C98, the API's closing pins: closed. The pins were moved by batches A-D; batch E writes the proofs of
+  `tests/entidades.contract.test.ts` and `skills-parse` C94. Confirmed at their final values: routes 185 (177 at the
+  feature's base `a1b43ec`, the eight new ids exactly), owner routes 102 (98 + 4), raised codes 105 (97 at the base,
+  read by C13's scan over `git archive` of the base, grown by exactly the eight new codes), migration 35 last, 30
+  top-level settings keys, `memorySkills` 7, built-in skills 19, no event and `docs/events.md` byte-identical to the
+  base. C89 reads Coverage's pairs as its row of statuses per route plus the row of the new codes, each code credited
+  to the routes its checks' claims name (`entities_disabled` → C17 → both entity reads and the corrections, whose rows
+  of statuses lack `409`). Proofs: `entidades.contract` (C89 1, C90 1, C91 1, C92 1, C93 1, C94 1, C98 1),
+  `skills-parse` C94 1, `api.openapi` C16 1, `device-scopes` C39 1 and C3 1, `api.contract` C1 1, C12 1 and C13 1,
+  `api.refusals` C45 1, `contracts.api` C58 1, `data.migration` C7 1, `data.settings` C63 1 and C46 1, `sdk.surface`
+  C37 1 and C38 2

@@ -240,3 +240,71 @@ describe("C66 the built-in skill brain-ask (cerebro-perguntar, door 2)", () => {
     }
   });
 });
+
+describe("C94 the built-in skills brain-summarize and brain-entities (cerebro-entidades-resumos, doors 6 and 9)", () => {
+  const repo = path.resolve(import.meta.dirname, "..");
+
+  it("C94 each SKILL.md is YAML the one parser reads as data, a seeded home's catalog loads each read_only with its inputs and three providers, and the built-in skills are 19", () => {
+    const want = {
+      "brain-summarize": {
+        name: "Brain Summarize",
+        heading: "# Resumir no Cérebro",
+        inputs: [
+          ["scope", true],
+          ["sources", true],
+        ],
+      },
+      "brain-entities": {
+        name: "Brain Entities",
+        heading: "# Entidades no Cérebro",
+        inputs: [
+          ["files", true],
+          ["known", false],
+        ],
+      },
+    } as const;
+    for (const [slug, w] of Object.entries(want)) {
+      const raw = fs.readFileSync(path.join(repo, "skills", slug, "SKILL.md"), "utf8");
+      expect(raw.startsWith("---\n"), slug).toBe(true);
+      const { data, content } = parseSkillFile(raw);
+      expect([data.name, data.mode, data.enabled], slug).toEqual([w.name, "read_only", true]);
+      expect(
+        (data.inputs as Array<{ name: string }>).map((i) => i.name),
+        slug,
+      ).toEqual(w.inputs.map(([name]) => name));
+      expect(data.providers, slug).toEqual(["claude", "cursor", "codex"]);
+      expect(content, slug).toContain(w.heading);
+    }
+
+    // a home seeded from the bundle, as a first run does
+    const { paths, cleanup } = makeTempHome("mordomo-skills-c94-");
+    try {
+      seedHome(paths, repo);
+      const catalog = new SkillCatalog(paths);
+      for (const [slug, w] of Object.entries(want)) {
+        const skill = catalog.load(slug)!;
+        expect(skill, slug).not.toBeNull();
+        expect([skill.mode, skill.enabled, skill.thick], slug).toEqual(["read_only", true, false]);
+        expect(
+          skill.inputs.map((i) => [i.name, i.required]),
+          slug,
+        ).toEqual(w.inputs.map(([name, required]) => [name, required]));
+        expect(skill.providers, slug).toEqual(["claude", "cursor", "codex"]);
+      }
+      // the built-in count: the feature's base shipped 17, and this one adds the two
+      const base = execFileSync("git", ["ls-tree", "--name-only", "a1b43ec:skills"], {
+        cwd: repo,
+        encoding: "utf8",
+      })
+        .split("\n")
+        .filter(Boolean);
+      expect(base).toHaveLength(17);
+      const seeded = catalog.list().map((s) => s.slug);
+      expect([...seeded].sort()).toEqual([...base, "brain-summarize", "brain-entities"].sort());
+      expect(seeded).toHaveLength(19);
+      expect(new SkillCatalog(resolvePaths(repo)).list()).toHaveLength(19);
+    } finally {
+      cleanup();
+    }
+  });
+});
