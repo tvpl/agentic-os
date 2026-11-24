@@ -242,9 +242,10 @@ describe("C19 migration 33", () => {
       pk: c.pk,
     }));
   it("C19 the two tables' columns, the action CHECK, the key unique, empty tables over rows of 32 kept, nothing applied again, and the last migration", () => {
-    // 33 is the last of cerebro-rituais; cerebro-busca-significado added 34 (one vector per section) after it
+    // 33 is the last of cerebro-rituais; cerebro-busca-significado added 34 (one vector per section) after it, and
+    // cerebro-entidades-resumos 35 (the mentions, the corrections and the summary runs)
     expect(MIGRATIONS.find((m) => m.version === 33)).toMatchObject({ version: 33, name: "rituais" });
-    expect(MIGRATIONS.at(-1)).toMatchObject({ version: 34, name: "section-vectors" });
+    expect(MIGRATIONS.at(-1)).toMatchObject({ version: 35, name: "entidades-resumos" });
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-rituais-m33-"));
     const paths = resolvePaths(home);
     ensureDirs(paths);
@@ -284,7 +285,7 @@ describe("C19 migration 33", () => {
       old.close();
       const { db, migration } = openDb(paths);
       try {
-        expect(migration).toMatchObject({ fromVersion: 32, toVersion: 34 });
+        expect(migration).toMatchObject({ fromVersion: 32, toVersion: 35 });
         expect(snapshot(db)).toEqual(before);
         expect(columns(db, "loop_decisions")).toEqual([
           { name: "key", type: "TEXT", notnull: 0, dflt_value: null, pk: 1 },
@@ -318,7 +319,7 @@ describe("C19 migration 33", () => {
       }
       const again = openDb(paths);
       try {
-        expect(again.migration).toEqual({ fromVersion: 34, toVersion: 34, backupPath: null });
+        expect(again.migration).toEqual({ fromVersion: 35, toVersion: 35, backupPath: null });
       } finally {
         again.db.close();
       }

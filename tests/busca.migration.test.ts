@@ -13,7 +13,8 @@ import { makeTempHome } from "./helpers.js";
 
 describe("C30 migration 34 over a database at 33", () => {
   it("C30 file_vectors goes, section_vectors comes empty, the other rows stay byte for byte, the status reads 0 and 0, the next pass fills it, and nothing is applied again", async () => {
-    expect(MIGRATIONS.at(-1)).toMatchObject({ version: 34, name: "section-vectors" });
+    // cerebro-entidades-resumos added migration 35 after this one: a home at 33 migrates to it in the same pass
+    expect(MIGRATIONS.find((m) => m.version === 34)).toMatchObject({ version: 34, name: "section-vectors" });
     const temp = makeTempHome("mordomo-busca-c30-");
     try {
       // a database at 33, with an index, its per-file vectors and the rows of other features
@@ -59,7 +60,7 @@ describe("C30 migration 34 over a database at 33", () => {
 
       const { db, migration } = openDb(temp.paths);
       try {
-        expect(migration).toMatchObject({ fromVersion: 33, toVersion: 34 });
+        expect(migration).toMatchObject({ fromVersion: 33, toVersion: 35 });
         expect(
           db.prepare("SELECT name FROM sqlite_master WHERE name = 'file_vectors'").get(),
         ).toBeUndefined();
@@ -104,7 +105,7 @@ describe("C30 migration 34 over a database at 33", () => {
       // opening the database again applies nothing
       const again = openDb(temp.paths);
       try {
-        expect(again.migration).toEqual({ fromVersion: 34, toVersion: 34, backupPath: null });
+        expect(again.migration).toEqual({ fromVersion: 35, toVersion: 35, backupPath: null });
       } finally {
         again.db.close();
       }

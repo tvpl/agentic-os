@@ -234,7 +234,7 @@ describe("C79 migration 30 makes the review inbox", () => {
       // 31 and 32 (the search indexes and the related edges of the audiences, doors 19 and 20) follow migration 30 in the same pass,
       // and 33 (cerebro-rituais, the loop decisions and the weekly reviews), and 34 (cerebro-busca-significado, one vector
       // per section)
-      expect(migration).toMatchObject({ fromVersion: 27, toVersion: 34 });
+      expect(migration).toMatchObject({ fromVersion: 27, toVersion: 35 });
       expect(MIGRATIONS.find((m) => m.version === 30)!.name).toBe("memory-proposals");
       const want = [
         { name: "id", type: "TEXT", notnull: 0, pk: 1 },
@@ -393,8 +393,8 @@ describe("C39 a backup carries the history and the migrations run on restore", (
       // the schema is 32 since doors 19 and 20 (the search indexes and the related edges of the audiences) follow the review inbox of 30,
       // and 33 since cerebro-rituais (the loop decisions and the weekly reviews), and 34 since cerebro-busca-significado
       // (one vector per section)
-      expect(opened.migration).toMatchObject({ fromVersion: 27, toVersion: 34 });
-      expect(opened.db.pragma("user_version", { simple: true })).toBe(34);
+      expect(opened.migration).toMatchObject({ fromVersion: 27, toVersion: 35 });
+      expect(opened.db.pragma("user_version", { simple: true })).toBe(35);
       expect(opened.db.prepare("SELECT subject_key, predicate_key, author, trust FROM facts").all()).toEqual([
         { subject_key: "cliente sao paulo", predicate_key: "status", author: "unknown", trust: "inferido" },
       ]);

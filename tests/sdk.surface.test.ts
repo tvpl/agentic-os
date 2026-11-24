@@ -228,6 +228,13 @@ describe("S5 the surface is a closed list", () => {
         "agentUsage",
         "mcpClients",
         "recordAgentUsage",
+        // cerebro-entidades-resumos, batch A: the entities by audience and the owner's corrections (doors 2 to 4)
+        "CorrectionError",
+        "EntityReader",
+        "correctionItem",
+        "entityDetail",
+        "listEntities",
+        "writeCorrection",
       ].sort(),
     );
   });

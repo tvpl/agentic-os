@@ -502,6 +502,9 @@ describe("S3 settings tolerate an invalid field", () => {
         "sentinels.weeklyReview.enabled",
         // cerebro-busca-significado, door 4 (G34): abstaining says less, so an unreadable value reads on (below)
         "memory.recall.abstain",
+        // cerebro-entidades-resumos, doors 1 and 2 (C92): CPU of the pass that sends nothing, so an unreadable value reads
+        // its default, on (below)
+        "memory.entities.enabled",
       ].sort(),
     );
     for (const leaf of onByDefault) {
@@ -519,8 +522,11 @@ describe("S3 settings tolerate an invalid field", () => {
         write(doc);
         const loaded = store.load() as any;
         const value = keys.reduce((acc: any, key) => acc?.[key], loaded);
-        // The one flag whose "on" opens nothing: the recall abstains, it says less (cerebro-busca-significado, G34).
-        expect(value, `${leaf} = ${JSON.stringify(bad)}`).toBe(leaf === "memory.recall.abstain");
+        // The flags whose "on" opens nothing: the recall abstains, it says less (cerebro-busca-significado, G34); the
+        // entities are worked out by the pass and sent nowhere (cerebro-entidades-resumos, C92).
+        expect(value, `${leaf} = ${JSON.stringify(bad)}`).toBe(
+          leaf === "memory.recall.abstain" || leaf === "memory.entities.enabled",
+        );
       }
     }
   });
@@ -660,6 +666,8 @@ describe("S3 settings tolerate an invalid field", () => {
         "how many sections the reranker reorders, while it is on (its switch is closed) (cerebro-busca-significado door 5)",
       "memory.recall.rerank.timeoutMs":
         "how long the recall waits for the reranker, while it is on (its switch is closed) (cerebro-busca-significado door 5)",
+      "memory.entities.enabled":
+        "on by default: the pass writes who and what each note names, CPU of this computer sent nowhere; an unreadable value reads on (cerebro-entidades-resumos doors 1 and 2, C92)",
       "memory.history.maxBytes":
         "how many bytes the history of memory/ keeps before it drops old versions; it writes no file and opens nothing (cerebro-memoria-confiavel door 4)",
     };

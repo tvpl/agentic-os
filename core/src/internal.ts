@@ -141,6 +141,15 @@ export { ASK_SKILL, checkAskAnswer, countSentences, resolveAskScope } from "./me
 // cerebro-perguntar, door 7: what the agents read, and whether each CLI has mordomo configured
 export { agentUsage, recordAgentUsage } from "./memory/agentUsage.js";
 export { mcpClients } from "./connectors/mcpClients.js";
+// cerebro-entidades-resumos, doors 1 to 4: the entities by audience and the owner's corrections
+export {
+  CorrectionError,
+  EntityReader,
+  correctionItem,
+  entityDetail,
+  listEntities,
+  writeCorrection,
+} from "./memory/entities.js";
 export { scanCleanupScope } from "./memory/cleanupScan.js";
 export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from "./memory/cleanupApply.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";

@@ -117,6 +117,41 @@ type EdgeFile = { id: number; root: string; rel: string; dir: string; name: stri
  * `sources` limits the links read to the ones these files hold.
  */
 export function linkEdges(db: Db, allow: Allow, sources?: ReadonlySet<number>): LinkEdge[] {
+  const { byId, resolve } = linkResolver(db, allow);
+  const rows = db.prepare("SELECT src_id, kind, target, line FROM note_links ORDER BY src_id, line").all() as Array<{
+    src_id: number;
+    kind: LinkKind;
+    target: string;
+    line: number;
+  }>;
+  const edges = new Map<string, LinkEdge>();
+  for (const row of rows) {
+    if (sources && !sources.has(row.src_id)) continue;
+    const source = byId.get(row.src_id);
+    if (!source) continue;
+    const target = resolve(source, row);
+    if (!target || target.id === source.id) continue;
+    const key = `${source.id}>${target.id}>${row.kind}`;
+    if (!edges.has(key)) edges.set(key, { source: source.id, target: target.id, kind: row.kind, line: row.line });
+  }
+  return [...edges.values()];
+}
+
+/** An indexed file as `linkResolver` holds it. */
+export type ResolvedFile = EdgeFile;
+
+/**
+ * Where the links of `note_links` lead, between the files `allow` lets through, in memory (the rule of `linkEdges`): the
+ * files are read once, and `resolve` answers the file a link (`kind` and stored `target`) of `source` leads to today, or
+ * undefined. Used by `linkEdges` and by the entity mentions of a pass (.specs/features/cerebro-entidades-resumos, door 1).
+ */
+export function linkResolver(
+  db: Db,
+  allow: Allow,
+): {
+  byId: Map<number, ResolvedFile>;
+  resolve: (source: { dir: string }, link: { kind: LinkKind; target: string }) => ResolvedFile | undefined;
+} {
   const files = (db.prepare("SELECT id, root, rel, dir, name, path FROM files").all() as EdgeFile[]).filter((file) =>
     allow(file),
   );
@@ -130,29 +165,14 @@ export function linkEdges(db: Db, allow: Allow, sources?: ReadonlySet<number>): 
     byName.set(name, list);
   }
   const byId = new Map(files.map((file) => [file.id, file]));
-  const resolve = (source: EdgeFile, key: string): EdgeFile | undefined => {
+  const resolve = (source: { dir: string }, link: { kind: LinkKind; target: string }): EdgeFile | undefined => {
+    if (link.kind === "markdown-link") return byPath.get(link.target);
+    const key = link.target;
     const last = key.slice(key.lastIndexOf("/") + 1);
     const named = [`${last}.md`, `${last}.markdown`, last].flatMap((name) => byName.get(name) ?? []);
     return rankWikilink(source, key, [...new Set(named)])[0];
   };
-
-  const rows = db.prepare("SELECT src_id, kind, target, line FROM note_links ORDER BY src_id, line").all() as Array<{
-    src_id: number;
-    kind: LinkKind;
-    target: string;
-    line: number;
-  }>;
-  const edges = new Map<string, LinkEdge>();
-  for (const row of rows) {
-    if (sources && !sources.has(row.src_id)) continue;
-    const source = byId.get(row.src_id);
-    if (!source) continue;
-    const target = row.kind === "markdown-link" ? byPath.get(row.target) : resolve(source, row.target);
-    if (!target || target.id === source.id) continue;
-    const key = `${source.id}>${target.id}>${row.kind}`;
-    if (!edges.has(key)) edges.set(key, { source: source.id, target: target.id, kind: row.kind, line: row.line });
-  }
-  return [...edges.values()];
+  return { byId, resolve };
 }
 
 /** A link of `note_links` that leads to no indexed file the caller may read (`brokenLinks`). */

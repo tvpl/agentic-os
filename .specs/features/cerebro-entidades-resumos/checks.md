@@ -850,3 +850,31 @@ The estimate exceeds the 150k budget.
     so the whole suite stays green between batches, and C89-C90 close in E at 185
 - Mechanism: handoff - chosen by the owner on 24/11/2026 (seven batches A-G, sequential, only on green; the next builder
   reads `checks.md` and the diff of what landed)
+
+Status of batch A (C1-C30):
+
+- S1, the mentions in the index (C1-C4, C7-C9): closed. Migration 35 `entidades-resumos` creates the three tables of
+  doors 1, 3 and 6 with door 1's and door 3's `CHECK` lists as the Landing gives them (`nome`, `add` and `reject` already
+  allowed; the `nome` rule itself is batch D's); a pass writes each Markdown file's mentions with the file
+  (`entity_mentions`, `core/src/memory/entityMentions.ts`) and checks the `link` ones at its end against today's
+  resolution of `note_links` (`linkResolver`, Landing 1a); the marker `index.entity_mentions` = `1` fills every file from
+  the stored text after the migration. Proofs: `entidades.index` (C1 1, C2 2, C3 1, C4 1, C7 1, C8 1, C9 1)
+- S1, the dedup at its layer and the switch (C5, C6, C10-C20): closed. `core/src/memory/entities.ts` (stages, gate,
+  MinHash over 3-grams with `minhashMins` of `minhash.ts`, 32 functions, LSH 8 × 4, the shown name, the term threshold,
+  the hub, `coMentionEdges`, the cache `EntityReader` built by `agentServices`); `memory.entities = { enabled: true, llm:
+{ enabled: false } }`; `GET /api/memory/entities` and `GET /api/memory/entities/:key` read by the caller's audience
+  (`accessView`, cached by audience and its excludes). Proofs: `entidades.layer` (C5 8, C6 6, C10 9, C11 4, C12 4, C13 4,
+  C14 3, C15 3, C16 1, C19 3, C20 1), `entidades.access` (C16 1), `entidades.routes` (C17 1, C18 1)
+- S2, the corrections (C21-C30): closed. `POST /api/memory/entities/corrections` (owner) with `writeCorrection`.
+  Proofs: `entidades.corrections` (C21 2, C22 1, C23 1, C24 1, C25 1, C26 3, C27 2, C28 1, C29 2, C30 1)
+- Pins moved: routes 177 → 180 (`api.contract` C1/C12, `contracts.api`, `api.openapi` C15 and `device-scopes` C43
+  operations), refusal-probe and event scenarios 177 → 180 (three scenarios in `contractWorld.ts`, whose `notes.md`
+  gains `#cenario`), owner 98 → 99, content 37 → 39, non-public routes 175 → 178, raised codes 97 → 100
+  (`entities_disabled`, `correction_conflict`, `too_many_corrections`), checked answers 175 → 178,
+  `EXPECTED_ROUTE_SCOPES`, `docs/security.md` rows and the counts `memoria.contract` C82 and `paineis.contract` C60 read
+  off them, `perguntar.mcp` C42 177 → 180 (others 164 → 167), `memoria.access-paths` C159's URLs, the internal barrel
+  (`sdk.surface` C38), the `sdk.api-thin` amendments of `device-scopes`, `api.contract` C5's free query of
+  `GET /api/memory/entities/:key`; the last-migration pins 34 → 35 (`data.migration`, `device-scopes` C22,
+  `busca.migration`, `contexts.runs`, `memoria.migration`, `natureza.layer`, `paineis.layer`, `rituais.layer`,
+  `perguntar.contract` C63); the settings leaves in `data.settings` C46 and C63 (`memory.entities.enabled` on by default
+  and read on when unreadable, `memory.entities.llm.enabled` fail-closed off) and the `settings.changed` v1 fixture

@@ -1639,6 +1639,52 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(176);"],
       head: ["    expect(operations).toBe(177);"],
     },
+    // cerebro-entidades-resumos, batch A, added migration 35, GET /api/memory/entities and GET
+    // /api/memory/entities/:key (content, door 4) and POST /api/memory/entities/corrections (owner, door 3). Each amends
+    // the head of the amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos A: entidades-resumos after section-vectors",
+      base: ['        "section-vectors",', "      ]);"],
+      head: ['        "section-vectors",', '        "entidades-resumos",', "      ]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos A: the three entity routes under /api",
+      base: ["    expect(routes).toHaveLength(175);"],
+      head: ["    expect(routes).toHaveLength(178);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos A: owners and scoped routes, with the three entity routes",
+      base: ["    expect([owners, scoped]).toEqual([98, 77]);"],
+      head: ["    expect([owners, scoped]).toEqual([99, 79]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos A: the registered routes, with the three entity routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(175);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(178);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos A: the routes of each scope, with the three entity routes",
+      times: 2,
+      base: ["toEqual({ owner: 98, monitor: 33, content: 37, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 99, monitor: 33, content: 39, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos A: the routes after the pairing passes, with the three entity routes",
+      base: ["    expect(apiRoutes()).toHaveLength(175);"],
+      head: ["    expect(apiRoutes()).toHaveLength(178);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos A: the operations of the route document, with the three entity routes",
+      base: ["    expect(operations).toBe(177);"],
+      head: ["    expect(operations).toBe(180);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

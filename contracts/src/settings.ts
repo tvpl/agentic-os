@@ -658,6 +658,24 @@ export const SettingsSchema = z.object({
             .default({}),
         })
         .default({}),
+      /**
+       * The entities of the second brain (.specs/features/cerebro-entidades-resumos, doors 1, 2 and 9): `enabled` lets a
+       * pass of the index write who and what each note names and lets the entity routes answer (off: no row is written,
+       * and the routes answer `409 entities_disabled`); it is CPU of the pass and sends nothing anywhere, so it is on by
+       * default and an unreadable value reads on. `llm.enabled` lets the service start a batch of AI suggestions on its
+       * own (door 9), off by default. `PUT /api/settings` replaces `memory.entities` whole, like the other fields of
+       * `memory`.
+       */
+      entities: z
+        .object({
+          enabled: z.boolean().default(true),
+          llm: z
+            .object({
+              enabled: z.boolean().default(false),
+            })
+            .default({}),
+        })
+        .default({}),
     })
     .default({}),
   /**

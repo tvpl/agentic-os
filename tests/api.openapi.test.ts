@@ -114,7 +114,7 @@ describe("S3 the document", () => {
   it("C15 every route has parameters, request body and a response schema", () => {
     expect(doc.openapi).toBe("3.1.0");
     const operations = Object.values(doc.paths).reduce((n, methods) => n + Object.keys(methods).length, 0);
-    expect(operations).toBe(177);
+    expect(operations).toBe(180);
     for (const [id, entry] of entries) {
       const op = operationOf(entry);
       expect(op, id).toBeDefined();
@@ -632,7 +632,8 @@ describe("S3 the document", () => {
       checked += 1;
     }
     // cerebro-perguntar A: the three ask routes (171 -> 174); B: GET /api/mcp (174 -> 175)
-    expect(checked).toBe(175);
+    // cerebro-entidades-resumos A: the entities, one entity and a correction (175 -> 178)
+    expect(checked).toBe(178);
     // The check is not asleep either: a body that departs from the schema of the document is refused.
     const run = results.find((r) => r.key === "GET /api/runs/:id")!;
     const schema = operationOf(run.entry).responses["200"]!.content!["application/json"]!.schema;

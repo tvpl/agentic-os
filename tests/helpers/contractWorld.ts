@@ -116,7 +116,8 @@ export async function buildWorld(options: { validateResponses?: boolean } = {}):
     path.join(workspace, "plan.md"),
     "# Plano\nOrçamento trimestral do projeto Alfa.\nstatus:: ativo\n",
   );
-  fs.writeFileSync(path.join(workspace, "notes.md"), "# Notas\nVeja o [plano](plan.md).\n");
+  // `#cenario`: the entity the scenarios of cerebro-entidades-resumos read and correct
+  fs.writeFileSync(path.join(workspace, "notes.md"), "# Notas\nVeja o [plano](plan.md). #cenario\n");
 
   process.env[TELEGRAM_ENV] = "123:abc";
   const ctx = new AppContext(home, { pushResolver: async () => ["93.184.216.34"] });
@@ -624,6 +625,26 @@ export const SCENARIOS: Record<string, Scenario> = {
         )
         .run(id, Date.now(), Date.now(), Date.now());
       return w.call("GET", `/api/memory/ask/${id}`);
+    },
+  },
+  // cerebro-entidades-resumos, batch A (doors 3 and 4): the entities, one of them, and a correction of it (a rename)
+  [key("GET", "/api/memory/entities")]: { run: (w) => w.call("GET", "/api/memory/entities") },
+  [key("GET", "/api/memory/entities/:key")]: {
+    run: async (w) => {
+      const items = ((await w.call("GET", "/api/memory/entities")).body as { items?: Array<{ key: string }> })
+        .items;
+      return w.call("GET", `/api/memory/entities/${encodeURIComponent(items?.[0]?.key ?? "tag:nada")}`);
+    },
+  },
+  [key("POST", "/api/memory/entities/corrections")]: {
+    run: async (w) => {
+      const items = ((await w.call("GET", "/api/memory/entities")).body as { items?: Array<{ key: string }> })
+        .items;
+      return w.call("POST", "/api/memory/entities/corrections", {
+        action: "rename",
+        key: items?.[0]?.key ?? "tag:nada",
+        name: "Cenário",
+      });
     },
   },
   // cerebro-perguntar, batch B (door 7): the CLIs' connection, the MCP tools and the agents' usage

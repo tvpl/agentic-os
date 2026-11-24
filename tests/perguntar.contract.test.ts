@@ -180,15 +180,18 @@ describe("C61 the four routes in the API table, the scopes and docs/security.md"
 
 describe("C63 no migration is added", () => {
   it("C63 MIGRATIONS ends at 34 section-vectors, as at the feature's base", () => {
-    const last = MIGRATIONS[MIGRATIONS.length - 1]!;
-    expect([MIGRATIONS.length, last.version, last.name]).toEqual([34, 34, "section-vectors"]);
+    // cerebro-entidades-resumos added 35 after this feature; up to 34 the list is the base's
+    const own = MIGRATIONS.filter((m) => m.version <= 34);
+    const last = own[own.length - 1]!;
+    expect([own.length, last.version, last.name]).toEqual([34, 34, "section-vectors"]);
     const base = atBase("core/src/db/migrations.ts");
     const versions = [...base.matchAll(/^\s+version: (\d+),\n\s+name: "([^"]+)"/gm)].map((m) => [
       Number(m[1]),
       m[2],
     ]);
     expect(versions.at(-1)).toEqual([34, "section-vectors"]);
-    expect(MIGRATIONS.map((m) => [m.version, m.name])).toEqual(versions);
+    expect(own.map((m) => [m.version, m.name])).toEqual(versions);
+    expect(MIGRATIONS.slice(own.length).map((m) => [m.version, m.name])).toEqual([[35, "entidades-resumos"]]);
   });
 });
 

@@ -828,4 +828,42 @@ CREATE TABLE IF NOT EXISTS section_vectors (
 DROP TABLE IF EXISTS file_vectors;
 `,
   },
+  {
+    version: 35,
+    name: "entidades-resumos",
+    // cerebro-entidades-resumos, doors 1, 3 and 6: the mentions of each Markdown file (who and what it names, by the
+    // line and the kind of proof; replaced whenever the file is written, and gone with it), the owner's corrections of
+    // the entities (by normalized names, never by an entity's key, so they outlive any reindexing; undone, never
+    // deleted), and the sources a summary run read (its scope and, as JSON, the path, size, mtime and SHA-256 of each).
+    // All created empty: the first pass after this migration fills the mentions from the stored text (`meta`
+    // `index.entity_mentions`).
+    sql: `
+CREATE TABLE IF NOT EXISTS entity_mentions (
+  src_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  line INTEGER NOT NULL,
+  proof TEXT NOT NULL CHECK (proof IN ('nota','link','tag','termo','nome')),
+  kind TEXT NOT NULL CHECK (kind IN ('perfil','projeto','tag','termo')),
+  name TEXT NOT NULL,
+  norm TEXT NOT NULL,
+  PRIMARY KEY (src_id, line, proof, norm)
+);
+CREATE INDEX IF NOT EXISTS idx_entity_mentions_norm ON entity_mentions(norm);
+CREATE TABLE IF NOT EXISTS entity_overrides (
+  id INTEGER PRIMARY KEY,
+  action TEXT NOT NULL CHECK (action IN ('merge','separate','ignore','rename','add','reject')),
+  a TEXT NOT NULL,
+  b TEXT,
+  name TEXT,
+  created_at INTEGER NOT NULL,
+  undone_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS summary_runs (
+  run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+  scope_kind TEXT NOT NULL CHECK (scope_kind IN ('area','context')),
+  scope_id TEXT NOT NULL,
+  sources TEXT NOT NULL,
+  started_at INTEGER NOT NULL
+);
+`,
+  },
 ];

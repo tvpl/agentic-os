@@ -5,6 +5,7 @@ import {
   ASK_SKILL,
   ConnectorDataCache,
   DashboardService,
+  EntityReader,
   agentUsage,
   recordAgentUsage,
   DashboardStore,
@@ -105,11 +106,16 @@ export interface AgentUsageRecorder {
  * The one factory of the ask service and the usage recorder (cerebro-perguntar, C69): every `AppContext` builds them
  * here, the service's, the CLI's (`mordomo mcp`) and the tests', so the routes never reach the record but through it.
  */
-export function agentServices(engine: Pick<MordomoEngine, "db" | "skills" | "execution" | "settings">): {
+export function agentServices(
+  engine: Pick<MordomoEngine, "db" | "skills" | "execution" | "settings" | "events">,
+): {
   ask: AskService;
   usage: AgentUsageRecorder;
+  /** The entities by audience (cerebro-entidades-resumos, door 2): cached until a pass ends or a correction is written. */
+  entities: EntityReader;
 } {
   return {
+    entities: new EntityReader(engine.db, engine.events),
     ask: {
       available: () => {
         // A SKILL.md the safe reader refuses (a link out of skills/, a file too large) is a skill that cannot run.
@@ -163,6 +169,9 @@ export class AppContext extends MordomoEngine {
 
   /** What the agents read (cerebro-perguntar, door 7): a read of the principal `mcp` or of a run's credential, recorded. */
   readonly agentUsage: AgentUsageRecorder;
+
+  /** The entities the notes name, by audience (cerebro-entidades-resumos, door 2). */
+  readonly entities: EntityReader;
 
   private healthCache = new Map<ProviderId, { at: number; health: HealthStatus }>();
   private healthInFlight = new Map<ProviderId, Promise<HealthStatus>>();
@@ -220,6 +229,7 @@ export class AppContext extends MordomoEngine {
     const agents = agentServices(this);
     this.ask = agents.ask;
     this.agentUsage = agents.usage;
+    this.entities = agents.entities;
     this.unsubscribeCredentials = this.events.subscribe((e) => {
       if (e.type !== "run.finished") return;
       const runId = (e.payload as { runId?: string }).runId;

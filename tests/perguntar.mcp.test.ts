@@ -412,13 +412,14 @@ describe("C41 MCP_ROUTES is the 11 routes of the 13 tools", () => {
 });
 
 describe("C42 every other route refuses the principal mcp", () => {
-  it("C42 table-driven over the 177 routes of the API table minus the 11 and the public ones: 403 forbidden each, through /api and /api/v1", async () => {
+  it("C42 table-driven over the 180 routes of the API table minus the 11 and the public ones: 403 forbidden each, through /api and /api/v1", async () => {
     await fresh(async (w) => {
       const entries = Object.values(API);
-      expect(entries).toHaveLength(177);
+      // cerebro-entidades-resumos batch A: the three entity routes (177 -> 180), none in MCP_ROUTES yet
+      expect(entries).toHaveLength(180);
       const others = entries.filter((e) => e.public !== true && !MCP_ROUTES.has(`${e.method} ${e.path}`));
-      expect(others).toHaveLength(177 - 11 - entries.filter((e) => e.public === true).length);
-      expect(others).toHaveLength(164);
+      expect(others).toHaveLength(180 - 11 - entries.filter((e) => e.public === true).length);
+      expect(others).toHaveLength(167);
       const problems: string[] = [];
       for (const entry of others) {
         for (const prefix of ["/api", "/api/v1"]) {

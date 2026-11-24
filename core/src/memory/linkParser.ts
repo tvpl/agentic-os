@@ -15,6 +15,8 @@ export interface ParsedLink {
   label: string | null;
   /** 1-based line of the link in the file. */
   line: number;
+  /** Where the link starts in its line (0-based, in UTF-16 units): the order of two mentions on one line. */
+  column: number;
 }
 
 export const MARKDOWN_EXTENSIONS = [".md", ".markdown"];
@@ -87,7 +89,7 @@ export function extractLinks(content: string, source: string): ParsedLink[] {
         const target = wikilinkKey(bar === -1 ? inner : inner.slice(0, bar));
         if (target === "") continue; // `[[#Heading]]`: a place in this very note
         const label = bar === -1 ? null : inner.slice(bar + 1).trim() || null;
-        add({ kind: "wikilink", target, label, line });
+        add({ kind: "wikilink", target, label, line, column: match.index });
       }
       for (const match of text.matchAll(/!?\[([^\]\n]*)\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+"[^"]*")?\)/g)) {
         const raw = (match[2] ?? match[3] ?? "").trim();
@@ -101,7 +103,7 @@ export function extractLinks(content: string, source: string): ParsedLink[] {
         }
         const resolved = path.resolve(dir, decoded);
         if (resolved === source) continue;
-        add({ kind: "markdown-link", target: resolved, label: match[1]!.trim() || null, line });
+        add({ kind: "markdown-link", target: resolved, label: match[1]!.trim() || null, line, column: match.index });
       }
     });
   return out;

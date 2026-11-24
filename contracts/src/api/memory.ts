@@ -1068,6 +1068,67 @@ const AskListItemSchema = z.object({
   finishedAt: z.number().optional(),
 });
 
+/** The kinds of an entity (.specs/features/cerebro-entidades-resumos, door 2) and what the owner may ask of them (door 3). */
+const ENTITY_KIND_VALUES = ["perfil", "projeto", "tag", "termo"] as const;
+const ENTITY_CORRECTION_ACTIONS = [
+  "merge",
+  "separate",
+  "ignore",
+  "rename",
+  "undo",
+  "accept",
+  "reject",
+] as const;
+const entitiesDisabled = err(409, "entities_disabled", "memory.entities.enabled is off");
+const EntityItemSchema = z.object({
+  /** `<kind>:<normalized canonical name>`. */
+  key: z.string(),
+  kind: z.enum(ENTITY_KIND_VALUES),
+  name: z.string(),
+  aliases: z.array(z.string()),
+  files: z.number().int().min(0),
+  mentions: z.number().int().min(0),
+});
+const EntityCorrectionSchema = z.object({
+  id: z.number().int(),
+  action: z.enum(["merge", "separate", "ignore", "rename", "add", "reject"]),
+  /** The normalized names it is kept by. */
+  names: z.array(z.string()),
+  name: z.string().optional(),
+  createdAt: z.number(),
+  undoneAt: z.number().nullable(),
+});
+const EntityDetailSchema = z.object({
+  key: z.string(),
+  kind: z.enum(ENTITY_KIND_VALUES),
+  name: z.string(),
+  aliases: z.array(z.string()),
+  /** The home note (`type: profile` or `project`), when the caller sees it. */
+  home: z.object({ fileId: z.number().int(), path: z.string() }).optional(),
+  mentions: z.array(
+    z.object({
+      fileId: z.number().int(),
+      path: z.string(),
+      name: z.string(),
+      line: z.number().int().min(1),
+      proof: z.enum(["nota", "link", "tag", "termo", "nome"]),
+      /** At most 160 characters of the line, around the name. */
+      excerpt: z.string(),
+    }),
+  ),
+  /** The entities it shares files with, by files in common, at most 10. */
+  related: z.array(
+    z.object({
+      key: z.string(),
+      name: z.string(),
+      kind: z.enum(ENTITY_KIND_VALUES),
+      shared: z.number().int().min(1),
+    }),
+  ),
+  duplicates: z.array(z.object({ key: z.string(), name: z.string(), similarity: z.number() })),
+  corrections: z.array(EntityCorrectionSchema),
+});
+
 const AskDetailSchema = z.object({
   id: z.string(),
   question: z.string(),
@@ -2068,6 +2129,86 @@ export const memoryRoutes = {
     params: IdParams,
     responses: { 200: AskDetailSchema },
     errors: [notFound("A run of brain-ask with this id")],
+  }),
+  // cerebro-entidades-resumos, doors 2 to 4: the entities the notes name, read by audience, and the owner's corrections
+  "memory.entities.list": route({
+    method: "GET",
+    path: "/api/memory/entities",
+    summary:
+      "The entities the notes name (people, projects, tags, terms), as the caller's audience sees them: by files, then name",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      kind: z.enum(ENTITY_KIND_VALUES).optional(),
+      /** A word prefix of the normalized name. */
+      q: z.string().min(1).max(200).optional(),
+      /** Only the mentions of files of this work context are counted. */
+      context: ContextQuery,
+      limit: z.coerce.number().int().min(1).max(200).optional(),
+      offset: z.coerce.number().int().min(0).max(100_000).optional(),
+    }),
+    responses: {
+      200: z.object({
+        items: z.array(EntityItemSchema),
+        /** Every entity that matches, before `limit` and `offset`. */
+        total: z.number().int().min(0),
+      }),
+    },
+    errors: [contextNotFound, entitiesDisabled],
+  }),
+  "memory.entities.get": route({
+    method: "GET",
+    path: "/api/memory/entities/:key",
+    summary:
+      "One entity as the caller's audience sees it: its home note, its mentions with an excerpt, the entities it shares files with, the names that may be the same and the owner's corrections that touch it",
+    tag: "memory",
+    scope: "content",
+    params: z.object({
+      /** `<kind>:<normalized name>`: one of the four kinds, then letters, digits and single spaces. */
+      key: z
+        .string()
+        .max(300)
+        .regex(
+          /^(?:perfil|projeto|tag|termo):[\p{L}\p{N}]+(?: [\p{L}\p{N}]+)*$/u,
+          "expected <kind>:<normalized name>",
+        ),
+    }),
+    query: z.object({ context: ContextQuery }),
+    responses: { 200: EntityDetailSchema },
+    errors: [notFound("An entity with this key the caller sees"), contextNotFound, entitiesDisabled],
+  }),
+  "memory.entities.corrections": route({
+    method: "POST",
+    path: "/api/memory/entities/corrections",
+    summary:
+      "The owner's correction of the entities (merge, separate, ignore, rename, undo; accept and reject a suggestion), kept by normalized names and applied on every read",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      action: z.enum(ENTITY_CORRECTION_ACTIONS),
+      key: z.string().min(1).max(300).optional(),
+      other: z.string().min(1).max(300).optional(),
+      name: z.string().min(1).max(80).optional(),
+      id: z.number().int().min(1).optional(),
+      suggestion: z.string().min(1).max(100).optional(),
+    }),
+    responses: {
+      200: z.object({
+        correction: EntityCorrectionSchema.pick({ id: true, action: true, names: true, createdAt: true }),
+        /** The entity the correction leaves `key` in, when it is still listed. */
+        entity: EntityItemSchema.optional(),
+      }),
+    },
+    errors: [
+      notFound("An entity key or other the owner sees, a correction id or a suggestion"),
+      err(
+        409,
+        "correction_conflict",
+        "The pair has an active opposite correction, or the correction was undone already",
+      ),
+      err(409, "too_many_corrections", "2 000 corrections are active"),
+      entitiesDisabled,
+    ],
   }),
   "memory.journal": route({
     method: "GET",

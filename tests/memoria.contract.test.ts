@@ -614,12 +614,13 @@ describe("C82 the seven routes and the agent's writes in docs/security.md", () =
     // four reads and three writes on top of the feature's base (and part B's export and import, C138: + 2, and
     // cerebro-rituais' weekly review list, loop decisions and POST /api/memory/tasks: + 3, its archive and finish
     // of the week: + 2, and its unlinked mentions (content) and "Linkar" (owner): + 1 each; and cerebro-busca-significado's
-    // two embedder routes (owner): + 2; and cerebro-perguntar's three ask routes (owner): + 3, and its GET /api/mcp: + 1)
+    // two embedder routes (owner): + 2; and cerebro-perguntar's three ask routes (owner): + 3, and its GET /api/mcp: + 1;
+    // and cerebro-entidades-resumos' entities and one entity (content): + 2, and its corrections (owner): + 1)
     const base = atBase("docs/security.md");
     const count = (scope: string, page: string) => Number(/\((\d+)\)/.exec(rowOf(scope, page))?.[1]);
     expect([count("content", security), count("owner", security)]).toEqual([
-      count("content", base) + 4 + 1,
-      count("owner", base) + 3 + 2 + 3 + 2 + 1 + 2 + 3 + 1,
+      count("content", base) + 4 + 1 + 2,
+      count("owner", base) + 3 + 2 + 3 + 2 + 1 + 2 + 3 + 1 + 1,
     ]);
 
     // Door 9 and the assumption on the MCP's mark, each said once in the prose.

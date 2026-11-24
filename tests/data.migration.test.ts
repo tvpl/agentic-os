@@ -552,10 +552,10 @@ describe("C30 migration 20 on a database that already holds an index", () => {
       // and cerebro-memoria-confiavel 28 (the keys and provenance of facts), 29 (the history of memory/), 30 (the
       // review inbox), 31 (the search indexes of the audiences) and 32 (their related edges), and cerebro-rituais 33 (the
       // loop decisions and the weekly reviews), and cerebro-busca-significado 34 (one vector per section, in place of
-      // this table)
+      // this table), and cerebro-entidades-resumos 35 (the mentions, the corrections and the summary runs)
       expect(db.pragma("user_version", { simple: true })).toBe(33);
-      expect(MIGRATIONS.at(-1)!.version).toBe(34);
-      expect(MIGRATIONS.slice(-15).map((m) => m.name)).toEqual([
+      expect(MIGRATIONS.at(-1)!.version).toBe(35);
+      expect(MIGRATIONS.slice(-16).map((m) => m.name)).toEqual([
         "note-links",
         "file-vectors",
         "drop-file-links",
@@ -571,6 +571,7 @@ describe("C30 migration 20 on a database that already holds an index", () => {
         "audience-related-edges",
         "rituais",
         "section-vectors",
+        "entidades-resumos",
       ]);
       // the migration SQL twice leaves the table as it was
       const sql = MIGRATIONS.find((m) => m.version === 21)!.sql!;
@@ -583,7 +584,7 @@ describe("C30 migration 20 on a database that already holds an index", () => {
     // at the last migration the table is absent
     const latest = openDb(home.paths).db;
     try {
-      expect(latest.pragma("user_version", { simple: true })).toBe(34);
+      expect(latest.pragma("user_version", { simple: true })).toBe(35);
       expect(
         latest.prepare("SELECT name FROM sqlite_master WHERE name = 'file_vectors'").get(),
       ).toBeUndefined();

@@ -72,18 +72,29 @@ const SEEDS: readonly number[] = (() => {
   return seeds;
 })();
 
-/** The signature of a text: 256 bytes, or null for a text with no word. */
-export function minhashSignature(text: string): Uint8Array | null {
-  const shingles = minhashShingles(text);
-  if (shingles.size === 0) return null;
-  const mins = new Uint32Array(MINHASH_FUNCTIONS).fill(0xffffffff);
+/**
+ * The minimum of each of the first `count` functions (at most 64) over a set of shingles: the values of a signature, for
+ * the notes' 5-word shingles here and for the names' 3-grams of the entities (.specs/features/cerebro-entidades-resumos,
+ * door 2), with the same hash, seeds and arithmetic.
+ */
+export function minhashMins(shingles: Iterable<string>, count: number = MINHASH_FUNCTIONS): Uint32Array {
+  const n = Math.min(count, MINHASH_FUNCTIONS);
+  const mins = new Uint32Array(n).fill(0xffffffff);
   for (const shingle of shingles) {
     const base = fnv1a(shingle);
-    for (let i = 0; i < MINHASH_FUNCTIONS; i++) {
+    for (let i = 0; i < n; i++) {
       const value = mix(base ^ SEEDS[i]!);
       if (value < mins[i]!) mins[i] = value;
     }
   }
+  return mins;
+}
+
+/** The signature of a text: 256 bytes, or null for a text with no word. */
+export function minhashSignature(text: string): Uint8Array | null {
+  const shingles = minhashShingles(text);
+  if (shingles.size === 0) return null;
+  const mins = minhashMins(shingles, MINHASH_FUNCTIONS);
   const out = new Uint8Array(MINHASH_FUNCTIONS * 4);
   const view = new DataView(out.buffer);
   for (let i = 0; i < MINHASH_FUNCTIONS; i++) view.setUint32(i * 4, mins[i]!, true);

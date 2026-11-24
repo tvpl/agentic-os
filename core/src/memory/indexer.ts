@@ -13,6 +13,17 @@ import { parseFrontMatter } from "./frontMatter.js";
 import { parsePassages, type Passage } from "./natureza.js";
 import { parseTasks, type ParsedTask } from "./tasks.js";
 import { extractLinks, type ParsedLink } from "./linkParser.js";
+import { linkResolver } from "./links.js";
+import {
+  ENTITY_MENTIONS_MAX,
+  entityNorm,
+  extractMentions,
+  homeKindOf,
+  noteTags,
+  noteTitle,
+  stemOf,
+  type ExtractedMention,
+} from "./entityMentions.js";
 import { embedPending } from "./vectors.js";
 import type { LocalEmbedding } from "./embeddings.js";
 import {
@@ -97,6 +108,13 @@ const NOTE_PASSAGES_VERSION = "1";
  */
 const NOTE_TASKS_KEY = "index.note_tasks";
 const NOTE_TASKS_VERSION = "1";
+/**
+ * Which version of the extraction the stored `entity_mentions` come from (.specs/features/cerebro-entidades-resumos,
+ * door 1): the first full pass after migration 35 (or after the version moves, or after the entities are turned back
+ * on) fills them from the stored text, opening no file, and then writes it.
+ */
+const ENTITY_MENTIONS_KEY = "index.entity_mentions";
+const ENTITY_MENTIONS_VERSION = "1";
 /** When the related-by-content edges were last refreshed: the files whose terms are newer than this still owe them. */
 const RELATED_AT_KEY = "index.related_at";
 
@@ -175,6 +193,11 @@ interface PreparedFile {
   passages: Passage[];
   /** The `- [ ]` tasks (Markdown only, door 3 of cerebro-paineis). */
   tasks: ParsedTask[];
+  /**
+   * Who and what the file names (Markdown only, door 1 of cerebro-entidades-resumos), without the `link` mentions, which
+   * the end of the pass adds (Landing 1a); null while the entities are off (no row is written).
+   */
+  mentions: ExtractedMention[] | null;
   markdown: boolean;
   /** The file's bytes when they were read whole (the history keeps them as the version, door 4 of cerebro-memoria-confiavel). */
   whole: Buffer | null;
@@ -271,6 +294,8 @@ export class MemoryIndexer {
   private afterPass: ((stats: IndexStats) => void) | null = null;
   /** The engine's local models, for the vectors phase with `provider: "local"` (cerebro-busca-significado, door 2). */
   private local: LocalEmbedding | undefined;
+  /** Whether the pass that runs writes entity mentions (`memory.entities.enabled` when it started). */
+  private mentionsOn = true;
 
   constructor(
     private readonly db: Db,
@@ -622,6 +647,7 @@ export class MemoryIndexer {
       };
       const filter = makeWorkspaceFilter(settings.excludes, this.filterOptions);
       const maxBytes = settings.limits.maxIndexedFileBytes;
+      this.mentionsOn = settings.memory.entities.enabled;
 
       // Deterministic root set: de-duplicated by resolved path (first entry
       // wins for the area). A directory that is itself another enabled root is
@@ -797,6 +823,8 @@ export class MemoryIndexer {
       if (!only) yield* this.backfillNoteLinks();
       if (!only) yield* this.backfillNotePassages();
       if (!only) yield* this.backfillNoteTasks();
+      // Who and what each note names (cerebro-entidades-resumos, door 1): the `link` mentions once every file is written.
+      yield* this.refreshEntityMentions(only !== undefined);
 
       // Phase 4: related-by-content edges for what changed (IDF over the whole corpus).
       emit(total, "related");
@@ -936,9 +964,8 @@ export class MemoryIndexer {
       }
       if (ext === ".md" || ext === ".markdown") {
         const header = parseFrontMatter(content);
-        title = header?.title ?? content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
-        const inline = [...content.matchAll(/(?:^|\s)#([\p{L}\d_-]{2,30})\b/gu)].map((m) => m[1]!);
-        tags = [...new Set([...(header?.tags ?? []), ...inline])].slice(0, 20);
+        title = noteTitle(content, header);
+        tags = noteTags(content, header);
         // The vocabulary keys of the header (cerebro-organizar, door 6), then the inline fields, which win on a key.
         fields = { ...header?.fields, ...parseInlineFields(content) };
         // The header's `aliases`, as the JSON of the list (.specs/features/cerebro-rituais, G33): the terms of the
@@ -963,6 +990,7 @@ export class MemoryIndexer {
       // From the text the index stores, as the backfill reads it: both give a file the same rows.
       passages: markdown ? parsePassages(content.slice(0, 200_000)) : [],
       tasks: markdown ? parseTasks(content.slice(0, 200_000)) : [],
+      mentions: markdown && this.mentionsOn ? extractMentions(content.slice(0, 200_000), full) : null,
       markdown,
       whole,
     };
@@ -1099,6 +1127,129 @@ export class MemoryIndexer {
       this.writeNoteLinks(id, file.noteLinks);
       this.writePassages(id, file.passages);
       this.writeTasks(id, file.tasks);
+      if (file.mentions !== null) this.writeMentions(id, file.mentions);
+    }
+  }
+
+  /** Replace the mentions of one Markdown file (`entity_mentions`): the rows of a file are replaced, never added to. */
+  private writeMentions(id: number, mentions: readonly ExtractedMention[]): void {
+    this.db.prepare("DELETE FROM entity_mentions WHERE src_id = ?").run(id);
+    const insert = this.db.prepare(
+      "INSERT OR IGNORE INTO entity_mentions (src_id, line, proof, kind, name, norm) VALUES (?, ?, ?, ?, ?, ?)",
+    );
+    for (const m of mentions) insert.run(id, m.line, m.proof, m.kind, m.name, m.norm);
+  }
+
+  /**
+   * The mentions of every Markdown file as today's index says them (door 1, Landing 1a), after the files of a pass are
+   * written. A `link` mention depends on other files (the note it leads to, its `type` and its title), so the links of
+   * each file (`note_links`, resolved as `linkEdges` resolves them) are compared with its stored `link` mentions, and a
+   * file whose differ is read again from the stored text. After migration 35, a change of the version, or the entities
+   * turned back on, every file is (a full pass only; the marker is written after the last one). With the entities off
+   * no row is kept and the marker goes, so turning them on fills them again.
+   */
+  private *refreshEntityMentions(only: boolean): Generator<void> {
+    const marker = () =>
+      (this.db.prepare("SELECT value FROM meta WHERE key = ?").get(ENTITY_MENTIONS_KEY) as { value: string } | undefined)
+        ?.value;
+    if (!this.mentionsOn) {
+      const any = this.db.prepare("SELECT 1 FROM entity_mentions LIMIT 1").get();
+      if (any || marker() !== undefined) {
+        this.write(() => {
+          this.db.prepare("DELETE FROM entity_mentions").run();
+          this.db.prepare("DELETE FROM meta WHERE key = ?").run(ENTITY_MENTIONS_KEY);
+        });
+      }
+      return;
+    }
+    const whole = marker() !== ENTITY_MENTIONS_VERSION;
+    if (whole && only) return;
+
+    // The home notes (door 1, a) and where each link leads today.
+    const homes = new Map<number, { kind: "perfil" | "projeto"; name: string }>();
+    for (const row of this.db
+      .prepare("SELECT id, name, title, fields FROM files WHERE ext IN ('.md', '.markdown')")
+      .all() as Array<{ id: number; name: string; title: string | null; fields: string | null }>) {
+      const kind = homeKindOf(fieldsFromDb(row.fields).type);
+      if (kind !== null) homes.set(row.id, { kind, name: row.title ?? stemOf(row.name) });
+    }
+    const { byId, resolve } = linkResolver(this.db, () => true);
+    const homeOf = (sourceId: number, link: Pick<ParsedLink, "kind" | "target">) => {
+      const source = byId.get(sourceId);
+      const target = source ? resolve(source, link) : undefined;
+      return target && target.id !== sourceId ? (homes.get(target.id) ?? null) : null;
+    };
+
+    const rows = this.db
+      .prepare("SELECT id, path FROM files WHERE ext IN ('.md', '.markdown') ORDER BY id")
+      .all() as Array<{ id: number; path: string }>;
+    let owed: Array<{ id: number; path: string }>;
+    if (whole) owed = rows;
+    else {
+      // What each file's links should give, (line, norm); and what is stored, with the file's count and last line.
+      const want = new Map<number, Map<string, number>>();
+      for (const link of this.db.prepare("SELECT src_id, kind, target, line FROM note_links").all() as Array<{
+        src_id: number;
+        kind: ParsedLink["kind"];
+        target: string;
+        line: number;
+      }>) {
+        const target = homeOf(link.src_id, link);
+        if (!target) continue;
+        const norm = entityNorm(target.name);
+        if (norm === "") continue;
+        const map = want.get(link.src_id) ?? new Map<string, number>();
+        map.set(`${link.line}\u0000${norm}`, link.line);
+        want.set(link.src_id, map);
+      }
+      const have = new Map<number, Map<string, number>>();
+      for (const m of this.db
+        .prepare("SELECT src_id, line, norm FROM entity_mentions WHERE proof = 'link'")
+        .all() as Array<{ src_id: number; line: number; norm: string }>) {
+        const map = have.get(m.src_id) ?? new Map<string, number>();
+        map.set(`${m.line}\u0000${m.norm}`, m.line);
+        have.set(m.src_id, map);
+      }
+      const capped = new Map(
+        (
+          this.db
+            .prepare("SELECT src_id, COUNT(*) AS n, MAX(line) AS last FROM entity_mentions GROUP BY src_id")
+            .all() as Array<{ src_id: number; n: number; last: number }>
+        )
+          .filter((r) => r.n >= ENTITY_MENTIONS_MAX)
+          .map((r) => [r.src_id, r.last]),
+      );
+      const differs = (id: number): boolean => {
+        const w = want.get(id) ?? new Map<string, number>();
+        const h = have.get(id) ?? new Map<string, number>();
+        const last = capped.get(id);
+        // A file at the cap keeps its first 200 mentions: a link past its last stored line is rightly not there.
+        for (const [key, line] of w) if (!h.has(key) && (last === undefined || line < last)) return true;
+        for (const key of h.keys()) if (!w.has(key)) return true;
+        return false;
+      };
+      owed = rows.filter((row) => want.has(row.id) || have.has(row.id)).filter((row) => differs(row.id));
+    }
+
+    const textOf = this.db.prepare("SELECT content FROM files_fts WHERE rowid = ?");
+    for (let i = 0; i < owed.length; i += INDEX_CHUNK_SIZE) {
+      const slice = owed.slice(i, i + INDEX_CHUNK_SIZE).map((row) => ({
+        id: row.id,
+        mentions: extractMentions(
+          (textOf.get(row.id) as { content: string } | undefined)?.content ?? "",
+          row.path,
+          (link) => homeOf(row.id, link),
+        ),
+      }));
+      this.write(() => slice.forEach((row) => this.writeMentions(row.id, row.mentions)));
+      yield;
+    }
+    if (whole) {
+      this.write(() =>
+        this.db
+          .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+          .run(ENTITY_MENTIONS_KEY, ENTITY_MENTIONS_VERSION),
+      );
     }
   }
 
