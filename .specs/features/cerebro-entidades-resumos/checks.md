@@ -719,6 +719,19 @@ wrote could not hold.
   it after every fused file, and it is opened only when the fusion holds fewer files than `k`. C51 holds within this. Ranking
   outsiders among the fused files would be a change to door 5, for the owner (recorded in `STATE.md`, Perguntas ao dono).
 
+## Correções do lote E
+
+Recorded by the orchestrator on 25/11/2026 from the builder's report (both reported, not edited).
+
+- **C85, literal corrected:** the marker carries the SHA-256 of the sorted `<kind>:<name>` of every accepted `add` name and alias
+  (`perfil:Bruno` and `perfil:Bruno Lima`, sorted by code unit and joined by `\n`), not of the names alone: undoing an `add` and
+  accepting the same names with another kind must change the marker, or the `nome` rows keep the old kind. The claim's rule
+  (accepting or undoing an `add` re-extracts every file from the stored text, and a pass with nothing changed re-extracts
+  none) is unchanged; one case is added under C85: re-accepting the same name with another kind gives the `nome` rows the new
+  kind after the next pass. Built in batch F, with Landing row 10b in `plan.md` before the code.
+- **C89 against Coverage:** the status rows of `GET /api/memory/entities` and `GET /api/memory/entities/:key` gain `409`
+  (`entities_disabled`, C17), which C17 claims and the codes row already credited.
+
 ## Coverage
 
 | Set (size)                                                                          | Member -> proof                                                                                                                                                                                                  | Unproven |
@@ -745,8 +758,8 @@ wrote could not hold.
 | batch refusals (4)                                                                  | size C81 · JSON C81 · `v` C81 · count C81                                                                                                                                                                        | -        |
 | automatic batch conditions (5)                                                      | after 24 h C74 · before 24 h C74 · run open C74 · nothing changed C74 · never C74                                                                                                                                | -        |
 | `GET /api/memory/recall` (changed) statuses (3)                                     | 200 C43, C48 · 400 C43 · 404 C43                                                                                                                                                                                 | -        |
-| `GET /api/memory/entities` statuses (3)                                             | 200 C31 · 400 C32 · 404 C33                                                                                                                                                                                      | -        |
-| `GET /api/memory/entities/:key` statuses (3)                                        | 200 C34 · 400 C32 · 404 C35                                                                                                                                                                                      | -        |
+| `GET /api/memory/entities` statuses (4)                                             | 200 C31 · 400 C32 · 404 C33                                                                                                                                                                                      | -        |
+| `GET /api/memory/entities/:key` statuses (4)                                        | 200 C34 · 400 C32 · 404 C35                                                                                                                                                                                      | -        |
 | `POST /api/memory/entities/corrections` statuses (5)                                | 200 C21 · 400 C23 · 403 C29 · 404 C29 · 409 C27                                                                                                                                                                  | -        |
 | `GET /api/memory/summaries` statuses (2)                                            | 200 C68 · 403 C70                                                                                                                                                                                                | -        |
 | `GET /api/memory/summaries/:kind/:id` statuses (3)                                  | 200 C59 · 403 C70 · 404 C70                                                                                                                                                                                      | -        |
