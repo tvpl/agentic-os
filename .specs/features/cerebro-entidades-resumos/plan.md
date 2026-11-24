@@ -191,7 +191,7 @@ Cada passada do índice grava, por arquivo, quem e o quê aquele arquivo cita, e
 2. WHEN uma nota com `type: project` é indexada THEN o sistema SHALL gravar a menção `nota` com `kind` `projeto` e o título como nome, ou o nome do arquivo sem extensão quando não há título
 3. WHEN uma nota tem um link que `note_links` resolve para uma nota `perfil` ou `projeto` THEN o sistema SHALL gravar uma menção `link` na linha do link, com o nome da nota de destino
 4. WHEN uma nota tem a tag `Cliente-X`, no cabeçalho ou no texto THEN o sistema SHALL gravar uma menção `tag` com o nome `Cliente-X` e o `norm` `cliente x`, na linha onde a tag está escrita
-5. WHEN uma linha de texto tem `Reunião com Banco Central do Brasil` THEN o sistema SHALL gravar a menção `termo` `Banco Central do Brasil`, e SHALL NOT gravar `Reunião` sozinha (uma palavra só)
+5. WHEN uma linha de texto tem `Reunião com Banco Central do Brasil` THEN o sistema SHALL gravar a menção `termo` `Banco Central`, e SHALL NOT gravar `Reunião` nem `Brasil` sozinhas (uma palavra só)
 6. The system SHALL NOT tirar termos do cabeçalho, de blocos e trechos de código, nem de endereços de link, e SHALL tirar do começo de um termo as palavras vazias do recall (`O Projeto Atlas` dá `Projeto Atlas`)
 7. The system SHALL gravar no máximo 200 menções por arquivo, as primeiras na ordem do texto
 8. WHEN um arquivo é gravado de novo pela passada THEN o sistema SHALL substituir todas as menções dele, e WHEN ele sai do índice THEN as menções dele SHALL sumir
@@ -429,3 +429,10 @@ depois da passada seguinte as notas que citam o nome dela no texto ganham a men�
 - `reports/Segundo cérebro para agentes.md`, A3 e A4, e as seções "O nó certo é a nota de origem" e "Resumos devem ser
   navegacionais" - a evidência e os números dos estágios de deduplicação
 - `design.md` desta pasta - as duas vistas e a dobra (binding para `ui`)
+
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+1. **AC 5, exemplo corrigido pelo orquestrador em 24/11/2026, ao derivar os checks:** o exemplo dizia que `Reunião com Banco
+Central do Brasil` dá o termo `Banco Central do Brasil`, mas a regra da door 1, aprovada, junta só palavras seguidas com
+   inicial maiúscula, e `do` é minúscula: o termo é `Banco Central`. A regra ficou; o exemplo mudou. Aceitar conectores
+   minúsculos (`de`, `da`, `do`, `das`, `dos`, `e`) entre palavras com maiúscula seria mudar a door 1 e fica para o dono.
