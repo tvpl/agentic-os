@@ -878,3 +878,28 @@ Status of batch A (C1-C30):
   `busca.migration`, `contexts.runs`, `memoria.migration`, `natureza.layer`, `paineis.layer`, `rituais.layer`,
   `perguntar.contract` C63); the settings leaves in `data.settings` C46 and C63 (`memory.entities.enabled` on by default
   and read on when unreadable, `memory.entities.llm.enabled` fail-closed off) and the `settings.changed` v1 fixture
+
+- **Boundary (batch A):** C1-C30 closed at `21933a9`. On that tree `npm run build`, `npm run typecheck` and
+  `npm run lint` exit 0; every `Proof:` line of C1-C30 passes run alone and runs only its check's cases (counts above);
+  `npx vitest run` at the root has one failure, `tests/paineis.refresh.test.ts` C13 (date-dependent, as on the base:
+  3633 passed, 3 skipped). Two mutants checked in place: without the backfill after the migration C9 fails, and with
+  MinHash ignoring `separate` C22 fails. No event added.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) Landing rows 1a, 2a,
+  2b and 3a (the wikilink target as an address and the `link` mentions checked at the end of a pass; the width fold of
+  the norm, which C10's `Ｃａｆé` asks for; a home note's names as one entity, the shown name and the canonical key; the
+  `add` row's kind and aliases as JSON in `b`), and `Flow` step 1 says the `link` check; (b) the leading stopwords of a
+  term (reversible, not a door) go only while two words stay: `são` is a recall stopword, so stripping it would make
+  C5's `São Paulo` one word; `O Projeto Atlas` still gives `Projeto Atlas` (`O` has one letter), and an extra C5 case
+  proves the stopword alone (`Os Projetos Atlas`); (c) C3's literal `[[Ana Souza]]` and `[ficha](../pessoas/ana.md)`
+  cannot both resolve to one note (a wikilink resolves by file name, `links.ts`), so the proof names the profile note
+  `pessoas/Ana Souza.md` and its Markdown link `../pessoas/Ana%20Souza.md`, both at lines 7 and 9 as the claim says;
+  (d) C12's 5/6-character edge: no norm of 5 or 6 characters with 2.0 bits has a different partner with the same set of
+  3-grams (searched up to 8 characters), so that edge gives both names the same fixed 32 values (estimated Jaccard 1.0),
+  as C13 does; the entropy edge uses real 3-grams (`abcdabcdabcdabcdabcda`, 1.995 bits, and `abcdabcd`, 2.0, each with
+  `abcdabcdabcd`); (e) C26's `add` and `reject` rows are stored by the test as door 3 and Landing 3a give them (their
+  writer is `accept`/`reject`, batch D); a `reject` changes no entity before suggestions exist, so its case shows it
+  listed with `undoneAt` and the entities equal before and after; `accept` and `reject` answer `404 not_found` until
+  batch D; (f) the entity key in the path is validated as `<kind>:<norm>` (`400 validation`); (g) the list, one entity
+  (`home`, mentions with excerpts, `related`, `duplicates`, `corrections`) and `context` follow the Surface already, but
+  S3's checks (C31-C40) are batch B's.
+- **Abandoned:** nothing.
