@@ -656,6 +656,16 @@ export const SettingsSchema = z.object({
               timeoutMs: z.number().int().min(1000).max(120_000).default(15_000),
             })
             .default({}),
+          /**
+           * The personalized PageRank (.specs/features/cerebro-entidades-resumos, door 5): with it on, the recall reorders
+           * the fused files by the links, the related edges and the entities they share, as the caller sees them, and
+           * lets in at most 3 neighbours. Off by default; an unreadable value reads off.
+           */
+          graph: z
+            .object({
+              enabled: z.boolean().default(false),
+            })
+            .default({}),
         })
         .default({}),
       /**

@@ -41,6 +41,7 @@ const RECALL_DEFAULTS: Recall = {
   hops: 2,
   tokenBudget: 3000,
   rerank: { enabled: false, candidates: 20, timeoutMs: 15_000 },
+  graph: { enabled: false },
 };
 type Catalog = Contracts.ApiCallResult<"GET /api/memory/embedder">;
 export type Model = Catalog["models"][number];

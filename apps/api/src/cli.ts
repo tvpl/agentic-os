@@ -26,6 +26,7 @@ import {
   hybridRecall,
   recordRecall,
   runEval,
+  coMentionEdges,
   formatEvalText,
   EvalFormatError,
   contextMembership,
@@ -1652,6 +1653,10 @@ async function cmdEval(args: CliArgs): Promise<void> {
         semantic: ctx.semantic,
         allow: ctx.indexer.rowFilter(),
         local: ctx.localModels,
+        // The owner's entities for the recall's graph, while it is on (cerebro-entidades-resumos, door 5).
+        graph: {
+          coMentions: () => coMentionEdges(ctx.entities.read("owner", ctx.indexer.rowFilter()).entities),
+        },
       },
       path.resolve(file),
     );

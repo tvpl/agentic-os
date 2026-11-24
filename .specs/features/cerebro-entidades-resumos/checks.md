@@ -934,4 +934,16 @@ Status of batch B (C31-C40, C42-C52):
   entity reads over each feature's base (`memoria.contract` C81, `paineis.contract` C59, `natureza.contract` C66,
   `cleanup.contract` C76, `rituais.access` C73), the recorder of `mcpRecorder.ts` answers the two entity routes, the
   internal barrel gains `entityNorm` (`sdk.surface` C38)
-- S4, the graph in the recall and `mordomo eval` (C43-C52): open
+- S4, the graph in the recall and `mordomo eval` (C43-C52): closed. `core/src/memory/pagerank.ts` (the seeds, the
+  PageRank with damping 0.85, 30 iterations or an L1 change under 1e-6, the mass of a node with no edge back to the
+  seeds; the graph over the files the caller sees, reached from the seeds; the order with at most 3 admitted
+  outsiders); `runRecall` runs it only when the recall does not abstain and the graph is on, reads the answer again in
+  the RRF order and gives each item its `graph` place (Landing 5a; `Flow` step 4 says it); the route passes the
+  caller's related table and the co-mention edges of its cached entities (`entityView` of `routes/entities.ts`);
+  `mordomo eval` prints `graph` after `hybrid` while the graph is on. `memory.recall.graph = { enabled: false }`, fail
+  closed off. Proofs: `entidades.graph` (C43 1, C44 4, C45 1, C46 1, C47 2, C48 1, C49 5, C50 1, C51 1),
+  `entidades.cli` (C52 2); C43 compares with `tests/fixtures/entidades/recall-c9.json`, the twelve answers read with
+  the code of `2f708c7` before any change of this batch. Pins moved: the settings leaf (`settings.changed` v1 fixture,
+  `busca.contract` C86's two defaults, the UI's `RECALL_DEFAULTS` and its `semanticSearchNet.ts` fixture), the run's
+  read routes in `device-scopes` C9 (S3's, missed in its commit), the internal barrel gains `coMentionEdges`
+  (`sdk.surface` C38), the recall's `answerContext` items gain `graph?` in `contracts/src/api/memory.ts`

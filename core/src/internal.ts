@@ -145,6 +145,7 @@ export { mcpClients } from "./connectors/mcpClients.js";
 export {
   CorrectionError,
   EntityReader,
+  coMentionEdges,
   correctionItem,
   entityDetail,
   listEntities,

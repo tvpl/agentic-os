@@ -1,0 +1,894 @@
+{
+  "v": 1,
+  "results": [
+    {
+      "question": "qual é o prazo para trocar um produto?",
+      "keywords": ["prazo", "trocar", "produto"],
+      "answerContext": [
+        {
+          "path": "<corpus>/politica-de-trocas.md",
+          "section": "Política de trocas",
+          "excerpt": "Aceitamos a troca de qualquer produto embalado em até 7 dias, desde que o cliente traga a nota fiscal.\nProdutos frescos, como pães e bolos, só são trocados no mesmo dia, se houver defeito de fabricação.\nA devolução em dinheiro só acontece quando não temos o mesmo produto para repor.",
+          "score": 14.79,
+          "why": "1/3 keywords in the index; section \"Política de trocas\" matches produto",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/diario-2026-03-15.md",
+          "section": "Diário, 15 de março de 2026",
+          "excerpt": "Dia corrido. Faltou fermento no meio da manhã e o Pedro teve de correr até o atacado.\nPreciso deixar um estoque mínimo de fermento na despensa.",
+          "score": 0,
+          "why": "section \"Diário, 15 de março de 2026\" matches nothing directly",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/fermento-e-insumos.md",
+          "section": "Fermento e insumos",
+          "excerpt": "O pedido semanal de insumos sai às segundas-feiras: fermento, açúcar, ovos, sal e margarina.\nMantemos sempre duas caixas de fermento de reserva na despensa.",
+          "score": 0,
+          "why": "section \"Fermento e insumos\" matches nothing directly",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 146,
+      "candidatesConsidered": 3,
+      "opened": 3,
+      "candidates": [
+        {
+          "path": "<corpus>/diario-2026-03-15.md",
+          "score": 0,
+          "why": "section \"Diário, 15 de março de 2026\" is near the question"
+        },
+        {
+          "path": "<corpus>/politica-de-trocas.md",
+          "score": 9.79,
+          "why": "1/3 keywords in the index"
+        },
+        {
+          "path": "<corpus>/fermento-e-insumos.md",
+          "score": 0,
+          "why": "section \"Fermento e insumos\" is near the question"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    },
+    {
+      "question": "como se faz a broa de milho?",
+      "keywords": ["faz", "broa", "milho"],
+      "answerContext": [
+        {
+          "path": "<corpus>/receita-broa-de-milho.md",
+          "section": "Receita da broa de milho",
+          "excerpt": "Misture 2 xícaras de fubá, 1 xícara de farinha de trigo, 1 xícara de açúcar, 3 ovos, meia xícara de óleo e 1 colher de fermento químico.\nColoque erva-doce a gosto. Asse em forma untada a 180 graus por 40 minutos.\nA broa vende melhor de manhã, junto com o café.",
+          "score": 49.7,
+          "why": "name matches broa, milho; title matches broa, milho; 2/3 keywords in the index; section \"Receita da broa de milho\" matches broa, milho",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/precos-2026-03.md",
+          "section": "Tabela de preços de março de 2026",
+          "excerpt": "Pão francês: R$ 0,90 a unidade.\nPão de queijo: R$ 1,50 a unidade.\nBroa de milho: R$ 12,00 a unidade.\nCafé coado: R$ 4,00.",
+          "score": 22.05,
+          "why": "2/3 keywords in the index; section \"Tabela de preços de março de 2026\" matches broa, milho",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/precos-2026-07.md",
+          "section": "Tabela de preços de julho de 2026",
+          "excerpt": "Pão francês: R$ 1,00 a unidade.\nPão de queijo: R$ 1,80 a unidade.\nBroa de milho: R$ 13,00 a unidade.\nCafé coado: R$ 4,50.",
+          "score": 22.05,
+          "why": "2/3 keywords in the index; section \"Tabela de preços de julho de 2026\" matches broa, milho",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 127,
+      "candidatesConsidered": 9,
+      "opened": 3,
+      "candidates": [
+        {
+          "path": "<corpus>/receita-broa-de-milho.md",
+          "score": 37.7,
+          "why": "name matches broa, milho; title matches broa, milho; 2/3 keywords in the index; section \"Receita da broa de milho\" is near the question"
+        },
+        {
+          "path": "<corpus>/precos-2026-03.md",
+          "score": 14.05,
+          "why": "2/3 keywords in the index; section \"Tabela de preços de março de 2026\" is near the question"
+        },
+        {
+          "path": "<corpus>/precos-2026-07.md",
+          "score": 14.05,
+          "why": "2/3 keywords in the index; section \"Tabela de preços de julho de 2026\" is near the question"
+        },
+        {
+          "path": "<corpus>/entrega-delivery.md",
+          "score": 7.2,
+          "why": "1/3 keywords in the index; section \"Entregas por aplicativo\" is near the question"
+        },
+        {
+          "path": "<corpus>/precos-2026-10.md",
+          "score": 14.05,
+          "why": "2/3 keywords in the index; section \"Tabela de preços de outubro de 2026\" is near the question"
+        },
+        {
+          "path": "<corpus>/carro-revisao.md",
+          "score": 7.31,
+          "why": "1/3 keywords in the index"
+        },
+        {
+          "path": "<corpus>/curso-confeitaria.md",
+          "score": 7.31,
+          "why": "1/3 keywords in the index"
+        },
+        {
+          "path": "<corpus>/equipe.md",
+          "score": 7.18,
+          "why": "1/3 keywords in the index"
+        },
+        {
+          "path": "<corpus>/assinatura-cafe-da-manha.md",
+          "score": 6.78,
+          "why": "1/3 keywords in the index"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    },
+    {
+      "question": "quem é o técnico que faz a manutenção do forno?",
+      "keywords": ["tecnico", "faz", "manutencao", "forno"],
+      "answerContext": [
+        {
+          "path": "<corpus>/manutencao-forno.md",
+          "section": "Manutenção do forno",
+          "excerpt": "O forno passa por manutenção preventiva a cada três meses.\nO técnico é o Carlos, da Assistência Calor Forte, telefone na agenda do caixa.\nNa manutenção ele limpa os queimadores, confere a vedação da porta e calibra o termostato.",
+          "score": 68.15,
+          "why": "name matches manutencao, forno; title matches manutencao, forno; 3/4 keywords in the index; section \"Manutenção do forno\" matches tecnico, manutencao, forno",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/forno-novo-compra.md",
+          "section": "Compra do forno novo",
+          "excerpt": "Em março de 2026 compramos um forno turbo a gás de 10 esteiras por R$ 18.000, parcelado em 12 vezes.\nO forno antigo foi vendido por R$ 3.000. A instalação foi feita pelo próprio fabricante.",
+          "score": 27.36,
+          "why": "name matches forno; title matches forno; 1/4 keywords in the index; section \"Compra do forno novo\" matches forno",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/reuniao-2026-02-03.md",
+          "section": "Reunião de 3 de fevereiro de 2026",
+          "excerpt": "Participantes: Joana, Pedro e Luísa.\nDecidimos comprar um forno novo, porque o forno antigo está queimando os pães do fundo.\nTambém combinamos rever a tabela de preços em março.",
+          "score": 12.83,
+          "why": "1/4 keywords in the index; section \"Reunião de 3 de fevereiro de 2026\" matches forno",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 150,
+      "candidatesConsidered": 7,
+      "opened": 3,
+      "candidates": [
+        {
+          "path": "<corpus>/manutencao-forno.md",
+          "score": 49.57,
+          "why": "name matches manutencao, forno; title matches manutencao, forno; 3/4 keywords in the index; section \"Manutenção do forno\" is near the question"
+        },
+        {
+          "path": "<corpus>/reuniao-2026-02-03.md",
+          "score": 8.25,
+          "why": "1/4 keywords in the index; section \"Reunião de 3 de fevereiro de 2026\" is near the question"
+        },
+        {
+          "path": "<corpus>/forno-novo-compra.md",
+          "score": 19.78,
+          "why": "name matches forno; title matches forno; 1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/carro-revisao.md",
+          "score": 7.31,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/curso-confeitaria.md",
+          "score": 7.31,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/entrega-delivery.md",
+          "score": 7.2,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/equipe.md",
+          "score": 7.18,
+          "why": "1/4 keywords in the index"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    },
+    {
+      "question": "com quantas horas de antecedência aceitamos encomendas de bolo?",
+      "keywords": ["quanta", "hora", "antecedencia", "aceitamo", "encomenda", "bolo"],
+      "answerContext": [
+        {
+          "path": "<corpus>/encomendas-festas.md",
+          "section": "Encomendas para festas",
+          "excerpt": "Bolos e salgados para festas são encomendados com pelo menos 48 horas de antecedência.\nPedimos um sinal de 50% no ato da encomenda e o restante na retirada.\nBolos com mais de 3 kg precisam de uma semana de antecedência.",
+          "score": 63.99,
+          "why": "name matches encomenda; title matches encomenda; 4/6 keywords in the index; section \"Encomendas para festas\" matches hora, antecedencia, encomenda, bolo",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/horario-de-funcionamento.md",
+          "section": "Horário de funcionamento",
+          "excerpt": "De segunda a sábado a loja abre às 6h e fecha às 19h.\nAos domingos abrimos às 7h e fechamos ao meio-dia.\nNos feriados seguimos o horário de domingo.",
+          "score": 26.24,
+          "why": "name matches hora; title matches hora; 1/6 keywords in the index; section \"Horário de funcionamento\" matches hora",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/receita-bolo-de-cenoura.md",
+          "section": "Receita do bolo de cenoura",
+          "excerpt": "Bata no liquidificador 3 cenouras, 3 ovos e 1 xícara de óleo.\nMisture com 2 xícaras de farinha de trigo, 2 xícaras de açúcar e 1 colher de fermento químico.\nAsse a 180 graus por 40 minutos e cubra com calda de cacau meio amargo.",
+          "score": 22.93,
+          "why": "name matches bolo; title matches bolo; 1/6 keywords in the index; section \"Receita do bolo de cenoura\" matches bolo",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 149,
+      "candidatesConsidered": 10,
+      "opened": 3,
+      "candidates": [
+        {
+          "path": "<corpus>/encomendas-festas.md",
+          "score": 43.24,
+          "why": "name matches encomenda; title matches encomenda; 4/6 keywords in the index; section \"Encomendas para festas\" is near the question"
+        },
+        {
+          "path": "<corpus>/horario-de-funcionamento.md",
+          "score": 19.24,
+          "why": "name matches hora; title matches hora; 1/6 keywords in the index"
+        },
+        {
+          "path": "<corpus>/receita-bolo-de-cenoura.md",
+          "score": 17.93,
+          "why": "name matches bolo; title matches bolo; 1/6 keywords in the index"
+        },
+        {
+          "path": "<corpus>/equipe.md",
+          "score": 14.41,
+          "why": "2/6 keywords in the index"
+        },
+        {
+          "path": "<corpus>/politica-de-trocas.md",
+          "score": 14.18,
+          "why": "2/6 keywords in the index"
+        },
+        {
+          "path": "<corpus>/reuniao-2026-08-20.md",
+          "score": 13.54,
+          "why": "2/6 keywords in the index"
+        },
+        {
+          "path": "<corpus>/vigilancia-sanitaria.md",
+          "score": 7.5,
+          "why": "1/6 keywords in the index"
+        },
+        {
+          "path": "<corpus>/receita-pao-frances.md",
+          "score": 6.6,
+          "why": "1/6 keywords in the index"
+        },
+        {
+          "path": "<corpus>/reuniao-2026-05-12.md",
+          "score": 6.55,
+          "why": "1/6 keywords in the index"
+        },
+        {
+          "path": "<corpus>/clientes-reclamacoes.md",
+          "score": 6.46,
+          "why": "1/6 keywords in the index"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    },
+    {
+      "question": "qual é o raio de entrega do aplicativo?",
+      "keywords": ["raio", "entrega", "aplicativo"],
+      "answerContext": [
+        {
+          "path": "<corpus>/entrega-delivery.md",
+          "section": "Entregas por aplicativo",
+          "excerpt": "Fazemos entregas pelo aplicativo num raio de 3 km da loja, das 7h às 18h.\nA taxa de entrega é de R$ 5 e o pedido mínimo é de R$ 25.",
+          "score": 59.95,
+          "why": "name matches entrega; title matches entrega, aplicativo; 3/3 keywords in the index; section \"Entregas por aplicativo\" matches raio, entrega, aplicativo",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/diario-2026-10-28.md",
+          "section": "Diário, 28 de outubro de 2026",
+          "excerpt": "Lançamos o café da manhã por assinatura e já temos 30 assinantes.\nA maioria escolheu a entrega às sextas-feiras.",
+          "score": 11.29,
+          "why": "1/3 keywords in the index; section \"Diário, 28 de outubro de 2026\" matches entrega",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/fornecedor-farinha-2026-01.md",
+          "section": "Fornecedor de farinha - janeiro de 2026",
+          "excerpt": "Em janeiro de 2026 a farinha de trigo vem do Moinho Sul.\nO quilo sai por R$ 4,20 e a entrega é feita às quartas-feiras, em sacos de 25 kg.\nO contrato vale por três meses.",
+          "score": 10.94,
+          "why": "1/3 keywords in the index; section \"Fornecedor de farinha - janeiro de 2026\" matches entrega",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 104,
+      "candidatesConsidered": 4,
+      "opened": 3,
+      "candidates": [
+        {
+          "path": "<corpus>/entrega-delivery.md",
+          "score": 41.37,
+          "why": "name matches entrega; title matches entrega, aplicativo; 3/3 keywords in the index; section \"Entregas por aplicativo\" is near the question"
+        },
+        {
+          "path": "<corpus>/diario-2026-10-28.md",
+          "score": 7.29,
+          "why": "1/3 keywords in the index"
+        },
+        {
+          "path": "<corpus>/fornecedor-farinha-2026-01.md",
+          "score": 6.94,
+          "why": "1/3 keywords in the index"
+        },
+        {
+          "path": "<corpus>/fornecedor-farinha-2026-09.md",
+          "score": 6.91,
+          "why": "1/3 keywords in the index"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    },
+    {
+      "question": "quando renovamos a apólice do seguro?",
+      "keywords": ["renovamo", "apolice", "seguro"],
+      "answerContext": [
+        {
+          "path": "<corpus>/seguro-loja.md",
+          "section": "Seguro da loja",
+          "excerpt": "A loja tem seguro contra incêndio, roubo e danos elétricos.\nA apólice é renovada todo ano em novembro, com a corretora Proteção Total.\nA franquia é de R$ 2.000.",
+          "score": 41.12,
+          "why": "name matches seguro; title matches seguro; 2/3 keywords in the index; section \"Seguro da loja\" matches apolice, seguro",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/fornecedor-farinha-2026-04.md",
+          "section": "Fornecedor de farinha - abril de 2026",
+          "excerpt": "O Moinho Sul reajustou o preço em abril de 2026: o quilo da farinha passou de R$ 4,20 para R$ 4,65.\nRenovamos o contrato por mais seis meses porque a qualidade continua boa.",
+          "score": 12.12,
+          "why": "1/3 keywords in the index; section \"Fornecedor de farinha - abril de 2026\" matches renovamo",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/fornecedor-farinha-2026-01.md",
+          "section": "Fornecedor de farinha - janeiro de 2026",
+          "excerpt": "Em janeiro de 2026 a farinha de trigo vem do Moinho Sul.\nO quilo sai por R$ 4,20 e a entrega é feita às quartas-feiras, em sacos de 25 kg.\nO contrato vale por três meses.",
+          "score": 0,
+          "why": "section \"Fornecedor de farinha - janeiro de 2026\" matches nothing directly",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 127,
+      "candidatesConsidered": 4,
+      "opened": 3,
+      "candidates": [
+        {
+          "path": "<corpus>/seguro-loja.md",
+          "score": 30.12,
+          "why": "name matches seguro; title matches seguro; 2/3 keywords in the index; section \"Seguro da loja\" is near the question"
+        },
+        {
+          "path": "<corpus>/fornecedor-farinha-2026-04.md",
+          "score": 8.12,
+          "why": "1/3 keywords in the index; section \"Fornecedor de farinha - abril de 2026\" is near the question"
+        },
+        {
+          "path": "<corpus>/fornecedor-farinha-2026-01.md",
+          "score": 0,
+          "why": "section \"Fornecedor de farinha - janeiro de 2026\" is near the question"
+        },
+        {
+          "path": "<corpus>/fornecedor-farinha-2026-09.md",
+          "score": 0,
+          "why": "section \"Fornecedor de farinha - setembro de 2026\" is near the question"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    },
+    {
+      "question": "receitas de bolos de cenoura",
+      "keywords": ["receita", "bolo", "cenoura"],
+      "answerContext": [
+        {
+          "path": "<corpus>/receita-bolo-de-cenoura.md",
+          "section": "Receita do bolo de cenoura",
+          "excerpt": "Bata no liquidificador 3 cenouras, 3 ovos e 1 xícara de óleo.\nMisture com 2 xícaras de farinha de trigo, 2 xícaras de açúcar e 1 colher de fermento químico.\nAsse a 180 graus por 40 minutos e cubra com calda de cacau meio amargo.",
+          "score": 74.97,
+          "why": "name matches receita, bolo, cenoura; title matches receita, bolo, cenoura; 3/3 keywords in the index; section \"Receita do bolo de cenoura\" matches receita, bolo, cenoura",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/receita-broa-de-milho.md",
+          "section": "Receita da broa de milho",
+          "excerpt": "Misture 2 xícaras de fubá, 1 xícara de farinha de trigo, 1 xícara de açúcar, 3 ovos, meia xícara de óleo e 1 colher de fermento químico.\nColoque erva-doce a gosto. Asse em forma untada a 180 graus por 40 minutos.\nA broa vende melhor de manhã, junto com o café.",
+          "score": 24.6,
+          "why": "name matches receita; title matches receita; 1/3 keywords in the index; section \"Receita da broa de milho\" matches receita",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/clientes-reclamacoes.md",
+          "section": "Reclamações de clientes",
+          "excerpt": "As reclamações mais comuns do mês foram pão queimado no fundo e demora na fila do caixa.\nUma cliente reclamou que o bolo de cenoura veio sem cobertura.\nRespondemos a todas pelo telefone e oferecemos um café como desculpa.",
+          "score": 22.14,
+          "why": "2/3 keywords in the index; section \"Reclamações de clientes\" matches bolo, cenoura",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 178,
+      "candidatesConsidered": 10,
+      "opened": 3,
+      "candidates": [
+        {
+          "path": "<corpus>/receita-bolo-de-cenoura.md",
+          "score": 57.97,
+          "why": "name matches receita, bolo, cenoura; title matches receita, bolo, cenoura; 3/3 keywords in the index; section \"Receita do bolo de cenoura\" is near the question"
+        },
+        {
+          "path": "<corpus>/receita-broa-de-milho.md",
+          "score": 19.6,
+          "why": "name matches receita; title matches receita; 1/3 keywords in the index; section \"Receita da broa de milho\" is near the question"
+        },
+        {
+          "path": "<corpus>/clientes-reclamacoes.md",
+          "score": 14.14,
+          "why": "2/3 keywords in the index; section \"Reclamações de clientes\" is near the question"
+        },
+        {
+          "path": "<corpus>/fermento-e-insumos.md",
+          "score": 0,
+          "why": "section \"Fermento e insumos\" is near the question"
+        },
+        {
+          "path": "<corpus>/receita-pao-frances.md",
+          "score": 19.51,
+          "why": "name matches receita; title matches receita; 1/3 keywords in the index"
+        },
+        {
+          "path": "<corpus>/encomendas-festas.md",
+          "score": 7.01,
+          "why": "1/3 keywords in the index"
+        },
+        {
+          "path": "<corpus>/equipe.md",
+          "score": 6.56,
+          "why": "1/3 keywords in the index"
+        },
+        {
+          "path": "<corpus>/reuniao-2026-05-12.md",
+          "score": 6.55,
+          "why": "1/3 keywords in the index"
+        },
+        {
+          "path": "<corpus>/reuniao-2026-08-20.md",
+          "score": 6.48,
+          "why": "1/3 keywords in the index"
+        },
+        {
+          "path": "<corpus>/politica-de-trocas.md",
+          "score": 6.31,
+          "why": "1/3 keywords in the index"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    },
+    {
+      "question": "em que dias da semana publicamos no instagram?",
+      "keywords": ["dias", "semana", "publicamo", "instagram"],
+      "answerContext": [
+        {
+          "path": "<corpus>/marketing-instagram.md",
+          "section": "Instagram da padaria",
+          "excerpt": "Publicamos no Instagram às terças e às sextas, sempre com foto da fornada do dia.\nOs vídeos de bastidores do Pedro assando pão são os que mais trazem seguidores.",
+          "score": 47.05,
+          "why": "name matches instagram; title matches instagram; 3/4 keywords in the index; section \"Instagram da padaria\" matches publicamo, instagram",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/diario-2026-06-02.md",
+          "section": "Diário, 2 de junho de 2026",
+          "excerpt": "Choveu o dia todo e as vendas caíram pela metade.\nTive uma ideia: um café da manhã por assinatura, com uma cesta entregue em casa toda semana.",
+          "score": 18.09,
+          "why": "2/4 keywords in the index; section \"Diário, 2 de junho de 2026\" matches semana",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/encomendas-festas.md",
+          "section": "Encomendas para festas",
+          "excerpt": "Bolos e salgados para festas são encomendados com pelo menos 48 horas de antecedência.\nPedimos um sinal de 50% no ato da encomenda e o restante na retirada.\nBolos com mais de 3 kg precisam de uma semana de antecedência.",
+          "score": 11.3,
+          "why": "1/4 keywords in the index; section \"Encomendas para festas\" matches semana",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 132,
+      "candidatesConsidered": 14,
+      "opened": 3,
+      "candidates": [
+        {
+          "path": "<corpus>/marketing-instagram.md",
+          "score": 36.05,
+          "why": "name matches instagram; title matches instagram; 3/4 keywords in the index; section \"Instagram da padaria\" is near the question"
+        },
+        {
+          "path": "<corpus>/encomendas-festas.md",
+          "score": 7.3,
+          "why": "1/4 keywords in the index; section \"Encomendas para festas\" is near the question"
+        },
+        {
+          "path": "<corpus>/diario-2026-06-02.md",
+          "score": 14.09,
+          "why": "2/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/assinatura-cafe-da-manha.md",
+          "score": 7.26,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/diario-2026-03-15.md",
+          "score": 6.67,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/diario-2026-10-28.md",
+          "score": 6.67,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/politica-de-trocas.md",
+          "score": 6.03,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/aluguel.md",
+          "score": 5.92,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/contador.md",
+          "score": 5.88,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/horario-de-funcionamento.md",
+          "score": 5.86,
+          "why": "1/4 keywords in the index"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    },
+    {
+      "question": "quando é a consulta com a cardiologista?",
+      "keywords": ["consulta", "cardiologista"],
+      "answerContext": [
+        {
+          "path": "<corpus>/medico-consultas.md",
+          "section": "Consultas médicas",
+          "excerpt": "A consulta com a cardiologista, a doutora Helena, está marcada para 10 de setembro.\nLevar os exames de sangue e o eletrocardiograma feitos em agosto.",
+          "score": 41.39,
+          "why": "name matches consulta; title matches consulta; 2/2 keywords in the index; section \"Consultas médicas\" matches consulta, cardiologista",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 38,
+      "candidatesConsidered": 1,
+      "opened": 1,
+      "candidates": [
+        {
+          "path": "<corpus>/medico-consultas.md",
+          "score": 30.39,
+          "why": "name matches consulta; title matches consulta; 2/2 keywords in the index; section \"Consultas médicas\" is near the question"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    },
+    {
+      "question": "quanto custa o plano do café da manhã por assinatura?",
+      "keywords": ["quanto", "custa", "plano", "cafe", "manha", "assinatura"],
+      "answerContext": [
+        {
+          "path": "<corpus>/assinatura-cafe-da-manha.md",
+          "section": "Café da manhã por assinatura",
+          "excerpt": "Cada assinante recebe uma cesta por semana com pães, broa, geleia e café moído.\nO plano custa R$ 89 por mês e pode ser cancelado a qualquer momento.\nAs cestas são montadas na véspera pela Luísa.",
+          "score": 95.58,
+          "why": "name matches cafe, manha, assinatura; title matches cafe, manha, assinatura; 5/6 keywords in the index; section \"Café da manhã por assinatura\" matches custa, plano, cafe, manha, assinatura",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/meta-vendas-2026-07.md",
+          "section": "Meta de vendas - julho de 2026",
+          "excerpt": "Com o café da manhã por assinatura nos planos, a meta de faturamento subiu para R$ 75 mil por mês a partir de julho de 2026.",
+          "score": 43.95,
+          "why": "4/6 keywords in the index; section \"Meta de vendas - julho de 2026\" matches plano, cafe, manha, assinatura",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/diario-2026-10-28.md",
+          "section": "Diário, 28 de outubro de 2026",
+          "excerpt": "Lançamos o café da manhã por assinatura e já temos 30 assinantes.\nA maioria escolheu a entrega às sextas-feiras.",
+          "score": 32.42,
+          "why": "3/6 keywords in the index; section \"Diário, 28 de outubro de 2026\" matches cafe, manha, assinatura",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 108,
+      "candidatesConsidered": 12,
+      "opened": 3,
+      "candidates": [
+        {
+          "path": "<corpus>/assinatura-cafe-da-manha.md",
+          "score": 70.58,
+          "why": "name matches cafe, manha, assinatura; title matches cafe, manha, assinatura; 5/6 keywords in the index; section \"Café da manhã por assinatura\" is near the question"
+        },
+        {
+          "path": "<corpus>/diario-2026-10-28.md",
+          "score": 20.42,
+          "why": "3/6 keywords in the index; section \"Diário, 28 de outubro de 2026\" is near the question"
+        },
+        {
+          "path": "<corpus>/meta-vendas-2026-07.md",
+          "score": 27.95,
+          "why": "4/6 keywords in the index; section \"Meta de vendas - julho de 2026\" is near the question"
+        },
+        {
+          "path": "<corpus>/diario-2026-06-02.md",
+          "score": 20.08,
+          "why": "3/6 keywords in the index; section \"Diário, 2 de junho de 2026\" is near the question"
+        },
+        {
+          "path": "<corpus>/receita-broa-de-milho.md",
+          "score": 12.4,
+          "why": "2/6 keywords in the index; section \"Receita da broa de milho\" is near the question"
+        },
+        {
+          "path": "<corpus>/diario-2026-03-15.md",
+          "score": 6.72,
+          "why": "1/6 keywords in the index"
+        },
+        {
+          "path": "<corpus>/receita-pao-frances.md",
+          "score": 0,
+          "why": "section \"Receita do pão francês\" is near the question"
+        },
+        {
+          "path": "<corpus>/manutencao-forno.md",
+          "score": 0,
+          "why": "section \"Manutenção do forno\" is near the question"
+        },
+        {
+          "path": "<corpus>/precos-2026-03.md",
+          "score": 6.23,
+          "why": "1/6 keywords in the index"
+        },
+        {
+          "path": "<corpus>/precos-2026-07.md",
+          "score": 6.23,
+          "why": "1/6 keywords in the index"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    },
+    {
+      "question": "quanto pagamos pela locação do imóvel?",
+      "keywords": ["quanto", "pagamo", "pela", "locacao", "imovel"],
+      "answerContext": [
+        {
+          "path": "<corpus>/diario-2026-06-02.md",
+          "section": "Diário, 2 de junho de 2026",
+          "excerpt": "Choveu o dia todo e as vendas caíram pela metade.\nTive uma ideia: um café da manhã por assinatura, com uma cesta entregue em casa toda semana.",
+          "score": 11.8,
+          "why": "1/5 keywords in the index; section \"Diário, 2 de junho de 2026\" matches pela",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/assinatura-cafe-da-manha.md",
+          "section": "Café da manhã por assinatura",
+          "excerpt": "Cada assinante recebe uma cesta por semana com pães, broa, geleia e café moído.\nO plano custa R$ 89 por mês e pode ser cancelado a qualquer momento.\nAs cestas são montadas na véspera pela Luísa.",
+          "score": 11.61,
+          "why": "1/5 keywords in the index; section \"Café da manhã por assinatura\" matches pela",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/entrega-delivery.md",
+          "section": "Entregas por aplicativo",
+          "excerpt": "Fazemos entregas pelo aplicativo num raio de 3 km da loja, das 7h às 18h.\nA taxa de entrega é de R$ 5 e o pedido mínimo é de R$ 25.",
+          "score": 0,
+          "why": "section \"Entregas por aplicativo\" matches nothing directly",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 118,
+      "candidatesConsidered": 5,
+      "opened": 3,
+      "candidates": [
+        {
+          "path": "<corpus>/diario-2026-06-02.md",
+          "score": 7.8,
+          "why": "1/5 keywords in the index"
+        },
+        {
+          "path": "<corpus>/entrega-delivery.md",
+          "score": 0,
+          "why": "section \"Entregas por aplicativo\" is near the question"
+        },
+        {
+          "path": "<corpus>/assinatura-cafe-da-manha.md",
+          "score": 7.61,
+          "why": "1/5 keywords in the index"
+        },
+        {
+          "path": "<corpus>/fermento-e-insumos.md",
+          "score": 0,
+          "why": "section \"Fermento e insumos\" is near the question"
+        },
+        {
+          "path": "<corpus>/forno-novo-compra.md",
+          "score": 0,
+          "why": "section \"Compra do forno novo\" is near the question"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    },
+    {
+      "question": "qual foi a queixa mais frequente dos fregueses?",
+      "keywords": ["queixa", "mais", "frequente", "fregues"],
+      "answerContext": [
+        {
+          "path": "<corpus>/diario-2026-10-28.md",
+          "section": "Diário, 28 de outubro de 2026",
+          "excerpt": "Lançamos o café da manhã por assinatura e já temos 30 assinantes.\nA maioria escolheu a entrega às sextas-feiras.",
+          "score": 6.31,
+          "why": "1/4 keywords in the index; section \"Diário, 28 de outubro de 2026\" matches nothing directly",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/carro-revisao.md",
+          "section": "Revisão do carro",
+          "excerpt": "O carro faz revisão a cada 10 mil quilômetros na concessionária.\nA última revisão foi em agosto, com troca de óleo e de pastilhas de freio.",
+          "score": 0,
+          "why": "section \"Revisão do carro\" matches nothing directly",
+          "natureza": null,
+          "escopo": null
+        },
+        {
+          "path": "<corpus>/manutencao-forno.md",
+          "section": "Manutenção do forno",
+          "excerpt": "O forno passa por manutenção preventiva a cada três meses.\nO técnico é o Carlos, da Assistência Calor Forte, telefone na agenda do caixa.\nNa manutenção ele limpa os queimadores, confere a vedação da porta e calibra o termostato.",
+          "score": 0,
+          "why": "section \"Manutenção do forno\" matches nothing directly",
+          "natureza": null,
+          "escopo": null
+        }
+      ],
+      "tokensEstimate": 120,
+      "candidatesConsidered": 11,
+      "opened": 3,
+      "candidates": [
+        {
+          "path": "<corpus>/carro-revisao.md",
+          "score": 0,
+          "why": "section \"Revisão do carro\" is near the question"
+        },
+        {
+          "path": "<corpus>/diario-2026-10-28.md",
+          "score": 6.31,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/manutencao-forno.md",
+          "score": 0,
+          "why": "section \"Manutenção do forno\" is near the question"
+        },
+        {
+          "path": "<corpus>/marketing-instagram.md",
+          "score": 6.29,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/reuniao-2026-05-12.md",
+          "score": 6.24,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/reuniao-2026-08-20.md",
+          "score": 6.18,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/clientes-reclamacoes.md",
+          "score": 6.17,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/encomendas-festas.md",
+          "score": 6.16,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/fornecedor-farinha-2026-04.md",
+          "score": 6.14,
+          "why": "1/4 keywords in the index"
+        },
+        {
+          "path": "<corpus>/troca-de-contador-2026-06.md",
+          "score": 6.06,
+          "why": "1/4 keywords in the index"
+        }
+      ],
+      "abstained": false,
+      "abstainReason": null,
+      "rerank": "off"
+    }
+  ]
+}

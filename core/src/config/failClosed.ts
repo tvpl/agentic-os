@@ -61,6 +61,9 @@ export const SETTINGS_FAIL_CLOSED: readonly FailClosedField[] = [
   { path: "memory.embeddings.local", closed: undefined },
   // The reranker starts a child process with a model of 1.8 GB: an unreadable switch leaves it off (G34).
   { path: "memory.recall.rerank.enabled", closed: false },
+  // The graph reorders what the recall answers and lets neighbours in (cerebro-entidades-resumos, door 5): an unreadable
+  // switch leaves the recall as C9 answers it.
+  { path: "memory.recall.graph.enabled", closed: false },
   // The AI suggestions of entities start a paid run that sends the text of up to 20 notes to the default provider
   // (cerebro-entidades-resumos, door 9): an unreadable switch leaves them off.
   { path: "memory.entities.llm.enabled", closed: false },

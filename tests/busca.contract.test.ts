@@ -208,6 +208,8 @@ describe("C86 memory.recall defaults and bounds", () => {
         hops: 2,
         tokenBudget: 3000,
         rerank: { enabled: false, candidates: 20, timeoutMs: 15000 },
+        // cerebro-entidades-resumos, door 5: the graph switch, off by default
+        graph: { enabled: false },
       });
     } finally {
       temp.cleanup();
@@ -266,6 +268,8 @@ describe("C86 memory.recall defaults and bounds", () => {
       hops: 3,
       tokenBudget: 3000,
       rerank: { enabled: false, candidates: 20, timeoutMs: 15000 },
+      // cerebro-entidades-resumos, door 5: the graph switch, off by default
+      graph: { enabled: false },
     });
   });
 });

@@ -287,6 +287,11 @@ const RecallResultSchema = z.object({
       natureza: NaturezaSchema,
       /** The file's scope, or null. */
       escopo: EscopoSchema,
+      /**
+       * The file's place (1-based) in the personalized PageRank (.specs/features/cerebro-entidades-resumos, door 5);
+       * only while `memory.recall.graph.enabled` is on.
+       */
+      graph: z.number().int().min(1).optional(),
     }),
   ),
   tokensEstimate: z.number(),

@@ -4,7 +4,7 @@ import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
 import { readScope, readWorkspaceText } from "../security/safeFs.js";
 import type { FileRow } from "./indexer.js";
-import { runRecall } from "./recall.js";
+import { runRecall, type HybridRecallOptions } from "./recall.js";
 import { anyWordSearch, everyWordSearch } from "./search.js";
 import { SemanticDisabledError, type SemanticSearch } from "./semantic.js";
 import type { LocalModels } from "../models/localModels.js";
@@ -32,11 +32,14 @@ export interface EvalMetrics {
   "hit@3": number;
 }
 
-export type EvalMode = "and" | "or" | "semantic" | "hybrid" | "rerank";
+export type EvalMode = "and" | "or" | "semantic" | "hybrid" | "graph" | "rerank";
 
 export interface EvalReport {
-  /** The modes of door 6 in its order; `rerank` only while the reranker is on and ready (AC 8). */
-  modes: Record<Exclude<EvalMode, "rerank">, EvalMetrics> & { rerank?: EvalMetrics };
+  /**
+   * The modes of door 6 in its order; `graph` right after `hybrid`, only while the recall's graph is on
+   * (cerebro-entidades-resumos, AC 46); `rerank` only while the reranker is on and ready (AC 8).
+   */
+  modes: Record<Exclude<EvalMode, "graph" | "rerank">, EvalMetrics> & { graph?: EvalMetrics; rerank?: EvalMetrics };
   abstainCorrect: { n: number; total: number };
 }
 
@@ -46,6 +49,8 @@ export interface EvalRankings {
   or: string[][];
   semantic: string[][];
   hybrid: string[][];
+  /** The recall's order with the graph (cerebro-entidades-resumos, door 5); absent while the graph is off. */
+  graph?: string[][];
   /** The `hybrid` order after the reranker; absent while it is off or not ready. */
   rerank?: string[][];
   abstained: boolean[];
@@ -152,6 +157,7 @@ export function evalMetrics(rankings: ReadonlyArray<readonly string[]>, queries:
  */
 export function evalReport(rankings: EvalRankings, queries: readonly EvalQuery[]): EvalReport {
   const hybrid = rankings.hybrid.map((ranking, i) => (rankings.abstained[i] ? [] : ranking));
+  const graph = rankings.graph?.map((ranking, i) => (rankings.abstained[i] ? [] : ranking));
   const rerank = rankings.rerank?.map((ranking, i) => (rankings.abstained[i] ? [] : ranking));
   const abstain = queries.map((query, i) => ({ query, abstained: rankings.abstained[i] === true }));
   return {
@@ -160,6 +166,7 @@ export function evalReport(rankings: EvalRankings, queries: readonly EvalQuery[]
       or: evalMetrics(rankings.or, queries),
       semantic: evalMetrics(rankings.semantic, queries),
       hybrid: evalMetrics(hybrid, queries),
+      ...(graph ? { graph: evalMetrics(graph, queries) } : {}),
       ...(rerank ? { rerank: evalMetrics(rerank, queries) } : {}),
     },
     abstainCorrect: {
@@ -178,6 +185,8 @@ export interface EvalSource {
   allow?: (row: { root: string; rel: string }) => boolean;
   /** The engine's local models: the `rerank` row runs through their reranker when it is on and ready (door 5). */
   local?: Pick<LocalModels, "reranker" | "rerank">;
+  /** The recall's graph sources (cerebro-entidades-resumos, door 5): the `graph` row while the graph is on. */
+  graph?: HybridRecallOptions["graph"];
 }
 
 const relsOf = (files: readonly FileRow[]): string[] => files.map((file) => normalPath(file.rel));
@@ -192,6 +201,7 @@ export async function evalRankings(source: EvalSource, queries: readonly EvalQue
   const { db, paths, settings, semantic, allow } = source;
   const out: EvalRankings = { and: [], or: [], semantic: [], hybrid: [], abstained: [] };
   const reranker = settings.memory.recall.rerank.enabled ? (source.local?.reranker() ?? null) : null;
+  if (settings.memory.recall.graph.enabled) out.graph = [];
   if (reranker) out.rerank = [];
   for (const { q } of queries) {
     const filters = { query: q, limit: EVAL_DEPTH, ...(allow ? { allow } : {}) };
@@ -207,9 +217,12 @@ export async function evalRankings(source: EvalSource, queries: readonly EvalQue
     const run = await runRecall(db, paths, settings, q, {
       semantic,
       ...(reranker && source.local ? { local: source.local } : {}),
+      ...(source.graph ? { graph: source.graph } : {}),
     });
     out.hybrid.push(relsOf(run.fused.slice(0, EVAL_DEPTH)));
-    out.rerank?.push(relsOf((run.reranked ?? run.fused).slice(0, EVAL_DEPTH)));
+    // The graph does not run when the recall abstains: that question's ranking is empty in the report anyway.
+    out.graph?.push(relsOf((run.graphed ?? []).slice(0, EVAL_DEPTH)));
+    out.rerank?.push(relsOf((run.reranked ?? run.graphed ?? run.fused).slice(0, EVAL_DEPTH)));
     out.abstained.push(run.result.abstained);
   }
   return out;

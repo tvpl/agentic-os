@@ -1,4 +1,4 @@
-import type { FtsTable } from "./audienceIndex.js";
+import type { FtsTable, RelatedTable } from "./audienceIndex.js";
 import path from "node:path";
 import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
@@ -11,7 +11,9 @@ import {
   readWorkspaceText,
   type ReadScope,
 } from "../security/safeFs.js";
-import { fileRowFromDb, type FileRow } from "./indexer.js";
+import { fileRowFromDb, storedRowFilter, type FileRow } from "./indexer.js";
+import { coMentionEdges, computeEntities, readCorrections, readMentions } from "./entities.js";
+import { personalizedPageRank, pprOrder, pprSeeds, recallGraph } from "./pagerank.js";
 import { extractLinks } from "./linkParser.js";
 import { resolveWikilink } from "./links.js";
 import { readEscopo, readNatureza, type Escopo, type Natureza, type Passage } from "./natureza.js";
@@ -81,6 +83,15 @@ export interface HybridRecallOptions extends RecallOptions {
   local?: Pick<LocalModels, "reranker" | "rerank">;
   /** `rerank=false` in the query: the reranker is not called (it can only turn it off, G27). */
   rerank?: boolean;
+  /**
+   * The graph of the caller (cerebro-entidades-resumos, door 5), read while `memory.recall.graph.enabled` is on: its
+   * related table (the owner's by default) and the co-mention edges of its entities (worked out from the index by
+   * default, over the files its settings let through).
+   */
+  graph?: {
+    relatedTable?: RelatedTable;
+    coMentions?: () => ReadonlyArray<{ a: number; b: number; weight: number }>;
+  };
 }
 
 export type AbstainReason = "no_match" | "weak";
@@ -99,6 +110,8 @@ export interface RecallContext {
   natureza: Natureza | null;
   /** The file's scope, read through the closed list; null when it has none. */
   escopo: Escopo | null;
+  /** The file's place (1-based) in the personalized PageRank, while the graph is on (cerebro-entidades-resumos, door 5). */
+  graph?: number;
 }
 
 export interface RecallCandidate {
@@ -827,6 +840,8 @@ function answerFrom(prep: Prepared, order: readonly Fused[]): { answer: RecallCo
 export interface RecallRun {
   result: RecallResult;
   fused: FileRow[];
+  /** The order the graph gave (the fusion of the fused order and the PageRank's); null when it did not run. */
+  graphed: FileRow[] | null;
   /** The fused order as the reranker left it; null when it was not called. */
   reranked: FileRow[] | null;
 }
@@ -869,11 +884,15 @@ export async function runRecall(
   let outcome: RerankOutcome = plan === "call" ? "used" : plan;
   let answered = first;
   let reranked: Fused[] | null = null;
+  // cerebro-entidades-resumos, door 5 (Landing 5a): never when the recall abstains.
+  const graph = reason === null && config.graph.enabled ? graphOrder(prep, fused, opts) : null;
+  const order = graph?.order ?? fused;
+  if (graph) answered = answerFrom(prep, graph.order);
   if (plan === "call") {
     // Door 5: the best `candidates` sections of the fused order (each fused file's section, as the answer would take
     // it), every one of a file this caller may read; reordered by the reranker's "yes", the rest after them.
     const head: Array<{ cand: Fused; text: string }> = [];
-    for (const cand of fused) {
+    for (const cand of order) {
       if (head.length >= config.rerank.candidates) break;
       const best = prep.open(cand.file, cand.near)?.best;
       if (best) head.push({ cand, text: best.section.body.trim().slice(0, RERANK_CHARS) });
@@ -887,17 +906,67 @@ export async function runRecall(
         .sort((a, b) => b.score - a.score || a.i - b.i)
         .map((s) => s.cand);
       const taken = new Set(sorted);
-      reranked = [...sorted, ...fused.filter((cand) => !taken.has(cand))];
+      reranked = [...sorted, ...order.filter((cand) => !taken.has(cand))];
       answered = answerFrom(prep, reranked);
     } catch (error) {
       outcome = rerankFailure(error);
     }
   }
+  const result = resultOf(prep, fused, answered, reason, outcome, reranked !== null);
+  if (graph) {
+    const byPath = new Map(graph.ppr.map((cand, i) => [cand.file.path, i + 1]));
+    result.answerContext = result.answerContext.map((c) =>
+      byPath.has(c.path) ? { ...c, graph: byPath.get(c.path)! } : c,
+    );
+  }
   return {
-    result: resultOf(prep, fused, answered, reason, outcome, reranked !== null),
+    result,
     fused: fused.map((c) => c.file),
+    graphed: graph ? graph.order.map((c) => c.file) : null,
     reranked: reranked ? reranked.map((c) => c.file) : null,
   };
+}
+
+/**
+ * Door 5 (AC 40 to AC 44, Landing 5a): the personalized PageRank from the first 20 fused files over the caller's graph,
+ * its order (the fused files and at most 3 others every filter of the recall admits), and the RRF (k 60) of the fused
+ * order and that one.
+ */
+function graphOrder(
+  prep: Prepared,
+  fused: readonly Fused[],
+  opts: HybridRecallOptions,
+): { ppr: Fused[]; order: Fused[] } {
+  const { db, paths, settings, scope } = prep;
+  const allowRow = storedRowFilter(settings.excludes, { homeDir: paths.home });
+  const coMentions =
+    opts.graph?.coMentions ?? (() => coMentionEdges(computeEntities(readMentions(db, allowRow), readCorrections(db))));
+  const fusedIds = fused.map((c) => c.file.id);
+  const seeds = pprSeeds(fusedIds);
+  const graph = recallGraph(
+    db,
+    {
+      allowRow,
+      readable: (p) => isReadable(scope, p),
+      relatedTable: opts.graph?.relatedTable ?? "file_related",
+      coMentions,
+    },
+    seeds.keys(),
+  );
+  const { scores } = personalizedPageRank(graph, seeds);
+  const byId = new Map<number, Fused>(fused.map((c) => [c.file.id, c]));
+  const lookup = db.prepare("SELECT * FROM files WHERE id = ?");
+  const admit = (id: number): boolean => {
+    const row = lookup.get(id) as Record<string, unknown> | undefined;
+    if (!row) return false;
+    const file = fileRowFromDb(row);
+    if (!prep.admit(file)) return false;
+    byId.set(id, { file, score: 0, reasons: ["reached through the graph"], matched: new Set<string>() });
+    return true;
+  };
+  const ppr = pprOrder(fusedIds, scores, admit).map((id) => byId.get(id)!);
+  const order = fuse([fusedIds, ppr.map((c) => c.file.id)]).map(({ id }) => byId.get(id)!);
+  return { ppr, order };
 }
 
 /** The answer as returned: today's order (by score) unless the reranker ordered it, empty when abstained, within the budget. */

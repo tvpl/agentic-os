@@ -48,6 +48,8 @@ export const RECALL = {
   hops: 2,
   tokenBudget: 3000,
   rerank: { enabled: false, candidates: 20, timeoutMs: 15000 },
+  // cerebro-entidades-resumos, door 5: the server's settings carry the recall's graph switch
+  graph: { enabled: false },
 };
 
 export function status(semantic: Json = {}, indexing: Json = {}): Json {

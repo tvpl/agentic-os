@@ -48,6 +48,7 @@ import {
   readNote,
   hybridRecall,
   recallStats,
+  coMentionEdges,
   recentJournals,
   recordRecall,
   relatedFiles,
@@ -71,6 +72,7 @@ import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
 import { contextFilter, requireContext } from "./contexts.js";
+import { entityView } from "./entities.js";
 
 /**
  * What a run's own credential reads through the recall and the search (.specs/features/cerebro-contextos, doors 7 and
@@ -574,6 +576,11 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       semantic: ctx.semantic,
       local: ctx.localModels,
       ...(q.rerank === false ? { rerank: false } : {}),
+      // The graph, while it is on (cerebro-entidades-resumos, door 5): the caller's related edges and entities.
+      graph: {
+        relatedTable: relatedTableOf(req),
+        coMentions: () => coMentionEdges(entityView(ctx, view).entities),
+      },
     });
     if (q.record !== false) recordRecall(ctx.db, result);
     recordAgentRead(

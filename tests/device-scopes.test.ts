@@ -458,6 +458,9 @@ describe("S1 each route says who may call it", () => {
       "GET /api/memory/facts",
       // cerebro-organizar, door 10: the folder map, read as memory/notes/ and the run's folders
       "GET /api/memory/maps",
+      // cerebro-entidades-resumos, door 4: the entities, read as agents read
+      "GET /api/memory/entities",
+      "GET /api/memory/entities/:key",
     ];
     const WRITES = ["POST /api/memory/journal/append", "POST /api/memory/facts"];
     const probe = async (credential: string, route: { method: string; url: string }) => {

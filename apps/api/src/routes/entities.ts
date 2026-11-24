@@ -12,6 +12,13 @@ import { bind } from "../contract.js";
 import { httpError } from "./common.js";
 import { contextFilter } from "./contexts.js";
 
+/** The entities of an audience, cached by who reads and what is hidden from them (door 2; the recall's graph, door 5). */
+export const entityView = (ctx: AppContext, view: AccessView): ReturnType<AppContext["entities"]["read"]> =>
+  ctx.entities.read(
+    `${view.audience ?? "owner"}\u0000${JSON.stringify(view.settings.excludes)}`,
+    view.rowFilter(),
+  );
+
 /**
  * The entities of the second brain (.specs/features/cerebro-entidades-resumos, doors 2 to 4): the list and one entity,
  * read by the caller's audience (the owner, a paired device, a run's credential and the principal `mcp` each over the
@@ -24,12 +31,7 @@ export function registerEntityRoutes(app: FastifyInstance, ctx: AppContext): voi
       throw httpError(409, "The entities are off (memory.entities.enabled).", "entities_disabled");
     }
   };
-  /** The view of the caller's audience, cached by who reads and what is hidden from them. */
-  const viewOf = (view: AccessView) =>
-    ctx.entities.read(
-      `${view.audience ?? "owner"}\u0000${JSON.stringify(view.settings.excludes)}`,
-      view.rowFilter(),
-    );
+  const viewOf = (view: AccessView) => entityView(ctx, view);
   /** The files of a work context, by id (AC 31); undefined for none, `404 context_not_found` for an unknown id. */
   const withinOf = (view: AccessView, context: string | undefined) => {
     const inside = contextFilter(ctx, context, view.settings);

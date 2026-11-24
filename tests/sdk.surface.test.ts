@@ -237,6 +237,8 @@ describe("S5 the surface is a closed list", () => {
         "writeCorrection",
         // cerebro-entidades-resumos, batch B: the tool entity finds an entity by a name's normalized form (door 7)
         "entityNorm",
+        // and the co-mention edges the recall's graph reads, by audience (door 5)
+        "coMentionEdges",
       ].sort(),
     );
   });
