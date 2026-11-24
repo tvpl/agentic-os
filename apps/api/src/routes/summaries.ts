@@ -13,6 +13,7 @@ import { accessView, audienceView, type AccessView } from "../access.js";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
+import { recordAgentRead } from "./memory.js";
 
 /**
  * The summaries of an area or a work context (.specs/features/cerebro-entidades-resumos, door 6): `POST
@@ -218,7 +219,15 @@ export function registerSummaryRoutes(app: FastifyInstance, ctx: AppContext): vo
     return { items };
   });
 
-  bind(app, "memory.summaries.get", async ({ params: { kind, id } }, req) =>
-    readSummary(ctx, accessView(ctx, req.principal), kind, id),
-  );
+  bind(app, "memory.summaries.get", async ({ params: { kind, id } }, req) => {
+    const summary = readSummary(ctx, accessView(ctx, req.principal), kind, id);
+    // An agent's read (the tool `summary`) counts once, with each file its paragraphs cite.
+    recordAgentRead(
+      ctx,
+      req,
+      "summary",
+      ("paragraphs" in summary ? summary.paragraphs : []).flatMap((p) => p.citations.map((c) => c.path)),
+    );
+    return summary;
+  });
 }

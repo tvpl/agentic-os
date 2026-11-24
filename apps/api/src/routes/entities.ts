@@ -11,6 +11,7 @@ import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
 import { contextFilter } from "./contexts.js";
+import { recordAgentRead } from "./memory.js";
 import { findSuggestion } from "./suggestions.js";
 
 /** The entities of an audience, cached by who reads and what is hidden from them (door 2; the recall's graph, door 5). */
@@ -58,6 +59,13 @@ export function registerEntityRoutes(app: FastifyInstance, ctx: AppContext): voi
     const view = accessView(ctx, req.principal);
     const detail = entityDetail(ctx.db, viewOf(view), key, withinOf(view, q.context));
     if (!detail) throw httpError(404, "The entity does not exist.", "not_found");
+    // An agent's read (the tool `entity`, or a run's credential) counts once, with each file it was given a mention of.
+    recordAgentRead(
+      ctx,
+      req,
+      "entity",
+      detail.mentions.map((m) => m.path),
+    );
     return detail;
   });
 

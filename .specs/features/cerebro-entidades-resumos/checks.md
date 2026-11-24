@@ -1086,3 +1086,12 @@ typecheck` and `npm run lint` exit 0; every `Proof:` line of C73-C88 and C26 pas
   `docs/security.md` (a bullet after "Agents.") and `legal/PRIVACY.md` (a paragraph at the end of section 5); its
   proof, C100, is batch E's.
 - **Abandoned:** nothing.
+
+Status of batch E (C89-C100):
+
+- C95, C96, the MCP tool list and the agents' usage of the new reads: closed. `GET /api/memory/entities/:key` records
+  the tool `entity` with the paths of the mentions it answers, and `GET /api/memory/summaries/:kind/:id` the tool
+  `summary` with the paths its paragraphs cite, through `recordAgentRead` (C10, door 7; now exported by
+  `routes/memory.ts`); the owner and a device add nothing, and the list `GET /api/memory/entities` is not counted (it
+  names no file), so `entity` by name is one call. Proofs: `entidades.mcp` (C95 1, C96 2), `perguntar.mcp` C50 1,
+  `perguntar.usage` C53 1

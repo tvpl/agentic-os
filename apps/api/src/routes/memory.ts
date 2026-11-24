@@ -103,7 +103,12 @@ function runReach(
  * One read of an agent (cerebro-perguntar, door 7): the principal `mcp` (its client) or a run's own credential
  * (`run:<provider>`) adds the call and the paths it was given to `agents.usage`; the owner and a device add nothing.
  */
-function recordAgentRead(ctx: AppContext, req: FastifyRequest, tool: string, paths: readonly string[]): void {
+export function recordAgentRead(
+  ctx: AppContext,
+  req: FastifyRequest,
+  tool: string,
+  paths: readonly string[],
+): void {
   const principal = req.principal;
   const client =
     principal?.kind === "mcp"

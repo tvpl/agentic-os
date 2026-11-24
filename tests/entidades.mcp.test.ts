@@ -412,3 +412,166 @@ describe("C41 the three new tools read as an agent", () => {
     }
   });
 });
+
+// ---- batch E, the cross-cutting checks of the MCP (C95, C96) -------------------------------------------------------
+
+/** The 13 tools of C10, in tools/list order. */
+const C10_TOOLS = [
+  "recall",
+  "skills_list",
+  "skills_run",
+  "journal_append",
+  "facts_assert",
+  "facts_query",
+  "note_create",
+  "note_read",
+  "note_save",
+  "inbox_unread",
+  "search",
+  "links",
+  "hygiene",
+];
+
+describe("C95 the MCP tool list", () => {
+  it("C95 tools/list is the 13 of C10 then entities, entity and summary with door 7's input schemas, and GET /api/mcp gives the three kind read", async () => {
+    const api: McpApi = {
+      get: async <T>() => ({}) as T,
+      post: async <T>() => ({}) as T,
+      put: async <T>() => ({}) as T,
+    };
+    const list = (await handleMcpRequest(
+      { jsonrpc: "2.0", id: 1, method: "tools/list" },
+      { name: "mordomo", version: "0", tools: mordomoTools(api) },
+    )) as { result: { tools: Array<{ name: string; inputSchema: Json }> } };
+    const tools = list.result.tools;
+    expect(tools.map((t) => t.name)).toEqual([...C10_TOOLS, "entities", "entity", "summary"]);
+    expect(tools).toHaveLength(16);
+    // door 7: entities (query?, kind? of the four kinds, limit?), entity (name or key), summary (area or context)
+    expect(tools.slice(13).map((t) => ({ name: t.name, inputSchema: t.inputSchema }))).toEqual([
+      {
+        name: "entities",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            kind: { type: "string", enum: ["perfil", "projeto", "tag", "termo"] },
+            limit: { type: "number" },
+          },
+        },
+      },
+      {
+        name: "entity",
+        inputSchema: { type: "object", properties: { name: { type: "string" }, key: { type: "string" } } },
+      },
+      {
+        name: "summary",
+        inputSchema: {
+          type: "object",
+          properties: { area: { type: "string" }, context: { type: "string" } },
+        },
+      },
+    ]);
+
+    await fresh(async (w) => {
+      const res = await w.call("GET", "/api/mcp");
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect((res.body.tools as Json[]).map((t) => t.name)).toEqual(tools.map((t) => t.name));
+      expect((res.body.tools as Json[]).slice(13)).toEqual([
+        { name: "entities", kind: "read" },
+        { name: "entity", kind: "read" },
+        { name: "summary", kind: "read" },
+      ]);
+    });
+  });
+});
+
+describe("C96 the agents' usage counts the new reads", () => {
+  const usage = async (w: McpWorld): Promise<Json> => {
+    const res = await w.call("GET", "/api/mcp");
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return res.body.usage as Json;
+  };
+  const countOf = (u: Json, name: string) =>
+    ((u.byTool as Json[]).find((c) => c.name === name)?.calls as number) ?? 0;
+  const readsOf = (u: Json, p: string) =>
+    ((u.paths as Json[]).find((x) => x.path === p)?.reads as number) ?? 0;
+
+  it("C96 an MCP entity adds 1 to byTool.entity and 1 read per mentioned path; the owner's read of the entity adds nothing", async () => {
+    await fresh(async (w) => {
+      const home = w.put(
+        path.join(w.root, "pessoas", "Ana Souza.md"),
+        "---\ntype: profile\ntitle: Ana Souza\naliases: [A. Souza]\n---\nficha.\n",
+      );
+      // two mentions in one file: still one read of it
+      const ata = w.put(path.join(w.root, "ata.md"), "Falei com Ana Souza hoje.\nE com A. Souza depois.\n");
+      const outra = w.put(path.join(w.root, "outra.md"), "Ana Souza mandou o plano.\n");
+      const fora = w.put(path.join(w.root, "fora.md"), "Nada de pessoas aqui.\n");
+      await w.index();
+      const before = await usage(w);
+
+      const answer = await w.mcp("entity", { name: "Ana Souza" });
+      expect(answer.isError, answer.text).toBe(false);
+      const after = await usage(w);
+      expect(after.calls - before.calls).toBe(1);
+      expect(countOf(after, "entity") - countOf(before, "entity")).toBe(1);
+      expect([home, ata, outra, fora].map((p) => readsOf(after, p) - readsOf(before, p))).toEqual([
+        1, 1, 1, 0,
+      ]);
+
+      // by key, the same: one more call and one more read of each mentioned path
+      await w.mcp("entity", { key: "perfil:ana souza" });
+      const byKey = await usage(w);
+      expect(countOf(byKey, "entity") - countOf(after, "entity")).toBe(1);
+      expect([home, ata, outra, fora].map((p) => readsOf(byKey, p) - readsOf(after, p))).toEqual([
+        1, 1, 1, 0,
+      ]);
+
+      // the owner's read of the same route is not an agent's
+      expect(
+        (await w.call("GET", `/api/memory/entities/${encodeURIComponent("perfil:ana souza")}`)).status,
+      ).toBe(200);
+      expect(await usage(w)).toEqual(byKey);
+    });
+  });
+
+  it("C96 an MCP summary adds 1 to byTool.summary and 1 read per cited path; a source it does not cite and the owner's read add nothing", async () => {
+    await fresh(async (w) => {
+      const root = areaRoot(w, "projetos", "Projetos");
+      const a = note(w, path.join(root, "a.md"), "# A\n\n## Decisão\n\nO Atlas sai em março.\n", BEFORE);
+      const b = note(w, path.join(root, "b.md"), "# B\n\n## Fato\n\nA Borba contrata.\n", BEFORE);
+      const c = note(w, path.join(root, "c.md"), "# C\n\n## Nada\n\nSem citação.\n", BEFORE);
+      await w.index();
+      seedSummary(
+        w,
+        "resumo-c96",
+        "Projetos",
+        [recordedSource(a), recordedSource(b), recordedSource(c)],
+        NOW,
+        {
+          v: 1,
+          paragraphs: [
+            {
+              text: "O Atlas sai em março.",
+              citations: [
+                { path: a, section: "Decisão" },
+                { path: b, section: "Fato" },
+              ],
+            },
+            // a cited twice: one read of it
+            { text: "A decisão do Atlas.", citations: [{ path: a, section: "Decisão" }] },
+          ],
+        },
+      );
+      const before = await usage(w);
+      const answer = await w.mcp("summary", { area: "Projetos" });
+      expect(answer.isError, answer.text).toBe(false);
+      const after = await usage(w);
+      expect(after.calls - before.calls).toBe(1);
+      expect(countOf(after, "summary") - countOf(before, "summary")).toBe(1);
+      expect([a, b, c].map((p) => readsOf(after, p) - readsOf(before, p))).toEqual([1, 1, 0]);
+
+      expect((await w.call("GET", "/api/memory/summaries/area/Projetos")).status).toBe(200);
+      expect(await usage(w)).toEqual(after);
+    });
+  });
+});
