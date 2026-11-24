@@ -1685,6 +1685,19 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(177);"],
       head: ["    expect(operations).toBe(180);"],
     },
+    // cerebro-entidades-resumos, batch B: a run's own credential reads the two entity routes (door 4).
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos B: the run's read routes gain the two entity reads",
+      base: ['      "GET /api/memory/maps",', "    ];"],
+      head: [
+        '      "GET /api/memory/maps",',
+        "      // cerebro-entidades-resumos, door 4: the entities, read as agents read",
+        '      "GET /api/memory/entities",',
+        '      "GET /api/memory/entities/:key",',
+        "    ];",
+      ],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

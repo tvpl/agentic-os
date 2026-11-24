@@ -945,5 +945,5 @@ Status of batch B (C31-C40, C42-C52):
   `entidades.cli` (C52 2); C43 compares with `tests/fixtures/entidades/recall-c9.json`, the twelve answers read with
   the code of `2f708c7` before any change of this batch. Pins moved: the settings leaf (`settings.changed` v1 fixture,
   `busca.contract` C86's two defaults, the UI's `RECALL_DEFAULTS` and its `semanticSearchNet.ts` fixture), the run's
-  read routes in `device-scopes` C9 (S3's, missed in its commit), the internal barrel gains `coMentionEdges`
+  read routes in `device-scopes` C9 (S3's, missed in its commit) and its amendment in `sdk.api-thin` C29, the internal barrel gains `coMentionEdges`
   (`sdk.surface` C38), the recall's `answerContext` items gain `graph?` in `contracts/src/api/memory.ts`
