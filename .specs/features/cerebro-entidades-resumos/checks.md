@@ -217,7 +217,7 @@ a missing `name` and `key` is `name or key is required` (AC 37, door 7)
 Proof: `npx vitest run tests/entidades.mcp.test.ts -t "C40 "`
 
 **C41** - The three new tools read as an agent through the principal `mcp`: an entity of a folder hidden from agents is in no
-answer of `entities`, `entity` or `summary`; the routes they call are in `MCP_ROUTES`, which is now exactly the 14 of the C10
+answer of `entities`, `entity` or `summary`; the routes they call are in `MCP_ROUTES`, which is now exactly the 11 of the C10
 list plus `GET /api/memory/entities`, `GET /api/memory/entities/:key`, `GET /api/memory/summaries/:kind/:id` (`toEqual`)
 (door 7)
 Proof: `npx vitest run tests/entidades.mcp.test.ts -t "C41 "`
@@ -709,6 +709,15 @@ wrote could not hold.
   `Projetos Atlas` proves the stopword rule by itself.
 - **C26:** the `add` and `reject` rows are inserted by the test until batch D builds their writer (`accept`/`reject`); the
   proof is extended in batch D.
+
+## Correções do lote B
+
+- **C41, literal corrected by the orchestrator on 24/11/2026 (reported by the builder of batch B, not edited by it):** the C10
+  list of `MCP_ROUTES` has 11 routes, so the claim reads "the 11 of the C10 list plus" the three routes (14 in all), as Impact
+  says; it said "the 14".
+- **Door 5 as approved, a limit the build found:** an outsider the PageRank adds is only in the PageRank order, so the RRF puts
+  it after every fused file, and it is opened only when the fusion holds fewer files than `k`. C51 holds within this. Ranking
+  outsiders among the fused files would be a change to door 5, for the owner (recorded in `STATE.md`, Perguntas ao dono).
 
 ## Coverage
 
