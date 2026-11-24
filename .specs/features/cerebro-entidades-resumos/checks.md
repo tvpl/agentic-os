@@ -1118,3 +1118,21 @@ AppContext()`, as `cmdEval` and `cmdMcp` build it) and the harness's (`sugestoes
   section 7, after "Perguntar ao cérebro"; `docs/user-manual.md` names Second Brain → **Entidades** and **Resumos** in
   3.1; AC 105's text is batch D's (`docs/security.md`, `legal/PRIVACY.md` section 5). Proof: `entidades.contract`
   (C100 1)
+
+- **Boundary (batch E):** C89-C100 closed at `74f0c00` (C95-C96 at `2d907a0`, C89-C94, C97 and C98 at `d2a5324`, C99
+  at `71ef722`, C100 at `74f0c00`). On that tree `npm run build`, `npm run typecheck` and `npm run lint` exit 0; every
+  `Proof:` line of C89-C100 passes run alone and runs only its check's cases (counts above); `npx vitest run` at the
+  root has one failure, `tests/paineis.refresh.test.ts` C13 (as on the base: 3750 passed, 3 skipped). Routes 185,
+  owner routes 102, raised codes 105, migration 35, MCP tools 16, `MCP_ROUTES` 14, built-in skills 19; no event added.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) C96: the reads are
+  recorded by the two routes the tools call (tool `entity` with the paths of the mentions answered, tool `summary`
+  with the paths the returned paragraphs cite, each path once per call); the list of entities is not counted, so the
+  tool `entity` by name is one call; a run's `rc_` reading one entity counts too, as its recall does; (b) C89: the
+  Coverage rows of statuses of `GET /api/memory/entities` and `GET /api/memory/entities/:key` lack the `409
+entities_disabled` that C17 claims and the row of the new codes credits to C17, so the proof reads Coverage's pairs
+  as both rows together; (c) C99: "the suggestion scheduler" is read as the `suggestions` service of `agentServices`
+  plus its one schedule, `scheduleSuggestionBatches`, called only in `startServer` and proven through the real start
+  path; (d) the orchestrator's fix of the `index.entity_mentions` marker (`<kind>:<name>` per accepted name) was not
+  built: C85's claim says the SHA-256 "of the sorted `add` names" and its existing case asserts the hash of
+  `Bruno\nBruno Lima`, so the new shape cannot land without changing that check's literal; batch D's (b) still holds.
+- **Abandoned:** nothing.
