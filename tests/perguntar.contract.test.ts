@@ -208,6 +208,8 @@ describe("C64 the settings", () => {
       "brain-ask",
       // cerebro-entidades-resumos (door 6) adds brain-summarize after brain-ask
       "brain-summarize",
+      // and (door 9) brain-entities after it
+      "brain-entities",
     ]);
     expect(Object.keys(SettingsSchema.shape)).toHaveLength(30);
     expect(Object.keys(defaults)).toHaveLength(30);
@@ -291,10 +293,12 @@ describe("C66 the skill brain-ask", () => {
       .filter(Boolean)
       .sort();
     expect(baseSlugs).not.toContain("brain-ask");
-    // cerebro-entidades-resumos (door 6) adds brain-summarize after this feature
-    expect([...builtIn].sort()).toEqual([...baseSlugs, "brain-ask", "brain-summarize"].sort());
-    expect(builtIn).toHaveLength(baseSlugs.length + 2);
-    expect(builtIn).toHaveLength(18);
+    // cerebro-entidades-resumos (doors 6 and 9) adds brain-summarize and brain-entities after this feature
+    expect([...builtIn].sort()).toEqual(
+      [...baseSlugs, "brain-ask", "brain-summarize", "brain-entities"].sort(),
+    );
+    expect(builtIn).toHaveLength(baseSlugs.length + 3);
+    expect(builtIn).toHaveLength(19);
   });
 });
 

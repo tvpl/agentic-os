@@ -4,6 +4,7 @@ import type { HealthStatus, PermissionBroker, ProviderCapabilities, RunMode } fr
 import {
   ASK_SKILL,
   SUMMARY_SKILL,
+  SUGGESTIONS_SKILL,
   ConnectorDataCache,
   DashboardService,
   EntityReader,
@@ -94,11 +95,23 @@ const MEMORY_WRITES_PER_DAY = 500;
  */
 export interface AskService {
   available: () => boolean;
-  start: (input: { inputs: Record<string, string>; contextId?: string }) => string;
+  /** `startedBy`: who asked, the owner unless said (null: the service itself, as a routine). */
+  start: (input: {
+    inputs: Record<string, string>;
+    contextId?: string;
+    startedBy?: "owner" | null;
+  }) => string;
 }
 
 /** The skill a summary runs (cerebro-entidades-resumos, door 6): the same shape as the ask's. */
 export type SummaryService = AskService;
+
+/**
+ * The skill a batch of AI suggestions of entities runs (cerebro-entidades-resumos, door 9): the same shape as the ask's;
+ * the owner starts one (`POST /api/memory/entities/suggestions`), and only the service starts one on its own, at the end
+ * of an index pass (`scheduleSuggestionBatches`, from `startServer`).
+ */
+export type SuggestionService = AskService;
 
 /** The agents' usage record of an engine (door 7): add one read, and read what was recorded, `allow`'s paths only. */
 export interface AgentUsageRecorder {
@@ -119,6 +132,8 @@ export function agentServices(
   entities: EntityReader;
   /** The skill a summary runs (cerebro-entidades-resumos, door 6), as the ask's. */
   summaries: SummaryService;
+  /** The skill a batch of AI suggestions of entities runs (cerebro-entidades-resumos, door 9), as the ask's. */
+  suggestions: SuggestionService;
 } {
   /** A read-only memory skill the owner starts: whether it can run now, and its start. */
   const memorySkill = (slug: string): AskService => ({
@@ -132,13 +147,13 @@ export function agentServices(
       }
       return skill !== null && skill.enabled && engine.settings().memorySkills.includes(slug);
     },
-    start: ({ inputs, contextId }) =>
+    start: ({ inputs, contextId, startedBy }) =>
       engine.execution.startSkill(
         {
           slug,
           inputs,
           ...(contextId !== undefined ? { contextId } : {}),
-          startedBy: "owner",
+          startedBy: startedBy === undefined ? "owner" : startedBy,
         },
         { folderCheck: "launch" },
       ).runId,
@@ -147,6 +162,7 @@ export function agentServices(
     entities: new EntityReader(engine.db, engine.events),
     ask: memorySkill(ASK_SKILL),
     summaries: memorySkill(SUMMARY_SKILL),
+    suggestions: memorySkill(SUGGESTIONS_SKILL),
     usage: {
       record: (read) => recordAgentUsage(engine.db, read),
       read: (allow) => agentUsage(engine.db, allow),
@@ -184,6 +200,9 @@ export class AppContext extends MordomoEngine {
 
   /** The skill a summary of an area or a context runs (cerebro-entidades-resumos, door 6). */
   readonly summaries: SummaryService;
+
+  /** The skill a batch of AI suggestions of entities runs (cerebro-entidades-resumos, door 9). */
+  readonly suggestions: SuggestionService;
 
   private healthCache = new Map<ProviderId, { at: number; health: HealthStatus }>();
   private healthInFlight = new Map<ProviderId, Promise<HealthStatus>>();
@@ -243,6 +262,7 @@ export class AppContext extends MordomoEngine {
     this.agentUsage = agents.usage;
     this.entities = agents.entities;
     this.summaries = agents.summaries;
+    this.suggestions = agents.suggestions;
     this.unsubscribeCredentials = this.events.subscribe((e) => {
       if (e.type !== "run.finished") return;
       const runId = (e.payload as { runId?: string }).runId;

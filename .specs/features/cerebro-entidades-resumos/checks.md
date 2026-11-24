@@ -1033,3 +1033,31 @@ Status of batch C (C53-C72 and C41):
   for an area); (g) C96 (batch E) is not built here: a read of the tool `summary` is not yet counted in the agents'
   usage.
 - **Abandoned:** nothing.
+
+Status of batch D (C73-C88, and C26 extended):
+
+- S8 (API), the AI suggestions of entities (C73-C88): closed. `core/src/memory/suggestions.ts` (the batch's files: up to
+  20 Markdown files the agents read, today's policy, no router, `mtime` after the last batch's start, newest first; the
+  record of the batches in `meta` `entities.suggestions`; `known`; `checkSuggestions`, whole and suggestion by
+  suggestion, the cited line read from the stored text; `batchOutcome` over the run's status), the skill
+  `skills/brain-entities/SKILL.md` (`read_only`, inputs `files` and `known`), `memorySkills` default gains
+  `brain-entities`; `GET` and `POST /api/memory/entities/suggestions` (owner) in `apps/api/src/routes/suggestions.ts`,
+  the skill started through `agentServices`' `suggestions`; the automatic batch only from `startServer`
+  (`scheduleSuggestionBatches` on `index.finished`, its clock injected); `accept` and `reject` in `writeCorrection`
+  (`add` with `{ kind, aliases }` in `b`, or `merge`; `reject` with the norm; `409 correction_conflict` for a suggestion
+  no longer pending); the rule (e) `nome` (`findAcceptedNames`) and the marker `index.entity_mentions` = `1:<SHA-256 of
+the sorted accepted names>` (`entityMentionsMarker`), so an `add` or its undo re-extracts every file from the stored
+  text. Landing 9a and 10a, `Flow` step 7. AC 105's text is written in `docs/security.md` and `legal/PRIVACY.md` (its
+  proof, C100, is batch E's). Proofs: `sugestoes.routes` (C73 1, C74 5, C76 7, C77 1, C78 1, C79 1, C82 1, C83 1, C85 1,
+  C86 1, C87 1, C88 1), `sugestoes.layer` (C75 1, C80 1, C81 1, C84 6)
+- C26 extended: the `add` and `reject` rows of its case are written by `accept` and `reject` of a batch's suggestions
+  through the route, not inserted by the test. Proof: `entidades.corrections` (C26 3)
+- Pins moved: routes 183 → 185 (`api.contract` C1/C12/C53, `contracts.api`, `api.openapi` C15/C21 and `device-scopes`
+  operations), refusal-probe and event scenarios 183 → 185 (two scenarios in `contractWorld.ts`), owner 100 → 102,
+  non-public routes 181 → 183, raised codes 103 → 105 (`suggestions_in_progress`, `nothing_to_read`), checked answers
+  181 → 183, `EXPECTED_ROUTE_SCOPES`, `docs/security.md` rows and the counts `memoria.contract` C82 and
+  `paineis.contract` C60 read off them, `POST /api/memory/entities/suggestions` in the `forbidden_path` list (a skill
+  run's paths), the `sdk.api-thin` amendments of `device-scopes`, the routes the principal `mcp` is refused 167 → 169
+  (`perguntar.mcp` C42), the internal barrel (`sdk.surface` C38), the built-in skills 18 → 19 (`perguntar.contract`
+  C66, `skills-parse` C66) and the default `memorySkills` (`perguntar.contract` C64, `paineis.question` C56,
+  `organize.skill` C9, `builtin-context`)

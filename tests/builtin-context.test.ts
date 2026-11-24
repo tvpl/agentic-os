@@ -122,6 +122,8 @@ describe.skipIf(!POSIX)(
         "brain-ask",
         // cerebro-entidades-resumos (door 6) adds brain-summarize after brain-ask
         "brain-summarize",
+        // and (door 9) brain-entities after it
+        "brain-entities",
       ]);
       for (const skill of skills()) {
         const text = textFiles(skill.dir)
@@ -138,6 +140,7 @@ describe.skipIf(!POSIX)(
           .sort(),
       ).toEqual([
         "brain-ask",
+        "brain-entities",
         "brain-summarize",
         "consolidate-memory",
         "dashboard-answer",

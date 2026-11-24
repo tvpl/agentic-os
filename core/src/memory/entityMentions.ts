@@ -2,7 +2,7 @@ import path from "node:path";
 import { parseInlineFields } from "./fields.js";
 import { parseFrontMatter, type FrontMatter } from "./frontMatter.js";
 import { extractLinks, proseOf, type ParsedLink } from "./linkParser.js";
-import { mentionFold } from "./mentions.js";
+import { findMention, mentionFold } from "./mentions.js";
 import { STOPWORDS } from "./recall.js";
 
 /**
@@ -134,16 +134,50 @@ export function extractTerms(content: string): FoundTerm[] {
     .flatMap((text, i) => termsOfLine(text, i + 1));
 }
 
+/** A name or alias of an entity the owner accepted (an active `add` correction, door 10), with its kind. */
+export interface AcceptedName {
+  name: string;
+  kind: EntityKind;
+}
+
+/**
+ * Where the accepted names occur in a Markdown text (door 10, rule e; AC 99): each name or alias as a whole word after
+ * the fold (`findMention`), on a line of prose, never in the header, a fenced block, a code span or the address of a
+ * link. One per (line, name), in text order.
+ */
+export function findAcceptedNames(
+  content: string,
+  names: readonly AcceptedName[],
+): Array<AcceptedName & { line: number; column: number }> {
+  if (names.length === 0) return [];
+  const out: Array<AcceptedName & { line: number; column: number }> = [];
+  withoutAddresses(proseOf(content))
+    .split("\n")
+    .forEach((text, i) => {
+      for (const accepted of names) {
+        const hit = findMention(text, accepted.name);
+        if (hit) out.push({ ...accepted, line: i + 1, column: hit.start });
+      }
+    });
+  return out.sort((a, b) => a.line - b.line || a.column - b.column);
+}
+
 /** What a link of the file is, when it leads to the home note of an entity (door 1, rule b). */
 export type HomeOf = (link: ParsedLink) => { kind: "perfil" | "projeto"; name: string } | null;
 
 /**
  * The mentions of one Markdown file (door 1): (a) `nota` when its `type` is `profile` or `project`, its title (or file
  * name without extension) and each alias, at line 1; (b) `link`, each link `home` resolves to a home note, at its line;
- * (c) `tag`, each tag of `noteTags` at the line where it is written (the `tags:` line of the header); (d) `termo`. One row
- * per (line, proof, norm), the first 200 in text order (line, then column); a name whose norm is empty gives no row.
+ * (c) `tag`, each tag of `noteTags` at the line where it is written (the `tags:` line of the header); (d) `termo`; (e)
+ * `nome`, each of the `accepted` names (door 10). One row per (line, proof, norm), the first 200 in text order (line,
+ * then column); a name whose norm is empty gives no row.
  */
-export function extractMentions(content: string, file: string, home?: HomeOf): ExtractedMention[] {
+export function extractMentions(
+  content: string,
+  file: string,
+  home?: HomeOf,
+  accepted: readonly AcceptedName[] = [],
+): ExtractedMention[] {
   const header = parseFrontMatter(content);
   const found: Array<ExtractedMention & { column: number }> = [];
   const add = (line: number, column: number, proof: MentionProof, kind: EntityKind, name: string) => {
@@ -182,6 +216,7 @@ export function extractMentions(content: string, file: string, home?: HomeOf): E
   }
 
   for (const term of extractTerms(content)) add(term.line, term.column, "termo", "termo", term.name);
+  for (const hit of findAcceptedNames(content, accepted)) add(hit.line, hit.column, "nome", hit.kind, hit.name);
 
   found.sort((a, b) => a.line - b.line || a.column - b.column);
   const seen = new Set<string>();

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { Db } from "../db/db.js";
@@ -14,12 +15,14 @@ import { parsePassages, type Passage } from "./natureza.js";
 import { parseTasks, type ParsedTask } from "./tasks.js";
 import { extractLinks, type ParsedLink } from "./linkParser.js";
 import { linkResolver } from "./links.js";
+import { acceptedNames } from "./entities.js";
 import {
   ENTITY_MENTIONS_MAX,
   entityNorm,
   extractMentions,
   homeKindOf,
   noteTags,
+  type AcceptedName,
   noteTitle,
   stemOf,
   type ExtractedMention,
@@ -111,10 +114,19 @@ const NOTE_TASKS_VERSION = "1";
 /**
  * Which version of the extraction the stored `entity_mentions` come from (.specs/features/cerebro-entidades-resumos,
  * door 1): the first full pass after migration 35 (or after the version moves, or after the entities are turned back
- * on) fills them from the stored text, opening no file, and then writes it.
+ * on) fills them from the stored text, opening no file, and then writes it. With names the owner accepted (door 10),
+ * the value is the version, `:` and the SHA-256 of the sorted names (`entityMentionsMarker`), so accepting or undoing
+ * an `add` makes the next full pass read every file again from the stored text.
  */
 const ENTITY_MENTIONS_KEY = "index.entity_mentions";
 const ENTITY_MENTIONS_VERSION = "1";
+
+/** The marker of `index.entity_mentions` for the names the owner accepted (door 10). */
+export function entityMentionsMarker(accepted: readonly AcceptedName[]): string {
+  const names = [...new Set(accepted.map((a) => a.name))].sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
+  if (names.length === 0) return ENTITY_MENTIONS_VERSION;
+  return `${ENTITY_MENTIONS_VERSION}:${crypto.createHash("sha256").update(names.join("\n")).digest("hex")}`;
+}
 /** When the related-by-content edges were last refreshed: the files whose terms are newer than this still owe them. */
 const RELATED_AT_KEY = "index.related_at";
 
@@ -296,6 +308,8 @@ export class MemoryIndexer {
   private local: LocalEmbedding | undefined;
   /** Whether the pass that runs writes entity mentions (`memory.entities.enabled` when it started). */
   private mentionsOn = true;
+  /** The names the owner accepted when the pass started (door 10): rule (e) `nome` looks for them. */
+  private accepted: AcceptedName[] = [];
 
   constructor(
     private readonly db: Db,
@@ -648,6 +662,7 @@ export class MemoryIndexer {
       const filter = makeWorkspaceFilter(settings.excludes, this.filterOptions);
       const maxBytes = settings.limits.maxIndexedFileBytes;
       this.mentionsOn = settings.memory.entities.enabled;
+      this.accepted = this.mentionsOn ? acceptedNames(this.db) : [];
 
       // Deterministic root set: de-duplicated by resolved path (first entry
       // wins for the area). A directory that is itself another enabled root is
@@ -990,7 +1005,10 @@ export class MemoryIndexer {
       // From the text the index stores, as the backfill reads it: both give a file the same rows.
       passages: markdown ? parsePassages(content.slice(0, 200_000)) : [],
       tasks: markdown ? parseTasks(content.slice(0, 200_000)) : [],
-      mentions: markdown && this.mentionsOn ? extractMentions(content.slice(0, 200_000), full) : null,
+      mentions:
+        markdown && this.mentionsOn
+          ? extractMentions(content.slice(0, 200_000), full, undefined, this.accepted)
+          : null,
       markdown,
       whole,
     };
@@ -1162,7 +1180,8 @@ export class MemoryIndexer {
       }
       return;
     }
-    const whole = marker() !== ENTITY_MENTIONS_VERSION;
+    const expected = entityMentionsMarker(this.accepted);
+    const whole = marker() !== expected;
     if (whole && only) return;
 
     // The home notes (door 1, a) and where each link leads today.
@@ -1239,6 +1258,7 @@ export class MemoryIndexer {
           (textOf.get(row.id) as { content: string } | undefined)?.content ?? "",
           row.path,
           (link) => homeOf(row.id, link),
+          this.accepted,
         ),
       }));
       this.write(() => slice.forEach((row) => this.writeMentions(row.id, row.mentions)));
@@ -1248,7 +1268,7 @@ export class MemoryIndexer {
       this.write(() =>
         this.db
           .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-          .run(ENTITY_MENTIONS_KEY, ENTITY_MENTIONS_VERSION),
+          .run(ENTITY_MENTIONS_KEY, expected),
       );
     }
   }

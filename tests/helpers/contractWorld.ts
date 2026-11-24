@@ -661,6 +661,26 @@ export const SCENARIOS: Record<string, Scenario> = {
       return w.call("POST", "/api/memory/summaries", { scope: { kind: "area", id: "Projetos" } });
     },
   },
+  // cerebro-entidades-resumos, batch D (door 9): the suggestions, and a batch started (a run of the fake CLI over the
+  // notes that changed since the last one; an open batch is waited for first, so the lock of AC 90 is free)
+  [key("GET", "/api/memory/entities/suggestions")]: {
+    run: (w) => w.call("GET", "/api/memory/entities/suggestions"),
+  },
+  [key("POST", "/api/memory/entities/suggestions")]: {
+    run: async (w) => {
+      for (const run of w.ctx.runs.list({ limit: 200 })) {
+        if (run.skillSlug === "brain-entities") await w.ctx.execution.wait(run.id);
+      }
+      // a note changed since the last batch, so that there is something to read
+      fs.writeFileSync(
+        path.join(path.dirname(w.ids.noteFile), `sugestoes-${Date.now()}.md`),
+        "# Sugestões\n\nReunião com Ana Souza.\n",
+      );
+      while (w.ctx.indexer.isIndexing()) await new Promise((resolve) => setTimeout(resolve, 5));
+      await w.ctx.indexer.indexAllAsync();
+      return w.call("POST", "/api/memory/entities/suggestions");
+    },
+  },
   // cerebro-perguntar, batch B (door 7): the CLIs' connection, the MCP tools and the agents' usage
   [key("GET", "/api/mcp")]: { run: (w) => w.call("GET", "/api/mcp") },
   [key("GET", "/api/memory/journal")]: { run: (w) => w.call("GET", "/api/memory/journal") },

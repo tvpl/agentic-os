@@ -250,6 +250,17 @@ describe("S5 the surface is a closed list", () => {
         "summaryRunOutcome",
         "summaryScopeFiles",
         "summaryState",
+        // cerebro-entidades-resumos, batch D: the AI suggestions, their batches and their check on read (doors 9, 10)
+        "SUGGESTIONS_SKILL",
+        "SUGGESTION_BATCH_INTERVAL_MS",
+        "CheckedSuggestion",
+        "batchOpen",
+        "batchOutcome",
+        "pendingSuggestions",
+        "recordSuggestionBatch",
+        "suggestionBatchFiles",
+        "suggestionBatches",
+        "suggestionKnown",
       ].sort(),
     );
   });

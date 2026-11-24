@@ -1,6 +1,13 @@
 import type { Db } from "../db/db.js";
 import type { EventBus } from "../events.js";
-import { ENTITY_KINDS, entityNorm, stemOf, type EntityKind, type MentionProof } from "./entityMentions.js";
+import {
+  ENTITY_KINDS,
+  entityNorm,
+  stemOf,
+  type AcceptedName,
+  type EntityKind,
+  type MentionProof,
+} from "./entityMentions.js";
 import { MENTION_EXCERPT_MAX, findMention, mentionExcerpt, mentionFold } from "./mentions.js";
 import { minhashMins } from "./minhash.js";
 
@@ -165,6 +172,23 @@ export function addPayload(b: string | null): { kind: EntityKind; aliases: strin
   } catch {
     return null;
   }
+}
+
+/**
+ * The names the owner accepted (door 10): the name and each alias of every active `add`, with its kind, distinct, in
+ * code-unit order. A pass of the index looks for them in the text (rule e, `nome`).
+ */
+export function acceptedNames(db: Db): AcceptedName[] {
+  const out = new Map<string, AcceptedName>();
+  for (const c of activeCorrections(readCorrections(db))) {
+    if (c.action !== "add") continue;
+    const payload = addPayload(c.b);
+    if (!payload) continue;
+    for (const name of [c.name ?? c.a, ...payload.aliases]) {
+      if (entityNorm(name) !== "" && !out.has(name)) out.set(name, { name, kind: payload.kind });
+    }
+  }
+  return [...out.values()].sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
 }
 
 /** Code-unit order, after the fold, for "first in alphabetical order" (never the locale's). */
@@ -508,6 +532,34 @@ export interface CorrectionInput {
   suggestion?: string | undefined;
 }
 
+/** A suggestion as accepting or rejecting it needs it (door 10): what passed today's check, by its id. */
+export interface SuggestionChoice {
+  kind: EntityKind;
+  name: string;
+  /** `entityNorm(name)`. */
+  norm: string;
+  aliases: string[];
+  mergeWith?: string | undefined;
+}
+
+/**
+ * Whether a suggestion that passed today's check is still to decide (AC 97, AC 101): its norm was not rejected, and,
+ * without `mergeWith`, it is no entity's yet; with it, the entity it names does not hold it yet.
+ */
+export function suggestionPending(
+  view: Pick<EntityView, "byKey" | "byNorm">,
+  corrections: readonly CorrectionRow[],
+  suggestion: Pick<SuggestionChoice, "norm" | "mergeWith">,
+): boolean {
+  const active = activeCorrections(corrections);
+  if (active.some((c) => c.action === "reject" && c.a === suggestion.norm)) return false;
+  if (suggestion.mergeWith === undefined) {
+    return !view.byNorm.has(suggestion.norm) && !active.some((c) => c.action === "add" && c.a === suggestion.norm);
+  }
+  const target = view.byKey.get(suggestion.mergeWith);
+  return target === undefined || !target.norms.includes(suggestion.norm);
+}
+
 /** A refusal of a correction, by its reason; the route answers it (`400`, `404` or `409` with the reason as the code). */
 export class CorrectionError extends Error {
   constructor(
@@ -541,10 +593,18 @@ function entityOf(view: EntityView, key: string | undefined, label: "key" | "oth
  * Write one correction of the owner (door 3) against the owner's view `view`, and answer the row written: `merge` and
  * `separate` of `key` and `other` (`409 correction_conflict` against an active opposite on the pair; `separate` of one
  * norm is `400 validation`), `ignore` and `rename` of `key`, `undo` of `id` (`404 not_found`, `409 correction_conflict`
- * when undone already), at most 2 000 active (`409 too_many_corrections`). `accept` and `reject` take a suggestion
- * (door 10): there is none to take yet, so either is `404 not_found`.
+ * when undone already), at most 2 000 active (`409 too_many_corrections`). `accept` and `reject` take a suggestion by
+ * its id (door 10), as `suggestion` finds it today (`404 not_found` when none): `accept` stores `add` (the norm, the
+ * name, and the kind and aliases as JSON in `b`, Landing 3a) or, with `mergeWith`, `merge` of the two norms; `reject`
+ * stores `reject` with the norm; either is `409 correction_conflict` for a suggestion no longer pending.
  */
-export function writeCorrection(db: Db, view: EntityView, input: CorrectionInput, now: number): CorrectionRow {
+export function writeCorrection(
+  db: Db,
+  view: EntityView,
+  input: CorrectionInput,
+  now: number,
+  suggestion: (id: string) => SuggestionChoice | null = () => null,
+): CorrectionRow {
   if (input.action === "undo") {
     if (input.id === undefined) throw new CorrectionError("validation", "id is required.");
     const row = db.prepare("SELECT undone_at FROM entity_overrides WHERE id = ?").get(input.id) as
@@ -555,16 +615,41 @@ export function writeCorrection(db: Db, view: EntityView, input: CorrectionInput
     db.prepare("UPDATE entity_overrides SET undone_at = ? WHERE id = ?").run(now, input.id);
     return readCorrections(db).find((c) => c.id === input.id)!;
   }
+  // The corrections as stored now (the view may have been worked out before the last one).
+  const stored = readCorrections(db);
+  const active = activeCorrections(stored);
+  let row: { action: CorrectionAction; a: string; b: string | null; name: string | null };
   if (input.action === "accept" || input.action === "reject") {
     if (input.suggestion === undefined) throw new CorrectionError("validation", "suggestion is required.");
-    throw new CorrectionError("not_found", `No suggestion ${input.suggestion}.`);
-  }
-
-  // The corrections as stored now (the view may have been worked out before the last one).
-  const active = activeCorrections(readCorrections(db));
-  const one = entityOf(view, input.key, "key");
-  let row: { action: CorrectionAction; a: string; b: string | null; name: string | null };
-  if (input.action === "merge" || input.action === "separate") {
+    const found = suggestion(input.suggestion);
+    if (!found) throw new CorrectionError("not_found", `No suggestion ${input.suggestion}.`);
+    if (!suggestionPending(view, stored, found)) {
+      throw new CorrectionError("correction_conflict", "The suggestion was accepted or rejected already.");
+    }
+    if (input.action === "reject") row = { action: "reject", a: found.norm, b: null, name: null };
+    else if (found.mergeWith === undefined) {
+      row = {
+        action: "add",
+        a: found.norm,
+        b: JSON.stringify({ kind: found.kind, aliases: found.aliases }),
+        name: found.name,
+      };
+    } else {
+      const target = entityOf(view, found.mergeWith, "key");
+      const separated = active.some(
+        (c) =>
+          c.action === "separate" &&
+          c.b !== null &&
+          ((target.entity.norms.includes(c.a) && c.b === found.norm) ||
+            (target.entity.norms.includes(c.b) && c.a === found.norm)),
+      );
+      if (separated) {
+        throw new CorrectionError("correction_conflict", "The pair has an active separate; undo it first.");
+      }
+      row = { action: "merge", a: target.norm, b: found.norm, name: null };
+    }
+  } else if (input.action === "merge" || input.action === "separate") {
+    const one = entityOf(view, input.key, "key");
     const two = entityOf(view, input.other, "other");
     const [a, b] = [one.norm, two.norm];
     if (a === b) throw new CorrectionError("validation", "Both names are the same normalized name.");
@@ -584,10 +669,11 @@ export function writeCorrection(db: Db, view: EntityView, input: CorrectionInput
     }
     row = { action: input.action, a, b, name: null };
   } else if (input.action === "rename") {
+    const one = entityOf(view, input.key, "key");
     const name = (input.name ?? "").trim();
     if (name === "") throw new CorrectionError("validation", "name is required.");
     row = { action: "rename", a: one.norm, b: null, name };
-  } else row = { action: "ignore", a: one.norm, b: null, name: null };
+  } else row = { action: "ignore", a: entityOf(view, input.key, "key").norm, b: null, name: null };
 
   if (active.length >= ENTITY_CORRECTIONS_MAX) {
     throw new CorrectionError("too_many_corrections", `There are ${ENTITY_CORRECTIONS_MAX} active corrections.`);

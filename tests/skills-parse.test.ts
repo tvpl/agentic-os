@@ -231,10 +231,10 @@ describe("C66 the built-in skill brain-ask (cerebro-perguntar, door 2)", () => {
         .filter(Boolean);
       expect(base).toHaveLength(16);
       const seeded = catalog.list().map((s) => s.slug);
-      // and cerebro-entidades-resumos (door 6) adds brain-summarize
-      expect(seeded).toHaveLength(base.length + 2);
-      expect([...seeded].sort()).toEqual([...base, "brain-ask", "brain-summarize"].sort());
-      expect(new SkillCatalog(resolvePaths(repo)).list()).toHaveLength(18);
+      // and cerebro-entidades-resumos (doors 6 and 9) adds brain-summarize and brain-entities
+      expect(seeded).toHaveLength(base.length + 3);
+      expect([...seeded].sort()).toEqual([...base, "brain-ask", "brain-summarize", "brain-entities"].sort());
+      expect(new SkillCatalog(resolvePaths(repo)).list()).toHaveLength(19);
     } finally {
       cleanup();
     }

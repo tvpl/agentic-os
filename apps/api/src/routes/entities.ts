@@ -11,6 +11,7 @@ import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
 import { contextFilter } from "./contexts.js";
+import { findSuggestion } from "./suggestions.js";
 
 /** The entities of an audience, cached by who reads and what is hidden from them (door 2; the recall's graph, door 5). */
 export const entityView = (ctx: AppContext, view: AccessView): ReturnType<AppContext["entities"]["read"]> =>
@@ -64,7 +65,8 @@ export function registerEntityRoutes(app: FastifyInstance, ctx: AppContext): voi
     enabled();
     let written;
     try {
-      written = writeCorrection(ctx.db, owner(req), body, Date.now());
+      // `accept` and `reject` name a suggestion as today's check lets it through (door 10).
+      written = writeCorrection(ctx.db, owner(req), body, Date.now(), (id) => findSuggestion(ctx, id));
     } catch (error) {
       if (!(error instanceof CorrectionError)) throw error;
       switch (error.reason) {

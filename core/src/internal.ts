@@ -153,6 +153,19 @@ export {
 } from "./memory/entities.js";
 // cerebro-entidades-resumos, door 7: the tool entity finds an entity by the normalized form of a name
 export { entityNorm } from "./memory/entityMentions.js";
+// cerebro-entidades-resumos, doors 9 and 10: the AI suggestions of entities, their batches and their check on read
+export {
+  SUGGESTIONS_SKILL,
+  SUGGESTION_BATCH_INTERVAL_MS,
+  batchOpen,
+  batchOutcome,
+  pendingSuggestions,
+  recordSuggestionBatch,
+  suggestionBatchFiles,
+  suggestionBatches,
+  suggestionKnown,
+  type CheckedSuggestion,
+} from "./memory/suggestions.js";
 // cerebro-entidades-resumos, door 6: a summary's scope and sources, the check of summary.json, its runs and its staleness
 export {
   SUMMARY_SKILL,

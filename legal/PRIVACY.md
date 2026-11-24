@@ -135,6 +135,12 @@ podem sair do seu computador. O MordomoOS não lê nem grava o conteúdo das sua
 as aprovações do MordomoOS limitam o que o agente pode fazer no seu computador, não o que o provedor faz
 com o que recebe.
 
+**Sugestões de entidades por IA.** Com as sugestões por IA ligadas (`memory.entities.llm.enabled`, desligadas por
+padrão), no máximo um lote a cada 24 horas, ao fim de uma indexação, ou quando você pede um lote ("Pedir sugestões
+agora"), o MordomoOS inicia a skill `brain-entities` no provedor padrão: o texto de até 20 notas por lote, as que mudaram
+desde o último lote, vai ao provedor, com os nomes das entidades que os agentes veem e os nomes que você recusou. Pastas
+escondidas dos agentes nunca entram no lote. Uma sugestão não muda nada até você aceitar.
+
 ## 6. Telemetria
 
 **Nenhuma.** O MordomoOS não tem telemetria de uso, de erros nem de desempenho; não inclui biblioteca de

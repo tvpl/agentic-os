@@ -2,6 +2,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { coMentionEdges } from "../core/src/memory/entities.js";
 import { notesViewWorld, type Json, type NotesViewWorld } from "./helpers/notesViewWorld.js";
+import { suggestion, sugestoesWorld } from "./helpers/sugestoesWorld.js";
 
 /**
  * .specs/features/cerebro-entidades-resumos, batch A, S2 (door 3): the owner's corrections through
@@ -270,44 +271,79 @@ describe("C26 undo", () => {
     });
   });
 
-  it("C26 undo of add and reject: the correction stops applying and is listed with undoneAt", async () => {
-    await fresh(async (w) => {
-      // `add` and `reject` are written by accepting and refusing a suggestion (door 10, batch D); here they are stored
-      // as door 3 and Landing 3a give them, and undone through the route.
-      const store = (action: string, a: string, b: string | null, name: string | null) =>
-        Number(
-          w.ctx.db
-            .prepare("INSERT INTO entity_overrides (action, a, b, name, created_at) VALUES (?, ?, ?, ?, ?)")
-            .run(action, a, b, name, now()).lastInsertRowid,
-        );
-      const add = store(
-        "add",
-        "mercado livre",
-        JSON.stringify({ kind: "perfil", aliases: [] }),
-        "Mercado Livre",
+  it("C26 undo of add and reject, each written by accepting and rejecting a suggestion: the correction stops applying and is listed with undoneAt", async () => {
+    // `add` and `reject` are written by `accept` and `reject` of a suggestion (door 10), through the route, over a batch
+    // of the fake CLI (batch D extends the proof, as the corrections of batch A said).
+    const s = await sugestoesWorld("mordomo-entidades-corr-c26-");
+    try {
+      const t = Date.now() - 3_600_000;
+      const n5 = s.note(path.join(s.notas, "n5.md"), "Reunião no Banco Central.\n", t);
+      s.note(path.join(s.notas, "n6.md"), "Visita ao Banco Central.\n", t);
+      const n7 = s.note(
+        path.join(s.notas, "n7.md"),
+        "compras no Mercado Livre.\nfalei com a carla dias.\n",
+        t,
       );
-      const reject = store("reject", "banco central", null, null);
-      w.ctx.entities.invalidate();
-      const before = await list(w);
-      expect(before.map((e) => e.key)).toContain("perfil:mercado livre");
-
-      let at = await undo(w, add);
-      expect(await keys(w)).not.toContain("perfil:mercado livre");
-      // the term is in one file: with the add undone it is no entity, so the correction is listed by the norm it holds
-      expect(
-        (await w.ctx.entities.read("owner", () => true)).corrections.find((c) => c.id === add),
-      ).toMatchObject({ action: "add", undoneAt: at });
-
-      const entitiesBefore = (await list(w)).map((e) => [e.key, e.name, e.files]);
-      at = await undo(w, reject);
-      expect((await listed(w, "termo:banco central")).get(reject)).toMatchObject({
-        action: "reject",
-        names: ["banco central"],
-        undoneAt: at,
+      await s.index();
+      const batch = await s.batch({
+        v: 1,
+        suggestions: [
+          suggestion("perfil", "Mercado Livre", [[n7, 1]]),
+          suggestion("perfil", "Carla Dias", [[n7, 2]]),
+        ],
       });
+      expect(n5).toBeTruthy();
+      const entities = async () =>
+        ((await s.call("GET", "/api/memory/entities?limit=200")).body.items as Json[]).map((e) => [
+          e.key,
+          e.name,
+          e.files,
+        ]);
+      const stored = (id: number) =>
+        s.ctx.db
+          .prepare("SELECT action, a, b, name, undone_at FROM entity_overrides WHERE id = ?")
+          .get(id) as Json;
+      const undoIt = async (id: number) => {
+        const res = await s.correct({ action: "undo", id });
+        expect(res.status, JSON.stringify(res.body)).toBe(200);
+        return stored(id).undone_at as number;
+      };
+      const listedBy = (id: number) =>
+        s.ctx.entities.read("owner-c26", () => true).corrections.find((c) => c.id === id);
+
+      // accept writes the add
+      const accepted = await s.correct({ action: "accept", suggestion: `${batch}:0` });
+      expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+      const add = accepted.body.correction.id as number;
+      expect(stored(add)).toMatchObject({ action: "add", a: "mercado livre", undone_at: null });
+      expect((await entities()).map(([k]) => k)).toContain("perfil:mercado livre");
+
+      let at = await undoIt(add);
+      expect((await entities()).map(([k]) => k)).not.toContain("perfil:mercado livre");
+      // the term is in one file: with the add undone it is no entity, so the correction is listed by the norm it holds
+      s.ctx.entities.invalidate();
+      expect(listedBy(add)).toMatchObject({ action: "add", undoneAt: at });
+
+      // reject writes the reject
+      const rejected = await s.correct({ action: "reject", suggestion: `${batch}:1` });
+      expect(rejected.status, JSON.stringify(rejected.body)).toBe(200);
+      const reject = rejected.body.correction.id as number;
+      expect(stored(reject)).toMatchObject({ action: "reject", a: "carla dias", undone_at: null });
+      // the accepted one, undone, is to decide again; the rejected one is not listed
+      expect(((await s.list()).body.items as Json[]).map((x) => x.id)).toEqual([`${batch}:0`]);
+
+      const entitiesBefore = await entities();
+      at = await undoIt(reject);
+      s.ctx.entities.invalidate();
+      expect(listedBy(reject)).toMatchObject({ action: "reject", a: "carla dias", undoneAt: at });
+      expect(stored(reject)).toMatchObject({ action: "reject", a: "carla dias", undone_at: at });
+      // the refusal no longer applies: the suggestion is listed again
+      expect(((await s.list()).body.items as Json[]).map((x) => x.id)).toEqual([`${batch}:0`, `${batch}:1`]);
       // a refusal applies to suggestions only (door 10): the entities read the same before and after its undo
-      expect((await list(w)).map((e) => [e.key, e.name, e.files])).toEqual(entitiesBefore);
-    });
+      expect(await entities()).toEqual(entitiesBefore);
+    } finally {
+      await s.close();
+    }
   });
 
   it("C26 undo of an unknown id is 404 not_found; of one undone already 409 correction_conflict", async () => {

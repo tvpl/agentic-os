@@ -5,6 +5,7 @@ import { FOLDER_LEVELS } from "../settings.js";
 import { IdParams, QueryFlag, err, notFound } from "./common.js";
 import { ContextQuery, contextNotFound } from "./contexts.js";
 import { route } from "./route.js";
+import { RunStatusSchema } from "./wire.js";
 
 // ---- schemas ---------------------------------------------------------------------------------------------------
 
@@ -1207,6 +1208,39 @@ const SummaryDetailSchema = SummaryListItemSchema.extend({
     .optional(),
 });
 
+/**
+ * An AI suggestion of an entity (.specs/features/cerebro-entidades-resumos, door 9): what a run of `brain-entities`
+ * proposed and today's check let through, with each line that proves it; it counts only once the owner accepts it.
+ */
+const SuggestionItemSchema = z.object({
+  /** `<run id>:<place in entities.json>`, what `accept` and `reject` name. */
+  id: z.string(),
+  kind: z.enum(["perfil", "projeto", "termo"]),
+  name: z.string(),
+  aliases: z.array(z.string()),
+  /** The key of the entity the suggestion would join, for a merge. */
+  mergeWith: z.string().optional(),
+  evidence: z.array(
+    z.object({
+      fileId: z.number().int(),
+      path: z.string(),
+      line: z.number().int().min(1),
+      /** At most 160 characters of the line, around the name. */
+      excerpt: z.string(),
+    }),
+  ),
+  state: z.enum(["pending"]),
+});
+const SuggestionBatchSchema = z.object({
+  /** The run of brain-entities. */
+  id: z.string(),
+  status: RunStatusSchema,
+  startedAt: z.number(),
+  finishedAt: z.number().optional(),
+  /** Why the batch gave no suggestion: its run ended otherwise than done, wrote no entities.json, or was refused whole. */
+  reason: z.string().optional(),
+});
+
 const AskDetailSchema = z.object({
   id: z.string(),
   question: z.string(),
@@ -2329,6 +2363,44 @@ export const memoryRoutes = {
       ),
       err(409, "skill_unavailable", "The brain-summarize skill is missing, disabled or not a memory skill"),
       err(409, "budget_exhausted", "The skill's daily budget is exhausted"),
+    ],
+  }),
+  // cerebro-entidades-resumos, door 9: the AI suggestions of entities, a run of the read-only skill brain-entities over up
+  // to 20 notes that changed, judged on read and worth nothing until the owner accepts one (door 10)
+  "memory.entities.suggestions.list": route({
+    method: "GET",
+    path: "/api/memory/entities/suggestions",
+    summary:
+      "The AI suggestions of entities of the newest finished batch that pass today's check and are still pending, the newest batch, and when the next automatic one may start",
+    tag: "memory",
+    scope: "owner",
+    responses: {
+      200: z.object({
+        items: z.array(SuggestionItemSchema),
+        lastBatch: SuggestionBatchSchema.optional(),
+        /** With memory.entities.llm.enabled on: from when the service may start a batch on its own. */
+        nextBatchAt: z.number().optional(),
+      }),
+    },
+  }),
+  "memory.entities.suggestions.start": route({
+    method: "POST",
+    path: "/api/memory/entities/suggestions",
+    summary:
+      "Ask for AI suggestions of entities now: a run of the brain-entities skill over up to 20 Markdown notes the agents read that changed since the last batch (202)",
+    tag: "memory",
+    scope: "owner",
+    responses: { 202: z.object({ id: z.string(), status: z.literal("running") }) },
+    errors: [
+      err(409, "nothing_to_read", "No note the agents read changed since the last batch"),
+      err(
+        409,
+        "suggestions_in_progress",
+        "A batch of brain-entities is queued, running or waiting for approval",
+      ),
+      err(409, "skill_unavailable", "The brain-entities skill is missing, disabled or not a memory skill"),
+      err(409, "budget_exhausted", "The skill's daily budget is exhausted"),
+      entitiesDisabled,
     ],
   }),
   "memory.journal": route({

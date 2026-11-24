@@ -1737,6 +1737,45 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(180);"],
       head: ["    expect(operations).toBe(183);"],
     },
+    // cerebro-entidades-resumos, batch D, added GET and POST /api/memory/entities/suggestions (owner, door 9). Each
+    // amends the head of the amendments above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos D: the two suggestion routes under /api",
+      base: ["    expect(routes).toHaveLength(181);"],
+      head: ["    expect(routes).toHaveLength(183);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos D: owners and scoped routes, with the two suggestion routes",
+      base: ["    expect([owners, scoped]).toEqual([100, 81]);"],
+      head: ["    expect([owners, scoped]).toEqual([102, 81]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos D: the registered routes, with the two suggestion routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(181);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(183);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos D: the routes of each scope, with the two suggestion routes",
+      times: 2,
+      base: ["toEqual({ owner: 100, monitor: 33, content: 41, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 102, monitor: 33, content: 41, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos D: the routes after the pairing passes, with the two suggestion routes",
+      base: ["    expect(apiRoutes()).toHaveLength(181);"],
+      head: ["    expect(apiRoutes()).toHaveLength(183);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-entidades-resumos D: the operations of the route document, with the two suggestion routes",
+      base: ["    expect(operations).toBe(183);"],
+      head: ["    expect(operations).toBe(185);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

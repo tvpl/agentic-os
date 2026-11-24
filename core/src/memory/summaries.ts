@@ -124,7 +124,7 @@ export interface ScopeFile {
 }
 
 /** The routers the engine writes into memory/: pointers to the files, never a source of their own. */
-function routerTest(paths: MordomoPaths): (file: { path: string }) => boolean {
+export function routerTest(paths: MordomoPaths): (file: { path: string }) => boolean {
   const master = path.join(paths.memory, "ROUTER.md");
   const areas = path.join(paths.memory, "areas") + path.sep;
   const contexts = path.join(paths.memory, "contexts") + path.sep;

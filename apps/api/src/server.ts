@@ -48,6 +48,7 @@ import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerAskRoutes } from "./routes/ask.js";
 import { registerEntityRoutes } from "./routes/entities.js";
 import { registerSummaryRoutes } from "./routes/summaries.js";
+import { registerSuggestionRoutes, scheduleSuggestionBatches } from "./routes/suggestions.js";
 import { registerMcpRoutes } from "./routes/mcp.js";
 import { registerCleanupRoutes } from "./routes/cleanup.js";
 import { registerReviewRoutes } from "./routes/reviews.js";
@@ -743,6 +744,7 @@ export async function buildServer(
   registerAskRoutes(app, ctx);
   registerEntityRoutes(app, ctx);
   registerSummaryRoutes(app, ctx);
+  registerSuggestionRoutes(app, ctx);
   registerMcpRoutes(app, ctx);
   registerCleanupRoutes(app, ctx);
   registerReviewRoutes(app, ctx);
@@ -958,6 +960,12 @@ export async function startServer(homeOverride?: string, sidecar?: SidecarOption
     onError: (message) => app.log.warn({ msg: `telegram inbound: ${message}` }),
   });
   ctx.telegramPoller.start();
+
+  // The AI suggestions of entities (.specs/features/cerebro-entidades-resumos, door 9): with the extraction on, a batch
+  // may start at the end of an index pass. Only the service that owns the home schedules it, never a CLI context.
+  scheduleSuggestionBatches(ctx, Date.now, (err) =>
+    app.log.error({ err, msg: "suggestion batch failed to start" }),
+  );
 
   // Approvals nobody answered expire on their own, and the daily budget is
   // checked on the same beat: sweep at boot, then hourly.
