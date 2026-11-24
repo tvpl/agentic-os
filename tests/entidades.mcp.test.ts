@@ -1,10 +1,16 @@
+import fs from "node:fs";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
 import { handleMcpRequest } from "../apps/api/src/mcp/stdio.js";
 import { httpApi, mordomoTools, type McpApi } from "../apps/api/src/mcp/mordomo.js";
+import { MCP_ROUTES } from "../apps/api/src/server.js";
 import { mcpRecorder } from "./helpers/mcpRecorder.js";
 import { memoriaWorld, type Json, type MemoriaWorld } from "./helpers/memoriaWorld.js";
+import { recordedSource } from "./helpers/resumosWorld.js";
+
+// The day the tool summary names is a local day (L-050): a zone that is not UTC.
+process.env.TZ = "America/Sao_Paulo";
 
 /**
  * .specs/features/cerebro-entidades-resumos, batch B, S3 (door 7): the MCP tools `entities` and `entity`, called through
@@ -158,5 +164,251 @@ describe("C40 the tool entity", () => {
       expect(answer.isError, answer.text).toBe(false);
       expect(answer.text.split("\n").filter((l) => /\.md:\d+ — /.test(l))).toHaveLength(20);
     });
+  });
+});
+
+// ---- batch C, S5 and C41 (door 7): the tool summary, and the three tools as agents read ---------------------------
+
+/** "Now" of the claims: 24/11/2026 10:00 local. */
+const NOW = new Date(2026, 10, 24, 10, 0).getTime();
+const BEFORE = NOW - 3 * 86_400_000;
+
+/** A new indexed folder of `area`. */
+function areaRoot(w: McpWorld, name: string, area: string): string {
+  const dir = w.outside(name);
+  w.update((s) => {
+    s.indexedFolders = [...s.indexedFolders, { path: dir, area, enabled: true }];
+  });
+  return dir;
+}
+
+function note(w: McpWorld, file: string, text: string, mtime: number): string {
+  w.put(file, text);
+  fs.utimesSync(file, mtime / 1000, mtime / 1000);
+  return file;
+}
+
+/** A finished run of brain-summarize of `area`, started at `startedAt`, whose summary.json is `content`. */
+function seedSummary(
+  w: McpWorld,
+  runId: string,
+  area: string,
+  sources: Array<{ path: string; size: number; mtime: number; sha256: string }>,
+  startedAt: number,
+  content: Json,
+): void {
+  w.ctx.db
+    .prepare(
+      "INSERT INTO runs (id, created_at, started_at, finished_at, origin, provider, status, duration_ms, skill_slug, started_by) VALUES (?, ?, ?, ?, 'skill', 'claude', 'done', 1000, 'brain-summarize', 'owner')",
+    )
+    .run(runId, startedAt, startedAt, startedAt + 1000);
+  w.ctx.db
+    .prepare(
+      "INSERT INTO summary_runs (run_id, scope_kind, scope_id, sources, started_at) VALUES (?, 'area', ?, ?, ?)",
+    )
+    .run(runId, area, JSON.stringify(sources), startedAt);
+  const dir = path.join(w.ctx.paths.artifacts, runId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "summary.json"), JSON.stringify(content));
+}
+
+describe("C69 the tool summary", () => {
+  it("C69 fresh: Resumo atual de 24/11/2026., then each paragraph followed by (<path> § <section>) per citation", async () => {
+    await fresh(async (w) => {
+      const root = areaRoot(w, "projetos", "Projetos");
+      const a = note(w, path.join(root, "a.md"), "# A\n\n## Decisão\n\nO Atlas sai em março.\n", BEFORE);
+      const b = note(w, path.join(root, "b.md"), "# B\n\n## Fato\n\nA Borba contrata.\n", BEFORE);
+      await w.index();
+      seedSummary(w, "resumo-fresco", "Projetos", [recordedSource(a), recordedSource(b)], NOW, {
+        v: 1,
+        paragraphs: [
+          {
+            text: "O Atlas sai em março.",
+            citations: [
+              { path: a, section: "Decisão" },
+              { path: b, section: "Fato" },
+            ],
+          },
+          { text: "A Borba contrata.", citations: [{ path: b, section: "Fato" }] },
+        ],
+      });
+      expect(await w.mcp("summary", { area: "Projetos" })).toEqual({
+        text: [
+          "Resumo atual de 24/11/2026.",
+          "",
+          `O Atlas sai em março. (${a} § Decisão) (${b} § Fato)`,
+          "",
+          `A Borba contrata. (${b} § Fato)`,
+        ].join("\n"),
+        isError: false,
+      });
+    });
+  });
+
+  it("C69 stale with 3 changed, 1 removed and 2 added: Resumo velho: 3 fontes mudaram, 1 saiu, 2 arquivos novos.", async () => {
+    await fresh(async (w) => {
+      const root = areaRoot(w, "docs", "Documentos");
+      const changed = ["a", "b", "c"].map((n) =>
+        note(w, path.join(root, `${n}.md`), `# ${n}\n\n## Fato\n\nTexto ${n}.\n`, BEFORE),
+      );
+      for (const n of ["novo1", "novo2"]) note(w, path.join(root, `${n}.md`), `# ${n}\n`, NOW + 3_600_000);
+      await w.index();
+      // as the run recorded them: each of the three a byte shorter and with other bytes; a fourth gone since
+      const recorded = [
+        ...changed.map((file) => ({
+          ...recordedSource(file),
+          size: fs.statSync(file).size - 1,
+          sha256: "0".repeat(64),
+        })),
+        { path: path.join(root, "saiu.md"), size: 10, mtime: BEFORE, sha256: "1".repeat(64) },
+      ];
+      seedSummary(w, "resumo-velho", "Documentos", recorded, NOW, {
+        v: 1,
+        paragraphs: [{ text: "Três textos.", citations: [{ path: changed[0]!, section: "Fato" }] }],
+      });
+      expect(await w.mcp("summary", { area: "Documentos" })).toEqual({
+        text: [
+          "Resumo velho: 3 fontes mudaram, 1 saiu, 2 arquivos novos.",
+          "",
+          `Três textos. (${changed[0]} § Fato)`,
+        ].join("\n"),
+        isError: false,
+      });
+    });
+  });
+
+  it("C69 missing: Ainda não há resumo de Projetos.", async () => {
+    await fresh(async (w) => {
+      areaRoot(w, "projetos", "Projetos");
+      await w.index();
+      expect(await w.mcp("summary", { area: "Projetos" })).toEqual({
+        text: "Ainda não há resumo de Projetos.",
+        isError: false,
+      });
+    });
+  });
+
+  it("C69 { area: nope } is an isError; neither area nor context is area or context is required", async () => {
+    await fresh(async (w) => {
+      const nope = await w.mcp("summary", { area: "nope" });
+      expect(nope.isError).toBe(true);
+      expect(nope.text).toBe("No area is named nope.");
+      expect(await w.mcp("summary", {})).toEqual({ text: "area or context is required", isError: true });
+    });
+    // what reaches the route: the scope's kind and id, through /api/v1
+    const recorder = await mcpRecorder();
+    try {
+      const api = httpApi(recorder.url, "t", () => "claude-code");
+      await callTool(api, "summary", { area: "Finanças" });
+      await callTool(api, "summary", { context: "cliente-x" });
+      expect(recorder.seen.map((r) => [r.method, r.path])).toEqual([
+        ["GET", `/api/v1/memory/summaries/area/${encodeURIComponent("Finanças")}`],
+        ["GET", "/api/v1/memory/summaries/context/cliente-x"],
+      ]);
+    } finally {
+      await recorder.close();
+    }
+  });
+});
+
+describe("C41 the three new tools read as an agent", () => {
+  it("C41 an entity of a folder hidden from agents is in no answer of entities, entity or summary", async () => {
+    await fresh(async (w) => {
+      const root = areaRoot(w, "projetos", "Projetos");
+      const aberta = note(
+        w,
+        path.join(root, "aberta.md"),
+        "# Aberta\n\n## Fato\n\nO Atlas existe.\n",
+        BEFORE,
+      );
+      const hidden = path.join(root, "sigilo");
+      const b = note(w, path.join(hidden, "b.md"), "# B\n\n## Fato\n\nO Projeto Sigilo avança.\n", BEFORE);
+      note(w, path.join(hidden, "c.md"), "# C\n\nVisita ao Projeto Sigilo.\n", BEFORE);
+      await w.index();
+      // the summary was written while the folder was still read by agents
+      seedSummary(w, "resumo-sigilo", "Projetos", [recordedSource(aberta), recordedSource(b)], NOW, {
+        v: 1,
+        paragraphs: [
+          { text: "O Atlas existe.", citations: [{ path: aberta, section: "Fato" }] },
+          { text: "O Projeto Sigilo avança.", citations: [{ path: b, section: "Fato" }] },
+        ],
+      });
+      expect((await w.mcp("summary", { area: "Projetos" })).text).toContain("Projeto Sigilo");
+      expect((await w.mcp("entities", { query: "proj" })).text).toBe("Projeto Sigilo (termo, 2 arquivos)");
+
+      w.update((s) => {
+        s.folderAccess = [{ path: hidden, agents: "hide", devices: "read" }];
+      });
+      await w.index();
+      // the owner still reads the entity
+      const owner = await w.call("GET", "/api/memory/entities?q=proj");
+      expect(owner.body.items.map((e: Json) => [e.key, e.files])).toEqual([["termo:projeto sigilo", 2]]);
+
+      const answers = [
+        await w.mcp("entities", { query: "proj" }),
+        await w.mcp("entities", {}),
+        await w.mcp("entity", { name: "Projeto Sigilo" }),
+        await w.mcp("entity", { key: "termo:projeto sigilo" }),
+        await w.mcp("summary", { area: "Projetos" }),
+      ];
+      expect(answers[0]).toEqual({ text: "No entity matched.", isError: false });
+      expect(answers[2]).toEqual({ text: "Entity not found: Projeto Sigilo", isError: true });
+      expect(answers[3]).toEqual({ text: "Entity not found: termo:projeto sigilo", isError: true });
+      // the two answers of entity name only what was asked; the others name nothing of the hidden folder
+      for (const answer of [answers[0]!, answers[1]!, answers[4]!])
+        expect(answer.text).not.toMatch(/sigilo/i);
+      expect(answers[4]).toEqual({ text: "Ainda não há resumo de Projetos.", isError: false });
+    });
+  });
+
+  it("C41 the routes the three tools call are in MCP_ROUTES, which is exactly the 11 of the C10 list plus the entities, one entity and one summary", async () => {
+    expect([...MCP_ROUTES].sort()).toEqual(
+      [
+        // the 11 of C10
+        "GET /api/memory/recall",
+        "GET /api/skills",
+        "POST /api/skills/:slug/run",
+        "POST /api/memory/journal/append",
+        "POST /api/memory/proposals",
+        "GET /api/memory/facts",
+        "GET /api/memory/note",
+        "GET /api/notifications",
+        "GET /api/memory/search",
+        "GET /api/memory/links",
+        "GET /api/memory/hygiene",
+        // the three of door 7
+        "GET /api/memory/entities",
+        "GET /api/memory/entities/:key",
+        "GET /api/memory/summaries/:kind/:id",
+      ].sort(),
+    );
+    expect(MCP_ROUTES.size).toBe(14);
+    const recorder = await mcpRecorder();
+    try {
+      const api = httpApi(recorder.url, "t", () => "claude-code");
+      await callTool(api, "entities", { query: "ana" });
+      await callTool(api, "entity", { key: "perfil:ana souza" });
+      await callTool(api, "entity", { name: "ana" });
+      await callTool(api, "summary", { area: "Projetos" });
+      await callTool(api, "summary", { context: "alfa" });
+      const routes = recorder.seen.map(
+        (r) =>
+          `${r.method} ${new URL(r.path, "http://x").pathname
+            .replace(/^\/api\/v1\//, "/api/")
+            .replace(/\/entities\/.+$/, "/entities/:key")
+            .replace(/\/summaries\/.+$/, "/summaries/:kind/:id")}`,
+      );
+      expect([...new Set(routes)].sort()).toEqual(
+        [
+          "GET /api/memory/entities",
+          "GET /api/memory/entities/:key",
+          "GET /api/memory/summaries/:kind/:id",
+        ].sort(),
+      );
+      for (const route of routes) expect(MCP_ROUTES.has(route), route).toBe(true);
+      for (const r of recorder.seen) expect(r.headers["x-mordomo-as"]).toBe("mcp");
+    } finally {
+      await recorder.close();
+    }
   });
 });

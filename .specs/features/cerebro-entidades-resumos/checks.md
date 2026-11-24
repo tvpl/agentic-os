@@ -1001,3 +1001,12 @@ Status of batch C (C53-C72 and C41):
   (`sdk.surface` C38), `MCP_ROUTES` 13 → 14 and the routes the principal `mcp` is refused 165 → 167 (`perguntar.mcp`
   C41, C42), the built-in skills 17 → 18 (`perguntar.contract` C66, `skills-parse` C66) and the default
   `memorySkills` (`perguntar.contract` C64, `paineis.question` C56, `organize.skill` C9, `builtin-context`)
+- S5 and S3, the tool `summary` and the three new tools as agents read (C69, C41): closed. The MCP tool `summary`
+  (`area` or `context`; `read`) reads `GET /api/v1/memory/summaries/:kind/:id` as the principal `mcp`. Its first line
+  is the state: `Resumo atual de <DD/MM/AAAA>.` (the local day), or
+  `Resumo velho: <n> fontes mudaram, <n> saíram, <n> arquivos novos.` (singular: `1 fonte mudou`, `1 saiu`,
+  `1 arquivo novo`), or `Ainda não há resumo de <nome>.`; then each paragraph, after a blank line, followed by
+  `(<path> § <section>)` per citation. A `404` is the `isError` `No <kind> is named <id>.`; `area` and `context`
+  together is `give area or context, not both`. Proofs: `entidades.mcp` (C69 4, C41 2). Pins moved: the MCP tool list
+  15 → 16 (`perguntar.mcp` C36 and C50, `perguntar.usage` C53, `rituais.access` C73), the recorder of
+  `mcpRecorder.ts` answers the summary's route

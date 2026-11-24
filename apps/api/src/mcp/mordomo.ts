@@ -110,6 +110,7 @@ export const MCP_TOOL_KINDS: Readonly<Record<string, "read" | "propose" | "owner
   hygiene: "read",
   entities: "read",
   entity: "read",
+  summary: "read",
 };
 
 /** An entity as `GET /api/memory/entities` lists it (cerebro-entidades-resumos, door 4). */
@@ -123,6 +124,33 @@ interface EntityLine {
 
 /** At most this many mentions in the answer of the tool `entity` (door 7). */
 const ENTITY_TOOL_MENTIONS = 20;
+
+/** A summary as `GET /api/memory/summaries/:kind/:id` answers it (cerebro-entidades-resumos, door 6). */
+interface SummaryRead {
+  scope: { name: string };
+  state: "missing" | "fresh" | "stale";
+  generatedAt?: number;
+  changes?: { changed: number; removed: number; added: number };
+  paragraphs?: Array<{ text: string; citations: Array<{ path: string; section: string }> }>;
+}
+
+/** A day as the tool `summary` says it, `DD/MM/AAAA` in the local zone. */
+const localDay = (ms: number): string => {
+  const d = new Date(ms);
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+};
+
+/** The first line of the tool `summary` (door 7): the state and, for a current summary, its day or what changed. */
+function summaryStateLine(s: SummaryRead): string {
+  if (s.state === "missing" || s.generatedAt === undefined) return `Ainda não há resumo de ${s.scope.name}.`;
+  if (s.state === "fresh") return `Resumo atual de ${localDay(s.generatedAt)}.`;
+  const { changed, removed, added } = s.changes ?? { changed: 0, removed: 0, added: 0 };
+  return [
+    `Resumo velho: ${changed === 1 ? "1 fonte mudou" : `${changed} fontes mudaram`}`,
+    removed === 1 ? "1 saiu" : `${removed} saíram`,
+    `${added === 1 ? "1 arquivo novo" : `${added} arquivos novos`}.`,
+  ].join(", ");
+}
 
 export function mordomoTools(api: McpApi): McpTool[] {
   return [
@@ -500,6 +528,36 @@ export function mordomoTools(api: McpApi): McpTool[] {
           ),
           "Related:",
           ...list(e.related.map((r) => `- ${r.name} (${r.kind}, ${r.shared} arquivos em comum)`)),
+        ].join("\n");
+      },
+    },
+    // cerebro-entidades-resumos, door 7: the summary of an area or a context, read as agents read
+    {
+      name: "summary",
+      description:
+        "The summary of an area or a work context of the notes: whether it is current or old (and what changed since), then its paragraphs, each with the (path § section) it cites. area: the area's name; or context: the context's id.",
+      inputSchema: {
+        type: "object",
+        properties: { area: { type: "string" }, context: { type: "string" } },
+      },
+      handler: async (a) => {
+        const area = optional(a.area, "area");
+        const context = optional(a.context, "context");
+        if (area === undefined && context === undefined) throw new Error("area or context is required");
+        if (area !== undefined && context !== undefined) throw new Error("give area or context, not both");
+        const [kind, id] = area !== undefined ? ["area", area] : ["context", context!];
+        let s: SummaryRead;
+        try {
+          s = await api.get<SummaryRead>(`/api/v1/memory/summaries/${kind}/${encodeURIComponent(id)}`);
+        } catch (err) {
+          if ((err as { status?: number }).status === 404) throw new Error(`No ${kind} is named ${id}.`);
+          throw err;
+        }
+        return [
+          summaryStateLine(s),
+          ...(s.paragraphs ?? []).map(
+            (p) => `\n${[p.text, ...p.citations.map((c) => `(${c.path} § ${c.section})`)].join(" ")}`,
+          ),
         ].join("\n");
       },
     },

@@ -243,7 +243,8 @@ describe("C73 who may call the seven routes", () => {
     const mcp = fs.readFileSync(path.join(repoRoot, "apps", "api", "src", "mcp", "mordomo.ts"), "utf8");
     expect(tools(mcp).length).toBeGreaterThan(5);
     // cerebro-perguntar, batch B, adds search, links and hygiene (its door 4); they reach none of these routes
-    // cerebro-entidades-resumos, batch B, adds entities and entity (its door 7); they reach none of these routes
+    // cerebro-entidades-resumos, batch B, adds entities and entity, and its batch C summary (its door 7); they reach none
+    // of these routes
     expect(tools(mcp)).toEqual(
       [
         ...tools(atBase("apps/api/src/mcp/mordomo.ts")),
@@ -252,6 +253,7 @@ describe("C73 who may call the seven routes", () => {
         "hygiene",
         "links",
         "search",
+        "summary",
       ].sort(),
     );
     const commands = (source: string) =>

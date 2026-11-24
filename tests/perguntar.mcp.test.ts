@@ -125,7 +125,10 @@ async function fresh<T>(fn: (w: McpWorld) => Promise<T>): Promise<T> {
 
 const code = (r: { status: number; body: Json }) => [r.status, r.body?.error?.code];
 
-/** One valid call of each of the 15 tools (C36, C50); cerebro-entidades-resumos batch B adds entities and entity. */
+/**
+ * One valid call of each of the 16 tools (C36, C50); cerebro-entidades-resumos batch B adds entities and entity, and
+ * its batch C summary.
+ */
 const ONE_CALL: Array<[string, Json]> = [
   ["recall", { question: "zebra" }],
   ["skills_list", {}],
@@ -142,10 +145,11 @@ const ONE_CALL: Array<[string, Json]> = [
   ["hygiene", {}],
   ["entities", { query: "ana" }],
   ["entity", { key: "perfil:ana souza" }],
+  ["summary", { area: "Projetos" }],
 ];
 
 describe("C36 every call carries the token, the principal and the client", () => {
-  it("C36 httpApi sends x-mordomo-token, x-mordomo-as: mcp and x-mordomo-client on every call of each of the 15 tools", async () => {
+  it("C36 httpApi sends x-mordomo-token, x-mordomo-as: mcp and x-mordomo-client on every call of each of the 16 tools", async () => {
     const recorder = await mcpRecorder();
     try {
       const api = httpApi(recorder.url, "owner-token", () => "claude-code");
@@ -162,7 +166,7 @@ describe("C36 every call carries the token, the principal and the client", () =>
           ).toEqual(["owner-token", "mcp", "claude-code"]);
         }
       }
-      expect(recorder.seen.length).toBeGreaterThanOrEqual(15);
+      expect(recorder.seen.length).toBeGreaterThanOrEqual(16);
     } finally {
       await recorder.close();
     }
@@ -364,7 +368,7 @@ describe("C40 the tools read as agents", () => {
   });
 });
 
-describe("C41 MCP_ROUTES is the 14 routes of the MCP tools", () => {
+describe("C41 MCP_ROUTES is the 14 routes of the 16 tools", () => {
   it("C41 MCP_ROUTES equals the 14 routes, and each passes through /api and /api/v1 with the principal mcp", async () => {
     expect([...MCP_ROUTES].sort()).toEqual(
       [
@@ -775,7 +779,7 @@ describe("C48 what the principal mcp keeps as today", () => {
 });
 
 describe("C50 the tool list", () => {
-  it("C50 tools/list is the 15 tools in order, and search, links and hygiene carry door 4's input schemas", async () => {
+  it("C50 tools/list is the 16 tools in order, and search, links and hygiene carry door 4's input schemas", async () => {
     const api: McpApi = {
       get: async <T>() => ({}) as T,
       post: async <T>() => ({}) as T,
@@ -787,7 +791,7 @@ describe("C50 the tool list", () => {
     )) as { result: { tools: Array<{ name: string; inputSchema: Json }> } };
     const tools = list.result.tools;
     expect(tools.map((t) => t.name)).toEqual(ONE_CALL.map(([name]) => name));
-    expect(tools.map((t) => t.name)).toHaveLength(15);
+    expect(tools.map((t) => t.name)).toHaveLength(16);
     expect(tools.slice(10, 13).map((t) => ({ name: t.name, inputSchema: t.inputSchema }))).toEqual([
       {
         name: "search",

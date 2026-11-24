@@ -205,7 +205,7 @@ describe("C102 the file each block is pasted into (batch E, plan.md Landing row 
 });
 
 describe("C53 the tools of GET /api/mcp", () => {
-  it("C53 the 15 tools in tools/list order, each read, propose or owner", async () => {
+  it("C53 the 16 tools in tools/list order, each read, propose or owner", async () => {
     await fresh(async (w) => {
       const res = await w.overview();
       expect(res.status).toBe(200);
@@ -226,6 +226,8 @@ describe("C53 the tools of GET /api/mcp", () => {
         // cerebro-entidades-resumos, batch B (door 7): the two entity reads
         { name: "entities", kind: "read" },
         { name: "entity", kind: "read" },
+        // and its batch C (door 7): the summary's read
+        { name: "summary", kind: "read" },
       ]);
     });
   });

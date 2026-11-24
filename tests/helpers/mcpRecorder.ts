@@ -44,6 +44,9 @@ function answer(method: string, path: string): unknown {
       duplicates: [],
       corrections: [],
     };
+  // cerebro-entidades-resumos, door 7: the summary's read
+  if (p.startsWith("/api/v1/memory/summaries/"))
+    return { scope: { kind: "area", id: "x", name: "x" }, state: "missing", sources: [], running: false };
   if (p === "/api/v1/memory/hygiene") {
     return {
       counts: { orphan: 0, "dangling-link": 0, stale: 0 },
