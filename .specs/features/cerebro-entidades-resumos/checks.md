@@ -693,6 +693,23 @@ Proof: `npm run test -w apps/command-centre -- src/brain/entities/entitiesMotion
 Proof: `npx vitest run tests/entidades.contract.test.ts -t "C132 "`
 Proof: `npx vitest run tests/bundle-size.test.ts -t "C31 a build within 5% of the latest recorded one passes"`
 
+## Correções do lote A
+
+Recorded by the orchestrator on 24/11/2026 from the builder's report; each claim's rule is unchanged, only a literal the check
+wrote could not hold.
+
+- **C3:** a wikilink resolves by file name, so `[[Ana Souza]]` and `[ficha](../pessoas/ana.md)` cannot reach the same note; the
+  proof names the note `pessoas/Ana Souza.md` and the Markdown link `../pessoas/Ana%20Souza.md`. Two `link` rows at lines 7 and
+  9 and the two negative cases are kept.
+- **C12:** no norm of 5 or 6 characters with ≥ 2.0 bits has a different partner with the same 3-grams, so the length edge is
+  proven with fixed identical 32-value signatures (estimated Jaccard 1.0), as C13 does; the entropy edge uses real 3-grams
+  (1.995 bits against 2.0 bits).
+- **C5:** `são` is one of the recall's stopwords, so stripping it would leave `Paulo` alone; a term's leading stopwords are
+  removed only while at least two words remain (reversible, below the door 1 bar), and the extra case `Os Projetos Atlas` →
+  `Projetos Atlas` proves the stopword rule by itself.
+- **C26:** the `add` and `reject` rows are inserted by the test until batch D builds their writer (`accept`/`reject`); the
+  proof is extended in batch D.
+
 ## Coverage
 
 | Set (size)                                                                          | Member -> proof                                                                                                                                                                                                  | Unproven |
