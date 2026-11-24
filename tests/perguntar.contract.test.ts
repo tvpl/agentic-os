@@ -206,6 +206,8 @@ describe("C64 the settings", () => {
       "organize-brain",
       "dashboard-answer",
       "brain-ask",
+      // cerebro-entidades-resumos (door 6) adds brain-summarize after brain-ask
+      "brain-summarize",
     ]);
     expect(Object.keys(SettingsSchema.shape)).toHaveLength(30);
     expect(Object.keys(defaults)).toHaveLength(30);
@@ -289,9 +291,10 @@ describe("C66 the skill brain-ask", () => {
       .filter(Boolean)
       .sort();
     expect(baseSlugs).not.toContain("brain-ask");
-    expect([...builtIn].sort()).toEqual([...baseSlugs, "brain-ask"].sort());
-    expect(builtIn).toHaveLength(baseSlugs.length + 1);
-    expect(builtIn).toHaveLength(17);
+    // cerebro-entidades-resumos (door 6) adds brain-summarize after this feature
+    expect([...builtIn].sort()).toEqual([...baseSlugs, "brain-ask", "brain-summarize"].sort());
+    expect(builtIn).toHaveLength(baseSlugs.length + 2);
+    expect(builtIn).toHaveLength(18);
   });
 });
 

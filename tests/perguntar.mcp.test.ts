@@ -364,8 +364,8 @@ describe("C40 the tools read as agents", () => {
   });
 });
 
-describe("C41 MCP_ROUTES is the 13 routes of the 15 tools", () => {
-  it("C41 MCP_ROUTES equals the 13 routes, and each passes through /api and /api/v1 with the principal mcp", async () => {
+describe("C41 MCP_ROUTES is the 14 routes of the MCP tools", () => {
+  it("C41 MCP_ROUTES equals the 14 routes, and each passes through /api and /api/v1 with the principal mcp", async () => {
     expect([...MCP_ROUTES].sort()).toEqual(
       [
         "GET /api/memory/recall",
@@ -382,6 +382,8 @@ describe("C41 MCP_ROUTES is the 13 routes of the 15 tools", () => {
         // cerebro-entidades-resumos, batch B (door 7)
         "GET /api/memory/entities",
         "GET /api/memory/entities/:key",
+        // cerebro-entidades-resumos, batch C (door 7): the summary's read
+        "GET /api/memory/summaries/:kind/:id",
       ].sort(),
     );
     await fresh(async (w) => {
@@ -405,6 +407,7 @@ describe("C41 MCP_ROUTES is the 13 routes of the 15 tools", () => {
         ["GET", "/memory/hygiene", undefined],
         ["GET", "/memory/entities", undefined],
         ["GET", `/memory/entities/${encodeURIComponent("tag:zebra")}`, undefined],
+        ["GET", "/memory/summaries/area/Projetos", undefined],
       ];
       const reached = new Set<string>();
       for (const prefix of ["/api", "/api/v1"]) {
@@ -415,7 +418,8 @@ describe("C41 MCP_ROUTES is the 13 routes of the 15 tools", () => {
             `${method} /api${rest
               .replace(/\?.*$/, "")
               .replace("/skills/workspace-digest/", "/skills/:slug/")
-              .replace(/\/entities\/.+$/, "/entities/:key")}`,
+              .replace(/\/entities\/.+$/, "/entities/:key")
+              .replace(/\/summaries\/.+$/, "/summaries/:kind/:id")}`,
           );
         }
       }
@@ -426,14 +430,15 @@ describe("C41 MCP_ROUTES is the 13 routes of the 15 tools", () => {
 });
 
 describe("C42 every other route refuses the principal mcp", () => {
-  it("C42 table-driven over the 180 routes of the API table minus the 13 and the public ones: 403 forbidden each, through /api and /api/v1", async () => {
+  it("C42 table-driven over the 183 routes of the API table minus the 14 and the public ones: 403 forbidden each, through /api and /api/v1", async () => {
     await fresh(async (w) => {
       const entries = Object.values(API);
-      // cerebro-entidades-resumos batch A: the three entity routes (177 -> 180); batch B puts the two reads in MCP_ROUTES
-      expect(entries).toHaveLength(180);
+      // cerebro-entidades-resumos batch A: the three entity routes (177 -> 180); batch B puts the two reads in MCP_ROUTES;
+      // batch C: the three summary routes (180 -> 183), and the read of one summary in MCP_ROUTES
+      expect(entries).toHaveLength(183);
       const others = entries.filter((e) => e.public !== true && !MCP_ROUTES.has(`${e.method} ${e.path}`));
-      expect(others).toHaveLength(180 - 13 - entries.filter((e) => e.public === true).length);
-      expect(others).toHaveLength(165);
+      expect(others).toHaveLength(183 - 14 - entries.filter((e) => e.public === true).length);
+      expect(others).toHaveLength(167);
       const problems: string[] = [];
       for (const entry of others) {
         for (const prefix of ["/api", "/api/v1"]) {

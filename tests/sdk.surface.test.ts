@@ -239,6 +239,17 @@ describe("S5 the surface is a closed list", () => {
         "entityNorm",
         // and the co-mention edges the recall's graph reads, by audience (door 5)
         "coMentionEdges",
+        // cerebro-entidades-resumos, batch C: a summary's scope and sources, its check, its runs and staleness (door 6)
+        "SUMMARY_SKILL",
+        "SummarySource",
+        "checkSummary",
+        "chooseSummarySources",
+        "judgeSummaryRun",
+        "resolveSummaryScope",
+        "sourceSha256",
+        "summaryRunOutcome",
+        "summaryScopeFiles",
+        "summaryState",
       ].sort(),
     );
   });

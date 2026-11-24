@@ -977,3 +977,27 @@ vitest run` at the root has one failure, `tests/paineis.refresh.test.ts` C13 (as
   says `MCP_ROUTES` is "the 14 of the C10 list plus" three routes, but the C10 list is 11 (Impact: 11 → 14), so its
   literal should read "the 11 of the C10 list plus"; left unedited.
 - **Abandoned:** nothing.
+
+Status of batch C (C53-C72 and C41):
+
+- S5, the summaries at the boundary and at their layer (C53-C68, C70-C72): closed. `core/src/memory/summaries.ts` (the
+  scope of an area by `files.area` or of a context by `contextMembership`; up to 30 sources the agents read, in the
+  order of the context map, routers left out; their size and mtime from the index and the SHA-256 of their bytes;
+  `checkSummary` with the rules of C10's door 3 and the recorded sources as the scope, a cited section looked for in
+  the stored text; `summaryRunOutcome` over the 8 run statuses; `summaryState`, which hashes a source only when its
+  size or mtime moved), the skill `skills/brain-summarize/SKILL.md` (`read_only`, inputs `scope` and `sources`),
+  `memorySkills` default gains `brain-summarize`, and `POST /api/memory/summaries` (owner),
+  `GET /api/memory/summaries` and `GET /api/memory/summaries/:kind/:id` (content, by the caller's audience) in
+  `apps/api/src/routes/summaries.ts`, the skill started through `agentServices`' `summaries` (the ask's shape);
+  Landing 6a and `Flow` step 6. `MCP_ROUTES` gains `GET /api/memory/summaries/:kind/:id` (11 + 3 = 14). Proofs:
+  `resumos.routes` (C53 1, C54 4, C55 1, C56 1, C57 3, C58 1, C59 1, C61 2, C62 1, C64 1, C67 1, C68 1, C70 1, C71
+  1), `resumos.layer` (C60 2, C63 1, C65 9, C66 1, C72 1). Pins moved: routes 180 → 183 (`api.contract` C1/C12,
+  `contracts.api`, `api.openapi` C15/C21 and `device-scopes` operations), refusal-probe and event scenarios 180 → 183
+  (three scenarios in `contractWorld.ts`), owner 99 → 100, content 39 → 41, non-public routes 178 → 181, raised codes
+  100 → 103 (`scope_not_found`, `empty_scope`, `summary_in_progress`), checked answers 178 → 181,
+  `EXPECTED_ROUTE_SCOPES`, `docs/security.md` rows and the counts `memoria.contract` C82 and `paineis.contract` C60 read
+  off them, `POST /api/memory/summaries` in the `forbidden_path` list (`contracts/src/api/errors.ts`; a skill run's
+  paths), the `sdk.api-thin` amendments of `device-scopes`, `memoria.access-paths` C159's URLs, the internal barrel
+  (`sdk.surface` C38), `MCP_ROUTES` 13 → 14 and the routes the principal `mcp` is refused 165 → 167 (`perguntar.mcp`
+  C41, C42), the built-in skills 17 → 18 (`perguntar.contract` C66, `skills-parse` C66) and the default
+  `memorySkills` (`perguntar.contract` C64, `paineis.question` C56, `organize.skill` C9, `builtin-context`)

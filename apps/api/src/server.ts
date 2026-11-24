@@ -47,6 +47,7 @@ import { resolveApprovalForChat } from "./approvalActions.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerAskRoutes } from "./routes/ask.js";
 import { registerEntityRoutes } from "./routes/entities.js";
+import { registerSummaryRoutes } from "./routes/summaries.js";
 import { registerMcpRoutes } from "./routes/mcp.js";
 import { registerCleanupRoutes } from "./routes/cleanup.js";
 import { registerReviewRoutes } from "./routes/reviews.js";
@@ -260,8 +261,8 @@ const RUN_API_READ_ROUTES = new Set([
 const RUN_API_WRITE_ROUTES = new Set(["POST /api/memory/journal/append", "POST /api/memory/facts"]);
 
 /**
- * The only routes the principal `mcp` may call (cerebro-perguntar, door 5): the ones the 15 tools of `mordomo mcp`
- * call (cerebro-entidades-resumos, door 7, adds the two entity reads), and no other; any other route is `403 forbidden`. Not containment: the process holds the owner's token and
+ * The only routes the principal `mcp` may call (cerebro-perguntar, door 5): the ones the 16 tools of `mordomo mcp`
+ * call (cerebro-entidades-resumos, door 7, adds the two entity reads and the summary's), and no other; any other route is `403 forbidden`. Not containment: the process holds the owner's token and
  * can leave the header out (docs/security.md).
  */
 export const MCP_ROUTES: ReadonlySet<string> = new Set([
@@ -278,6 +279,8 @@ export const MCP_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/memory/hygiene",
   "GET /api/memory/entities",
   "GET /api/memory/entities/:key",
+  // cerebro-entidades-resumos, door 7: the summary of an area or a context, read as agents read
+  "GET /api/memory/summaries/:kind/:id",
 ]);
 
 /** Who a credential is, with what the gate needs to judge the route (a device's scopes, whether a run may write). */
@@ -739,6 +742,7 @@ export async function buildServer(
   registerMemoryRoutes(app, ctx);
   registerAskRoutes(app, ctx);
   registerEntityRoutes(app, ctx);
+  registerSummaryRoutes(app, ctx);
   registerMcpRoutes(app, ctx);
   registerCleanupRoutes(app, ctx);
   registerReviewRoutes(app, ctx);

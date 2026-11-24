@@ -308,6 +308,8 @@ describe.skipIf(!POSIX)("S1 the skill organize-brain, its guide and its question
         "organize-brain",
         "dashboard-answer",
         "brain-ask",
+        // cerebro-entidades-resumos (door 6) adds brain-summarize after brain-ask
+        "brain-summarize",
       ]);
       first.settingsStore.save(first.settings());
       first.close();

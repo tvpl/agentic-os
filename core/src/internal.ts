@@ -153,6 +153,19 @@ export {
 } from "./memory/entities.js";
 // cerebro-entidades-resumos, door 7: the tool entity finds an entity by the normalized form of a name
 export { entityNorm } from "./memory/entityMentions.js";
+// cerebro-entidades-resumos, door 6: a summary's scope and sources, the check of summary.json, its runs and its staleness
+export {
+  SUMMARY_SKILL,
+  checkSummary,
+  chooseSummarySources,
+  judgeSummaryRun,
+  resolveSummaryScope,
+  sourceSha256,
+  summaryRunOutcome,
+  summaryScopeFiles,
+  summaryState,
+  type SummarySource,
+} from "./memory/summaries.js";
 export { scanCleanupScope } from "./memory/cleanupScan.js";
 export { applyCleanup, cleanupScanFor, saveCleanupDecisions, undoCleanup } from "./memory/cleanupApply.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";

@@ -1134,6 +1134,79 @@ const EntityDetailSchema = z.object({
   corrections: z.array(EntityCorrectionSchema),
 });
 
+/** A summary's scope (.specs/features/cerebro-entidades-resumos, door 6): an area of `settings.areas` or a work context. */
+const SUMMARY_SCOPE_KINDS = ["area", "context"] as const;
+const SummaryScopeInSchema = z.object({
+  kind: z.enum(SUMMARY_SCOPE_KINDS),
+  /** The area's name, or the context's id. */
+  id: z.string().min(1).max(200),
+});
+const SummaryScopeSchema = SummaryScopeInSchema.extend({
+  /** The area's name, or the context's name. */
+  name: z.string(),
+});
+/** A summary's state (door 6): none accepted, accepted with every source as it was, or accepted and old. */
+const SUMMARY_STATES = ["missing", "fresh", "stale"] as const;
+const SummaryChangesSchema = z.object({
+  /** Sources whose size or mtime changed and whose SHA-256 changed too. */
+  changed: z.number().int().min(0),
+  /** Sources gone from the index or from the scope. */
+  removed: z.number().int().min(0),
+  /** Files of the scope, not sources, whose mtime is after the run's start. */
+  added: z.number().int().min(0),
+});
+const scopeNotFound = err(
+  404,
+  "scope_not_found",
+  "The area is not in settings.areas, or the context id names none",
+);
+const SummaryListItemSchema = z.object({
+  scope: SummaryScopeSchema,
+  state: z.enum(SUMMARY_STATES),
+  /** The start of the run that wrote the current summary. */
+  generatedAt: z.number().optional(),
+  changes: SummaryChangesSchema.optional(),
+  /** Whether the newest run of the scope is still open. */
+  running: z.boolean(),
+  /** Why the newest run of the scope, when it is not the current one, gave no summary. */
+  lastError: z.string().optional(),
+});
+const SummaryDetailSchema = SummaryListItemSchema.extend({
+  paragraphs: z
+    .array(
+      z.object({
+        text: z.string(),
+        citations: z.array(
+          z.object({
+            path: z.string(),
+            section: z.string(),
+            name: z.string(),
+            fileId: z.number().int(),
+            natureza: z.enum(LABELLED_NATUREZAS).optional(),
+          }),
+        ),
+      }),
+    )
+    .optional(),
+  /** The sources the current summary read, as the caller sees them, each as it is today. */
+  sources: z.array(
+    z.object({
+      fileId: z.number().int().optional(),
+      path: z.string(),
+      name: z.string(),
+      state: z.enum(["same", "changed", "removed"]),
+    }),
+  ),
+  run: z
+    .object({
+      id: z.string(),
+      provider: z.string(),
+      startedAt: z.number(),
+      finishedAt: z.number().optional(),
+    })
+    .optional(),
+});
+
 const AskDetailSchema = z.object({
   id: z.string(),
   question: z.string(),
@@ -2213,6 +2286,49 @@ export const memoryRoutes = {
       ),
       err(409, "too_many_corrections", "2 000 corrections are active"),
       entitiesDisabled,
+    ],
+  }),
+  // cerebro-entidades-resumos, door 6: a summary of an area or a context is a run of the read-only skill brain-summarize,
+  // judged on read, and old when its sources changed
+  "memory.summaries.list": route({
+    method: "GET",
+    path: "/api/memory/summaries",
+    summary:
+      "The summaries of every area of settings.areas, then every work context, each with its state as the caller sees it",
+    tag: "memory",
+    scope: "content",
+    responses: { 200: z.object({ items: z.array(SummaryListItemSchema) }) },
+  }),
+  "memory.summaries.get": route({
+    method: "GET",
+    path: "/api/memory/summaries/:kind/:id",
+    summary:
+      "The summary of an area or a context: the newest run whose summary.json passes today, its paragraphs and sources as the caller sees them, fresh or stale",
+    tag: "memory",
+    scope: "content",
+    params: SummaryScopeInSchema,
+    responses: { 200: SummaryDetailSchema },
+    errors: [scopeNotFound],
+  }),
+  "memory.summaries.start": route({
+    method: "POST",
+    path: "/api/memory/summaries",
+    summary:
+      "Summarize an area or a context: up to 30 sources the agents read, recorded with their size, mtime and SHA-256, handed to the brain-summarize skill (202)",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({ scope: SummaryScopeInSchema }),
+    responses: { 202: z.object({ id: z.string(), status: z.literal("running") }) },
+    errors: [
+      scopeNotFound,
+      err(409, "empty_scope", "The scope has no file the agents read"),
+      err(
+        409,
+        "summary_in_progress",
+        "A brain-summarize run of this scope is queued, running or waiting for approval",
+      ),
+      err(409, "skill_unavailable", "The brain-summarize skill is missing, disabled or not a memory skill"),
+      err(409, "budget_exhausted", "The skill's daily budget is exhausted"),
     ],
   }),
   "memory.journal": route({

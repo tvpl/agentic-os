@@ -647,6 +647,20 @@ export const SCENARIOS: Record<string, Scenario> = {
       });
     },
   },
+  // cerebro-entidades-resumos, batch C (door 6): the summaries, the summary of the world's area, and a summary of it
+  // started (a run of the fake CLI; one of the scope still open is waited for first, so the lock of AC 50 is free)
+  [key("GET", "/api/memory/summaries")]: { run: (w) => w.call("GET", "/api/memory/summaries") },
+  [key("GET", "/api/memory/summaries/:kind/:id")]: {
+    run: (w) => w.call("GET", "/api/memory/summaries/area/Projetos"),
+  },
+  [key("POST", "/api/memory/summaries")]: {
+    run: async (w) => {
+      for (const run of w.ctx.runs.list({ limit: 200 })) {
+        if (run.skillSlug === "brain-summarize") await w.ctx.execution.wait(run.id);
+      }
+      return w.call("POST", "/api/memory/summaries", { scope: { kind: "area", id: "Projetos" } });
+    },
+  },
   // cerebro-perguntar, batch B (door 7): the CLIs' connection, the MCP tools and the agents' usage
   [key("GET", "/api/mcp")]: { run: (w) => w.call("GET", "/api/mcp") },
   [key("GET", "/api/memory/journal")]: { run: (w) => w.call("GET", "/api/memory/journal") },

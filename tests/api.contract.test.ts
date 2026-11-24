@@ -166,8 +166,9 @@ describe("S1 the route table and the registration", () => {
     // batch B: the week's archive and its finish (167 -> 169); batch C: the unlinked mentions and "Linkar" (169 -> 171);
     // cerebro-busca-significado batch C: the model catalog and its downloads (171 -> 173)
     // cerebro-perguntar batch A: the ask, its list and one ask (173 -> 176); batch B: GET /api/mcp (176 -> 177)
-    // cerebro-entidades-resumos batch A: the entities, one entity and the owner's corrections (177 -> 180)
-    expect(entries).toHaveLength(180);
+    // cerebro-entidades-resumos batch A: the entities, one entity and the owner's corrections (177 -> 180); batch C: the
+    // summaries, one summary and a summary's start (180 -> 183)
+    expect(entries).toHaveLength(183);
     for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
       const entry = API[want.id];
       expect(entry, key).toBeDefined();
@@ -220,10 +221,10 @@ describe("S1 the route table and the registration", () => {
     try {
       const router = app.apiRoutes.map((r) => `${r.method} ${r.url}`).sort();
       const table = entries.map(([, e]) => routeKey(e)).sort();
-      expect(router).toHaveLength(180);
+      expect(router).toHaveLength(183);
       expect(table).toEqual(router);
-      expect(new Set(table).size).toBe(180);
-      expect(new Set(entries.map(([id]) => id)).size).toBe(180);
+      expect(new Set(table).size).toBe(183);
+      expect(new Set(entries.map(([id]) => id)).size).toBe(183);
       for (const [id, entry] of entries) {
         expect(id, id).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)+$/);
         expect(entry.summary.length, `${id} summary`).toBeGreaterThan(8);
@@ -259,8 +260,9 @@ describe("S1 the route table and the registration", () => {
       // "Linkar" (owner)
       // and cerebro-busca-significado C, the two embedder routes (owner), and cerebro-perguntar A, the three ask routes
       // (owner), and its batch B, GET /api/mcp (owner)
-      // and cerebro-entidades-resumos A, the entities and one entity (content) and the corrections (owner)
-      expect(counts).toEqual({ owner: 99, monitor: 33, content: 39, run: 6, approve: 1, public: 2 });
+      // and cerebro-entidades-resumos A, the entities and one entity (content) and the corrections (owner), and its
+      // batch C, the summaries and one summary (content) and a summary's start (owner)
+      expect(counts).toEqual({ owner: 100, monitor: 33, content: 41, run: 6, approve: 1, public: 2 });
       expect(entries.filter(([, e]) => e.public && e.scope !== undefined)).toEqual([]);
 
       expect(
@@ -799,7 +801,7 @@ describe("S2 the real answer is checked", () => {
     // A route with no scenario, or a scenario for no route: both are a hole in this proof.
     expect(Object.keys(SCENARIOS).sort()).toEqual(router);
     expect(Object.keys(SCENARIOS).sort()).toEqual(tabled);
-    expect(results).toHaveLength(180);
+    expect(results).toHaveLength(183);
     const problems: string[] = [];
     for (const { key, entry, answer, id } of results) {
       const scenario = SCENARIOS[key]!;
@@ -1091,8 +1093,9 @@ describe("S2 the real answer is checked", () => {
     // `409 model_in_use` and `409 download_in_progress`
     // cerebro-perguntar, batch A (door 1): `409 ask_in_progress`, `400 folder_outside_index` and `400 unknown_note`
     // cerebro-entidades-resumos, batch A (doors 3 and 4): `409 entities_disabled`, `409 correction_conflict` and
-    // `409 too_many_corrections`
-    expect(raised.size).toBe(100);
+    // `409 too_many_corrections`; batch C (door 6): `404 scope_not_found`, `409 empty_scope` and
+    // `409 summary_in_progress`
+    expect(raised.size).toBe(103);
     expect([...raised.keys()].filter((pair) => pair.includes("<unresolved>"))).toEqual([]);
     expect(raised.has("409 approval_resolved")).toBe(true);
     // The other way: every pair an entry lists as its own is raised somewhere in the tree. A documented answer no code

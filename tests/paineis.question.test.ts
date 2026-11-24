@@ -337,6 +337,8 @@ describe("C56 the skill and the memory skills", () => {
       "organize-brain",
       "dashboard-answer",
       "brain-ask",
+      // cerebro-entidades-resumos (door 6) adds brain-summarize after brain-ask
+      "brain-summarize",
     ]);
   });
   it("C56 a home whose stored memorySkills is [recall] keeps [recall]; GET /api/skills shows dashboard-answer with memoryAccess on a fresh home", async () => {

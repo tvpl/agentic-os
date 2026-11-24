@@ -118,6 +118,11 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "GET /api/memory/entities": "content",
   "GET /api/memory/entities/:key": "content",
   "POST /api/memory/entities/corrections": "owner",
+  // cerebro-entidades-resumos, door 6: a summary is read by each audience over its own files; starting one (a paid run)
+  // is the owner's
+  "GET /api/memory/summaries": "content",
+  "GET /api/memory/summaries/:kind/:id": "content",
+  "POST /api/memory/summaries": "owner",
   // cerebro-perguntar, door 7: the CLIs' config files, the MCP tools and what the agents read are the owner's
   "GET /api/mcp": "owner",
   "GET /api/memory/related": "content",

@@ -590,6 +590,9 @@ describe("C159 every GET route a device may call", () => {
       // cerebro-entidades-resumos, door 4: the entities and one entity, each over the files the device reads
       "memory.entities.list": "/api/memory/entities",
       "memory.entities.get": "/api/memory/entities/termo%3Abanco%20central",
+      // cerebro-entidades-resumos, door 6: the summaries and one summary, each over the files the device reads
+      "memory.summaries.list": "/api/memory/summaries",
+      "memory.summaries.get": "/api/memory/summaries/area/Projetos",
       "skills.get": "/api/skills/organize-brain",
       "skills.notes.get": "/api/skills/organize-brain/notes",
       "system.info": "/api/system/info",

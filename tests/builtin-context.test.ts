@@ -120,6 +120,8 @@ describe.skipIf(!POSIX)(
         "organize-brain",
         "dashboard-answer",
         "brain-ask",
+        // cerebro-entidades-resumos (door 6) adds brain-summarize after brain-ask
+        "brain-summarize",
       ]);
       for (const skill of skills()) {
         const text = textFiles(skill.dir)
@@ -134,7 +136,14 @@ describe.skipIf(!POSIX)(
           .filter((k) => k.memoryAccess)
           .map((k) => k.slug)
           .sort(),
-      ).toEqual(["brain-ask", "consolidate-memory", "dashboard-answer", "organize-brain", "recall"]);
+      ).toEqual([
+        "brain-ask",
+        "brain-summarize",
+        "consolidate-memory",
+        "dashboard-answer",
+        "organize-brain",
+        "recall",
+      ]);
     });
 
     it("each skill run starts in <home>/workspace with its own folder, and a memory skill also gets memory/ and its credential", async () => {

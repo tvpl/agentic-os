@@ -73,6 +73,9 @@ const FORBIDDEN_PATH_ROUTES: ReadonlySet<string> = new Set([
   "POST /api/memory/cleanup/undo",
   "POST /api/memory/journal/append",
   "POST /api/memory/open",
+  // cerebro-entidades-resumos, door 6: a summary starts a run of brain-summarize, whose paths are resolved as any
+  // skill run's.
+  "POST /api/memory/summaries",
   "POST /api/memory/routers",
   "POST /api/microapps/pixel/save",
   "POST /api/objectives/:id/dispatch",

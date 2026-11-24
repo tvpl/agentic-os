@@ -3,6 +3,7 @@ import { DASHBOARD_ANSWER_SKILL } from "@mordomo/contracts";
 import type { HealthStatus, PermissionBroker, ProviderCapabilities, RunMode } from "@mordomo/core";
 import {
   ASK_SKILL,
+  SUMMARY_SKILL,
   ConnectorDataCache,
   DashboardService,
   EntityReader,
@@ -96,6 +97,9 @@ export interface AskService {
   start: (input: { inputs: Record<string, string>; contextId?: string }) => string;
 }
 
+/** The skill a summary runs (cerebro-entidades-resumos, door 6): the same shape as the ask's. */
+export type SummaryService = AskService;
+
 /** The agents' usage record of an engine (door 7): add one read, and read what was recorded, `allow`'s paths only. */
 export interface AgentUsageRecorder {
   record: (read: Parameters<typeof recordAgentUsage>[1]) => void;
@@ -113,31 +117,36 @@ export function agentServices(
   usage: AgentUsageRecorder;
   /** The entities by audience (cerebro-entidades-resumos, door 2): cached until a pass ends or a correction is written. */
   entities: EntityReader;
+  /** The skill a summary runs (cerebro-entidades-resumos, door 6), as the ask's. */
+  summaries: SummaryService;
 } {
+  /** A read-only memory skill the owner starts: whether it can run now, and its start. */
+  const memorySkill = (slug: string): AskService => ({
+    available: () => {
+      // A SKILL.md the safe reader refuses (a link out of skills/, a file too large) is a skill that cannot run.
+      let skill: ReturnType<typeof engine.skills.load>;
+      try {
+        skill = engine.skills.load(slug);
+      } catch {
+        return false;
+      }
+      return skill !== null && skill.enabled && engine.settings().memorySkills.includes(slug);
+    },
+    start: ({ inputs, contextId }) =>
+      engine.execution.startSkill(
+        {
+          slug,
+          inputs,
+          ...(contextId !== undefined ? { contextId } : {}),
+          startedBy: "owner",
+        },
+        { folderCheck: "launch" },
+      ).runId,
+  });
   return {
     entities: new EntityReader(engine.db, engine.events),
-    ask: {
-      available: () => {
-        // A SKILL.md the safe reader refuses (a link out of skills/, a file too large) is a skill that cannot run.
-        let skill: ReturnType<typeof engine.skills.load>;
-        try {
-          skill = engine.skills.load(ASK_SKILL);
-        } catch {
-          return false;
-        }
-        return skill !== null && skill.enabled && engine.settings().memorySkills.includes(ASK_SKILL);
-      },
-      start: ({ inputs, contextId }) =>
-        engine.execution.startSkill(
-          {
-            slug: ASK_SKILL,
-            inputs,
-            ...(contextId !== undefined ? { contextId } : {}),
-            startedBy: "owner",
-          },
-          { folderCheck: "launch" },
-        ).runId,
-    },
+    ask: memorySkill(ASK_SKILL),
+    summaries: memorySkill(SUMMARY_SKILL),
     usage: {
       record: (read) => recordAgentUsage(engine.db, read),
       read: (allow) => agentUsage(engine.db, allow),
@@ -172,6 +181,9 @@ export class AppContext extends MordomoEngine {
 
   /** The entities the notes name, by audience (cerebro-entidades-resumos, door 2). */
   readonly entities: EntityReader;
+
+  /** The skill a summary of an area or a context runs (cerebro-entidades-resumos, door 6). */
+  readonly summaries: SummaryService;
 
   private healthCache = new Map<ProviderId, { at: number; health: HealthStatus }>();
   private healthInFlight = new Map<ProviderId, Promise<HealthStatus>>();
@@ -230,6 +242,7 @@ export class AppContext extends MordomoEngine {
     this.ask = agents.ask;
     this.agentUsage = agents.usage;
     this.entities = agents.entities;
+    this.summaries = agents.summaries;
     this.unsubscribeCredentials = this.events.subscribe((e) => {
       if (e.type !== "run.finished") return;
       const runId = (e.payload as { runId?: string }).runId;
