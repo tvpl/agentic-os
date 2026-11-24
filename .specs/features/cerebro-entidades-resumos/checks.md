@@ -1010,3 +1010,26 @@ Status of batch C (C53-C72 and C41):
   together is `give area or context, not both`. Proofs: `entidades.mcp` (C69 4, C41 2). Pins moved: the MCP tool list
   15 → 16 (`perguntar.mcp` C36 and C50, `perguntar.usage` C53, `rituais.access` C73), the recorder of
   `mcpRecorder.ts` answers the summary's route
+
+- **Boundary (batch C):** C53-C72 and C41 closed at `2485626` (S5's routes, core and skill at `c26b82a`, the tool
+  `summary` at `2485626`). On that tree `npm run build`, `npm run typecheck` and `npm run lint` exit 0; every `Proof:`
+  line of C53-C72 and C41 passes run alone and runs only its check's cases (counts above); `npx vitest run` at the root
+  has one failure, `tests/paineis.refresh.test.ts` C13 (as on the base: 3706 passed, 3 skipped); the command-centre
+  suite passes (2110). Routes 183, MCP tools 16, `MCP_ROUTES` 14, built-in skills 18; no event added.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) Landing 6a and `Flow`
+  step 6 (the snapshot's time and fields, the scope of an area and of a context, routers never a source, the cited
+  section read from the stored text so a `GET` opens no source, `added` over the files agents read and the caller
+  sees, a paragraph citing a file the caller does not see dropped whole, a `lastError` naming such a file replaced by
+  a sentence without it, the principal `mcp` reading only the route of its tool); (b) C70's "`mcp` pass" is read on
+  `GET /api/memory/summaries/:kind/:id`, the route of the tool `summary`: C41 fixes `MCP_ROUTES` at 14 without the
+  list, so the list answers the principal `mcp` `403 forbidden` (asserted); (c) `POST /api/memory/summaries` starts a
+  skill run, so a path refused on the way answers `403 forbidden_path` (declared, in the `forbidden_path` list of
+  `contracts/src/api/errors.ts`, as `POST /api/skills/:slug/run` is), while a `SKILL.md` the safe reader refuses as
+  not a file or too large answers `409 skill_unavailable` (the rule of `available`), so the route's statuses stay
+  those of `Coverage`; `409 budget_exhausted` is declared as the ask's is; (d) the tool's texts beyond the claim: a
+  `404` is `No <kind> is named <id>.`, `area` with `context` is refused, the singulars of the stale line; (e) C61's
+  refused newest run cites a section its source lacks: a citation of a file of the scope written before it would be
+  one of its own recorded sources; (f) a context's summary run carries no `contextId` (its cwd is the workspace, as
+  for an area); (g) C96 (batch E) is not built here: a read of the tool `summary` is not yet counted in the agents'
+  usage.
+- **Abandoned:** nothing.
