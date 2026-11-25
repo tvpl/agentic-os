@@ -1179,3 +1179,25 @@ correction_conflict`), so the case stores the second `add` with the SQL and row 
   Bundle on this build: JS gzip 637 235 B (+10 520 over `cerebro-perguntar`), CSS gzip 87 220 B (+1 358); the view's
   chunk 5 735 B JS and 1 293 B CSS gzip. Proofs: `EntitiesView` (C101 3, C103 3, C104 2, C105 7, C106 2, C107 2, C108 2,
   C109 1, C110 1, C111 1, C112 3, C113 3, C114 1, C115 2, C117 7, C118 3), `entitiesEntries` (C102 8, C116 2)
+- C101 in a real browser: closed. `tests/e2e/entidades.spec.ts` measures, in both shells at 1280×800, the list column
+  320px (±1px) on the left and the panel to the right edge, the list column's six regions and the panel's five
+  sections with strictly increasing tops and the menu at the header's right; at 700px one column, the list alone, then
+  the panel in its place with "Voltar" above the name; no horizontal scroll at 360px. The entity is a real profile note
+  of the e2e home; its duplicate and its correction are added by the browser to the route's answer, so nothing is
+  written to the home's corrections. Proof: `entidades.spec.ts` (C101 2)
+
+- **Boundary (batch F):** C101-C118 and the C85 correction closed at `<sha>` (the C85 marker at `72a6bfc`, the
+  `file` query at `c414668`, the view at `141ed84`, C101's browser proof at `<sha>`). On that tree `npm run build`,
+  `npm run typecheck` and `npm run lint` exit 0; every `Proof:` line of C101-C118 and C85 passes run alone and runs
+  only its check's cases (C85 2, C101 3 + 2 in the browser, C102 8, C103 3, C104 2, C105 7, C106 2, C107 2, C108 2,
+  C109 1, C110 1, C111 1, C112 3, C113 3, C114 1, C115 2, C116 2, C117 7, C118 3); `npx vitest run` at the root has
+  one failure, `tests/paineis.refresh.test.ts` C13 (as on the base: 3752 passed, 3 skipped); the command-centre suite
+  passes (2163). Routes 185 (one gains the optional `file` query); no event, migration or route added.
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) Landing 10b (the
+  marker hashes the sorted `<kind>:<name>`); the second C85 case stores the re-accepted `add` with
+  `writeCorrection`'s SQL, because through the route the suggestion is no longer pending until a pass removes the
+  undone `add`'s `nome` rows (they keep listing the entity, so AC 102's "sai da lista" holds only after the next pass);
+  (b) Landing 8a and a Surface row: `GET /api/memory/entities?file=<id>` for the note panel's fold, which no route
+  answered; (c) the reading decisions of the S6 bullet above (tab counts, paging, search pause, the card's on/off
+  label and its counts, "Juntar com <nome>", the 15px name as a calc of two tokens).
+- **Abandoned:** nothing.
