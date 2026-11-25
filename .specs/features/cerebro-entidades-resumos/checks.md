@@ -1186,8 +1186,8 @@ correction_conflict`), so the case stores the second `add` with the SQL and row 
   of the e2e home; its duplicate and its correction are added by the browser to the route's answer, so nothing is
   written to the home's corrections. Proof: `entidades.spec.ts` (C101 2)
 
-- **Boundary (batch F):** C101-C118 and the C85 correction closed at `<sha>` (the C85 marker at `72a6bfc`, the
-  `file` query at `c414668`, the view at `141ed84`, C101's browser proof at `<sha>`). On that tree `npm run build`,
+- **Boundary (batch F):** C101-C118 and the C85 correction closed at `52fb6e0` (the C85 marker at `72a6bfc`, the
+  `file` query at `c414668`, the view at `141ed84`, C101's browser proof at `52fb6e0`). On that tree `npm run build`,
   `npm run typecheck` and `npm run lint` exit 0; every `Proof:` line of C101-C118 and C85 passes run alone and runs
   only its check's cases (C85 2, C101 3 + 2 in the browser, C102 8, C103 3, C104 2, C105 7, C106 2, C107 2, C108 2,
   C109 1, C110 1, C111 1, C112 3, C113 3, C114 1, C115 2, C116 2, C117 7, C118 3); `npx vitest run` at the root has
