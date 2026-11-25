@@ -413,6 +413,8 @@ G1 o AC 21 vale para `PUT /api/memory/tasks` (erro de digitação); G2 autor de 
 1. **(respondida em 24/11/2026: entra, como S8) A extração de entidades por LLM entra nesta feature?** AD-054 (a).
 2. **(respondida em 24/11/2026: fora de `memory/`) Onde ficam os resumos?** AD-054 (b).
 3. **(open) O PageRank deve poder pôr um arquivo novo entre os da fusão?** Padrão: não, como a door 5 aprovada (o arquivo que só o grafo acha entra depois de todos os da fusão, e só é aberto quando a fusão tem menos arquivos que `k`). Alternativa: misturar pelas pontuações em vez da ordem, para o grafo poder trazer a nota vizinha à frente (muda a door 5; o `mordomo eval` mediria).
+4. **(open) A frase de "velho" e a linha do resumo não têm singular** ("1 fontes mudaram", "2 saiu"): a tabela de textos do `design.md` só tem o modelo. Padrão: seguem a tabela; conferir na sessão de telas.
+5. **(open) O estado "Entidades desligadas" tira também a busca e o cartão de Sugestões por IA**, e o `design.md` só manda trocar as abas e a lista. Padrão: fica como está (sem entidades não há o que buscar nem sugerir); conferir na sessão de telas.
 
 ### distribuicao
 

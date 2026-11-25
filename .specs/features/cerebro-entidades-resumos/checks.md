@@ -4,7 +4,7 @@ Profile: ui
 Plan: `.specs/features/cerebro-entidades-resumos/plan.md`
 Design: `.specs/features/cerebro-entidades-resumos/design.md` (binding for the screens of S6, S7 and the S8 section)
 
-133 checks (C1-C132, and C133 of `## Correções do lote F`) in 8 slices + cross-cutting · 10 one-way doors · open questions: none, the plan's two answered by the
+145 checks (C1-C132, C133 of `## Correções do lote F` and C134-C145 of `## Correções da rodada 1`) in 8 slices + cross-cutting · 10 one-way doors · open questions: none, the plan's two answered by the
 owner on 24/11/2026 and S8 approved the same day (AD-054)
 
 The plan's slices are kept: S1-S5 and S8 are the core and the API, "Cross-cutting, API" holds what every new or changed route
@@ -754,6 +754,103 @@ Recorded by the orchestrator on 25/11/2026 from the builder's report of batch F 
 / 2)`. Kept (a value from tokens), for the owner's screen session.
 - **The card's on/off button:** the copy table gives it no text; it reuses the sentinel rows' "Ligado"/"Desligado". Kept.
 
+## Correções da rodada 1
+
+Written by the orchestrator on 25/11/2026 from `verification.md` round 1 (FAIL at `dfe58c7`: every check proven, five faults
+injected and four survived, one audience leak, a level gap at the boundary, arrangement and design elements with no check, a
+missing gallery story). Each gap becomes a check; none of C1-C133 is edited. The fix is one batch (F1), sequential, only on
+green.
+
+**C134** - An entity's detail never names what the caller cannot read, for the four audiences (owner, device, run, `mcp`): with a
+visible profile `Ana Souza` merged by the owner with a term `Projeto Sigilo` that lives only in files hidden from the audience,
+and a hidden-only near-duplicate of the profile's name, `GET /api/memory/entities/perfil:ana souza` for the device, the run's
+`rc_` and `mcp` has in `corrections[].names` only the norms of entities that audience sees (`ana souza`, never `projeto
+sigilo`) and in `duplicates` only entities that audience sees; for the owner both are listed; the same holds at the layer
+(`entityDetail` with a hidden-only norm in a correction and in the duplicates). The leak found at `core/src/memory/entities.ts`
+`correctionItem` and `entityDetail` (round 1 gap 1)
+Proof: `npx vitest run tests/entidades.access.test.ts -t "C134 "`
+Proof: `npx vitest run tests/entidades.layer.test.ts -t "C134 "`
+
+**C135** - The privacy claim of AC 105 at the boundary: with a note in a folder hidden from agents and a note the policy excludes
+today, both with every word a changed note would have, neither path is in the `files` input of the run `POST
+/api/memory/entities/suggestions` starts, nor in the batch the index pass starts on its own, nor does either note's name or text
+appear in `known`; and the run's provider is the settings' default provider (read from the run record), asserted by changing the
+default provider and starting again (round 1 gap 2; AC 105, C75, C78, C100)
+Proof: `npx vitest run tests/sugestoes.routes.test.ts -t "C135 "`
+
+**C136** - A wikilink's address is not read as a term (Landing 1a), one case each: `[[Banco Central do Brasil]]` gives no `termo`
+row at its line; the same words in plain text on another line give one; `[[x|Banco Central]]` follows Landing 1a for the label
+(the test reads the Landing and asserts what it says, row by row); the address inside a Markdown link's parentheses is none
+either; at the boundary a note whose only capitalised phrase is a wikilink address contributes no file to that term's count
+(round 1 gap 3; AC 6, Landing 1a)
+Proof: `npx vitest run tests/entidades.layer.test.ts -t "C136 "`
+Proof: `npx vitest run tests/entidades.index.test.ts -t "C136 "`
+
+**C137** - The AI card's toggle, both ways: with `memory.entities.llm.enabled` false a press sends `true`; with it true a press sends
+`false`; `aria-pressed` follows each; nothing else in the settings body changes (round 1 gap 4; AC 104, C117)
+Proof: `npm run test -w apps/command-centre -- src/brain/entities/EntitiesView.test.tsx -t "C137 "`
+
+**C138** - The right-aligned items in a real browser, in the moldura and in the Núcleo's panel, each measured against its own
+container's content box (the right edge within 1px, the item's vertical centre inside its row): in the AI card the toggle at the
+right of the title row and "Pedir sugestões agora" at the right of the state line; in each suggestion "Aceitar" and "Recusar" at
+the right; in each entity list row the file count at the right; in each summary list row "Gerar" or "Atualizar" at the right;
+at 360px none overflows (round 1 gap 5; design.md "Seção - Sugestões por IA", "Vista - Entidades" 4, "Vista - Resumos")
+Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts entidades.spec.ts -g "C138 "`
+
+**C139** - The corrections at their own layer (the reader with a list of correction rows, no HTTP), one asserted case per row:
+`merge`, `separate`, `ignore`, `rename`, `add` (with its kind and aliases), `reject`, an undone correction of each kind (not
+applied), the `created_at` order of a merge then a rename, a `merge` that overrides the gate and MinHash, and a `separate` that
+overrides MinHash but never separates equal norms (round 1 gap 6, Test policy row 1; C21-C25, C27, C30)
+Proof: `npx vitest run tests/entidades.layer.test.ts -t "C139 "`
+
+**C140** - The summary source choice and the batch conditions at their own layer, one asserted case per row: with 35 files the 30
+chosen in the order inbound links then `mtime`; a policy-excluded file, a file hidden from agents and a file outside the scope
+never chosen; the five automatic-batch conditions of C74 (after 24 h, before 24 h, a run open, nothing changed, never) as a pure
+decision over a fixed clock; and the batch file filter (hidden, policy, non-Markdown) at its own layer (round 1 gap 6; C54, C74,
+C75)
+Proof: `npx vitest run tests/resumos.layer.test.ts -t "C140 "`
+Proof: `npx vitest run tests/sugestoes.layer.test.ts -t "C140 "`
+
+**C141** - The run statuses of a suggestion batch, one case per member of `RunStatus` (8): `queued`, `running`,
+`waiting_approval` → `lastBatch.status: "running"` and no suggestion; `done` with a valid file → `done` with the suggestions;
+`done` with no `entities.json` → a failed batch with `reason` `A execução não escreveu entities.json.`; `failed`, `cancelled`,
+`timed_out`, `interrupted` → `failed` with `reason` `A execução terminou em <status>.`; none lists a suggestion and the next
+`POST` is `202` for each closed one and `409 suggestions_in_progress` for each open one (round 1 gap 7; Landing 9a)
+Proof: `npx vitest run tests/sugestoes.routes.test.ts -t "C141 "`
+Proof: `npx vitest run tests/sugestoes.layer.test.ts -t "C141 "`
+
+**C142** - `GET /api/memory/entities/:key`'s inputs: a key that is not `<kind>:<norm>` (`pessoa:ana`, `ana`, an empty norm, a norm that is
+not normalised) → `400 validation`; `context=cliente-x` counts only the context's mentions in the detail; `context=nope` → `404
+context_not_found` (round 1 gap 7; Coverage `400` credited to C32)
+Proof: `npx vitest run tests/entidades.routes.test.ts -t "C142 "`
+
+**C143** - The entropy gate counts characters without spaces: `ab cd e` (7 characters, 5 without spaces) never merges, `ab cd ef`
+(8, 6 without spaces) may; the entropy of `aa aa aa` is computed over the characters without spaces (round 1 gap 7; AC 12,
+C12)
+Proof: `npx vitest run tests/entidades.layer.test.ts -t "C143 "`
+
+**C144** - The "Correções (N)" fold's rows and the elements of design.md no check named: each row reads `<verb> <name> em <dia>` with
+the other entity's **shown name** as the audience sees it (never a stored norm: `Juntou com A. Sousa em 24/11` for a merge with
+the entity shown as `A. Sousa`), and "Desfazer" sends `undo` with the row's correction id; the icons `Search` (the search field),
+`Sparkles` ("Pedir sugestões agora"), `MoreHorizontal` (the entity menu) and `RefreshCw` ("Atualizar" of a summary) are each
+present by their accessible name or `data-icon` (round 1 gap 8; design.md "Correções", "Seção - Sugestões por IA", "Painel da
+entidade", "Resumo aberto")
+Proof: `npm run test -w apps/command-centre -- src/brain/entities/EntitiesView.test.tsx -t "C144 "`
+Proof: `npm run test -w apps/command-centre -- src/brain/summaries/SummariesView.test.tsx -t "C144 "`
+
+**C145** - The gallery has a story for each view and its states (design-system binding): Entidades (empty, an entity open with
+mentions and duplicates, the suggestions card with a batch and with none, off); Resumos (fresh, stale, generating, off); the
+stories are registered in the gallery's index and render without error; the `cerebro-entidades-resumos` entry of
+`scripts/bundle-baseline.json` is re-measured with them and the whole feature stays within 20 KB JS gzip and 3 KB CSS gzip above
+`cerebro-perguntar` (round 1 gap 9)
+Proof: `npm run test -w apps/command-centre -- src/brain/entities/entitiesEntries.test.tsx -t "C145 "`
+Proof: `npx vitest run tests/entidades.contract.test.ts -t "C132 "`
+
+Readings of round 1's lower-weight notes, settled by the orchestrator (for the owner's screen session, `STATE.md`, Perguntas ao
+dono): the stale sentence and the row follow the table's template and have no singular form ("1 fontes mudaram"); the off state of
+Entidades also drops the search field and the AI card, while C114 claims only that the header and the support line stay; the
+door 5 outsider limit is open question 3.
+
 ## Coverage
 
 | Set (size)                                                                          | Member -> proof                                                                                                                                                                                                  | Unproven |
@@ -773,6 +870,10 @@ Recorded by the orchestrator on 25/11/2026 from the builder's report of batch F 
 | PPR edge kinds (5)                                                                  | link C46 · related C46 · co-mention C46 · ignored C46 · hub C46                                                                                                                                                  | -        |
 | PPR expansion refusals (4)                                                          | policy C49 · context C49 · natureza C49 · hidden C49                                                                                                                                                             | -        |
 | run statuses for summaries (8)                                                      | `queued` C56, C63 · `running` C56, C63 · `waiting_approval` C56, C63 · `done` C63 · `failed` C56, C63 · `cancelled` C56, C63 · `timed_out` C56, C63 · `interrupted` C56, C63                                     | -        |
+| run statuses for suggestion batches (8)                                             | `queued` C141 · `running` C141 · `waiting_approval` C141 · `done` C141 · `failed` C141 · `cancelled` C141 · `timed_out` C141 · `interrupted` C141                                                                | -        |
+| audiences for an entity's detail corrections and duplicates (4)                     | owner C134 · device C134 · run C134 · `mcp` C134                                                                                                                                                                 | -        |
+| right-aligned items (5)                                                             | toggle C138 · ask-now button C138 · accept/reject C138 · list-row count C138 · summary-row button C138                                                                                                           | -        |
+| gallery stories (2 views)                                                           | Entidades C145 · Resumos C145                                                                                                                                                                                    | -        |
 | summary check rows (10)                                                             | not a source C60 · section C60 · policy C60 · hidden C60 · size C60 · paragraphs C60 · 0 citations C60 · 7 citations C60 · text C60 · JSON/v C60                                                                 | -        |
 | staleness rows (9)                                                                  | removed index C65 · removed scope C65 · changed C65 · mtime only C65 · size only C65 · added after C65 · added equal C65 · fresh C65 · combined C65                                                              | -        |
 | summary states (4)                                                                  | `missing` C64 · `fresh` C59 · `stale` C67 · running C62                                                                                                                                                          | -        |
