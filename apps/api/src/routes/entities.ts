@@ -51,7 +51,13 @@ export function registerEntityRoutes(app: FastifyInstance, ctx: AppContext): voi
   bind(app, "memory.entities.list", async ({ query: q }, req) => {
     enabled();
     const view = accessView(ctx, req.principal);
-    return listEntities(viewOf(view), { ...q, within: withinOf(view, q.context) });
+    const inContext = withinOf(view, q.context);
+    // `file` (Landing 8a): the mentions of that one file, within the context when both are given.
+    const within =
+      q.file === undefined
+        ? inContext
+        : (fileId: number) => fileId === q.file && (inContext === undefined || inContext(fileId));
+    return listEntities(viewOf(view), { ...q, within });
   });
 
   bind(app, "memory.entities.get", async ({ params: { key }, query: q }, req) => {

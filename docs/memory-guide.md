@@ -439,8 +439,8 @@ as a space): `#Cliente-X`, `cliente x` and `CLIENTE  X` are one name. The duplic
 
 An entity cited by more than 50 files is a hub: it is listed, but adds no edge to the graph. The entities are read by
 audience: a device, a run and the MCP tools see only the mentions of the files they may read, so a name found only in a
-folder hidden from agents is no entity for them. `GET /api/memory/entities` (with `kind`, `q`, `context`, `limit` and
-`offset`) and `GET /api/memory/entities/:key` (`<kind>:<normalized name>`) answer them, and the MCP tools `entities` and
+folder hidden from agents is no entity for them. `GET /api/memory/entities` (with `kind`, `q`, `context`, `file` (one
+note's entities), `limit` and `offset`) and `GET /api/memory/entities/:key` (`<kind>:<normalized name>`) answer them, and the MCP tools `entities` and
 `entity` read them as agents read. `memory.entities.enabled` (on by default; the work is CPU of the index pass and sends
 nothing anywhere) turns it all off: no mention is written and the routes answer `409 entities_disabled`.
 

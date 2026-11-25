@@ -2256,6 +2256,8 @@ export const memoryRoutes = {
       q: z.string().min(1).max(200).optional(),
       /** Only the mentions of files of this work context are counted. */
       context: ContextQuery,
+      /** Only the mentions of this file of the index are counted (the note panel's fold, Landing 8a). */
+      file: z.coerce.number().int().min(1).optional(),
       limit: z.coerce.number().int().min(1).max(200).optional(),
       offset: z.coerce.number().int().min(0).max(100_000).optional(),
     }),

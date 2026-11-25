@@ -297,3 +297,34 @@ describe("C34 one entity", () => {
     });
   });
 });
+
+describe("C116 the entities of one note (Landing 8a)", () => {
+  it("C116 GET /api/memory/entities?file=<id> lists only the entities with a mention in that file, counted there; file 0 is 400 validation", async () => {
+    await fresh(async (w, root) => {
+      w.put(path.join(root, "n1.md"), "notas #alfa #gama\nReunião com Banco Central.\n");
+      w.put(
+        path.join(root, "n2.md"),
+        "notas #alfa #beta\nVisita ao Banco Central.\nCarta ao Banco Central.\n",
+      );
+      w.put(path.join(root, "n3.md"), "notas #alfa #beta #gama\n");
+      await w.index();
+      const id = (name: string) =>
+        (
+          w.ctx.db.prepare("SELECT id FROM files WHERE path = ?").get(path.join(root, name)) as {
+            id: number;
+          }
+        ).id;
+      const n2 = await w.call("GET", `/api/memory/entities?file=${id("n2.md")}&limit=200`);
+      expect(n2.status, JSON.stringify(n2.body)).toBe(200);
+      expect(n2.body.items.map((e: Json) => [e.key, e.files, e.mentions])).toEqual([
+        ["tag:alfa", 1, 1],
+        ["termo:banco central", 1, 2],
+        ["tag:beta", 1, 1],
+      ]);
+      expect(n2.body.total).toBe(3);
+      const n3 = await w.call("GET", `/api/memory/entities?file=${id("n3.md")}&kind=tag`);
+      expect(n3.body.items.map((e: Json) => e.key)).toEqual(["tag:alfa", "tag:beta", "tag:gama"]);
+      expect(statusAndCode(await w.call("GET", "/api/memory/entities?file=0"))).toEqual([400, "validation"]);
+    });
+  });
+});
