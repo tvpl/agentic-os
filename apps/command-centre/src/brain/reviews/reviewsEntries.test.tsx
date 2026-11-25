@@ -141,6 +141,7 @@ describe("C70 the entries, each in its place", () => {
         "Modo apresentação (p)",
         "Faxina",
         "Perguntar",
+        "Entidades",
         "Revisões (3)",
         "Revisão semanal",
       ]),
@@ -148,7 +149,7 @@ describe("C70 the entries, each in its place", () => {
     const buttons = [...row.querySelectorAll("button.btn.sm")];
     const chips = [...row.querySelectorAll(".os-chip")];
     expect(chips.length).toBeGreaterThan(0);
-    for (const chip of chips) expect(before(buttons[4]!, chip)).toBe(true);
+    for (const chip of chips) expect(before(buttons[5]!, chip)).toBe(true);
   });
 
   it("C70 the moldura's graph: no Revisões when the context's total is 0 (Revisão semanal follows Faxina and Perguntar, cerebro-rituais G17, cerebro-perguntar)", async () => {
@@ -169,6 +170,7 @@ describe("C70 the entries, each in its place", () => {
       "Modo apresentação (p)",
       "Faxina",
       "Perguntar",
+      "Entidades",
       "Revisão semanal",
     ]);
   });

@@ -15,13 +15,15 @@ import { AppRouteContext } from "../desktop/appRoute";
 import { useCommands, type Command } from "../commands/registry";
 import { REVIEWS_PATH } from "./natureza";
 
-export type BrainMode = "graph" | "notes" | "reviews" | "weekly" | "ask";
+export type BrainMode = "graph" | "notes" | "reviews" | "weekly" | "ask" | "entities";
 export const GRAPH_PATH = "/brain";
 export const NOTES_PATH = "/brain/notes";
 /** "Revisão semanal" (.specs/features/cerebro-rituais, S5): the page's route, in both shells. */
 export const WEEKLY_PATH = "/brain/weekly";
 /** "Perguntar" (.specs/features/cerebro-perguntar, S5, door 6): the view's route, in both shells. */
 export const ASK_PATH = "/brain/ask";
+/** "Entidades" (.specs/features/cerebro-entidades-resumos, S6, door 8): the view's route, in both shells (`?key=`). */
+export const ENTITIES_PATH = "/brain/entities";
 
 /** The notes view, its own chunk: fetched the first time "Notas" is chosen (AC 51). */
 export const NotesView = lazyRoute(() => import("./notes/NotesView"));
@@ -31,6 +33,8 @@ export const ReviewsView = lazyRoute(() => import("./reviews/ReviewsScreen"));
 export const WeeklyView = lazyRoute(() => import("./weekly/WeeklyReview"));
 /** "Perguntar" (.specs/features/cerebro-perguntar, AC 54), its own chunk: fetched the first time /brain/ask opens. */
 export const AskView = lazyRoute(() => import("./ask/AskView"));
+/** "Entidades" (.specs/features/cerebro-entidades-resumos, AC 85), its own chunk: fetched the first time it opens. */
+export const EntitiesView = lazyRoute(() => import("./entities/EntitiesView"));
 
 export interface BrainModeState {
   mode: BrainMode;
@@ -52,7 +56,9 @@ export function useBrainMode(): BrainModeState {
         ? "weekly"
         : pathname.startsWith(ASK_PATH)
           ? "ask"
-          : "graph";
+          : pathname.startsWith(ENTITIES_PATH)
+            ? "entities"
+            : "graph";
   const setLocation = panel?.setLocation;
   const go = useCallback(
     (next: BrainMode, search = "") => {
@@ -65,7 +71,9 @@ export function useBrainMode(): BrainModeState {
               ? WEEKLY_PATH
               : next === "ask"
                 ? ASK_PATH
-                : GRAPH_PATH;
+                : next === "entities"
+                  ? ENTITIES_PATH
+                  : GRAPH_PATH;
       if (setLocation) setLocation({ pathname: path, search });
       else navigate(`${path}${search}`);
     },

@@ -1,0 +1,353 @@
+/* "Entidades" (.specs/features/cerebro-entidades-resumos, design.md "Vista - Entidades"): two columns on a wide screen
+   (the list 320px, the entity's panel the rest), one below 720px, where an open entity replaces the list. Colours are
+   tokens, sentences are 13px, nothing is under 12px, and what moves does so inside the no-preference block at the end.
+   Every selector is scoped under the view's root `.ent-view`, whose marker child `.ent-cols` no other screen has. */
+.ent-view:has(> .ent-cols) {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--s-4);
+  overflow: auto;
+  color: var(--text);
+  font-size: var(--fs-3);
+}
+
+.ent-view .ent-cols {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: var(--s-5);
+  align-items: start;
+}
+
+.ent-view .ent-listcol,
+.ent-view .ent-panel,
+.ent-view .ent-head,
+.ent-view .ent-ai,
+.ent-view .ent-off,
+.ent-view .ent-empty,
+.ent-view .ent-phead,
+.ent-view .ent-sec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.ent-view .ent-listcol {
+  gap: var(--s-3);
+}
+
+.ent-view .ent-listcol > [data-orientation] {
+  display: contents;
+}
+
+.ent-view .ent-panel {
+  gap: var(--s-4);
+}
+
+.ent-view .ent-h1 {
+  margin: 0;
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+
+.ent-view .ent-small {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+}
+
+.ent-view .ent-small code {
+  font-size: var(--fs-2);
+}
+
+.ent-view .ent-line,
+.ent-view .ent-search,
+.ent-view .ent-band,
+.ent-view .ent-notice,
+.ent-view .ent-state,
+.ent-view .ent-phead-row,
+.ent-view .ent-ai-top,
+.ent-view .ent-ai-state,
+.ent-view .ent-chips,
+.ent-view .ent-dup,
+.ent-view .ent-rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+}
+
+.ent-view .ent-line svg,
+.ent-view .ent-search svg,
+.ent-view .ent-band svg,
+.ent-view .ent-notice svg,
+.ent-view .ent-chip svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.ent-view .ent-search {
+  flex-wrap: nowrap;
+  color: var(--text-dim);
+}
+
+.ent-view .ent-search input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ent-view .ent-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.ent-view .ent-rows,
+.ent-view .ent-files,
+.ent-view .ent-duprows,
+.ent-view .ent-corrows,
+.ent-view .ent-suggs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ent-view .ent-row {
+  overflow: hidden;
+}
+
+.ent-view .ent-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--s-2);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.ent-view .ent-pick:hover {
+  background: var(--surface-2);
+}
+
+.ent-view .ent-pick[aria-current="true"] {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.ent-view .ent-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.ent-view .ent-name {
+  font-size: var(--fs-3);
+}
+
+.ent-view .ent-count,
+.ent-view .ent-aliases,
+.ent-view .ent-shared {
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+}
+
+.ent-view .ent-state {
+  color: var(--text-dim);
+}
+
+.ent-view .ent-band {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.ent-view .ent-notice {
+  position: sticky;
+  bottom: 0;
+  align-self: flex-start;
+  margin-top: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.ent-view .ent-ai {
+  padding: var(--s-3);
+}
+
+.ent-view .ent-ai-top,
+.ent-view .ent-ai-state {
+  justify-content: space-between;
+}
+
+.ent-view .ent-ai-title {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-3);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.ent-view .ent-sugg {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-2) 0;
+}
+
+.ent-view .ent-sugg-main {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ent-view .ent-sugg-acts {
+  display: flex;
+  gap: var(--s-1);
+  align-items: flex-start;
+}
+
+.ent-view .ent-sname {
+  font-weight: 600;
+}
+
+.ent-view .ent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+}
+
+.ent-view .ent-pname {
+  margin: 0;
+  font-size: calc((var(--fs-4) + var(--fs-5)) / 2);
+  font-weight: 600;
+}
+
+.ent-view .ent-menu {
+  margin-inline-start: auto;
+}
+
+.ent-view .ent-back {
+  display: none;
+  align-self: flex-start;
+}
+
+.ent-view .ent-home {
+  align-self: flex-start;
+}
+
+.ent-view .ent-h3 {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.ent-view .ent-files > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-1) 0;
+}
+
+.ent-view .ent-link {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ent-view .ent-mline {
+  margin: 0;
+  font-size: var(--fs-2);
+  overflow-wrap: anywhere;
+}
+
+.ent-view .ent-excerpt b {
+  font-weight: 600;
+}
+
+.ent-view .ent-corrows > li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: baseline;
+}
+
+@media (max-width: 719px) {
+  .ent-view .ent-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ent-view[data-open] .ent-listcol,
+  .ent-view:not([data-open]) .ent-panelcol {
+    display: none;
+  }
+
+  .ent-view .ent-back {
+    display: inline-flex;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ent-view .ent-panel-in {
+    animation: ent-in 200ms ease-out;
+  }
+
+  .ent-view .ent-row[data-leaving] {
+    animation: ent-fold 150ms ease-out forwards;
+  }
+}
+
+@keyframes ent-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ent-fold {
+  from {
+    max-height: 120px;
+    opacity: 1;
+  }
+
+  to {
+    max-height: 0;
+    opacity: 0;
+  }
+}

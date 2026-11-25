@@ -65,8 +65,16 @@ describe("C52 the note panel", () => {
     const panel = document.querySelector<HTMLElement>(".notes-panel-body")!;
     await within(panel).findByText("Backlinks (1)");
     // cerebro-memoria-confiavel AC 39 adds "Histórico" as the last fold (its own proof is HistoryFold.test.tsx C97);
-    // cerebro-rituais AC 70 adds "Menções sem link" after the links, its count unknown while it loads (MentionsFold C93).
-    expect(sections()).toEqual(["Links", "Menções sem link (…)", "Relacionadas", "Nesta nota", "Histórico"]);
+    // cerebro-rituais AC 70 adds "Menções sem link" after the links, its count unknown while it loads (MentionsFold C93);
+    // cerebro-entidades-resumos AC 76 adds "Entidades" right after it, unknown while it loads too (C116).
+    expect(sections()).toEqual([
+      "Links",
+      "Menções sem link (…)",
+      "Entidades (…)",
+      "Relacionadas",
+      "Nesta nota",
+      "Histórico",
+    ]);
     expect(within(panel).getByText("Links quebrados (1)")).toBeTruthy();
     const why = await within(panel).findByText("Compartilham: oferta, acelerador.");
     expect(why.className).toBe("notes-why");
@@ -104,7 +112,8 @@ describe("C52 the note panel", () => {
     const folds = () => [...document.querySelectorAll<HTMLElement>(".notes-fold")];
     // "Histórico" (cerebro-memoria-confiavel AC 39, 43) and "Menções sem link" (cerebro-rituais AC 70) wait on their own
     // requests too
-    await waitFor(() => expect(folds()).toHaveLength(5));
+    // and "Entidades" (cerebro-entidades-resumos AC 76), the sixth
+    await waitFor(() => expect(folds()).toHaveLength(6));
     for (const fold of folds()) {
       expect(fold.querySelector(".spinner"), fold.textContent!).not.toBeNull();
       expect(fold.textContent).toContain("Carregando…");
@@ -116,7 +125,7 @@ describe("C52 the note panel", () => {
     state.note = "fail";
     renderWith(<NotePanel path={pathOf(f)} id={1} onOpen={() => undefined} />, { lang: "pt-BR" });
     await waitFor(() => expect(document.querySelectorAll('.notes-fold [role="alert"]')).toHaveLength(3));
-    const [links, , related, outline] = folds();
+    const [links, , , related, outline] = folds();
     expect(links!.textContent).toContain("falhou: links");
     expect(related!.textContent).toContain("Não foi possível carregar os relacionados.");
     expect(outline!.textContent).toContain("falhou: note");

@@ -99,9 +99,11 @@ describe("C93 the fold Menções sem link", () => {
     answer(TWO());
     panel();
     await waitFor(() => expect(items()).toHaveLength(2));
+    // cerebro-entidades-resumos AC 76: "Entidades" right after it, its count unknown while it loads (C116)
     expect(heads().map((h) => h.textContent)).toEqual([
       "Links",
       "Menções sem link (2)",
+      "Entidades (…)",
       "Relacionadas",
       "Nesta nota",
       "Histórico",
@@ -119,7 +121,7 @@ describe("C93 the fold Menções sem link", () => {
       heads()
         .filter((_, i) => i !== 1)
         .map((h) => h.getAttribute("aria-expanded")),
-    ).toEqual(["true", "true", "true", "true"]);
+    ).toEqual(["true", "true", "true", "true", "true"]);
   });
 
   it("C93 each item in order: the source's name (13px, weight-600 class), the excerpt with the term in <mark> as written, Linkar (.btn.sm, Link2) only when editable", async () => {
@@ -219,7 +221,8 @@ describe("C94 the fold's states and Linkar", () => {
   it("C94 loading: Carregando…", async () => {
     // no answer in the kit: the request waits
     panel();
-    await waitFor(() => expect(heads()).toHaveLength(5));
+    // six folds with "Entidades" (cerebro-entidades-resumos, C116)
+    await waitFor(() => expect(heads()).toHaveLength(6));
     expect(body().textContent!.trim()).toBe("Carregando…");
     expect(body().querySelector(".spinner")).not.toBeNull();
   });

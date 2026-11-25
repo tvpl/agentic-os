@@ -64,6 +64,7 @@ import { openNoteEditor } from "../brain/noteEvents";
 import {
   AskView,
   BrainViewSwitch,
+  EntitiesView,
   NotesView,
   ReviewsView,
   WeeklyView,
@@ -129,6 +130,10 @@ export default function SecondBrain() {
       ) : brain.mode === "ask" ? (
         <Suspense fallback={<Skeleton lines={6} />}>
           <AskView />
+        </Suspense>
+      ) : brain.mode === "entities" ? (
+        <Suspense fallback={<Skeleton lines={6} />}>
+          <EntitiesView />
         </Suspense>
       ) : (
         <SecondBrainGraph />

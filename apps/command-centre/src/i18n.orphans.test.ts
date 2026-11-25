@@ -49,6 +49,8 @@ const DYNAMIC_PREFIXES: Record<string, string> = {
   "scene.skills.cat.": "nucleo/scenes/SkillsSceneFocus.tsx, SkillsSceneRing.tsx: the category of a skill",
   "scene.skills.mode.": "nucleo/scenes/SkillsSceneTools.tsx: the mode filter",
   "status.": "components/ui.tsx, desktop/SkillDeck.tsx: the status of a run",
+  "entities.tab.": "brain/entities/EntitiesView.tsx: the tab of a kind (`entities.tab.${kind}`)",
+  "entities.kind.": "brain/entities/EntitiesView.tsx: the chip of a kind (`entities.kind.${kind}`)",
 };
 
 const underAPrefix = (key: string) => Object.keys(DYNAMIC_PREFIXES).some((p) => key.startsWith(p));

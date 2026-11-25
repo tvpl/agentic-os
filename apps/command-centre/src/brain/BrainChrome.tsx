@@ -17,6 +17,7 @@ import {
   Scan,
   Sparkles,
   Tv,
+  Users,
   X,
   Zap,
 } from "lucide-react";
@@ -186,6 +187,10 @@ export function BrainChrome(p: BrainChromeProps) {
             {/* "Perguntar" (cerebro-perguntar, design.md "Entradas"): before "Revisões (N)". */}
             <button className="btn sm" onClick={() => go("ask")}>
               <MessageSquare aria-hidden /> {t("ask.send")}
+            </button>
+            {/* "Entidades" (cerebro-entidades-resumos, design.md "Entradas"): right after "Perguntar". */}
+            <button className="btn sm" onClick={() => go("entities")}>
+              <Users aria-hidden /> {t("entities.title")}
             </button>
             {/* "Revisões (N)" when something fell due (cerebro-natureza, amendment 10). */}
             <ReviewsButton />

@@ -1,0 +1,7 @@
+/* "Entidades (N)" of the note panel (.specs/features/cerebro-entidades-resumos, design.md "Dobra - Entidades do painel
+   da nota"): the chips wrap, under the panel's own fold. */
+.notes-panel-body .ent-fold-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}

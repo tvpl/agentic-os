@@ -1,7 +1,7 @@
 /**
  * The note panel (.specs/features/cerebro-vista-notas, AC 22; design.md "Painel da nota"): sections that fold,
  * in this order: the links section of `cerebro-v2` ("Backlinks" and "Links quebrados", unchanged), "Menções sem link"
- * (cerebro-rituais, AC 70), "Relacionadas" from
+ * (cerebro-rituais, AC 70), "Entidades" (cerebro-entidades-resumos, AC 76), "Relacionadas" from
  * the index (`useRelatedFiles` of `brain/memoryData.ts`) in the active context with each `why`, and "Nesta nota", the `##` headings of the body
  * (choosing one scrolls to it), then "Histórico", the note's versions (cerebro-memoria-confiavel, AC 39). Each section
  * loads and fails on its own.
@@ -15,6 +15,7 @@ import { useRelatedFiles } from "../memoryData";
 import { Fold } from "./Fold";
 import { HistoryFold } from "./HistoryFold";
 import { MentionsFold } from "./MentionsFold";
+import { EntitiesFold } from "../entities/EntitiesFold";
 import { bodyOf, outlineOf } from "./NoteReader";
 import { useNoteLinks, useNoteRead, withoutExt } from "./notesData";
 import type { NoteMeta } from "./useNotesState";
@@ -46,6 +47,7 @@ export function NotePanel({ path, id, context, onOpen }: NotePanelProps) {
         )}
       </Fold>
       <MentionsFold id={id} context={context} />
+      <EntitiesFold id={id} />
       <Fold title={t("notes.panel.related")}>
         <Related id={id} context={context} onOpen={onOpen} />
       </Fold>

@@ -156,6 +156,8 @@ describe("C97 the fourth fold, Histórico", () => {
     expect(heads.map((h) => h.textContent)).toEqual([
       "Links",
       "Menções sem link (…)",
+      // cerebro-entidades-resumos AC 76: "Entidades" right after it, unknown while it loads (C116)
+      "Entidades (…)",
       "Relacionadas",
       "Nesta nota",
       "Histórico",

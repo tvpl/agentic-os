@@ -29,6 +29,7 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   Stethoscope,
+  Users,
   SunMoon,
   Volume2,
 } from "lucide-react";
@@ -46,7 +47,7 @@ import { openNoteEditor } from "../brain/noteEvents";
 import { openCleanup } from "../brain/cleanupEvents";
 import { openMemoryHistory } from "../brain/memoria";
 import { REVIEWS_PATH } from "../brain/natureza";
-import { ASK_PATH, WEEKLY_PATH } from "../brain/BrainViewSwitch";
+import { ASK_PATH, ENTITIES_PATH, WEEKLY_PATH } from "../brain/BrainViewSwitch";
 import { useCommands, type Command } from "./registry";
 
 /** Opens the palette (and closes it: the palette registers the same keys in its own `modal` scope). */
@@ -269,6 +270,28 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["ask", "perguntar", "pergunta", "question", "cérebro", "cerebro", "brain", "notas"],
         palette: true,
         run: go(ASK_PATH),
+      },
+      {
+        // "Entidades" (cerebro-entidades-resumos, AC 64, design.md "Entradas"): the view at /brain/entities, the frame's
+        // page and the Núcleo's brain panel.
+        id: "action:entities",
+        title: "entities.title",
+        group: "actions",
+        scope: "global",
+        icon: Users,
+        keywords: [
+          "entities",
+          "entidades",
+          "pessoas",
+          "people",
+          "projetos",
+          "projects",
+          "tags",
+          "termos",
+          "terms",
+        ],
+        palette: true,
+        run: go(ENTITIES_PATH),
       },
       {
         // "Histórico da memória" (cerebro-memoria-confiavel, AC 44): the newest changes of memory/, in a dialog.

@@ -1159,3 +1159,23 @@ Status of batch F (C101-C118 and the C85 correction):
   rows still list `perfil:bruno lima` until the next pass, so the suggestion is no longer pending, `409
 correction_conflict`), so the case stores the second `add` with the SQL and row shape of `writeCorrection`. Proof:
   `sugestoes.routes` (C85 2)
+- The note panel's fold reads its entities through `GET /api/memory/entities?file=<id>` (Landing 8a and a Surface row,
+  `c414668`): no route answered "the entities of one note". Proof of the query: `entidades.routes` (C116 1)
+- S6 and the S8 card in rendered components (C102-C118, and C101's DOM and stylesheet): closed. The view at
+  `/brain/entities` (`brain/entities/EntitiesView.tsx`, `entities.css` under `.ent-view:has(> .ent-cols)`), its own
+  chunk through `lazyRoute`; the mode `entities` of `useBrainMode`; the toolbar's "Entidades" (`Users`) after
+  "Perguntar", the scene menu's row below "Perguntar ao cérebro", the palette's `action:entities` (`global`); the fold
+  `EntitiesFold` after "Menções sem link"; the copy in `locales/brain.ts` (`entities.*`). Builder decisions: the tab
+  counts are four `?kind=<k>&limit=1` reads; "Mostrar mais" pages by `offset`; the search waits 300 ms; `j`/`k` take the
+  titles of the Revisões' `j`/`k`; the on/off button of the card reads "Ligado"/"Desligado" with the keys of the
+  sentinel rows (`apps.settings.soundOn`/`soundOff`), as Settings › Busca por significado does; "Lendo N notas…" counts
+  the `files` input of the batch's run (`GET /api/runs/:id`); "Último lote: …, N sugestões" counts the pending
+  suggestions listed; "Juntar com <nome>" reads the target's name from `GET /api/memory/entities/:key`; the 15px name
+  is `calc((var(--fs-4) + var(--fs-5)) / 2)` (no 15px token). Existing pins gained the new entries, no assertion
+  dropped: the toolbar lists of `reviewsEntries` C70, `weeklyEntries` C76, `cleanupEntries` C51 and `askEntries` C72;
+  the scene menu rows of `cleanupEntries` C51 and `askEntries` C72; the folds of `NotePanel` C52 (and its fold
+  indexes), `MentionsFold` C93 and C94, `HistoryFold` C97; `legacy.graph` C1 (the testkit), `i18n.orphans` C7 (the
+  prefixes `entities.tab.` and `entities.kind.`), `typography` C15 (`.ent-view .ent-small`, `.ent-view .ent-mline`).
+  Bundle on this build: JS gzip 637 235 B (+10 520 over `cerebro-perguntar`), CSS gzip 87 220 B (+1 358); the view's
+  chunk 5 735 B JS and 1 293 B CSS gzip. Proofs: `EntitiesView` (C101 3, C103 3, C104 2, C105 7, C106 2, C107 2, C108 2,
+  C109 1, C110 1, C111 1, C112 3, C113 3, C114 1, C115 2, C117 7, C118 3), `entitiesEntries` (C102 8, C116 2)

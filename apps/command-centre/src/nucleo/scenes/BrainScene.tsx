@@ -121,6 +121,7 @@ import { useWorkContext } from "../../contexts/useWorkContext";
 import {
   AskView,
   BrainViewSwitch,
+  EntitiesView,
   NotesView,
   ReviewsView,
   WeeklyView,
@@ -243,6 +244,8 @@ function NotesMode({ brain }: { brain: BrainModeState }) {
           <WeeklyView />
         ) : brain.mode === "ask" ? (
           <AskView />
+        ) : brain.mode === "entities" ? (
+          <EntitiesView />
         ) : (
           <NotesView onShowInGraph={(id) => brain.go("graph", `?sel=${id}&local=1&hops=1`)} />
         )}
@@ -1766,6 +1769,10 @@ function Constellation({ onClassic, view }: { onClassic: () => void; view: Brain
             onAsk={() => {
               setMenuOpen(false);
               view.go("ask");
+            }}
+            onEntities={() => {
+              setMenuOpen(false);
+              view.go("entities");
             }}
             onCleanup={() => {
               setMenuOpen(false);

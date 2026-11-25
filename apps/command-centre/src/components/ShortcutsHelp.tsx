@@ -17,6 +17,8 @@ function scopeTitle(scope: CommandScope): TKey | null {
   if (scope === "nucleo") return "cmd.scope.nucleo";
   // "Revisões" is a screen of the brain, not an app of its own (cerebro-natureza, C71).
   if (scope === "view:reviews") return "reviews.title";
+  // "Entidades" too (cerebro-entidades-resumos, design.md "Entradas"): its `j`/`k`.
+  if (scope === "view:entities") return "entities.title";
   if (scope.startsWith("view:")) return APPS[scope.slice("view:".length) as AppKind]?.titleKey ?? null;
   // A layer (a dialog, the focus mode) is never behind the sheet.
   return null;

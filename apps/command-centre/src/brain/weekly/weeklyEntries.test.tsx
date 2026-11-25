@@ -161,13 +161,14 @@ describe("C76 the entries, each in its place", () => {
         "Modo apresentação (p)",
         "Faxina",
         "Perguntar",
+        "Entidades",
         "Revisões (3)",
         "Revisão semanal",
       ]),
     );
     const row = document.querySelector(".brain-topbar-actions")!;
     const buttons = [...row.querySelectorAll("button.btn.sm")];
-    const weeklyButton = buttons[5]!;
+    const weeklyButton = buttons[6]!;
     expect(weeklyButton.querySelector("svg.lucide-calendar-check")).not.toBeNull();
     expect(weeklyButton.getAttribute("title")).toBeNull();
     const chips = [...row.querySelectorAll(".os-chip")];
@@ -191,6 +192,7 @@ describe("C76 the entries, each in its place", () => {
       "Modo apresentação (p)",
       "Faxina",
       "Perguntar",
+      "Entidades",
       "Revisão semanal",
     ]);
   });
