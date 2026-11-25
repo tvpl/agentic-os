@@ -6,10 +6,12 @@ import { entityNorm, extractMentions, extractTerms } from "../core/src/memory/en
 import {
   coMentionEdges,
   computeEntities,
+  entityDetail,
   liveMentions,
   nameCandidates,
   nameSignature,
   type CorrectionRow,
+  type EntityView,
   type MentionRow,
 } from "../core/src/memory/entities.js";
 import { notesViewWorld, type NotesViewWorld } from "./helpers/notesViewWorld.js";
@@ -485,6 +487,60 @@ describe("C133 the nome rows of an add that is not active are ignored at read", 
     expect(liveMentions(rows, corrections)).toEqual([]);
     expect(computeEntities(rows, corrections).map((e) => [e.key, e.kind, e.mentions])).toEqual([
       ["projeto:bruno lima", "projeto", 0],
+    ]);
+  });
+});
+
+describe("C134 an entity's detail names only the norms the audience sees", () => {
+  let world: NotesViewWorld;
+  beforeAll(async () => {
+    world = await notesViewWorld("mordomo-entidades-detail-");
+  });
+  afterAll(async () => {
+    await world.close();
+  });
+
+  /** The view of an audience that reads `rows` (the corrections are the owner's, whoever reads). */
+  const viewOf = (rows: MentionRow[], corrections: CorrectionRow[]): EntityView => {
+    const entities = computeEntities(rows, corrections);
+    const byNorm = new Map<string, (typeof entities)[number]>();
+    for (const e of entities) for (const n of e.norms) byNorm.set(n, e);
+    return { rows, corrections, entities, byKey: new Map(entities.map((e) => [e.key, e])), byNorm };
+  };
+  const open = [mention(1, "nota", "perfil", "Ana Souza")];
+  const hiddenOnly = [
+    mention(2, "termo", "termo", "Projeto Sigilo"),
+    mention(3, "termo", "termo", "Projeto Sigilo"),
+    mention(4, "nota", "perfil", "Ana Souzas"),
+  ];
+  const merge = correction(1, "merge", "ana souza", "projeto sigilo");
+
+  it("C134 the owner's detail lists both names of a merge and the near-duplicate; the audience that reads only the open file lists ana souza and no duplicate", () => {
+    const owner = entityDetail(world.ctx.db, viewOf([...open, ...hiddenOnly], [merge]), "perfil:ana souza");
+    expect(owner?.corrections.map((c) => c.names)).toEqual([["ana souza", "projeto sigilo"]]);
+    expect(owner?.duplicates.map((d) => d.key)).toEqual(["perfil:ana souzas"]);
+
+    const seen = entityDetail(world.ctx.db, viewOf(open, [merge]), "perfil:ana souza");
+    expect(seen?.corrections).toEqual([
+      { id: 1, action: "merge", names: ["ana souza"], createdAt: 1, undoneAt: null },
+    ]);
+    expect(seen?.duplicates).toEqual([]);
+    expect(JSON.stringify(seen)).not.toMatch(/sigilo|souzas/i);
+  });
+
+  it("C134 a correction whose every name is hidden is not listed; one whose names are all visible keeps both", () => {
+    const view = viewOf(
+      [...open, mention(5, "tag", "tag", "cliente x"), mention(6, "tag", "tag", "cliente y")],
+      [
+        merge,
+        correction(2, "rename", "projeto sigilo", null, "Outro nome"),
+        correction(3, "separate", "ana souza", "cliente x"),
+      ],
+    );
+    const seen = entityDetail(world.ctx.db, view, "perfil:ana souza");
+    expect(seen?.corrections.map((c) => [c.id, c.action, c.names])).toEqual([
+      [1, "merge", ["ana souza"]],
+      [3, "separate", ["ana souza", "cliente x"]],
     ]);
   });
 });

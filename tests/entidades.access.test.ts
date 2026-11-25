@@ -284,3 +284,80 @@ describe("C42 who may read the two entity routes", () => {
     });
   });
 });
+
+describe("C134 an entity's detail names only what the caller reads", () => {
+  /**
+   * `Ana Souza` is a profile in the open; the owner merged it with the term `Projeto Sigilo`, which two notes of a
+   * hidden folder hold and no open file does, and `Ana Souzas`, a profile whose only note is in the hidden folder, is a
+   * near-duplicate of its name (`Ana Souzas` and `Ana Souza` are at 0.84, the real MinHash).
+   */
+  async function sigiloWorld(w: MemoriaWorld, root: string, hide: "devices" | "agents"): Promise<void> {
+    const hidden = path.join(root, "sigilo");
+    w.put(path.join(root, "pessoas", "ana.md"), "---\ntype: profile\ntitle: Ana Souza\n---\nficha aberta.\n");
+    w.put(path.join(hidden, "ata.md"), "Pauta do Projeto Sigilo.\n");
+    w.put(path.join(hidden, "plano.md"), "O Projeto Sigilo atrasou.\n");
+    w.put(path.join(hidden, "souzas.md"), "---\ntype: profile\ntitle: Ana Souzas\n---\nficha fechada.\n");
+    w.update((s) => {
+      s.folderAccess = [
+        {
+          path: hidden,
+          agents: hide === "agents" ? "hide" : "read",
+          devices: hide === "devices" ? "hide" : "read",
+        },
+      ];
+    });
+    await w.index();
+    const merged = await w.call("POST", "/api/memory/entities/corrections", {
+      action: "merge",
+      key: "perfil:ana souza",
+      other: "termo:projeto sigilo",
+    });
+    expect(merged.status, JSON.stringify(merged.body)).toBe(200);
+  }
+
+  const detail = (w: MemoriaWorld, headers: Record<string, string>) =>
+    w.call("GET", `/api/memory/entities/${enc("perfil:ana souza")}`, undefined, headers);
+
+  /** The owner lists both names of the merge and the hidden-only near-duplicate (L-072: the filter has something to hide). */
+  async function ownerSees(w: MemoriaWorld): Promise<void> {
+    const owner = await detail(w, w.owner());
+    expect(owner.status, JSON.stringify(owner.body)).toBe(200);
+    expect(owner.body.corrections).toHaveLength(1);
+    expect(owner.body.corrections[0]).toMatchObject({
+      action: "merge",
+      names: ["ana souza", "projeto sigilo"],
+    });
+    expect(owner.body.duplicates.map((d: Json) => d.key)).toEqual(["perfil:ana souzas"]);
+  }
+
+  async function audienceSees(w: MemoriaWorld, who: string, headers: Record<string, string>): Promise<void> {
+    const res = await detail(w, headers);
+    expect(res.status, `${who} ${JSON.stringify(res.body)}`).toBe(200);
+    // the correction touches a visible entity, so it is listed, with the visible name only
+    expect(res.body.corrections, who).toHaveLength(1);
+    expect(res.body.corrections[0], who).toMatchObject({ action: "merge", names: ["ana souza"] });
+    expect(res.body.duplicates, who).toEqual([]);
+    expect(JSON.stringify(res.body), who).not.toMatch(/sigilo|souzas/i);
+  }
+
+  it("C134 a device: the merge lists ana souza only and no hidden-only near-duplicate", async () => {
+    await fresh(async (w, root) => {
+      await sigiloWorld(w, root, "devices");
+      await ownerSees(w);
+      await audienceSees(w, "device", w.device(["content"]));
+    });
+  });
+
+  it("C134 a run's rc_ and the principal mcp, with the folder hidden from agents: the same", async () => {
+    await fresh(async (w, root) => {
+      await sigiloWorld(w, root, "agents");
+      await ownerSees(w);
+      await audienceSees(w, "run", w.run("read_only").headers);
+      await audienceSees(w, "mcp", mcpOf(w));
+      // a device reads the folder here, so its detail is the owner's
+      const device = await detail(w, w.device(["content"]));
+      expect(device.body.corrections[0].names).toEqual(["ana souza", "projeto sigilo"]);
+      expect(device.body.duplicates.map((d: Json) => d.key)).toEqual(["perfil:ana souzas"]);
+    });
+  });
+});

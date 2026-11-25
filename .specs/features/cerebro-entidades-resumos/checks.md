@@ -1391,3 +1391,9 @@ Status of batch F1 (C134-C145, the round 1 fixes):
 - C136, a wikilink's address is not a term: closed. No code changed: the code already blanks the address (Landing 1a); the
   gap was the proof. The new cases fail with the blanking regex of `entityMentions.ts` replaced by one that never matches
   (fault F1 of round 1). Proofs: `entidades.layer` (C136 3), `entidades.index` (C136 1)
+- C134, the entity detail names only what the caller reads: closed. `entityDetail` lists a correction when one of its names is
+  one the audience's entities show (`shownNorms`: each entity's canonical name and its aliases) and `correctionItem`, given
+  that set, cuts `names` to it; an owner's merge with a name that lives only in hidden files is still listed, with the
+  visible name only. A rename of a name only hidden files hold is not listed (it names nothing the caller sees). `duplicates`
+  was already the audience's (computed over its rows); the new cases assert it. The leak, put back in a scratch worktree
+  (`entities.ts` at `7a70108`), fails all 4 new cases. Proofs: `entidades.access` (C134 2), `entidades.layer` (C134 2)

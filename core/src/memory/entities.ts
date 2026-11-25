@@ -759,16 +759,27 @@ export function listEntities(
   return { items: matching.slice(offset, offset + (query.limit ?? 50)).map(itemOf), total: matching.length };
 }
 
-/** The correction as the API shows it. */
-export function correctionItem(c: CorrectionRow) {
+/**
+ * The correction as the API shows it; `shown` (an audience's, `shownNorms`) cuts `names` to the norms that audience
+ * sees, so a correction that touches a hidden name never says it.
+ */
+export function correctionItem(c: CorrectionRow, shown?: ReadonlySet<string>) {
   return {
     id: c.id,
     action: c.action,
-    names: correctionNames(c),
+    names: shown ? correctionNames(c).filter((n) => shown.has(n)) : correctionNames(c),
     ...(c.name !== null && c.action !== "add" ? { name: c.name } : {}),
     createdAt: c.createdAt,
     undoneAt: c.undoneAt,
   };
+}
+
+/**
+ * The normalized names an audience's entities show: each one's canonical name and its aliases. An owner's merge puts a
+ * name the audience cannot read into the entity's `norms`; this is what it is allowed to say of them.
+ */
+function shownNorms(entities: readonly Entity[]): Set<string> {
+  return new Set(entities.flatMap((e) => [e.norms[0]!, ...e.aliases.map(entityNorm)]));
 }
 
 /** At most this many mentions in one entity's answer, by path then line. */
@@ -791,6 +802,7 @@ export function entityDetail(
   const entity = entities.find((e) => e.key === key);
   if (!entity) return null;
   const norms = new Set(entity.norms);
+  const shown = shownNorms(view.entities);
   const rows = view.rows
     .filter((r) => norms.has(r.norm) && (!within || within(r.srcId)))
     .sort((x, y) => (x.path < y.path ? -1 : x.path > y.path ? 1 : x.line - y.line))
@@ -839,7 +851,7 @@ export function entityDetail(
     related,
     duplicates: entity.duplicates,
     corrections: view.corrections
-      .filter((c) => correctionNames(c).some((n) => norms.has(n)))
-      .map(correctionItem),
+      .filter((c) => correctionNames(c).some((n) => norms.has(n) && shown.has(n)))
+      .map((c) => correctionItem(c, shown)),
   };
 }
