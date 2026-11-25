@@ -4,7 +4,7 @@ Profile: ui
 Plan: `.specs/features/cerebro-entidades-resumos/plan.md`
 Design: `.specs/features/cerebro-entidades-resumos/design.md` (binding for the screens of S6, S7 and the S8 section)
 
-132 checks (C1-C132) in 8 slices + cross-cutting · 10 one-way doors · open questions: none, the plan's two answered by the
+133 checks (C1-C132, and C133 of `## Correções do lote F`) in 8 slices + cross-cutting · 10 one-way doors · open questions: none, the plan's two answered by the
 owner on 24/11/2026 and S8 approved the same day (AD-054)
 
 The plan's slices are kept: S1-S5 and S8 are the core and the API, "Cross-cutting, API" holds what every new or changed route
@@ -443,6 +443,16 @@ first makes the entity appear and, after the next pass, the notes that cite its 
 rejecting the merge keeps it from coming back (S8)
 Proof: `npx vitest run tests/sugestoes.routes.test.ts -t "C88 "`
 
+**C133** - Undoing an `add` takes the entity out of the list at once, not on the next pass (AC 102): with an accepted `add` of
+`Bruno` whose `nome` rows exist, `undo` of that correction makes `GET /api/memory/entities` and `GET
+/api/memory/entities/:key` (404) stop listing `perfil:bruno` in the same request sequence with no index pass between (the
+`nome` rows of a correction that is not active are ignored at read, at its own layer too: `readEntities` with the `add`
+undone); after the next pass the `nome` rows are gone from `entity_mentions`; an entity that has other proofs (a `nota` row)
+stays listed with only those; undoing and accepting the same name again with another kind works through the route
+(`200`, not `409 correction_conflict`) with no pass in between
+Proof: `npx vitest run tests/entidades.layer.test.ts -t "C133 "`
+Proof: `npx vitest run tests/sugestoes.routes.test.ts -t "C133 "`
+
 ### Cross-cutting, API · 15 files · 330 KB · ~83k
 
 **C89** - The eight new routes are in the `API` table as the Surface says (`toEqual` over method, path and scope): `GET
@@ -731,6 +741,18 @@ Recorded by the orchestrator on 25/11/2026 from the builder's report (both repor
   kind after the next pass. Built in batch F, with Landing row 10b in `plan.md` before the code.
 - **C89 against Coverage:** the status rows of `GET /api/memory/entities` and `GET /api/memory/entities/:key` gain `409`
   (`entities_disabled`, C17), which C17 claims and the codes row already credited.
+
+## Correções do lote F
+
+Recorded by the orchestrator on 25/11/2026 from the builder's report of batch F (reported, not edited by it).
+
+- **AC 102, a defect no check caught:** right after an `add` is undone the entity stays listed from its leftover `nome` rows
+  until the next index pass, and re-accepting the same name with another kind is refused with `409 correction_conflict` until
+  then (batch F's second C85 case had to write the correction by SQL for that reason). C133 is the new check; the fix is built
+  in batch G: the reader ignores the `nome` rows of a correction that is not active.
+- **design.md "Painel da entidade", 15px:** the type scale has no 15px token; the view uses `calc((var(--fs-4) + var(--fs-5))
+/ 2)`. Kept (a value from tokens), for the owner's screen session.
+- **The card's on/off button:** the copy table gives it no text; it reuses the sentinel rows' "Ligado"/"Desligado". Kept.
 
 ## Coverage
 
