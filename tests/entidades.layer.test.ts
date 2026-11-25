@@ -63,6 +63,34 @@ describe("C6 where no term is taken", () => {
   });
 });
 
+describe("C136 a wikilink's address is not read as a term (Landing 1a)", () => {
+  const termRows = (content: string) =>
+    extractMentions(content, "/n/nota.md")
+      .filter((r) => r.proof === "termo")
+      .map((r) => [r.line, r.name]);
+
+  it("C136 [[Banco Central do Brasil]] gives no termo row at its line; the same words in plain text on another line give one", () => {
+    expect(termRows("falei com [[Banco Central do Brasil]] hoje\n")).toEqual([]);
+    expect(termRows("falei com [[Banco Central]] hoje\nvisita ao Banco Central ontem\n")).toEqual([
+      [2, "Banco Central"],
+    ]);
+  });
+
+  it("C136 [[x|Banco Central]]: the address x is not read and the label after | is (Landing 1a)", () => {
+    expect(termRows("falei com [[x|Banco Central]] hoje\n")).toEqual([[1, "Banco Central"]]);
+    // the address of the same link is a term-shaped phrase and still none
+    expect(termRows("falei com [[Mesa Redonda|Banco Central]] hoje\n")).toEqual([[1, "Banco Central"]]);
+    expect(extractTerms("falei com [[Mesa Redonda|Banco Central]] hoje\n")).toEqual([
+      { name: "Banco Central", line: 1, column: 25 },
+    ]);
+  });
+
+  it("C136 the address inside a Markdown link's parentheses is none either; the link's text is read", () => {
+    expect(termRows("veja [nota](Banco Central do Brasil/a.md) depois\n")).toEqual([]);
+    expect(termRows("veja [Mesa Redonda](Banco Central/a.md) depois\n")).toEqual([[1, "Mesa Redonda"]]);
+  });
+});
+
 describe("C10 the norm", () => {
   const rows: Array<[string, string, string]> = [
     ["case and punctuation", "#Cliente-X", "cliente x"],

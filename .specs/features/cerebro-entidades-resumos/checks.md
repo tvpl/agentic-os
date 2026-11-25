@@ -1385,3 +1385,9 @@ run` at the root has one failure, `tests/paineis.refresh.test.ts` C13 (as on the
   no summary); (c) `.ent-link` of batch F's stylesheet now reads `--accent-text`, which axe asked for in the light theme;
   (d) no gallery story for the two views: no check of this feature asks for one and batch F built none.
 - **Abandoned:** nothing.
+
+Status of batch F1 (C134-C145, the round 1 fixes):
+
+- C136, a wikilink's address is not a term: closed. No code changed: the code already blanks the address (Landing 1a); the
+  gap was the proof. The new cases fail with the blanking regex of `entityMentions.ts` replaced by one that never matches
+  (fault F1 of round 1). Proofs: `entidades.layer` (C136 3), `entidades.index` (C136 1)

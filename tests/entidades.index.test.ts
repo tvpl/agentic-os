@@ -112,6 +112,28 @@ describe("C3 links to a home note", () => {
   });
 });
 
+describe("C136 a wikilink's address is not a term at the boundary (Landing 1a)", () => {
+  it("C136 a note whose only capitalised phrase is a wikilink address gives no termo row and no file to the term's count", async () => {
+    const d = dir("c136");
+    const plain = w.put(path.join(d, "a.md"), "visita ao Mesa Redonda ontem\n");
+    const linked = w.put(path.join(d, "b.md"), "ver [[Mesa Redonda]] depois\n");
+    await w.index();
+    expect(rowsOf(w, linked)).toEqual([]);
+    expect(rowsOf(w, plain)).toEqual([
+      { line: 1, proof: "termo", kind: "termo", name: "Mesa Redonda", norm: "mesa redonda" },
+    ]);
+    // one file only: below the threshold of 2, so the term is no entity
+    const listed = await w.call("GET", "/api/memory/entities?q=mesa%20redonda");
+    expect(listed.status).toBe(200);
+    expect(listed.body.items).toEqual([]);
+    // the same phrase in plain text in the second note makes the 2 files
+    w.put(linked, "ver Mesa Redonda depois\n");
+    await w.index();
+    const again = await w.call("GET", "/api/memory/entities?q=mesa%20redonda");
+    expect(again.body.items.map((e: Json) => [e.key, e.files])).toEqual([["termo:mesa redonda", 2]]);
+  });
+});
+
 describe("C4 tags", () => {
   it("C4 `tags: [Cliente-X]` gives a tag row at the line of tags:, and #Cliente-X on line 12 one at line 12", async () => {
     const d = dir("c4");
