@@ -143,9 +143,10 @@ describe("C72 the entries, each in its place", () => {
     renderWith(<BrainChrome {...chrome()} />, { lang: "pt-BR" });
     await waitFor(() => expect(toolbar()).toContain("Revisões (3)"));
     const names = toolbar();
-    // cerebro-entidades-resumos (design.md "Entradas"): "Entidades" between them
-    expect(names.indexOf("Perguntar")).toBe(names.indexOf("Revisões (3)") - 2);
+    // cerebro-entidades-resumos (design.md "Entradas"): "Entidades" and "Resumos" between them
+    expect(names.indexOf("Perguntar")).toBe(names.indexOf("Revisões (3)") - 3);
     expect(names.indexOf("Entidades")).toBe(names.indexOf("Perguntar") + 1);
+    expect(names.indexOf("Resumos")).toBe(names.indexOf("Entidades") + 1);
     const button = [...document.querySelectorAll(".brain-topbar-actions button.btn.sm")].find(
       (b) => b.textContent!.trim() === "Perguntar",
     )!;
@@ -166,9 +167,10 @@ describe("C72 the entries, each in its place", () => {
     fireEvent.click(more ?? document.querySelector(".bs-more")!);
     const acts = () => [...document.querySelectorAll(".bs-menu-acts > button")].map((b) => b.textContent);
     await waitFor(() => expect(acts()).toContain("Perguntar ao cérebro"));
-    // cerebro-entidades-resumos (design.md "Entradas"): "Entidades" between them
-    expect(acts().indexOf("Perguntar ao cérebro")).toBe(acts().indexOf("Faxina") - 2);
+    // cerebro-entidades-resumos (design.md "Entradas"): "Entidades" and "Resumos" between them
+    expect(acts().indexOf("Perguntar ao cérebro")).toBe(acts().indexOf("Faxina") - 3);
     expect(acts().indexOf("Entidades")).toBe(acts().indexOf("Perguntar ao cérebro") + 1);
+    expect(acts().indexOf("Resumos")).toBe(acts().indexOf("Entidades") + 1);
     fireEvent.click(screen.getByRole("button", { name: "Perguntar ao cérebro" }));
     await askUp();
     expect(window.location.hash).toBe("#/brain/ask");

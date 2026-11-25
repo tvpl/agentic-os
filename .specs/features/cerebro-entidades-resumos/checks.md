@@ -1232,3 +1232,19 @@ Status of batch G (C119-C133):
   next pass. The second C85 case now goes through the route (a note touched and indexed before the undo so the next
   batch reads it; the second batch suggests the same name as `projeto`; no pass between the undo and the second `accept`),
   with every assertion it had. Proofs: `entidades.layer` (C133 4), `sugestoes.routes` (C133 3, C85 2)
+- S7 and the copy in rendered components (C119-C129, C130's chunks): closed. The view at `/brain/summaries`
+  (`brain/summaries/SummariesView.tsx`, `summaries.css` under `.sum-view:has(> .sum-cols)`), its own chunk through
+  `lazyRoute`; the mode `summaries` of `useBrainMode`; the toolbar's "Resumos" (`ScrollText`) right after "Entidades", the
+  scene menu's row below "Entidades", the palette's `action:summaries` (`global`) and the scope `view:summaries` of
+  `j`/`k`; the copy in `locales/brain.ts` (`summaries.*`, each value cut from the design table). Builder decisions:
+  "Gerar" of a row starts the run and opens the scope; "Cancelar" has no run id from the summaries routes, so it finds
+  the open run of the scope in `GET /api/runs?statusGroup=active` and `GET /api/runs/:id` (the `scope` input) and calls
+  `POST /api/runs/:id/cancel` (`Flow` step 6 says it); the stale sentence and the row keep only the non-zero counts by
+  cutting the table's own template at its three placeholders (`onlyCounts`), so with all three it is the table's
+  string; the header's "Atualizar" is not drawn while there is no summary (the body's primary "Gerar" is the button);
+  the off state is the view's, the `empty_scope` refusal the scope's, each replacing the body only. Existing pins gained
+  the new entries, no assertion dropped: the toolbar lists of `reviewsEntries` C70, `weeklyEntries` C76, `cleanupEntries`
+  C51 and `askEntries` C72, the scene menu rows of `cleanupEntries` C51 and `askEntries` C72; `legacy.graph` C1 (the
+  testkit), `typography` C15 (`.sum-view .sum-small`) and `states` C16 (the two `data-state` hues of the row, whose
+  icon and words say the state). Proofs: `SummariesView` (C119 3, C121 6, C122 3, C123 4, C124 2, C125 2, C126 2, C127 2,
+  C128 4), `summariesEntries` (C120 8, C130 2), `entitiesCopy` (C129 33)

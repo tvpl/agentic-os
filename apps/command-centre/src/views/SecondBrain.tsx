@@ -67,6 +67,7 @@ import {
   EntitiesView,
   NotesView,
   ReviewsView,
+  SummariesView,
   WeeklyView,
   useBrainMode,
   useBrainViewCommands,
@@ -134,6 +135,10 @@ export default function SecondBrain() {
       ) : brain.mode === "entities" ? (
         <Suspense fallback={<Skeleton lines={6} />}>
           <EntitiesView />
+        </Suspense>
+      ) : brain.mode === "summaries" ? (
+        <Suspense fallback={<Skeleton lines={6} />}>
+          <SummariesView />
         </Suspense>
       ) : (
         <SecondBrainGraph />

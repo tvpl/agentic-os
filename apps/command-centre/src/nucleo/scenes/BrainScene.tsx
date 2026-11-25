@@ -124,6 +124,7 @@ import {
   EntitiesView,
   NotesView,
   ReviewsView,
+  SummariesView,
   WeeklyView,
   useBrainMode,
   useBrainViewCommands,
@@ -246,6 +247,8 @@ function NotesMode({ brain }: { brain: BrainModeState }) {
           <AskView />
         ) : brain.mode === "entities" ? (
           <EntitiesView />
+        ) : brain.mode === "summaries" ? (
+          <SummariesView />
         ) : (
           <NotesView onShowInGraph={(id) => brain.go("graph", `?sel=${id}&local=1&hops=1`)} />
         )}
@@ -1773,6 +1776,10 @@ function Constellation({ onClassic, view }: { onClassic: () => void; view: Brain
             onEntities={() => {
               setMenuOpen(false);
               view.go("entities");
+            }}
+            onSummaries={() => {
+              setMenuOpen(false);
+              view.go("summaries");
             }}
             onCleanup={() => {
               setMenuOpen(false);

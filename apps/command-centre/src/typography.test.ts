@@ -284,6 +284,8 @@ const MICROCOPY: Record<string, string> = {
     "the tab's secondary lines, in 12px as the design names each: the connect line, where to paste, an unreadable file, the closing note, the tools' line and descriptions, a read path (cerebro-perguntar design.md, Aba - Agentes (MCP))",
   ".ent-view .ent-small":
     "the view's secondary lines, in 12px as the design names each: the support line, the aliases, the empty state's explanation, the suggestions card's text and state (cerebro-entidades-resumos design.md, Vista - Entidades)",
+  ".sum-view .sum-small":
+    "the view's secondary lines, in 12px as the design names each: the support line, the kind of the open scope, the reason of a failed run and how the summary was made (cerebro-entidades-resumos design.md, Vista - Resumos)",
   ".ent-view .ent-mline":
     "a mention's or an evidence's line, `linha 12 · ` and the excerpt in 12px (cerebro-entidades-resumos design.md, Painel da entidade and Sugestões)",
   ".file-path": "a file path",

@@ -15,7 +15,7 @@ import { AppRouteContext } from "../desktop/appRoute";
 import { useCommands, type Command } from "../commands/registry";
 import { REVIEWS_PATH } from "./natureza";
 
-export type BrainMode = "graph" | "notes" | "reviews" | "weekly" | "ask" | "entities";
+export type BrainMode = "graph" | "notes" | "reviews" | "weekly" | "ask" | "entities" | "summaries";
 export const GRAPH_PATH = "/brain";
 export const NOTES_PATH = "/brain/notes";
 /** "Revisão semanal" (.specs/features/cerebro-rituais, S5): the page's route, in both shells. */
@@ -24,6 +24,8 @@ export const WEEKLY_PATH = "/brain/weekly";
 export const ASK_PATH = "/brain/ask";
 /** "Entidades" (.specs/features/cerebro-entidades-resumos, S6, door 8): the view's route, in both shells (`?key=`). */
 export const ENTITIES_PATH = "/brain/entities";
+/** "Resumos" (.specs/features/cerebro-entidades-resumos, S7, door 8): the view's route, in both shells (`?kind=&id=`). */
+export const SUMMARIES_PATH = "/brain/summaries";
 
 /** The notes view, its own chunk: fetched the first time "Notas" is chosen (AC 51). */
 export const NotesView = lazyRoute(() => import("./notes/NotesView"));
@@ -35,6 +37,8 @@ export const WeeklyView = lazyRoute(() => import("./weekly/WeeklyReview"));
 export const AskView = lazyRoute(() => import("./ask/AskView"));
 /** "Entidades" (.specs/features/cerebro-entidades-resumos, AC 85), its own chunk: fetched the first time it opens. */
 export const EntitiesView = lazyRoute(() => import("./entities/EntitiesView"));
+/** "Resumos" (.specs/features/cerebro-entidades-resumos, AC 85), its own chunk: fetched the first time it opens. */
+export const SummariesView = lazyRoute(() => import("./summaries/SummariesView"));
 
 export interface BrainModeState {
   mode: BrainMode;
@@ -58,7 +62,9 @@ export function useBrainMode(): BrainModeState {
           ? "ask"
           : pathname.startsWith(ENTITIES_PATH)
             ? "entities"
-            : "graph";
+            : pathname.startsWith(SUMMARIES_PATH)
+              ? "summaries"
+              : "graph";
   const setLocation = panel?.setLocation;
   const go = useCallback(
     (next: BrainMode, search = "") => {
@@ -73,7 +79,9 @@ export function useBrainMode(): BrainModeState {
                 ? ASK_PATH
                 : next === "entities"
                   ? ENTITIES_PATH
-                  : GRAPH_PATH;
+                  : next === "summaries"
+                    ? SUMMARIES_PATH
+                    : GRAPH_PATH;
       if (setLocation) setLocation({ pathname: path, search });
       else navigate(`${path}${search}`);
     },

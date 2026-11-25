@@ -15,6 +15,7 @@ import {
   Plus,
   RefreshCw,
   Scan,
+  ScrollText,
   Sparkles,
   Tv,
   Users,
@@ -191,6 +192,9 @@ export function BrainChrome(p: BrainChromeProps) {
             {/* "Entidades" (cerebro-entidades-resumos, design.md "Entradas"): right after "Perguntar". */}
             <button className="btn sm" onClick={() => go("entities")}>
               <Users aria-hidden /> {t("entities.title")}
+            </button>
+            <button className="btn sm" onClick={() => go("summaries")}>
+              <ScrollText aria-hidden /> {t("summaries.title")}
             </button>
             {/* "Revisões (N)" when something fell due (cerebro-natureza, amendment 10). */}
             <ReviewsButton />

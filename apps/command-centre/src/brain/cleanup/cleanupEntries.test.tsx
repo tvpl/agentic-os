@@ -150,6 +150,7 @@ describe("C51 the four entries, each in its place, and where each opens", () => 
         "Faxina",
         "Perguntar",
         "Entidades",
+        "Resumos",
         "Revisão semanal",
       ]);
       const chips = [...row.querySelectorAll(".os-chip")];
@@ -176,9 +177,10 @@ describe("C51 the four entries, each in its place, and where each opens", () => 
       const rows = [...document.querySelectorAll(".bs-menu-acts > button")].map((b) => b.textContent);
       expect(rows.at(-1)).toBe("Revisão semanal");
       expect(rows.at(-2)).toBe("Faxina");
-      expect(rows.at(-3)).toBe("Entidades");
-      expect(rows.at(-4)).toBe("Perguntar ao cérebro");
-      expect(rows.at(-5)).toBe("Salvar como visão padrão");
+      expect(rows.at(-3)).toBe("Resumos");
+      expect(rows.at(-4)).toBe("Entidades");
+      expect(rows.at(-5)).toBe("Perguntar ao cérebro");
+      expect(rows.at(-6)).toBe("Salvar como visão padrão");
       fireEvent.click(screen.getByRole("button", { name: "Faxina" }));
       await atStep("Etapa 1 de 5 · Escopo");
       await waitFor(() => expect(radios()).toHaveLength(2));

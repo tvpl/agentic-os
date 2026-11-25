@@ -59,6 +59,7 @@ flowchart TD
     PPR --> OUT["RecallResult (exists)"]
     EVAL["mordomo eval (exists)"] --> PPR
     V2["vista Resumos, /brain/summaries (door 8)"] --> SP["POST /api/memory/summaries (door 6)"]
+    V2 --> RC["Cancelar: as execuções abertas e POST /api/runs/:id/cancel (exist)"]
     SP --> FS["fontes do escopo e seus hashes, summary_runs (door 6)"]
     SP --> RUN["execution.startSkill brain-summarize, somente leitura (exists; skill nova, door 6)"]
     RUN --> ART["artifacts/<run>/summary.json (door 6)"]
@@ -100,6 +101,8 @@ flowchart TD
    comparam as fontes gravadas com o índice de hoje: o resumo é `fresh` ou
    `stale`, com quantas fontes mudaram, saíram e quantos arquivos novos entraram; a vista Resumos (door 8) e a ferramenta MCP
    `summary` (door 7) leem dali
+   (o "Cancelar" da vista não recebe o id da execução aberta de uma rota de resumos: acha-a em `GET /api/runs?statusGroup=active`
+   e `GET /api/runs/:id`, pela entrada `scope` da skill, e chama `POST /api/runs/:id/cancel`, rotas que existem)
 7. com `memory.entities.llm.enabled` (door 9), depois de uma passada do índice, sem nenhuma execução aberta e com o último lote
    iniciado há mais de 24 h, ou quando o dono pede, o serviço inicia a skill `brain-entities` (door 9) sobre até 20 arquivos que
    mudaram desde o último lote; a skill escreve `artifacts/<run>/entities.json`, que `GET /api/memory/entities/suggestions`

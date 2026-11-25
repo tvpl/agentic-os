@@ -1,0 +1,228 @@
+/* "Resumos" (.specs/features/cerebro-entidades-resumos, design.md "Vista - Resumos"): two columns on a wide screen (the
+   list 320px, the open summary the rest), one below 720px, where an open summary replaces the list. Colours are tokens,
+   sentences are 13px, nothing is under 12px, and what moves does so inside the no-preference block at the end.
+   Every selector is scoped under the view's root `.sum-view`, whose marker child `.sum-cols` no other screen has. */
+.sum-view:has(> .sum-cols) {
+  min-height: 0;
+  padding: var(--s-4);
+  overflow: auto;
+  color: var(--text);
+  font-size: var(--fs-3);
+}
+
+.sum-view .sum-cols {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: var(--s-5);
+  align-items: start;
+}
+
+.sum-view .sum-listcol,
+.sum-view .sum-panel,
+.sum-view .sum-group,
+.sum-view .sum-empty,
+.sum-view .sum-off,
+.sum-view .sum-none,
+.sum-view .sum-pars,
+.sum-view .sum-how {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.sum-view .sum-listcol,
+.sum-view .sum-panel {
+  gap: var(--s-3);
+}
+
+.sum-view .sum-h1,
+.sum-view .sum-h2,
+.sum-view .sum-pname {
+  margin: 0;
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+
+.sum-view .sum-h2 {
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+  letter-spacing: 0.04em;
+}
+
+.sum-view .sum-pname {
+  font-size: calc((var(--fs-4) + var(--fs-5)) / 2);
+}
+
+.sum-view .sum-small,
+.sum-view .sum-state {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+}
+
+.sum-view .sum-line,
+.sum-view .sum-state,
+.sum-view .sum-band,
+.sum-view .sum-stale,
+.sum-view .sum-phead,
+.sum-view .sum-running,
+.sum-view .sum-cites,
+.sum-view .sum-cite-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+  margin: 0;
+}
+
+.sum-view .sum-line svg,
+.sum-view .sum-state svg,
+.sum-view .sum-band svg,
+.sum-view .sum-stale svg,
+.sum-view .sum-link svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.sum-view .sum-state[data-state="fresh"] svg {
+  color: var(--ok);
+}
+
+.sum-view .sum-state[data-state="stale"] svg {
+  color: var(--warn);
+}
+
+.sum-view .sum-rows,
+.sum-view .sum-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sum-view .sum-row,
+.sum-view .sum-sources > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.sum-view .sum-pick {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--s-2);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.sum-view .sum-pick:hover,
+.sum-view .sum-pick[aria-current="true"] {
+  background: var(--surface-2);
+}
+
+.sum-view .sum-pick[aria-current="true"] {
+  border-color: var(--border-strong);
+}
+
+.sum-view .sum-band,
+.sum-view .sum-stale {
+  padding: var(--s-2) var(--s-3);
+  background: var(--surface-2);
+}
+
+.sum-view .sum-band {
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+}
+
+.sum-view .sum-stale {
+  border-inline-start: 2px solid var(--warn);
+}
+
+.sum-view .sum-band-text {
+  flex: 1;
+}
+
+.sum-view .sum-band-text p {
+  margin: 0;
+}
+
+.sum-view .sum-phead > :last-child {
+  margin-inline-start: auto;
+}
+
+.sum-view .sum-md,
+.sum-view .sum-md p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.sum-view .sum-par {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.sum-view .sum-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: var(--fs-2);
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.sum-view .sum-back {
+  display: none;
+  align-self: flex-start;
+}
+
+@media (max-width: 719px) {
+  .sum-view .sum-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sum-view[data-open] .sum-listcol,
+  .sum-view:not([data-open]) .sum-panelcol {
+    display: none;
+  }
+
+  .sum-view .sum-back {
+    display: inline-flex;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sum-view .sum-panel-in {
+    animation: sum-in 200ms ease-out;
+  }
+}
+
+@keyframes sum-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}

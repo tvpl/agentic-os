@@ -58,6 +58,8 @@ export interface BrainSceneMenuProps {
   onAsk?: () => void;
   /** "Entidades" (cerebro-entidades-resumos, design.md "Entradas"): the row below "Perguntar ao cérebro". */
   onEntities?: () => void;
+  /** "Resumos" (cerebro-entidades-resumos, design.md "Entradas"): the row below "Entidades". */
+  onSummaries?: () => void;
   /** The guided cleanup (cerebro-faxina-guiada, amendment 11): the last row of the actions; default, just open it. */
   onCleanup?: () => void;
   /** "Revisões (N)" (cerebro-natureza, amendment 10): after "Faxina", only with N > 0 files due in the context. */
@@ -105,6 +107,9 @@ export function BrainSceneMenu(p: BrainSceneMenuProps) {
         </button>
         <button type="button" onClick={p.onEntities}>
           {t("entities.title")}
+        </button>
+        <button type="button" onClick={p.onSummaries}>
+          {t("summaries.title")}
         </button>
         <button type="button" onClick={p.onCleanup ?? (() => openCleanup())}>
           {t("cleanup.open.button")}

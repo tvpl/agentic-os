@@ -28,6 +28,7 @@ import {
   Repeat,
   Settings as SettingsIcon,
   Sparkles,
+  ScrollText,
   Stethoscope,
   Users,
   SunMoon,
@@ -47,7 +48,7 @@ import { openNoteEditor } from "../brain/noteEvents";
 import { openCleanup } from "../brain/cleanupEvents";
 import { openMemoryHistory } from "../brain/memoria";
 import { REVIEWS_PATH } from "../brain/natureza";
-import { ASK_PATH, ENTITIES_PATH, WEEKLY_PATH } from "../brain/BrainViewSwitch";
+import { ASK_PATH, ENTITIES_PATH, SUMMARIES_PATH, WEEKLY_PATH } from "../brain/BrainViewSwitch";
 import { useCommands, type Command } from "./registry";
 
 /** Opens the palette (and closes it: the palette registers the same keys in its own `modal` scope). */
@@ -292,6 +293,17 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         ],
         palette: true,
         run: go(ENTITIES_PATH),
+      },
+      {
+        // "Resumos" (cerebro-entidades-resumos, AC 77, design.md "Entradas"): the view at /brain/summaries.
+        id: "action:summaries",
+        title: "summaries.title",
+        group: "actions",
+        scope: "global",
+        icon: ScrollText,
+        keywords: ["summaries", "resumos", "resumo", "summary", "áreas", "areas", "contextos", "contexts"],
+        palette: true,
+        run: go(SUMMARIES_PATH),
       },
       {
         // "Histórico da memória" (cerebro-memoria-confiavel, AC 44): the newest changes of memory/, in a dialog.

@@ -91,6 +91,11 @@ const MARKED_ELSEWHERE: Record<string, string> = {
   '.cx-orb[data-state="ok"]': "the orb sits beside the `.cx-state` word (Connected / Off)",
   '.cx-orb[data-state="warn"]': "the orb sits beside the `.cx-state` word",
   '.cx-orb[data-state="danger"]': "the orb sits beside the `.cx-state` word",
+  // cerebro-entidades-resumos (design.md "Vista - Resumos", Lista): the state of a scope in an icon and in words.
+  '.sum-view .sum-state[data-state="fresh"]':
+    "the row says Atual · <dia> with its CircleCheck; the hue only reinforces them",
+  '.sum-view .sum-state[data-state="stale"]':
+    "the row says Velho: … with its Clock; the hue only reinforces them",
 };
 
 const sources = () => cssFiles().map((file) => ({ file, css: readFileSync(file, "utf8") }));
