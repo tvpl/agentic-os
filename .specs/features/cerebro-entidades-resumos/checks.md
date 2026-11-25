@@ -1266,3 +1266,21 @@ Status of batch G (C119-C133):
   at most 88 934); the summaries chunk 3 661 B JS and 988 B CSS gzip; `scripts/bundle-baseline.json` gains the
   `cerebro-entidades-resumos` entry. Proofs: `entidades.spec.ts` (C119 2, C130 10, C131 1), `entitiesMotion` (C131 7, C132
   7), `entidades.contract` (C132 1), `bundle-size` C31
+
+- **Boundary (batch G):** C119-C133 closed at `6823b46` (C133 at `b482d97`, the view, its entries and its copy at
+  `1bc69ec`, the browser, stylesheet, motion and weight proofs at `6823b46`). On that tree `npm run build`, `npm run
+typecheck`, `npm run lint` and `npm run bundle:check` exit 0; every `Proof:` line of C119-C133 passes run alone and runs
+  only its check's cases (C119 3 + 2 in the browser, C120 8, C121 6, C122 3, C123 4, C124 2, C125 2, C126 2, C127 2, C128 4,
+  C129 33, C130 2 + 10 in the browser, C131 7 + 1 in the browser, C132 7 + 1, C133 4 + 3, `bundle-size` C31 1); `npx vitest
+run` at the root has one failure, `tests/paineis.refresh.test.ts` C13 (as on the base: 3760 passed, 3 skipped); the
+  command-centre suite passes (2248). Routes 185, no event, migration or route added. The whole feature weighs 642 294 B
+  of JS gzip and 88 180 B of CSS gzip, +15 579 and +2 318 over `cerebro-perguntar` (the ceiling is +20 480 and +3 072).
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) Landing 10c (the reader
+  keeps a `nome` row only while an active `add` of its own kind names its norm, so an undone `add` leaves the list and the
+  one-entity route at once and the same name can be accepted again with another kind; the second C85 case now goes
+  through the route, after a note is touched and indexed so the next batch reads it, with every assertion it had); (b)
+  the reading decisions of the S7 bullet above (the row's "Gerar" opens the scope, "Cancelar" finds the open run through
+  the runs routes, the non-zero counts cut from the table's own template, the header's "Atualizar" absent while there is
+  no summary); (c) `.ent-link` of batch F's stylesheet now reads `--accent-text`, which axe asked for in the light theme;
+  (d) no gallery story for the two views: no check of this feature asks for one and batch F built none.
+- **Abandoned:** nothing.
