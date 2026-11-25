@@ -1248,3 +1248,21 @@ Status of batch G (C119-C133):
   testkit), `typography` C15 (`.sum-view .sum-small`) and `states` C16 (the two `data-state` hues of the row, whose
   icon and words say the state). Proofs: `SummariesView` (C119 3, C121 6, C122 3, C123 4, C124 2, C125 2, C126 2, C127 2,
   C128 4), `summariesEntries` (C120 8, C130 2), `entitiesCopy` (C129 33)
+- C119, C130 and C131 in a real browser, C131 and C132 in the stylesheets and C132's weight: closed. `tests/e2e/entidades.spec.ts`
+  measures `/brain/summaries` in both shells at 1280×800 (the list 320px on the left and the summary to the right edge, the
+  list's title, support line, ÁREAS, its rows and CONTEXTOS one under the other, the summary's header, stale band,
+  paragraphs, Fontes and card one under the other, Atualizar at the header's right), at 700px (one column, then the summary
+  with "Voltar" above its name) and at 360px (no horizontal scroll); axe WCAG A/AA with no `serious` or `critical` on
+  `/brain/entities` (an entity open, one suggestion) and on `/brain/summaries` (a stale summary open, then with Fontes
+  open), in both shells and both themes; `/brain` fetching neither chunk and each route fetching its own once; and the
+  Núcleo's console skill-input form, the ask view and the notes view keeping display, grid tracks, padding and box
+  (1px) after both views were opened once. The summaries are the route's answer as the service would give them, put on
+  the page by the browser (the e2e home has no area). axe found one defect of batch F's stylesheet, which the check
+  covers: `.ent-link` in `--accent` failed `color-contrast` in the light theme of the moldura, and reads
+  `--accent-text` now, as the ask view's links do. `entitiesMotion.test.ts` reads both stylesheets: every selector names
+  the root class in its first compound, the root rule waits for `:has(> .ent-cols)` / `:has(> .sum-cols)`, no other file
+  names the markers, and the panel and the open summary enter with `opacity` alone in 200 ms inside `no-preference`.
+  Bundle on this build: JS gzip 642 294 B (+15 579 over `cerebro-perguntar`, at most 647 195), CSS gzip 88 180 B (+2 318,
+  at most 88 934); the summaries chunk 3 661 B JS and 988 B CSS gzip; `scripts/bundle-baseline.json` gains the
+  `cerebro-entidades-resumos` entry. Proofs: `entidades.spec.ts` (C119 2, C130 10, C131 1), `entitiesMotion` (C131 7, C132
+  7), `entidades.contract` (C132 1), `bundle-size` C31

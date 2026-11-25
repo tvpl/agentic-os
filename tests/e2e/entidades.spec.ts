@@ -1,6 +1,6 @@
 /**
- * "Entidades" in a real browser (.specs/features/cerebro-entidades-resumos, C101; design.md "Vista - Entidades" and
- * "Painel da entidade"): the two columns at 1280×800 in both shells (the list 320px on the left, the entity's panel the
+ * "Entidades" and "Resumos" in a real browser (.specs/features/cerebro-entidades-resumos, C101, C119, C130, C131;
+ * design.md "Vista - Entidades", "Painel da entidade" and "Vista - Resumos"). Entidades: the two columns at 1280×800 in both shells (the list 320px on the left, the entity's panel the
  * rest), the regions of each column one under the other, one column at 700px wide where an open entity replaces the
  * list with "Voltar" at the top, and no horizontal scroll at 360px.
  *
@@ -13,9 +13,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { test, expect, type Page, type Route } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { E2E_HOME } from "./home.mjs";
 
 type Shell = "moldura" | "nucleo";
+type Theme = "dark" | "light";
+const THEMES: Theme[] = ["dark", "light"];
+const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const SHELLS: Shell[] = ["moldura", "nucleo"];
 const stamp = Date.now().toString(36);
 const MEMORY = path.join(E2E_HOME, "memory");
@@ -33,7 +37,7 @@ const fed = (patch: Patch) => async (route: Route) => {
   }
 };
 
-async function open(page: Page, shell: Shell, at: string, width = 1280) {
+async function open(page: Page, shell: Shell, at: string, width = 1280, theme: Theme = "dark") {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.route(
     /\/api\/(v1\/)?ui-preferences(\?.*)?$/,
@@ -41,7 +45,7 @@ async function open(page: Page, shell: Shell, at: string, width = 1280) {
   );
   await page.route(
     "**/api/v1/meta",
-    fed((j) => ({ ...j, theme: "dark", language: "pt-BR" })),
+    fed((j) => ({ ...j, theme, language: "pt-BR" })),
   );
   await page.setViewportSize({ width, height: 800 });
   await page.goto(`/#${at}`);
@@ -214,3 +218,359 @@ for (const shell of SHELLS)
       expect(page360, `the page scrolls sideways at 360px (${at})`).toBe(true);
     }
   });
+
+/* ---------------- Resumos: the summaries as the service gives them, answered by the browser ---------------- */
+
+const DAY = 24 * 3_600_000;
+const SCOPE_AREA = { kind: "area", id: "Projetos", name: "Projetos" };
+const LIST = [
+  {
+    scope: SCOPE_AREA,
+    state: "stale",
+    generatedAt: Date.now() - DAY,
+    changes: { changed: 3, removed: 1, added: 2 },
+    running: false,
+  },
+  { scope: { kind: "area", id: "Pessoas", name: "Pessoas" }, state: "missing", running: false },
+  {
+    scope: { kind: "context", id: "atlas", name: "Atlas" },
+    state: "fresh",
+    generatedAt: Date.now() - DAY,
+    running: false,
+  },
+];
+const cite = (name: string, section: string, fileId: number) => ({
+  path: `${MEMORY}/notes/${name}`,
+  section,
+  name,
+  fileId,
+});
+const DETAIL = {
+  ...LIST[0],
+  paragraphs: [
+    {
+      text: "Os projetos seguem em duas frentes: o onboarding e o contrato.",
+      citations: [cite("onboarding.md", "Decisão", 1), cite("contrato.md", "Cláusula", 2)],
+    },
+    { text: "O orçamento fechou **no prazo**.", citations: [cite("plano.md", "Próximos passos", 3)] },
+  ],
+  sources: [
+    { fileId: 1, path: `${MEMORY}/notes/onboarding.md`, name: "onboarding.md", state: "same" },
+    { fileId: 2, path: `${MEMORY}/notes/contrato.md`, name: "contrato.md", state: "changed" },
+    { path: `${MEMORY}/notes/velha.md`, name: "velha.md", state: "removed" },
+  ],
+  run: {
+    id: "e2e-run",
+    provider: "claude",
+    startedAt: Date.now() - DAY,
+    finishedAt: Date.now() - DAY + 42_000,
+  },
+};
+
+/** The list and the open scope's summary answered as the service would, by the browser. */
+async function summaries(page: Page, items: unknown[] = LIST) {
+  await page.route(/\/api\/v1\/memory\/summaries(\?.*)?$/, (route) =>
+    route.request().method() === "GET" ? route.fulfill({ json: { items } }) : route.fallback(),
+  );
+  await page.route(/\/api\/v1\/memory\/summaries\/(area|context)\/[^/?]+$/, (route) =>
+    route.fulfill({ json: DETAIL }),
+  );
+}
+
+for (const shell of SHELLS)
+  test(`C119 /brain/summaries in the ${shell} at 1280×800: the list column 320px on the left with the header and the groups ÁREAS and CONTEXTOS; the open summary the rest with its header, the stale band, the paragraphs, Fontes and the card; one column at 700px with Voltar; no horizontal scroll at 360px`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await open(page, shell, "/brain");
+    await summaries(page);
+    await page.goto("/#/brain/summaries?kind=area&id=Projetos");
+    const v = page.locator(".sum-view");
+    await expect(v.locator("h1")).toHaveText("Resumos");
+    await expect(v.locator(".sum-pname")).toHaveText("Projetos");
+    if (shell === "nucleo") await expect(page.locator(".nu-shell .bs-notes .sum-view")).toHaveCount(1);
+
+    // two columns: the list 320px on the left, the summary taking the rest
+    const cols = await box(v.locator(".sum-cols"));
+    const list = await box(v.locator(".sum-listcol"));
+    const side = await box(v.locator(".sum-panelcol"));
+    expect(Math.abs(list.width - 320), `list ${list.width}px`).toBeLessThanOrEqual(1);
+    expect(Math.abs(list.x - cols.x)).toBeLessThanOrEqual(1);
+    expect(side.x).toBeGreaterThanOrEqual(list.x + list.width);
+    expect(
+      Math.abs(side.x + side.width - (cols.x + cols.width)),
+      "the summary reaches the right edge",
+    ).toBeLessThanOrEqual(1);
+
+    // the list column, top to bottom: title, support line, ÁREAS, its rows, CONTEXTOS
+    const groups = v.locator(".sum-group h2");
+    await expect(groups).toHaveText(["ÁREAS", "CONTEXTOS"]);
+    await expect(v.locator(".sum-head .sum-small")).toContainText("Gerar um resumo usa uma execução do");
+    const listBoxes = await Promise.all(
+      [
+        v.locator(".sum-head h1"),
+        v.locator(".sum-head .sum-small"),
+        groups.nth(0),
+        v.locator(".sum-row").first(),
+        groups.nth(1),
+      ].map(box),
+    );
+    downward(listBoxes, ["title", "support line", "ÁREAS", "first row", "CONTEXTOS"]);
+    for (const b of listBoxes) expect(b.x + b.width).toBeLessThanOrEqual(list.x + list.width + 1);
+    await expect(v.locator(".sum-pick[aria-current='true']")).toHaveCount(1);
+
+    // the open summary, top to bottom; Atualizar at the right of the header
+    const p = v.locator(".sum-panel");
+    await expect(p.locator(".sum-stale")).toContainText(
+      "Desde então: 3 fontes mudaram, 1 saiu, 2 arquivos novos.",
+    );
+    await expect(p.locator(".sum-par")).toHaveCount(2);
+    await expect(p.locator(".notes-fold-head")).toHaveText("Fontes (3)");
+    await expect(p.locator(".sum-how h2")).toHaveText("Como este resumo foi feito");
+    downward(
+      await Promise.all(
+        [
+          p.locator(".sum-phead"),
+          p.locator(".sum-stale"),
+          p.locator(".sum-par").first(),
+          p.locator(".notes-fold-head"),
+          p.locator(".sum-how"),
+        ].map(box),
+      ),
+      ["header", "stale band", "paragraphs", "Fontes", "card"],
+    );
+    const title = await box(p.locator(".sum-pname"));
+    const kind = await box(p.locator(".sum-phead .sum-small"));
+    const update = await box(p.locator(".sum-phead > button"));
+    expect(kind.x).toBeGreaterThan(title.x);
+    expect(update.x).toBeGreaterThan(kind.x + kind.width);
+    expect(
+      Math.abs(update.x + update.width - (side.x + side.width)),
+      "Atualizar at the right",
+    ).toBeLessThanOrEqual(2);
+    await expect(p.getByRole("button", { name: "Voltar" })).toBeHidden();
+
+    // 700px: one column; the list alone, then the summary in its place with Voltar at its top
+    await page.setViewportSize({ width: 700, height: 800 });
+    await page.goto("/#/brain/summaries");
+    await expect(v.locator(".sum-listcol")).toBeVisible();
+    await expect(v.locator(".sum-panelcol")).toBeHidden();
+    await v.locator(".sum-pick", { hasText: "Projetos" }).click();
+    await expect(v.locator(".sum-pname")).toHaveText("Projetos");
+    await expect(v.locator(".sum-listcol")).toBeHidden();
+    const back = p.getByRole("button", { name: "Voltar" });
+    await expect(back).toBeVisible();
+    const one = await box(v.locator(".sum-panelcol"));
+    const cols700 = await box(v.locator(".sum-cols"));
+    expect(Math.abs(one.width - cols700.width), "one column").toBeLessThanOrEqual(1);
+    expect((await box(back)).y).toBeLessThan((await box(p.locator(".sum-pname"))).y);
+    await back.click();
+    await expect(v.locator(".sum-listcol")).toBeVisible();
+
+    // 360px: no horizontal scroll, with a summary open and without
+    await page.setViewportSize({ width: 360, height: 800 });
+    for (const at of ["/brain/summaries", "/brain/summaries?kind=area&id=Projetos"]) {
+      await page.goto(`/#${at}`);
+      await expect(v.locator("h1")).toBeAttached();
+      const fits = await v.evaluate((el) => el.scrollWidth <= el.clientWidth);
+      expect(fits, `the view scrolls sideways at 360px (${at})`).toBe(true);
+      const page360 = await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      );
+      expect(page360, `the page scrolls sideways at 360px (${at})`).toBe(true);
+    }
+  });
+
+/* ---------------- C130: axe in both shells and both themes, and the two chunks ---------------- */
+
+async function serious(page: Page) {
+  const result = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+  return result.violations
+    .filter((v) => v.impact === "serious" || v.impact === "critical")
+    .map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target) }));
+}
+
+for (const theme of THEMES)
+  for (const shell of SHELLS) {
+    test(`C130 /brain/entities in the ${shell}, ${theme}: the list with an entity open and AI suggestions, no serious axe violation`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      await open(page, shell, "/brain", 1280, theme);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      const { name, key } = await makeNotes(page);
+      await page.route(/\/api\/v1\/memory\/entities\/suggestions(\?.*)?$/, (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({
+              json: {
+                items: [
+                  {
+                    id: "e2e:0",
+                    kind: "perfil",
+                    name: "Bruno Lima",
+                    aliases: ["Bruno"],
+                    evidence: [
+                      {
+                        fileId: 1,
+                        path: `${MEMORY}/notes/reuniao.md`,
+                        line: 3,
+                        excerpt: "Falei com Bruno Lima.",
+                      },
+                    ],
+                    state: "pending",
+                  },
+                ],
+                lastBatch: {
+                  id: "e2e",
+                  status: "done",
+                  startedAt: Date.now() - DAY,
+                  finishedAt: Date.now() - DAY + 9_000,
+                },
+              },
+            })
+          : route.fallback(),
+      );
+      await page.evaluate(() => document.fonts.ready);
+      await page.goto(`/#/brain/entities?key=${encodeURIComponent(key)}`);
+      const v = page.locator(".ent-view");
+      await expect(v.locator(".ent-pname")).toHaveText(name);
+      await expect(v.locator(".ent-sugg")).toHaveCount(1);
+      expect(await serious(page)).toEqual([]);
+    });
+
+    test(`C130 /brain/summaries in the ${shell}, ${theme}: a stale summary open, no serious axe violation`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      await open(page, shell, "/brain", 1280, theme);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await summaries(page);
+      await page.evaluate(() => document.fonts.ready);
+      await page.goto("/#/brain/summaries?kind=area&id=Projetos");
+      const v = page.locator(".sum-view");
+      await expect(v.locator(".sum-stale")).toBeVisible();
+      await expect(v.locator(".sum-par")).toHaveCount(2);
+      expect(await serious(page)).toEqual([]);
+      // the fold open as well: the sources are on screen
+      await v.getByRole("button", { name: "Fontes (3)" }).click();
+      await expect(v.locator(".sum-sources li")).toHaveCount(3);
+      expect(await serious(page)).toEqual([]);
+    });
+  }
+
+for (const [name, button, route, heading] of [
+  ["EntitiesView", "Entidades", "/brain/entities", "Entidades"],
+  ["SummariesView", "Resumos", "/brain/summaries", "Resumos"],
+] as const)
+  test(`C130 opening /brain fetches no chunk of ${name}; opening ${route} fetches its own chunk once`, async ({
+    page,
+  }) => {
+    const scripts: string[] = [];
+    page.on("request", (r) => {
+      if (r.resourceType() === "script") scripts.push(new URL(r.url()).pathname);
+    });
+    await open(page, "moldura", "/brain");
+    await summaries(page);
+    const toolbar = page.locator(".brain-topbar-actions");
+    await expect(toolbar.getByRole("button", { name: button, exact: true })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const chunk = new RegExp(`/assets/${name}-[\\w-]+\\.js$`);
+    expect(scripts.filter((s) => chunk.test(s))).toEqual([]);
+    expect(scripts.filter((s) => /\/assets\/(Entities|Summaries)View-[\w-]+\.js$/.test(s))).toEqual([]);
+    await toolbar.getByRole("button", { name: button, exact: true }).click();
+    await expect(page.locator("h1", { hasText: heading })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`#${route}`));
+    expect(scripts.filter((s) => chunk.test(s))).toHaveLength(1);
+  });
+
+/* ---------------- C131: the stylesheets change no other screen ---------------- */
+
+/** The console's skill-input form, the ask view and the notes view, measured as the browser lays them out. */
+async function layouts(page: Page) {
+  const form = page.locator('[data-testid="console-ask"]');
+  const fields = form.locator(".ask-fields");
+  await expect(fields).toBeVisible();
+  const consoleForm = await form.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      padding: s.padding,
+      overflow: s.overflow,
+      minHeight: s.minHeight,
+      fontSize: s.fontSize,
+      color: s.color,
+    };
+  });
+  const style = await fields.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { display: s.display, columns: s.gridTemplateColumns };
+  });
+  const labels = fields.locator(".ask-field");
+  await expect(labels).toHaveCount(2);
+  const consoleOut = {
+    own: consoleForm,
+    display: style.display,
+    tracks: style.columns.split(/\s+/).filter((t) => t !== "" && parseFloat(t) > 0).length,
+    box: await box(fields),
+    tops: [(await box(labels.nth(0))).y, (await box(labels.nth(1))).y],
+  };
+  const measured = async (selector: string) => {
+    const el = page.locator(selector).first();
+    await expect(el).toBeVisible();
+    const css = await el.evaluate((n) => {
+      const s = getComputedStyle(n);
+      return { display: s.display, columns: s.gridTemplateColumns, padding: s.padding, fontSize: s.fontSize };
+    });
+    return { ...css, box: await box(el) };
+  };
+  await page.evaluate(() => void (location.hash = "#/brain/ask"));
+  const ask = await measured(".ask .ask-col");
+  await page.evaluate(() => void (location.hash = "#/brain/notes"));
+  const notes = await measured(".notes-view");
+  await page.evaluate(() => void (location.hash = "#/brain"));
+  return { console: consoleOut, ask, notes };
+}
+
+test("C131 the Núcleo at 1280×800: the console's skill-input form, the ask view and the notes view keep their display, grid tracks and box (within 1px) after /brain/entities and /brain/summaries have been opened once", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await open(page, "nucleo", "/brain");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await summaries(page);
+  // no rule of the two views is loaded yet
+  await expect(page.locator(".ent-cols, .sum-cols")).toHaveCount(0);
+  const input = page.locator(".cons-input");
+  await expect(input).toBeVisible();
+  await input.fill("/brainstorm");
+  await input.press("Enter");
+  const before = await layouts(page);
+  expect(before.console.display).toBe("grid");
+  expect(before.console.tracks, "two columns before").toBe(2);
+
+  // open both views once: their chunks and stylesheets load
+  await page.evaluate(() => void (location.hash = "#/brain/entities"));
+  await expect(page.locator(".ent-view .ent-cols")).toBeVisible();
+  await expect(page.locator(".ent-view .ent-cols")).toHaveCSS("display", "grid");
+  await page.evaluate(() => void (location.hash = "#/brain/summaries"));
+  await expect(page.locator(".sum-view .sum-cols")).toBeVisible();
+  await expect(page.locator(".sum-view .sum-cols")).toHaveCSS("display", "grid");
+  await page.evaluate(() => void (location.hash = "#/brain"));
+  await expect(page.locator(".sum-view")).toHaveCount(0);
+
+  const after = await layouts(page);
+  const same = (a: Record<string, any>, b: Record<string, any>, what: string) => {
+    expect(a.display, `${what} display`).toBe(b.display);
+    expect(a.columns ?? "", `${what} grid tracks`).toBe(b.columns ?? "");
+    expect(a.padding ?? "", `${what} padding`).toBe(b.padding ?? "");
+    for (const k of ["x", "y", "width", "height"] as const)
+      expect(Math.abs(a.box[k] - b.box[k]), `${what} box ${k}`).toBeLessThanOrEqual(1);
+  };
+  same(after.console, before.console, "the console's fields");
+  expect(after.console.tracks, "two columns after").toBe(2);
+  expect(after.console.own, "the form's own padding, overflow, least height, size and colour").toEqual(
+    before.console.own,
+  );
+  expect(Math.abs(after.console.tops[0]! - after.console.tops[1]!)).toBeLessThanOrEqual(1);
+  same(after.ask, before.ask, "the ask view");
+  same(after.notes, before.notes, "the notes view");
+});

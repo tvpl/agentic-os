@@ -961,3 +961,38 @@ describe("C100 the docs", () => {
     expect(manual).toContain("Second Brain → **Resumos**");
   });
 });
+
+// ---- C132: the weight ------------------------------------------------------------------------------------------------
+
+describe("C132 the weight of the two views", () => {
+  it("C132 scripts/bundle-baseline.json ends with cerebro-entidades-resumos right after cerebro-perguntar, at most 20 KB JS gzip and 3 KB CSS gzip above it (647 195 B and 88 934 B), with a reason that names both views, the card, the fold and the entries", () => {
+    const baseline = JSON.parse(read("scripts/bundle-baseline.json")) as {
+      after: Array<{ feature: string; reason: string; jsGzip: number; cssGzip: number }>;
+    };
+    const names = baseline.after.map((e) => e.feature);
+    expect(names.at(-1)).toBe("cerebro-entidades-resumos");
+    expect(names.at(-2)).toBe("cerebro-perguntar");
+    const [ask, entry] = baseline.after.slice(-2) as [
+      (typeof baseline.after)[number],
+      (typeof baseline.after)[number],
+    ];
+    expect([ask.jsGzip, ask.cssGzip]).toEqual([626_715, 85_862]);
+    expect(entry.jsGzip).toBeGreaterThan(ask.jsGzip);
+    expect(entry.jsGzip, "JS gzip above cerebro-perguntar").toBeLessThanOrEqual(ask.jsGzip + 20 * 1024);
+    expect(entry.jsGzip).toBeLessThanOrEqual(647_195);
+    expect(entry.cssGzip, "CSS gzip above cerebro-perguntar").toBeLessThanOrEqual(ask.cssGzip + 3 * 1024);
+    expect(entry.cssGzip).toBeLessThanOrEqual(88_934);
+    for (const word of [
+      "Entidades",
+      "Resumos",
+      "chunk of its own",
+      "suggestions card",
+      "Fontes fold",
+      "Entidades fold",
+      "toolbar buttons",
+      "scene menu rows",
+      "palette commands",
+    ])
+      expect(entry.reason, word).toContain(word);
+  });
+});

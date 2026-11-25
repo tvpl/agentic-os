@@ -281,7 +281,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--accent);
+  color: var(--accent-text);
   font: inherit;
   text-align: start;
   text-decoration: underline;
