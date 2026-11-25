@@ -54,6 +54,11 @@ const entityKeys = async (w: SugestoesWorld): Promise<string[]> => {
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return res.body.items.map((e: Json) => e.key);
 };
+/** The note changed again, so a later batch reads it (its `mtime` after the last batch's start, in the index). */
+const touched = async (w: SugestoesWorld, file: string, text: string) => {
+  w.note(file, text, Date.now() + MINUTE);
+  await w.index();
+};
 const overrides = (w: SugestoesWorld) =>
   w.ctx.db.prepare("SELECT action, a, b, name, undone_at FROM entity_overrides ORDER BY id").all() as Json[];
 /** Wait for every open run of the world to end. */
@@ -654,19 +659,17 @@ describe("C85 an add makes the next pass re-extract every file from the stored t
         { path: n.r3, name: "Bruno", kind: "perfil" },
       ]);
 
-      // undo, and with no pass in between the same names accepted again as a project: the route refuses that
-      // suggestion while the earlier nome rows still list the entity, so the add is stored as writeCorrection stores it
+      // the note changes again (a pass), so the next batch reads it; then undo, and with no pass in between the same
+      // names accepted again as a project, through the route (C133)
+      await touched(w, n.r1, "# R1\n\nFalei com Bruno Lima sobre a Ana Sousa.\n");
       const undo = await w.correct({ action: "undo", id: accepted.body.correction.id });
       expect(undo.status, JSON.stringify(undo.body)).toBe(200);
-      w.ctx.db
-        .prepare("INSERT INTO entity_overrides (action, a, b, name, created_at) VALUES (?, ?, ?, ?, ?)")
-        .run(
-          "add",
-          "bruno lima",
-          JSON.stringify({ kind: "projeto", aliases: ["Bruno"] }),
-          "Bruno Lima",
-          Date.now(),
-        );
+      const again = await w.batch({
+        v: 1,
+        suggestions: [suggestion("projeto", "Bruno Lima", [[n.r1, 3]], { aliases: ["Bruno"] })],
+      });
+      const second = await w.correct({ action: "accept", suggestion: `${again}:0` });
+      expect(second.status, JSON.stringify(second.body)).toBe(200);
       await w.index();
       expect(marker()).toBe(`1:${sha(["projeto:Bruno", "projeto:Bruno Lima"])}`);
       expect(nomeRows()).toEqual([
@@ -674,6 +677,101 @@ describe("C85 an add makes the next pass re-extract every file from the stored t
         { path: n.r1, name: "Bruno Lima", kind: "projeto" },
         { path: n.r3, name: "Bruno", kind: "projeto" },
       ]);
+    });
+  });
+});
+
+// ---- C133: an add that is undone stops showing at once ---------------------------------------------------------------
+
+describe("C133 an add that is undone takes its entity out at once", () => {
+  const nomeRows = (w: SugestoesWorld) =>
+    w.ctx.db.prepare("SELECT COUNT(*) AS n FROM entity_mentions WHERE proof = 'nome'").get() as { n: number };
+
+  it("C133 undo of the add: the list and the one entity (404) stop showing perfil:bruno lima with no pass between; after the next pass the nome rows are gone", async () => {
+    await fresh(async (w) => {
+      const n = await people(w);
+      const id = await w.batch({
+        v: 1,
+        suggestions: [suggestion("perfil", "Bruno Lima", [[n.r1, 3]], { aliases: ["Bruno"] })],
+      });
+      await w.index();
+      const accepted = await w.correct({ action: "accept", suggestion: `${id}:0` });
+      expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+      await w.index();
+      expect(nomeRows(w).n).toBeGreaterThan(0);
+      expect(await entityKeys(w)).toContain("perfil:bruno lima");
+      expect((await w.call("GET", `/api/memory/entities/${enc("perfil:bruno lima")}`)).status).toBe(200);
+
+      const undo = await w.correct({ action: "undo", id: accepted.body.correction.id });
+      expect(undo.status, JSON.stringify(undo.body)).toBe(200);
+      // the nome rows are still stored, and read as nothing
+      expect(nomeRows(w).n).toBeGreaterThan(0);
+      expect(await entityKeys(w)).not.toContain("perfil:bruno lima");
+      expect((await w.call("GET", `/api/memory/entities/${enc("perfil:bruno lima")}`)).status).toBe(404);
+
+      await w.index();
+      expect(nomeRows(w).n).toBe(0);
+      expect(await entityKeys(w)).not.toContain("perfil:bruno lima");
+    });
+  });
+
+  it("C133 an entity that has a nota row stays listed with only that row after the undo", async () => {
+    await fresh(async (w) => {
+      const n = await people(w);
+      w.note(
+        path.join(w.notas, "bruno.md"),
+        "---\ntype: profile\ntitle: Bruno\n---\ncontato.\n",
+        Date.now() - HOUR,
+      );
+      await w.index();
+      const id = await w.batch({
+        v: 1,
+        suggestions: [suggestion("perfil", "Bruno Lima", [[n.r1, 3]], { aliases: ["Bruno"] })],
+      });
+      await w.index();
+      const accepted = await w.correct({ action: "accept", suggestion: `${id}:0` });
+      expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+      await w.index();
+      const detail = async () => (await w.call("GET", `/api/memory/entities/${enc("perfil:bruno")}`)).body;
+      const before = await detail();
+      expect(before.mentions.length).toBeGreaterThan(1);
+
+      const undo = await w.correct({ action: "undo", id: accepted.body.correction.id });
+      expect(undo.status, JSON.stringify(undo.body)).toBe(200);
+      const after = await detail();
+      expect(after.key).toBe("perfil:bruno");
+      expect(after.mentions.map((m: Json) => m.proof)).toEqual(["nota"]);
+      const listed = (await w.call("GET", "/api/memory/entities?limit=200")).body.items.find(
+        (e: Json) => e.key === "perfil:bruno",
+      );
+      expect(listed).toMatchObject({ files: 1, mentions: 1 });
+    });
+  });
+
+  it("C133 undo and accept of the same name with another kind is 200, not 409 correction_conflict, with no pass between", async () => {
+    await fresh(async (w) => {
+      const n = await people(w);
+      const id = await w.batch({
+        v: 1,
+        suggestions: [suggestion("perfil", "Bruno Lima", [[n.r1, 3]], { aliases: ["Bruno"] })],
+      });
+      await w.index();
+      const accepted = await w.correct({ action: "accept", suggestion: `${id}:0` });
+      expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+      await w.index();
+      await touched(w, n.r1, "# R1\n\nFalei com Bruno Lima sobre a Ana Sousa.\n");
+      const undo = await w.correct({ action: "undo", id: accepted.body.correction.id });
+      expect(undo.status, JSON.stringify(undo.body)).toBe(200);
+
+      const again = await w.batch({
+        v: 1,
+        suggestions: [suggestion("projeto", "Bruno Lima", [[n.r1, 3]], { aliases: ["Bruno"] })],
+      });
+      const second = await w.correct({ action: "accept", suggestion: `${again}:0` });
+      expect(second.status, JSON.stringify(second.body)).toBe(200);
+      const keys = await entityKeys(w);
+      expect(keys).toContain("projeto:bruno lima");
+      expect(keys).not.toContain("perfil:bruno lima");
     });
   });
 });

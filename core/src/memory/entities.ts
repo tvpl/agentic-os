@@ -240,6 +240,20 @@ export function activeCorrections(corrections: readonly CorrectionRow[]): Correc
 }
 
 /**
+ * The mentions that count (AC 102): a `nome` row stands for the active `add` that named it, so one whose `add` was
+ * undone (or whose kind it does not carry) is ignored at read until the next pass removes it.
+ */
+export function liveMentions(rows: readonly MentionRow[], corrections: readonly CorrectionRow[]): MentionRow[] {
+  const named = new Set<string>();
+  for (const c of activeCorrections(corrections)) {
+    const payload = c.action === "add" ? addPayload(c.b) : null;
+    if (!payload) continue;
+    for (const name of [c.a, ...payload.aliases]) named.add(`${payload.kind}:${entityNorm(name)}`);
+  }
+  return rows.filter((r) => r.proof !== "nome" || named.has(`${r.kind}:${r.norm}`));
+}
+
+/**
  * The entities of a set of mentions and the owner's corrections (door 2, door 3): (0) the `nota` names of one file are
  * one entity (Landing 2b), and so are an `add` and its aliases; (1) the same norm is the same entity; (2) the gate; (3)
  * MinHash: an estimated Jaccard of 0.9 or more joins two names, unless a `separate` keeps them apart, and 0.7 to 0.9
@@ -247,10 +261,11 @@ export function activeCorrections(corrections: readonly CorrectionRow[]): Correc
  * in `created_at` order. A `termo` needs mentions in 2 files. Ordered by files, then name.
  */
 export function computeEntities(
-  rows: readonly MentionRow[],
+  allRows: readonly MentionRow[],
   corrections: readonly CorrectionRow[],
   options: DedupOptions = {},
 ): Entity[] {
+  const rows = liveMentions(allRows, corrections);
   const signature = options.signature ?? nameSignature;
   const active = activeCorrections(corrections);
   const uf = new UnionFind();
@@ -498,8 +513,8 @@ export class EntityReader {
 
   /** Work the view out from the index (no cache). */
   compute(allow: Allow): EntityView {
-    const rows = readMentions(this.db, allow);
     const corrections = readCorrections(this.db);
+    const rows = liveMentions(readMentions(this.db, allow), corrections);
     const entities = computeEntities(rows, corrections);
     const byNorm = new Map<string, Entity>();
     for (const e of entities) for (const n of e.norms) byNorm.set(n, e);

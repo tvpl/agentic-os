@@ -1223,3 +1223,12 @@ correction_conflict`), so the case stores the second `add` with the SQL and row 
   answered; (c) the reading decisions of the S6 bullet above (tab counts, paging, search pause, the card's on/off
   label and its counts, "Juntar com <nome>", the 15px name as a calc of two tokens).
 - **Abandoned:** nothing.
+
+Status of batch G (C119-C133):
+
+- C133, the undone `add` out of the reader: closed. `liveMentions` (`core/src/memory/entities.ts`, Landing 10c) drops a `nome`
+  row that no active `add` of its own kind names, in `computeEntities` and in `EntityReader.compute`, so the list, the one
+  entity (`404`) and `suggestionPending` see the entity gone right after the `undo`, with the rows still stored until the
+  next pass. The second C85 case now goes through the route (a note touched and indexed before the undo so the next
+  batch reads it; the second batch suggests the same name as `projeto`; no pass between the undo and the second `accept`),
+  with every assertion it had. Proofs: `entidades.layer` (C133 4), `sugestoes.routes` (C133 3, C85 2)

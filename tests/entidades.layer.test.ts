@@ -6,6 +6,7 @@ import { entityNorm, extractMentions, extractTerms } from "../core/src/memory/en
 import {
   coMentionEdges,
   computeEntities,
+  liveMentions,
   nameCandidates,
   nameSignature,
   type CorrectionRow,
@@ -415,5 +416,47 @@ describe("C20 the cache", () => {
     } finally {
       compute.mockRestore();
     }
+  });
+});
+
+describe("C133 the nome rows of an add that is not active are ignored at read", () => {
+  const add = (id: number, kind: string, aliases: string[] = []) =>
+    correction(id, "add", "bruno lima", JSON.stringify({ kind, aliases }), "Bruno Lima");
+  const nome = (src: number, kind: MentionRow["kind"], name: string) => mention(src, "nome", kind, name);
+  const keys = (rows: MentionRow[], corrections: CorrectionRow[]) =>
+    computeEntities(rows, corrections).map((e) => e.key);
+
+  it("C133 an add that is active lists the entity from its nome rows", () => {
+    const rows = [nome(1, "perfil", "Bruno Lima"), nome(2, "perfil", "Bruno")];
+    expect(keys(rows, [add(1, "perfil", ["Bruno"])])).toEqual(["perfil:bruno lima"]);
+  });
+
+  it("C133 the same rows with the add undone list no entity, and none of the rows is read", () => {
+    const rows = [nome(1, "perfil", "Bruno Lima"), nome(2, "perfil", "Bruno")];
+    const undone = [{ ...add(1, "perfil", ["Bruno"]), undoneAt: 9 }];
+    expect(keys(rows, undone)).toEqual([]);
+    expect(liveMentions(rows, undone)).toEqual([]);
+    expect(keys(rows, [])).toEqual([]);
+  });
+
+  it("C133 an entity with a nota row stays listed with only that row once the add is undone", () => {
+    const rows = [
+      mention(3, "nota", "perfil", "Bruno"),
+      nome(1, "perfil", "Bruno Lima"),
+      nome(2, "perfil", "Bruno"),
+    ];
+    const live = computeEntities(rows, [add(1, "perfil", ["Bruno"])]);
+    expect(live.map((e) => [e.key, e.mentions, e.files])).toEqual([["perfil:bruno", 3, 3]]);
+    const undone = computeEntities(rows, [{ ...add(1, "perfil", ["Bruno"]), undoneAt: 9 }]);
+    expect(undone.map((e) => [e.key, e.mentions, e.files])).toEqual([["perfil:bruno", 1, 1]]);
+  });
+
+  it("C133 a nome row stands for an active add of its own kind only: undone as perfil and accepted as projeto, the perfil rows are ignored", () => {
+    const rows = [nome(1, "perfil", "Bruno Lima"), nome(2, "perfil", "Bruno")];
+    const corrections = [{ ...add(1, "perfil", ["Bruno"]), undoneAt: 9 }, add(2, "projeto", ["Bruno"])];
+    expect(liveMentions(rows, corrections)).toEqual([]);
+    expect(computeEntities(rows, corrections).map((e) => [e.key, e.kind, e.mentions])).toEqual([
+      ["projeto:bruno lima", "projeto", 0],
+    ]);
   });
 });
