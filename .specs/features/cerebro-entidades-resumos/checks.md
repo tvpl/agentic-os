@@ -1149,3 +1149,13 @@ entities_disabled` that C17 claims and the row of the new codes credits to C17, 
   built: C85's claim says the SHA-256 "of the sorted `add` names" and its existing case asserts the hash of
   `Bruno\nBruno Lima`, so the new shape cannot land without changing that check's literal; batch D's (b) still holds.
 - **Abandoned:** nothing.
+
+Status of batch F (C101-C118 and the C85 correction):
+
+- C85 corrected (Correções do lote E): closed. `entityMentionsMarker` hashes the sorted `<kind>:<name>` of every accepted
+  name and alias (Landing 10b); C85's existing case asserts the hash of `perfil:Bruno\nperfil:Bruno Lima`, and a second
+  C85 case undoes the `add`, stores the same names as `projeto` and checks the marker and the `nome` rows' new kind after
+  the next pass. The route cannot reach that state with no pass between the undo and the second accept (the earlier `nome`
+  rows still list `perfil:bruno lima` until the next pass, so the suggestion is no longer pending, `409
+correction_conflict`), so the case stores the second `add` with the SQL and row shape of `writeCorrection`. Proof:
+  `sugestoes.routes` (C85 2)

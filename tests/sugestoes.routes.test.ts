@@ -525,7 +525,7 @@ describe("C83 accept of a suggestion without mergeWith", () => {
 // ---- C85: the re-extraction after an add and its undo ------------------------------------------------------------
 
 describe("C85 an add makes the next pass re-extract every file from the stored text", () => {
-  it("C85 after the add, a pass with no file opened writes nome rows and the marker 1:<sha256 of the sorted names>; the next recomputes none; undoing the add re-extracts and the nome rows are gone", async () => {
+  it("C85 after the add, a pass with no file opened writes nome rows and the marker 1:<sha256 of the sorted kind:name>; the next recomputes none; undoing the add re-extracts and the nome rows are gone", async () => {
     await fresh(async (w) => {
       const n = await people(w);
       const id = await w.batch({
@@ -588,7 +588,10 @@ describe("C85 an add makes the next pass re-extract every file from the stored t
       expect(afterAdd.reads).toBe(0);
       // every Markdown file read again from the stored text: its rows replaced
       expect(afterAdd.deletes).toBe(files);
-      const sha = crypto.createHash("sha256").update(["Bruno", "Bruno Lima"].sort().join("\n")).digest("hex");
+      const sha = crypto
+        .createHash("sha256")
+        .update(["perfil:Bruno", "perfil:Bruno Lima"].sort().join("\n"))
+        .digest("hex");
       expect(marker()).toBe(`1:${sha}`);
       expect(nomeRows()).toEqual(
         [
@@ -613,6 +616,64 @@ describe("C85 an add makes the next pass re-extract every file from the stored t
       expect(marker()).toBe("1");
       expect(nomeRows()).toEqual([]);
       expect(await entityKeys(w)).not.toContain("perfil:bruno lima");
+    });
+  });
+
+  it("C85 undoing the add and accepting the same names with another kind moves the marker, and after the next pass the nome rows carry the new kind", async () => {
+    await fresh(async (w) => {
+      const n = await people(w);
+      const id = await w.batch({
+        v: 1,
+        suggestions: [suggestion("perfil", "Bruno Lima", [[n.r1, 3]], { aliases: ["Bruno"] })],
+      });
+      await w.index();
+      const accepted = await w.correct({ action: "accept", suggestion: `${id}:0` });
+      expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+      await w.index();
+      const marker = () =>
+        (
+          w.ctx.db.prepare("SELECT value FROM meta WHERE key = 'index.entity_mentions'").get() as {
+            value: string;
+          }
+        ).value;
+      const nomeRows = () =>
+        w.ctx.db
+          .prepare(
+            "SELECT f.path, m.name, m.kind FROM entity_mentions m JOIN files f ON f.id = m.src_id WHERE m.proof = 'nome' ORDER BY f.path, m.name",
+          )
+          .all() as Json[];
+      const sha = (names: string[]) =>
+        crypto
+          .createHash("sha256")
+          .update([...names].sort().join("\n"))
+          .digest("hex");
+      expect(marker()).toBe(`1:${sha(["perfil:Bruno", "perfil:Bruno Lima"])}`);
+      expect(nomeRows()).toEqual([
+        { path: n.r1, name: "Bruno", kind: "perfil" },
+        { path: n.r1, name: "Bruno Lima", kind: "perfil" },
+        { path: n.r3, name: "Bruno", kind: "perfil" },
+      ]);
+
+      // undo, and with no pass in between the same names accepted again as a project: the route refuses that
+      // suggestion while the earlier nome rows still list the entity, so the add is stored as writeCorrection stores it
+      const undo = await w.correct({ action: "undo", id: accepted.body.correction.id });
+      expect(undo.status, JSON.stringify(undo.body)).toBe(200);
+      w.ctx.db
+        .prepare("INSERT INTO entity_overrides (action, a, b, name, created_at) VALUES (?, ?, ?, ?, ?)")
+        .run(
+          "add",
+          "bruno lima",
+          JSON.stringify({ kind: "projeto", aliases: ["Bruno"] }),
+          "Bruno Lima",
+          Date.now(),
+        );
+      await w.index();
+      expect(marker()).toBe(`1:${sha(["projeto:Bruno", "projeto:Bruno Lima"])}`);
+      expect(nomeRows()).toEqual([
+        { path: n.r1, name: "Bruno", kind: "projeto" },
+        { path: n.r1, name: "Bruno Lima", kind: "projeto" },
+        { path: n.r3, name: "Bruno", kind: "projeto" },
+      ]);
     });
   });
 });

@@ -115,15 +115,18 @@ const NOTE_TASKS_VERSION = "1";
  * Which version of the extraction the stored `entity_mentions` come from (.specs/features/cerebro-entidades-resumos,
  * door 1): the first full pass after migration 35 (or after the version moves, or after the entities are turned back
  * on) fills them from the stored text, opening no file, and then writes it. With names the owner accepted (door 10),
- * the value is the version, `:` and the SHA-256 of the sorted names (`entityMentionsMarker`), so accepting or undoing
+ * the value is the version, `:` and the SHA-256 of the sorted `<kind>:<name>` (`entityMentionsMarker`), so accepting or undoing
  * an `add` makes the next full pass read every file again from the stored text.
  */
 const ENTITY_MENTIONS_KEY = "index.entity_mentions";
 const ENTITY_MENTIONS_VERSION = "1";
 
-/** The marker of `index.entity_mentions` for the names the owner accepted (door 10). */
+/**
+ * The marker of `index.entity_mentions` for the names the owner accepted (door 10, Landing 10b): the sorted
+ * `<kind>:<name>` of every accepted name and alias, so the same names accepted again with another kind move it too.
+ */
 export function entityMentionsMarker(accepted: readonly AcceptedName[]): string {
-  const names = [...new Set(accepted.map((a) => a.name))].sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
+  const names = [...new Set(accepted.map((a) => `${a.kind}:${a.name}`))].sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
   if (names.length === 0) return ENTITY_MENTIONS_VERSION;
   return `${ENTITY_MENTIONS_VERSION}:${crypto.createHash("sha256").update(names.join("\n")).digest("hex")}`;
 }
