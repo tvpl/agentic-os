@@ -1397,3 +1397,8 @@ Status of batch F1 (C134-C145, the round 1 fixes):
   visible name only. A rename of a name only hidden files hold is not listed (it names nothing the caller sees). `duplicates`
   was already the audience's (computed over its rows); the new cases assert it. The leak, put back in a scratch worktree
   (`entities.ts` at `7a70108`), fails all 4 new cases. Proofs: `entidades.access` (C134 2), `entidades.layer` (C134 2)
+- C135, the privacy claim of AC 105 at the boundary: closed. No code changed. The owner's `POST` and the batch the index
+  pass starts on its own are handed only the open note (a note in a folder hidden from agents and one the policy excludes
+  today, both newer, are not in `files`, and nothing of either is in `known` or anywhere in the inputs); the run's
+  `provider` is `claude`, then `codex` after the default changes. With `routes/suggestions.ts:76` reading `hidden: () =>
+false` (fault F3 of round 1) the first two cases fail. Proofs: `sugestoes.routes` (C135 3)

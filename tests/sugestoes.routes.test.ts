@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { recordSuggestionBatch } from "@mordomo/core/internal";
 import { scheduleSuggestionBatches } from "../apps/api/src/routes/suggestions.js";
 import * as safeFs from "../core/src/security/safeFs.js";
+import { FAKE_BIN } from "./helpers.js";
 import { code } from "./helpers/memoriaWorld.js";
 import {
   HOUR,
@@ -357,6 +358,92 @@ describe("C78 the run's known input", () => {
       expect(lines).toEqual(expect.arrayContaining(["Ana Souza", "Ana", "Banco Central", "mercado livre"]));
       expect(lines).not.toContain("Zeca Pagodinho");
       expect(lines.filter((l) => /zeca/i.test(l))).toEqual([]);
+    });
+  });
+});
+
+// ---- C135: the privacy claim of AC 105 at the boundary ----------------------------------------------------------------
+
+describe("C135 what a batch is handed, and who runs it", () => {
+  /** A note in a folder hidden from agents and one the policy excludes today, newer than the open note and with every word a changed note has. */
+  async function secretWorld(w: SugestoesWorld) {
+    const hiddenDir = w.outside("escondida");
+    w.update((s) => {
+      s.indexedFolders = [...s.indexedFolders, { path: hiddenDir, area: null, enabled: true }];
+      s.folderAccess = [{ path: hiddenDir, agents: "hide", devices: "read" }];
+    });
+    const t = Date.now() - HOUR;
+    const open = w.note(path.join(w.notas, "aberta.md"), "# Aberta\n\nReunião com Banco Central.\n", t);
+    const hidden = w.note(
+      path.join(hiddenDir, "oculta.md"),
+      "---\ntype: profile\ntitle: Zeca Pagodinho\naliases: [Zeca]\n---\nFalei com Yolanda Reservada.\n",
+      t + MINUTE,
+    );
+    const excluded = w.note(
+      path.join(w.notas, "privado", "segredo.md"),
+      "---\ntype: profile\ntitle: Quincas Borba\n---\nVisita ao Projeto Sigiloso.\n",
+      t + 2 * MINUTE,
+    );
+    await w.index();
+    // the policy changes after the index: today's policy decides (AC 105)
+    w.update((s) => {
+      s.excludes = [...s.excludes, "privado"];
+    });
+    const secret = /zeca|pagodinho|yolanda|quincas|borba|sigiloso|oculta|segredo|privado|escondida/i;
+    return { open, hidden, excluded, secret };
+  }
+
+  const inputsOf = (w: SugestoesWorld, runId: string): Record<string, string> => {
+    const request = w.ctx.runs.get(runId)?.request;
+    return request?.kind === "skill" ? request.inputs : {};
+  };
+
+  it("C135 the owner's batch: neither the hidden note nor the excluded one is in files, and no name or text of either is in known", async () => {
+    await fresh(async (w) => {
+      const n = await secretWorld(w);
+      // the owner sees both notes' entities: the filter has something to hide (L-072)
+      expect(await entityKeys(w)).toEqual(expect.arrayContaining(["perfil:zeca pagodinho"]));
+      const res = await w.start();
+      expect(res.status, JSON.stringify(res.body)).toBe(202);
+      await w.settle(res.body.id);
+      const inputs = inputsOf(w, res.body.id);
+      expect(inputs.files.split("\n")).toEqual([n.open]);
+      expect(inputs.known ?? "").not.toMatch(n.secret);
+      expect(JSON.stringify(inputs)).not.toMatch(n.secret);
+    });
+  });
+
+  it("C135 the batch the index pass starts on its own: the same files and known", async () => {
+    await fresh(async (w) => {
+      w.llm(true);
+      const n = await secretWorld(w);
+      const started = await passWithSchedule(w);
+      expect(started).toHaveLength(1);
+      expect(started[0]!.inputs.files.split("\n")).toEqual([n.open]);
+      expect(JSON.stringify(started[0]!.inputs)).not.toMatch(n.secret);
+    });
+  });
+
+  it("C135 the run's provider is the settings' default provider: claude, then codex after the default changes", async () => {
+    await fresh(async (w) => {
+      await secretWorld(w);
+      const first = await w.start();
+      expect(first.status, JSON.stringify(first.body)).toBe(202);
+      expect(w.ctx.runs.get(first.body.id)?.provider).toBe("claude");
+      await w.settle(first.body.id);
+
+      w.update((s) => {
+        s.providers.codex.enabled = true;
+        s.providers.codex.binaryPath = path.join(FAKE_BIN, "codex");
+        s.defaultProvider = "codex";
+      });
+      w.ctx.reloadAdapters();
+      w.note(path.join(w.notas, "nova.md"), "# Nova\n\nTexto.\n", Date.now() + MINUTE);
+      await w.index();
+      const second = await w.start();
+      expect(second.status, JSON.stringify(second.body)).toBe(202);
+      expect(w.ctx.runs.get(second.body.id)?.provider).toBe("codex");
+      await w.settle(second.body.id);
     });
   });
 });
