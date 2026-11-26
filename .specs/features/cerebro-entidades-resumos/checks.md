@@ -1506,3 +1506,14 @@ run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 
 now)` with a fixed clock, not a separate pure function; (g) C145 changed one existing assertion (`summariesEntries` C130
   importers gain the story, as `askEntries` C99 did).
 - **Abandoned:** nothing.
+
+Status of batch F2 (C146, the round 1 sibling leak):
+
+- C146, a search never confirms a hidden name: closed. `listEntities` matched `q` against `e.norms`, which holds a name only hidden
+  files carry once the owner merged it into a visible entity, so a device, a run's `rc_` or `mcp` searching `projeto sigilo`
+  got the visible entity back. It now matches `shownOf(e)` (the canonical norm and the aliases), the helper `shownNorms`
+  already used, so `q=projeto sigilo` lists nothing and `total` 0 for those audiences and the owner still finds it (for the
+  owner the merged name is an alias). The MCP tools needed no change: `entity` by name reads the same list, so
+  `entities { query: "sigilo" }` answers `No entity matched.` and `entity { name: "Projeto Sigilo" }` `Entity not found`.
+  The leak (`e.norms.some(...)`) put back in a scratch worktree fails all 4 new cases. No new door. Proofs:
+  `entidades.access` (C146 2), `entidades.layer` (C146 1), `entidades.mcp` (C146 1)

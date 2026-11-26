@@ -7,6 +7,7 @@ import {
   coMentionEdges,
   computeEntities,
   entityDetail,
+  listEntities,
   liveMentions,
   nameCandidates,
   activeCorrections,
@@ -582,6 +583,30 @@ describe("C134 an entity's detail names only the norms the audience sees", () =>
       [1, "merge", ["ana souza"]],
       [3, "separate", ["ana souza", "cliente x"]],
     ]);
+  });
+
+  it("C146 a search matches the norms the audience's entities show: the canonical norm and the aliases, never a norm only a hidden file holds", () => {
+    const owner = viewOf([...open, ...hiddenOnly], [merge]);
+    // for the owner the merged term is an alias of the entity, so it is found
+    expect(listEntities(owner, { q: "projeto sigilo" }).items.map((e) => e.key)).toEqual([
+      "perfil:ana souza",
+    ]);
+
+    const seen = viewOf(open, [merge]);
+    // the hidden name is in the entity's norms, and that is all it is
+    expect(seen.entities[0]!.norms).toEqual(["ana souza", "projeto sigilo"]);
+    expect(listEntities(seen, { q: "projeto sigilo" })).toEqual({ items: [], total: 0 });
+    expect(listEntities(seen, { q: "sigilo" })).toEqual({ items: [], total: 0 });
+    expect(listEntities(seen, { q: "proj" })).toEqual({ items: [], total: 0 });
+    expect(listEntities(seen, { q: "ana" }).items.map((e) => e.key)).toEqual(["perfil:ana souza"]);
+    expect(listEntities(seen, { q: "souza" }).total).toBe(1);
+    // an alias the audience sees is matched
+    const aliased = viewOf(
+      [...open, mention(5, "nota", "perfil", "Aninha")],
+      [merge, correction(2, "merge", "ana souza", "aninha")],
+    );
+    expect(listEntities(aliased, { q: "aninha" }).total).toBe(1);
+    expect(listEntities(aliased, { q: "projeto sigilo" }).total).toBe(0);
   });
 });
 

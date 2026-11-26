@@ -360,4 +360,45 @@ describe("C134 an entity's detail names only what the caller reads", () => {
       expect(device.body.duplicates.map((d: Json) => d.key)).toEqual(["perfil:ana souzas"]);
     });
   });
+
+  /** `GET /api/memory/entities?q=` as `who` sends it. */
+  const search = (w: MemoriaWorld, q: string, headers: Record<string, string>) =>
+    w.call("GET", `/api/memory/entities?q=${enc(q)}`, undefined, headers);
+
+  async function searchSees(w: MemoriaWorld, who: string, headers: Record<string, string>): Promise<void> {
+    const hit = await search(w, "projeto sigilo", headers);
+    expect(hit.status, `${who} ${JSON.stringify(hit.body)}`).toBe(200);
+    expect(hit.body.items, who).toEqual([]);
+    expect(hit.body.total, who).toBe(0);
+    // a part of the hidden name finds nothing either
+    expect((await search(w, "sigilo", headers)).body.total, who).toBe(0);
+    // the visible name still finds the entity
+    const own = await search(w, "ana", headers);
+    expect(
+      own.body.items.map((e: Json) => e.key),
+      who,
+    ).toEqual(["perfil:ana souza"]);
+  }
+
+  it("C146 a device searching the hidden name lists nothing and total 0; ana lists the entity; the owner finds it by the merged name", async () => {
+    await fresh(async (w, root) => {
+      await sigiloWorld(w, root, "devices");
+      const owner = await search(w, "projeto sigilo", w.owner());
+      expect(owner.body.items.map((e: Json) => e.key)).toEqual(["perfil:ana souza"]);
+      await searchSees(w, "device", w.device(["content"]));
+    });
+  });
+
+  it("C146 a run's rc_ and the principal mcp, with the folder hidden from agents: the same", async () => {
+    await fresh(async (w, root) => {
+      await sigiloWorld(w, root, "agents");
+      const owner = await search(w, "projeto sigilo", w.owner());
+      expect(owner.body.items.map((e: Json) => e.key)).toEqual(["perfil:ana souza"]);
+      await searchSees(w, "run", w.run("read_only").headers);
+      await searchSees(w, "mcp", mcpOf(w));
+      // a device reads the folder here: it finds what the owner finds
+      const device = await search(w, "projeto sigilo", w.device(["content"]));
+      expect(device.body.items.map((e: Json) => e.key)).toEqual(["perfil:ana souza"]);
+    });
+  });
 });

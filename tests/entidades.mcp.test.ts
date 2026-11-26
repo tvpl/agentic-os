@@ -575,3 +575,53 @@ describe("C96 the agents' usage counts the new reads", () => {
     });
   });
 });
+
+describe("C146 the tools never confirm a name only a hidden folder holds", () => {
+  it("C146 with Ana Souza merged by the owner with the term Projeto Sigilo of a folder hidden from agents: entities { query: sigilo } is No entity matched., entity { name: Projeto Sigilo } is Entity not found, and Ana Souza still answers without the hidden name", async () => {
+    await fresh(async (w) => {
+      const hidden = path.join(w.root, "sigilo");
+      w.put(path.join(w.root, "ana.md"), "---\ntype: profile\ntitle: Ana Souza\n---\nficha aberta.\n");
+      w.put(path.join(hidden, "ata.md"), "Pauta do Projeto Sigilo.\n");
+      w.put(path.join(hidden, "plano.md"), "O Projeto Sigilo atrasou.\n");
+      w.update((s) => {
+        s.folderAccess = [{ path: hidden, agents: "hide", devices: "read" }];
+      });
+      await w.index();
+      const merged = await w.call("POST", "/api/memory/entities/corrections", {
+        action: "merge",
+        key: "perfil:ana souza",
+        other: "termo:projeto sigilo",
+      });
+      expect(merged.status, JSON.stringify(merged.body)).toBe(200);
+      // the owner finds the entity by the merged name (the filter has something to hide)
+      const owner = await w.call("GET", "/api/memory/entities?q=projeto%20sigilo");
+      expect(owner.body.items.map((e: Json) => e.key)).toEqual(["perfil:ana souza"]);
+
+      expect(await w.mcp("entities", { query: "sigilo" })).toEqual({
+        text: "No entity matched.",
+        isError: false,
+      });
+      expect(await w.mcp("entities", { query: "projeto sigilo" })).toEqual({
+        text: "No entity matched.",
+        isError: false,
+      });
+      expect(await w.mcp("entity", { name: "Projeto Sigilo" })).toEqual({
+        text: "Entity not found: Projeto Sigilo",
+        isError: true,
+      });
+      expect(await w.mcp("entity", { key: "termo:projeto sigilo" })).toEqual({
+        text: "Entity not found: termo:projeto sigilo",
+        isError: true,
+      });
+      // the visible name still answers, and says nothing of the hidden one
+      expect(await w.mcp("entities", { query: "ana" })).toEqual({
+        text: "Ana Souza (perfil, 1 arquivos)",
+        isError: false,
+      });
+      const ana = await w.mcp("entity", { name: "Ana Souza" });
+      expect(ana.isError).toBe(false);
+      expect(ana.text).toMatch(/^Ana Souza \(perfil\)/);
+      expect(ana.text).not.toMatch(/sigilo/i);
+    });
+  });
+});

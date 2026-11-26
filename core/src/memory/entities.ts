@@ -753,7 +753,7 @@ export function listEntities(
   const matching = narrowed(view, query.within).filter(
     (e) =>
       (query.kind === undefined || e.kind === query.kind) &&
-      (q === "" || e.norms.some((n) => ` ${n}`.includes(` ${q}`))),
+      (q === "" || shownOf(e).some((n) => ` ${n}`.includes(` ${q}`))),
   );
   const offset = query.offset ?? 0;
   return { items: matching.slice(offset, offset + (query.limit ?? 50)).map(itemOf), total: matching.length };
@@ -775,11 +775,16 @@ export function correctionItem(c: CorrectionRow, shown?: ReadonlySet<string>) {
 }
 
 /**
- * The normalized names an audience's entities show: each one's canonical name and its aliases. An owner's merge puts a
- * name the audience cannot read into the entity's `norms`; this is what it is allowed to say of them.
+ * The normalized names one entity shows its audience: its canonical name and its aliases. An owner's merge puts a name
+ * the audience cannot read into `norms`; this is all that audience may be told of, or match a search against.
  */
+function shownOf(e: Entity): string[] {
+  return [e.norms[0]!, ...e.aliases.map(entityNorm)];
+}
+
+/** `shownOf` over a set of entities. */
 function shownNorms(entities: readonly Entity[]): Set<string> {
-  return new Set(entities.flatMap((e) => [e.norms[0]!, ...e.aliases.map(entityNorm)]));
+  return new Set(entities.flatMap(shownOf));
 }
 
 /** At most this many mentions in one entity's answer, by path then line. */
