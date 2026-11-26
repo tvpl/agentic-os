@@ -1421,3 +1421,7 @@ false` (fault F3 of round 1) the first two cases fail. Proofs: `sugestoes.routes
   `context=nope` is `404 context_not_found`. The key's pattern lets an upper-case or accented letter through (`perfil:Ana
 Souza` answers `404 not_found`, not `400`); not changed, since the pattern is the contract's. Proof: `entidades.routes` (C142 2)
 - C143, the entropy gate counts characters without spaces: closed. No code changed. Proof: `entidades.layer` (C143 3)
+- C139, the corrections at their own layer: closed. No code changed: `computeEntities` with a list of correction rows, one case
+  each for `merge`, `separate` (over MinHash at 0.95, and never separating equal norms), `ignore`, `rename`, `add` (kind and
+  aliases), `reject`, an undone correction of each of the six kinds, the `created_at` then id order, a `merge` over the gate
+  and MinHash, and a `separate` that a later `merge` of the pair overrides. Proof: `entidades.layer` (C139 11)

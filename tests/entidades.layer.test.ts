@@ -9,6 +9,7 @@ import {
   entityDetail,
   liveMentions,
   nameCandidates,
+  activeCorrections,
   nameSignature,
   normEntropy,
   passesGate,
@@ -581,5 +582,169 @@ describe("C134 an entity's detail names only the norms the audience sees", () =>
       [1, "merge", ["ana souza"]],
       [3, "separate", ["ana souza", "cliente x"]],
     ]);
+  });
+});
+
+describe("C139 the corrections at their own layer, one case per row", () => {
+  const at = (c: CorrectionRow, createdAt: number): CorrectionRow => ({ ...c, createdAt });
+  const tag = (src: number, name: string) => mention(src, "tag", "tag", name);
+  const summary = (rows: MentionRow[], corrections: CorrectionRow[], options = {}) =>
+    computeEntities(rows, corrections, options).map((e) => ({
+      key: e.key,
+      kind: e.kind,
+      name: e.name,
+      aliases: e.aliases,
+      files: e.files,
+      mentions: e.mentions,
+      duplicates: e.duplicates.map((d) => d.key),
+    }));
+  const joined = [tag(1, "projeto atlas"), tag(2, "projeto zeus")];
+
+  it("C139 merge joins two names that no rule joins: one entity, both names, both files", () => {
+    expect(summary(joined, [])).toHaveLength(2);
+    expect(summary(joined, [correction(1, "merge", "projeto atlas", "projeto zeus")])).toEqual([
+      {
+        key: "tag:projeto atlas",
+        kind: "tag",
+        name: "projeto atlas",
+        aliases: ["projeto zeus"],
+        files: 2,
+        mentions: 2,
+        duplicates: [],
+      },
+    ]);
+  });
+
+  it("C139 separate keeps two names apart that MinHash would join (Jaccard 0.95)", () => {
+    const [a, b] = pairOf(100, 5);
+    const signature = fixed({ [TWO[0]]: a, [TWO[1]]: b });
+    expect(computeEntities(twoTags(), [], { signature })).toHaveLength(1);
+    const kept = summary(twoTags(), [correction(1, "separate", TWO[0], TWO[1])], { signature });
+    expect(kept.map((e) => [e.key, e.files])).toEqual([
+      [`tag:${TWO[1]}`, 1],
+      [`tag:${TWO[0]}`, 1],
+    ]);
+  });
+
+  it("C139 separate never separates equal norms: two mentions of one norm stay one entity", () => {
+    const rows = [tag(1, "Projeto Atlas"), tag(2, "projeto-atlas")];
+    expect(
+      summary(rows, [correction(1, "separate", "projeto atlas", "projeto atlas")]).map((e) => [
+        e.key,
+        e.files,
+      ]),
+    ).toEqual([["tag:projeto atlas", 2]]);
+  });
+
+  it("C139 ignore drops the entity and leaves the rows of the others", () => {
+    const rows = [...joined, tag(3, "projeto zeus")];
+    expect(summary(rows, [correction(1, "ignore", "projeto zeus")]).map((e) => e.key)).toEqual([
+      "tag:projeto atlas",
+    ]);
+    // the mentions stay: the same rows with the ignore undone list it again
+    expect(
+      summary(rows, [{ ...correction(1, "ignore", "projeto zeus"), undoneAt: 5 }]).map((e) => e.key),
+    ).toEqual(["tag:projeto zeus", "tag:projeto atlas"]);
+  });
+
+  it("C139 rename shows another name and keeps the key", () => {
+    expect(
+      summary(joined, [correction(1, "rename", "projeto atlas", null, "Atlas Novo")]).map((e) => [
+        e.key,
+        e.name,
+      ]),
+    ).toEqual([
+      ["tag:projeto atlas", "Atlas Novo"],
+      ["tag:projeto zeus", "projeto zeus"],
+    ]);
+  });
+
+  it("C139 add lists an entity with its kind and aliases, with no mention in the rows", () => {
+    const add = correction(
+      1,
+      "add",
+      "bruno lima",
+      JSON.stringify({ kind: "projeto", aliases: ["Bruno", "B. Lima"] }),
+      "Bruno Lima",
+    );
+    expect(computeEntities([], [add]).map((e) => [e.key, e.kind, e.name, e.aliases, e.files])).toEqual([
+      ["projeto:bruno lima", "projeto", "Bruno Lima", ["B. Lima", "Bruno"], 0],
+    ]);
+  });
+
+  it("C139 reject changes no entity", () => {
+    expect(summary(joined, [correction(1, "reject", "projeto atlas")])).toEqual(summary(joined, []));
+  });
+
+  it("C139 an undone correction of each kind is not applied", () => {
+    const add = correction(
+      1,
+      "add",
+      "bruno lima",
+      JSON.stringify({ kind: "perfil", aliases: [] }),
+      "Bruno Lima",
+    );
+    const all: CorrectionRow[] = [
+      correction(2, "merge", "projeto atlas", "projeto zeus"),
+      correction(3, "separate", "projeto atlas", "projeto zeus"),
+      correction(4, "ignore", "projeto atlas"),
+      correction(5, "rename", "projeto atlas", null, "Outro"),
+      add,
+      correction(6, "reject", "projeto zeus"),
+    ];
+    expect(new Set(all.map((c) => c.action))).toEqual(
+      new Set(["merge", "separate", "ignore", "rename", "add", "reject"]),
+    );
+    for (const c of all) {
+      expect(summary(joined, [{ ...c, undoneAt: 9 }]), c.action).toEqual(summary(joined, []));
+    }
+  });
+
+  it("C139 the corrections apply in created_at order, then id: the later rename of a merged entity names it, whatever the ids", () => {
+    const merge = correction(1, "merge", "projeto atlas", "projeto zeus");
+    const rename = (id: number, norm: string, name: string, createdAt: number) =>
+      at(correction(id, "rename", norm, null, name), createdAt);
+    const nameOf = (corrections: CorrectionRow[]) => summary(joined, corrections).map((e) => e.name);
+    expect(
+      nameOf([at(merge, 1), rename(2, "projeto atlas", "Nome A", 2), rename(3, "projeto zeus", "Nome Z", 3)]),
+    ).toEqual(["Nome Z"]);
+    // the ids say A last, the created_at says Z last
+    expect(
+      nameOf([at(merge, 1), rename(9, "projeto atlas", "Nome A", 2), rename(3, "projeto zeus", "Nome Z", 3)]),
+    ).toEqual(["Nome Z"]);
+    expect(
+      nameOf([at(merge, 1), rename(2, "projeto atlas", "Nome A", 3), rename(3, "projeto zeus", "Nome Z", 2)]),
+    ).toEqual(["Nome A"]);
+    // the same created_at: the id
+    expect(
+      nameOf([at(merge, 1), rename(2, "projeto atlas", "Nome A", 5), rename(3, "projeto zeus", "Nome Z", 5)]),
+    ).toEqual(["Nome Z"]);
+    expect(
+      activeCorrections([rename(7, "a", "x", 2), rename(4, "a", "y", 2), rename(9, "a", "z", 1)]).map(
+        (c) => c.id,
+      ),
+    ).toEqual([9, 4, 7]);
+  });
+
+  it("C139 a merge overrides the gate and MinHash: 2 characters and names with no 3-gram in common join", () => {
+    const rows = [tag(1, "ab"), tag(2, "cd")];
+    expect(passesGate("ab")).toBe(false);
+    expect(summary(rows, [])).toHaveLength(2);
+    expect(
+      summary(rows, [correction(1, "merge", "ab", "cd")]).map((e) => [e.files, e.aliases.length]),
+    ).toEqual([[2, 1]]);
+    const [a, b] = pairOf(100, 90);
+    const signature = fixed({ [TWO[0]]: a, [TWO[1]]: b });
+    expect(computeEntities(twoTags(), [], { signature })).toHaveLength(2);
+    expect(computeEntities(twoTags(), [correction(1, "merge", TWO[0], TWO[1])], { signature })).toHaveLength(
+      1,
+    );
+  });
+
+  it("C139 a separate overrides MinHash only: the same pair merged by the owner is one entity again", () => {
+    const [a, b] = pairOf(100, 5);
+    const signature = fixed({ [TWO[0]]: a, [TWO[1]]: b });
+    const both = [correction(1, "separate", TWO[0], TWO[1]), correction(2, "merge", TWO[0], TWO[1])];
+    expect(computeEntities(twoTags(), both, { signature })).toHaveLength(1);
   });
 });
