@@ -1425,3 +1425,8 @@ Souza` answers `404 not_found`, not `400`); not changed, since the pattern is th
   each for `merge`, `separate` (over MinHash at 0.95, and never separating equal norms), `ignore`, `rename`, `add` (kind and
   aliases), `reject`, an undone correction of each of the six kinds, the `created_at` then id order, a `merge` over the gate
   and MinHash, and a `separate` that a later `merge` of the pair overrides. Proof: `entidades.layer` (C139 11)
+- C137, the card's toggle both ways: closed. No code changed. With `llm.enabled` false a press sends `true`, with it true a
+  press sends `false`, `aria-pressed` follows each (the settings route keeps what the `PUT` sent), and a third press sends
+  `true` again; the body is `{ memory: { entities: { enabled: true, llm: { enabled } } } }` and nothing else. With
+  `EntitiesView.tsx:376` always sending `true` (fault F4 of round 1) two of the three cases fail.
+  Proof: `EntitiesView.test.tsx` (C137 3)

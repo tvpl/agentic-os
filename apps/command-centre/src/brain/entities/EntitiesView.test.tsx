@@ -798,6 +798,54 @@ describe("C117 the AI suggestions card", () => {
   });
 });
 
+describe("C137 the card's toggle, both ways", () => {
+  /** The settings route as the server keeps it: the PUT's `memory` is what the next GET answers. */
+  const keep = () =>
+    on("settings", async (body) => {
+      kit.settings = { ...kit.settings, memory: (body as { memory: unknown }).memory };
+      return {};
+    });
+  const toggle = () => within(card()!).getByRole("button", { name: "Sugestões por IA" });
+
+  it("C137 with memory.entities.llm.enabled false a press sends true, aria-pressed follows, and nothing else in the body changes", async () => {
+    keep();
+    await up();
+    await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
+    fireEvent.click(toggle());
+    await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("true"));
+    expect(sent("settings")).toEqual([{ memory: { entities: { enabled: true, llm: { enabled: true } } } }]);
+  });
+
+  it("C137 with it true a press sends false, aria-pressed follows, and nothing else in the body changes", async () => {
+    keep();
+    kit.settings = {
+      defaultProvider: "claude",
+      memory: { entities: { enabled: true, llm: { enabled: true } } },
+    };
+    await up();
+    await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("true"));
+    fireEvent.click(toggle());
+    await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
+    expect(sent("settings")).toEqual([{ memory: { entities: { enabled: true, llm: { enabled: false } } } }]);
+  });
+
+  it("C137 three presses in a row send true, false, true", async () => {
+    keep();
+    await up();
+    await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe("false"));
+    for (const [i, want] of ["true", "false", "true"].entries()) {
+      fireEvent.click(toggle());
+      await waitFor(() => expect(sent("settings")).toHaveLength(i + 1));
+      await waitFor(() => expect(toggle().getAttribute("aria-pressed")).toBe(want));
+    }
+    expect(
+      sent("settings").map(
+        (b) => (b as { memory: { entities: { llm: { enabled: boolean } } } }).memory.entities.llm.enabled,
+      ),
+    ).toEqual([true, false, true]);
+  });
+});
+
 describe("C118 the Sugestões fold", () => {
   it("C118 open, only with suggestions: each item with the kind chip, the name, também: … or Juntar com <nome>, and each evidence line with the file as a link to /brain?sel=", async () => {
     kit.details.set(ANA.key, ANA_FULL);
