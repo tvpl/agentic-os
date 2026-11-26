@@ -745,8 +745,11 @@ function CorrectionText({ c, e }: { c: EntityDetail["corrections"][number]; e: E
     found.data?.items.find((i) => normOfKey(i.key) === norm || i.aliases.some((a) => normOfName(a) === norm))
       ?.name ??
     "";
-  if (c.action === "merge") return <span>{t("entities.correction.merge", { name: shown, day })}</span>;
-  if (c.action === "separate") return <span>{t("entities.correction.separate", { name: shown, day })}</span>;
+  // With no name to give, the row leaves out the table's own "com <nome>" (cut at the placeholder, in either language).
+  const named = (key: "entities.correction.merge" | "entities.correction.separate") =>
+    shown === "" ? t(key, { name: "\0", day }).replace(/ \S+ \0/, "") : t(key, { name: shown, day });
+  if (c.action === "merge") return <span>{named("entities.correction.merge")}</span>;
+  if (c.action === "separate") return <span>{named("entities.correction.separate")}</span>;
   if (c.action === "rename")
     return <span>{t("entities.correction.rename", { name: c.name ?? "", day })}</span>;
   return <span>{t("entities.correction.ignore", { day })}</span>;

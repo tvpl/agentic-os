@@ -923,6 +923,37 @@ describe("C144 the Correções fold's rows and the icons design.md draws", () =>
   });
 });
 
+describe("C149 a correction whose other side no list can name", () => {
+  const corrow = () =>
+    [...panel()!.querySelectorAll(".ent-corrows li")].map((li) => li.querySelector("span")!.textContent);
+  const withCorrections = async (lang: "pt-BR" | "en") => {
+    kit.entities = all();
+    kit.details.set(ANA.key, {
+      ...ANA_FULL,
+      corrections: [
+        { id: 7, action: "merge", names: ["ana souza", "gone one"], createdAt: NOW, undoneAt: null },
+        { id: 8, action: "separate", names: ["ana souza", "gone two"], createdAt: NOW, undoneAt: null },
+        { id: 9, action: "separate", names: ["ana souza", "ana sousa"], createdAt: NOW, undoneAt: null },
+      ],
+    } as never);
+    mountEntities({ lang, search: `?key=${encodeURIComponent(ANA.key)}` });
+    await waitFor(() => expect(panel()!.querySelector(".ent-corrows")).not.toBeNull());
+    // the lookups of the names no entity list shows have answered: the row for the one it names reads its name
+    await waitFor(() => expect(corrow()[2]).toMatch(/Ana Sousa/));
+  };
+
+  it("C149 the merge and the separate read Juntou em 24/11 and Separou em 24/11, with no 'com', no empty name and no double space; the one that can be named still reads its name", async () => {
+    await withCorrections("pt-BR");
+    expect(corrow()).toEqual(["Juntou em 24/11", "Separou em 24/11", "Separou de Ana Sousa em 24/11"]);
+    for (const line of corrow()) expect(line).not.toMatch(/\s{2}|\s$|^\s/);
+  });
+
+  it("C149 in English the same rows read Merged on 24/11 and Separated on 24/11", async () => {
+    await withCorrections("en");
+    expect(corrow()).toEqual(["Merged on 24/11", "Separated on 24/11", "Separated from Ana Sousa on 24/11"]);
+  });
+});
+
 describe("C118 the Sugestões fold", () => {
   it("C118 open, only with suggestions: each item with the kind chip, the name, também: … or Juntar com <nome>, and each evidence line with the file as a link to /brain?sel=", async () => {
     kit.details.set(ANA.key, ANA_FULL);

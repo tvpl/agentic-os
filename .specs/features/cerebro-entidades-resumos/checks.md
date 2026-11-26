@@ -1582,3 +1582,9 @@ Status of batch F3 (C147-C149, the round 2 fixes):
   was rejected, and of none; `accept` as an `add` with the JSON in `b`, and with `mergeWith` as a `merge`). "The 2 000th
   refused" is read as the rule of door 3 (at most 2 000 active): the write that makes 2 000 is accepted and the next is
   refused. Proof: `entidades.layer` (C148 8)
+- C149, the correction row with no name to give: closed. A merge or separate row whose other side no list names (ignored since,
+  or hidden) read `Juntou com  em 24/11`; it now leaves out "com <nome>" by cutting the table's own template at the
+  placeholder (`Juntou em 24/11`, `Separou em 24/11`; `Merged on`, `Separated on`), so no key was added to the copy table
+  (C129 holds every `entities.` key to a string of design.md), no double space, and a row that can be named still reads its
+  name. The cases fail on the old row (2 of 2). In the browser both shells read the same (`entidades.spec.ts` C149 2, beyond
+  the proof line). Proof: `EntitiesView.test.tsx` (C149 2)

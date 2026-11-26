@@ -219,6 +219,40 @@ for (const shell of SHELLS)
     }
   });
 
+for (const shell of SHELLS)
+  test(`C149 in the ${shell} a correction whose other side no list can name reads Juntou em / Separou em, with no empty name`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await open(page, shell, "/brain");
+    const { key } = await makeNotes(page);
+    const norm = key.slice(key.indexOf(":") + 1);
+    await page.route(
+      /\/api\/v1\/memory\/entities\/perfil(:|%3A)/,
+      fed((j) => ({
+        ...j,
+        corrections: [
+          { id: 9001, action: "merge", names: [norm, "sumiu um"], createdAt: Date.now(), undoneAt: null },
+          {
+            id: 9002,
+            action: "separate",
+            names: [norm, "sumiu dois"],
+            createdAt: Date.now(),
+            undoneAt: null,
+          },
+        ],
+      })),
+    );
+    await page.goto(`/#/brain/entities?key=${encodeURIComponent(key)}`);
+    const v = page.locator(".ent-view");
+    await v.locator(".ent-corrections .notes-fold-head button").click();
+    const rows = v.locator(".ent-corrows li span");
+    await expect(rows).toHaveCount(2);
+    const day = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    await expect(rows).toHaveText([`Juntou em ${day}`, `Separou em ${day}`]);
+    for (const text of await rows.allTextContents()) expect(text).not.toMatch(/\s{2}| com /);
+  });
+
 /* ---------------- Resumos: the summaries as the service gives them, answered by the browser ---------------- */
 
 const DAY = 24 * 3_600_000;
