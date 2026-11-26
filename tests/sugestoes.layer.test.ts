@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { recordSuggestionBatch, batchOutcome } from "@mordomo/core/internal";
+import type { RunStatus } from "@mordomo/contracts";
+import { autoSuggestionBatch } from "../apps/api/src/routes/suggestions.js";
 import { extractMentions } from "../core/src/memory/entityMentions.js";
 import {
   checkSuggestions,
@@ -91,6 +94,154 @@ describe("C75 the files of a batch", () => {
       // a note of before the last batch's start, and one at it, are not in it
       expect(suggestionBatchFiles(env, since).map((f) => f.path)).not.toContain(atStart);
       expect(suggestionBatchFiles(env, since).map((f) => f.path)).not.toContain(before);
+    });
+  });
+});
+
+// ---- C140: the batch conditions and the batch's files at their own layer ---------------------------------------------------
+
+describe("C140 the automatic batch decision over a fixed clock", () => {
+  /** Three notes changed in the last hours and one before every batch; the index is current. */
+  async function notes(w: SugestoesWorld) {
+    w.llm(true);
+    w.note(path.join(w.notas, "a.md"), "# A\n\nReunião com Ana.\n", NOW - 3 * HOUR);
+    w.note(path.join(w.notas, "c.md"), "# C\n\nVisita ao Banco Central.\n", NOW - 1 * HOUR);
+    w.note(path.join(w.notas, "old.md"), "# Velha\n\nAntiga.\n", NOW - 30 * HOUR);
+    await w.index();
+  }
+  const decide = async (w: SugestoesWorld): Promise<boolean> => {
+    const id = autoSuggestionBatch(w.ctx, NOW);
+    if (id !== null) await w.settle(id);
+    return id !== null;
+  };
+
+  it("C140 the last batch started 24 h 1 min before now: a batch starts", async () => {
+    await fresh(async (w) => {
+      await notes(w);
+      recordSuggestionBatch(w.ctx.db, { runId: "anterior", startedAt: NOW - 24 * HOUR - MINUTE, files: [] });
+      expect(await decide(w)).toBe(true);
+    });
+  });
+
+  it("C140 the last batch started 23 h 59 min before now: none starts", async () => {
+    await fresh(async (w) => {
+      await notes(w);
+      recordSuggestionBatch(w.ctx.db, {
+        runId: "anterior",
+        startedAt: NOW - 23 * HOUR - 59 * MINUTE,
+        files: [],
+      });
+      expect(await decide(w)).toBe(false);
+    });
+  });
+
+  it("C140 a run is open (queued): none starts", async () => {
+    await fresh(async (w) => {
+      await notes(w);
+      recordSuggestionBatch(w.ctx.db, { runId: "anterior", startedAt: NOW - 25 * HOUR, files: [] });
+      expect(w.ctx.runs.get(w.run("read_only").runId)?.status).toBe("queued");
+      expect(await decide(w)).toBe(false);
+    });
+  });
+
+  it("C140 nothing changed since the last batch: none starts", async () => {
+    await fresh(async (w) => {
+      w.llm(true);
+      w.note(path.join(w.notas, "old.md"), "# Velha\n\nAntiga.\n", NOW - 26 * HOUR);
+      await w.index();
+      recordSuggestionBatch(w.ctx.db, { runId: "anterior", startedAt: NOW - 25 * HOUR, files: [] });
+      expect(await decide(w)).toBe(false);
+    });
+  });
+
+  it("C140 no batch ever: a batch starts; with the extraction off none ever does", async () => {
+    await fresh(async (w) => {
+      await notes(w);
+      w.llm(false);
+      expect(await decide(w)).toBe(false);
+      w.llm(true);
+      expect(await decide(w)).toBe(true);
+    });
+  });
+});
+
+describe("C140 the files of a batch at their own layer", () => {
+  it("C140 a note the policy excludes, one hidden from agents and a non-Markdown file are never in the files, each alone", async () => {
+    await fresh(async (w) => {
+      const open = w.note(path.join(w.notas, "aberta.md"), "# Aberta\n", NOW - 10 * MINUTE);
+      const excluded = w.note(path.join(w.notas, "privado", "segredo.md"), "# S\n", NOW - 1 * MINUTE);
+      const hidden = w.note(path.join(w.notas, "escondida", "oculta.md"), "# O\n", NOW - 2 * MINUTE);
+      const text = w.note(path.join(w.notas, "lista.txt"), "Ana e Bruno\n", NOW - 3 * MINUTE);
+      await w.index();
+      const settings = w.ctx.settings();
+      const withPolicy = { ...settings, excludes: [...settings.excludes, "privado"] };
+      const files = (excludes: boolean, hide: boolean) =>
+        suggestionBatchFiles(
+          {
+            db: w.ctx.db,
+            paths: w.ctx.paths,
+            settings: excludes ? withPolicy : settings,
+            hidden: (p: string) => hide && p === hidden,
+          },
+          0,
+        ).map((f) => f.path);
+      // each exclusion alone: the files are the markdown ones, newest first, minus what that rule takes out
+      expect(files(false, false)).toEqual([excluded, hidden, open]);
+      expect(files(true, false)).toEqual([hidden, open]);
+      expect(files(false, true)).toEqual([excluded, open]);
+      expect(files(true, true)).toEqual([open]);
+      expect(files(false, false)).not.toContain(text);
+    });
+  });
+});
+
+// ---- C141: what each status of a batch's run means ---------------------------------------------------------------------------
+
+describe("C141 a batch's run status, one case per member of RunStatus", () => {
+  it("C141 queued, running and waiting_approval are still reading; done with a valid file is accepted; done with no file, and each other end, are refused with their reason", async () => {
+    await fresh(async (w) => {
+      const a = w.note(path.join(w.notas, "a.md"), "# A\n\nFalei com Ana Clara ontem.\n", Date.now() - HOUR);
+      await w.index();
+      const env = (runId: string): SuggestionCheckEnv => ({
+        db: w.ctx.db,
+        paths: w.ctx.paths,
+        settings: w.ctx.settings(),
+        hidden: () => false,
+        batch: { runId, startedAt: NOW - 2 * HOUR, files: [a] },
+        keyExists: () => false,
+      });
+      // every member of the type is a case below: a new status fails to compile here
+      const cases: Record<RunStatus, unknown> = {
+        queued: { kind: "running" },
+        running: { kind: "running" },
+        waiting_approval: { kind: "running" },
+        done: "accepted",
+        failed: { kind: "refused", reason: "A execução terminou em failed." },
+        cancelled: { kind: "refused", reason: "A execução terminou em cancelled." },
+        timed_out: { kind: "refused", reason: "A execução terminou em timed_out." },
+        interrupted: { kind: "refused", reason: "A execução terminou em interrupted." },
+      };
+      expect(Object.keys(cases)).toHaveLength(8);
+      const dir = path.join(w.ctx.paths.artifacts, "lote-valido");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "entities.json"),
+        JSON.stringify({ v: 1, suggestions: [suggestion("perfil", "Ana Clara", [[a, 3]])] }),
+      );
+      for (const [status, want] of Object.entries(cases) as Array<[RunStatus, unknown]>) {
+        const outcome = batchOutcome(env("lote-valido"), status);
+        if (want === "accepted") {
+          expect(outcome, status).toMatchObject({ kind: "accepted" });
+          expect(outcome.kind === "accepted" && outcome.suggestions.map((s) => s.name), status).toEqual([
+            "Ana Clara",
+          ]);
+        } else expect(outcome, status).toEqual(want);
+      }
+      // done with no entities.json
+      expect(batchOutcome(env("lote-sem-arquivo"), "done")).toEqual({
+        kind: "refused",
+        reason: "A execução não escreveu entities.json.",
+      });
     });
   });
 });

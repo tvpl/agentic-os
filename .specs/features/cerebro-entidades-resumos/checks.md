@@ -1402,3 +1402,22 @@ Status of batch F1 (C134-C145, the round 1 fixes):
   today, both newer, are not in `files`, and nothing of either is in `known` or anywhere in the inputs); the run's
   `provider` is `claude`, then `codex` after the default changes. With `routes/suggestions.ts:76` reading `hidden: () =>
 false` (fault F3 of round 1) the first two cases fail. Proofs: `sugestoes.routes` (C135 3)
+- C140, the summary source choice and the batch conditions at their own layer: closed. No code changed: `chooseSummarySources`
+  with the 35-file corpus and with each exclusion alone (policy, hidden from agents, outside the scope); `autoSuggestionBatch`
+  called with a fixed clock for the five conditions (the decision is not a separate pure function; it takes the context and
+  the clock, no HTTP and no index pass), plus the extraction off; `suggestionBatchFiles` with each exclusion alone and the
+  non-Markdown file. Proofs: `resumos.layer` (C140 2), `sugestoes.layer` (C140 6)
+- C141, the run statuses of a batch: closed, with one reading to settle. At the layer `batchOutcome` is asserted for the 8
+  members of `RunStatus` (a `Record<RunStatus, ...>`, so a ninth fails to compile): the three open ones are `running`, `done`
+  with a valid file is accepted, `done` with no file and the four other ends are refused with the check's reasons. Through
+  the route each status is a seeded run row: no suggestion for the open and refused ones, the reason in `lastBatch.reason`,
+  the next `POST` `409 suggestions_in_progress` for the open ones and `202` for the closed ones. The check says
+  `lastBatch.status: "running"` for `queued`, `running` and `waiting_approval`; the route answers the run's own status
+  (`SuggestionBatchSchema.status` is `RunStatusSchema`, and the view's `OPEN_BATCH` reads `queued` and `waiting_approval`), so
+  the route cases assert `lastBatch.status` equal to the seeded status. Reported unedited for the owner. Proofs:
+  `sugestoes.layer` (C141 1), `sugestoes.routes` (C141 9)
+- C142, the inputs of `GET /api/memory/entities/:key`: closed. `pessoa:ana`, `ana`, `perfil:`, a double space and a hyphen are
+  `400 validation`; `context=cliente-x` counts the context's mentions only (an entity with none there is `404 not_found`);
+  `context=nope` is `404 context_not_found`. The key's pattern lets an upper-case or accented letter through (`perfil:Ana
+Souza` answers `404 not_found`, not `400`); not changed, since the pattern is the contract's. Proof: `entidades.routes` (C142 2)
+- C143, the entropy gate counts characters without spaces: closed. No code changed. Proof: `entidades.layer` (C143 3)

@@ -10,6 +10,8 @@ import {
   liveMentions,
   nameCandidates,
   nameSignature,
+  normEntropy,
+  passesGate,
   type CorrectionRow,
   type EntityView,
   type MentionRow,
@@ -239,6 +241,43 @@ describe("C12 the entropy gate, each edge alone", () => {
     expect(entropy(a)).toBe(2);
     expect(trigrams(a)).toEqual(trigrams(b));
     expect(computeEntities(tags(a, b), [])).toHaveLength(1);
+  });
+});
+
+describe("C143 the entropy gate counts characters without spaces", () => {
+  const same = (norms: string[]) => (norm: string) =>
+    norms.includes(norm) ? Uint32Array.from({ length: 32 }, (_, i) => i + 1) : nameSignature(norm);
+  const tags = (a: string, b: string) => [mention(1, "tag", "tag", a), mention(2, "tag", "tag", b)];
+
+  it("C143 ab cd e (7 characters, 5 without spaces) never merges, with a partner at Jaccard 1.0", () => {
+    const [a, b] = ["ab cd e", "fghijk"];
+    expect(a).toHaveLength(7);
+    expect(a.replace(/ /g, "")).toHaveLength(5);
+    expect(entropy(a)).toBeGreaterThanOrEqual(2);
+    expect(passesGate(a)).toBe(false);
+    expect(
+      computeEntities(tags(a, b), [], { signature: same([a, b]) })
+        .map((e) => e.key)
+        .sort(),
+    ).toEqual([`tag:${a}`, `tag:${b}`].sort());
+  });
+
+  it("C143 ab cd ef (8 characters, 6 without spaces) may merge, with the same partner", () => {
+    const [a, b] = ["ab cd ef", "fghijk"];
+    expect(a).toHaveLength(8);
+    expect(a.replace(/ /g, "")).toHaveLength(6);
+    expect(passesGate(a)).toBe(true);
+    expect(computeEntities(tags(a, b), [], { signature: same([a, b]) })).toHaveLength(1);
+  });
+
+  it("C143 the entropy of aa aa aa is that of aaaaaa (0 bits), not of the text with its spaces; aa bb cc d is 1.95 bits and does not pass", () => {
+    expect(normEntropy("aa aa aa")).toBe(0);
+    expect(normEntropy("aa bb cc d")).toBeCloseTo(entropy("aabbccd"), 10);
+    expect(normEntropy("aa bb cc d")).toBeLessThan(2);
+    expect(passesGate("aa bb cc d")).toBe(false);
+    // with 2.0 bits over 8 characters without spaces it does
+    expect(normEntropy("aa bb cc dd")).toBe(2);
+    expect(passesGate("aa bb cc dd")).toBe(true);
   });
 });
 

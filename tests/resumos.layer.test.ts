@@ -2,7 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { RunStatus } from "@mordomo/contracts";
-import { checkSummary, summaryRunOutcome, summaryState, type SummarySource } from "@mordomo/core/internal";
+import {
+  checkSummary,
+  chooseSummarySources,
+  resolveSummaryScope,
+  summaryRunOutcome,
+  summaryState,
+  type SummarySource,
+} from "@mordomo/core/internal";
 import * as safeFs from "../core/src/security/safeFs.js";
 import {
   paragraph,
@@ -39,6 +46,79 @@ async function fresh<T>(fn: (w: ResumosWorld) => Promise<T>): Promise<T> {
 }
 
 const PAST = Date.now() - 86_400_000;
+
+// ---- C140: the source choice at its own layer ----------------------------------------------------------------------------
+
+describe("C140 the source choice at its own layer", () => {
+  /** What `chooseSummarySources` picks for the area `Projetos` today, with no HTTP and no run. */
+  const choose = (w: ResumosWorld, hidden: (p: string) => boolean = () => false): string[] => {
+    const settings = w.ctx.settings();
+    const env = { db: w.ctx.db, paths: w.ctx.paths, settings, hidden };
+    const scope = resolveSummaryScope(env, "area", "Projetos")!;
+    return chooseSummarySources(env, scope).map((s) => s.path);
+  };
+
+  it("C140 35 files: the 30 chosen are the most linked to from inside the scope, then the most recent; a link from outside counts for nothing", async () => {
+    await fresh(async (w) => {
+      const name = (i: number) => `n${String(i).padStart(2, "0")}`;
+      const linksTo: Record<number, string[]> = {
+        10: ["n05"],
+        11: ["n05"],
+        12: ["n05", "n07"],
+        13: ["n07"],
+        14: ["n09"],
+      };
+      const files: string[] = [];
+      for (let i = 0; i < 35; i++) {
+        const links = (linksTo[i] ?? []).map((t) => `Veja [[${t}]].`).join("\n");
+        files.push(
+          w.note(path.join(w.projetos, `${name(i)}.md`), `# ${name(i)}\n\n${links}\n`, PAST + i * 60_000),
+        );
+      }
+      const docs = w.areaRoot("docs", "Documentos");
+      w.note(path.join(docs, "fora.md"), "# Fora\n\nVeja [[n00]] e [[n01]] e [[n02]].\n", PAST);
+      await w.index();
+      // inbound links from inside the scope: n05 3, n07 2, n09 1, the rest 0; then mtime descending
+      const inbound = new Map<string, number>([
+        ["n05", 3],
+        ["n07", 2],
+        ["n09", 1],
+      ]);
+      const want = files
+        .map((file, i) => ({ file, links: inbound.get(name(i)) ?? 0, mtime: PAST + i * 60_000 }))
+        .sort((a, b) => b.links - a.links || b.mtime - a.mtime)
+        .slice(0, 30)
+        .map((f) => f.file);
+      const chosen = choose(w);
+      expect(chosen).toHaveLength(30);
+      expect(chosen.slice(0, 3)).toEqual([files[5], files[7], files[9]]);
+      expect(chosen).toEqual(want);
+      // the five left out are the oldest without a link
+      expect(files.filter((f) => !chosen.includes(f))).toEqual(files.slice(0, 5));
+    });
+  });
+
+  it("C140 a policy-excluded file, a file hidden from agents and a file outside the scope are never chosen, each alone", async () => {
+    await fresh(async (w) => {
+      const a = w.note(path.join(w.projetos, "a.md"), "# A\n", PAST + 1000);
+      const excluded = w.note(path.join(w.projetos, "privado", "b.md"), "# B\n", PAST + 4000);
+      const hidden = w.note(path.join(w.projetos, "sigilo", "c.md"), "# C\n", PAST + 3000);
+      const docs = w.areaRoot("docs", "Documentos");
+      const outside = w.note(path.join(docs, "d.md"), "# D\n", PAST + 2000);
+      await w.index();
+      const hiddenFn = (p: string) => p === hidden;
+      // each alone: without its exclusion the file is in the choice (the scope's files, newest first)
+      expect(choose(w)).toEqual([excluded, hidden, a]);
+      expect(choose(w, hiddenFn)).toEqual([excluded, a]);
+      w.update((s) => {
+        s.excludes = [...s.excludes, "privado"];
+      });
+      expect(choose(w)).toEqual([hidden, a]);
+      expect(choose(w, hiddenFn)).toEqual([a]);
+      expect(choose(w, hiddenFn)).not.toContain(outside);
+    });
+  });
+});
 
 // ---- C60: the check of summary.json --------------------------------------------------------------------------------
 

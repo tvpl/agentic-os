@@ -328,3 +328,50 @@ describe("C116 the entities of one note (Landing 8a)", () => {
     });
   });
 });
+
+describe("C142 GET /api/memory/entities/:key inputs", () => {
+  it("C142 a key that is not <kind>:<norm> is 400 validation: pessoa:ana, ana, an empty norm and a norm that is not normalised", async () => {
+    await fresh(async (w, root) => {
+      sixNotes(w, root);
+      await w.index();
+      // the good key answers
+      expect((await w.call("GET", `/api/memory/entities/${enc("tag:cliente x")}`)).status).toBe(200);
+      for (const key of ["pessoa:ana", "ana", "perfil:", "perfil:ana  souza", "tag:cliente-x"]) {
+        expect(statusAndCode(await w.call("GET", `/api/memory/entities/${enc(key)}`)), key).toEqual([
+          400,
+          "validation",
+        ]);
+      }
+    });
+  });
+
+  it("C142 context counts only the context's mentions in the detail; an unknown context is 404 context_not_found", async () => {
+    await fresh(async (w, root) => {
+      const inside = path.join(root, "cliente-x");
+      w.put(path.join(inside, "a.md"), "notas #alfa\nVisita ao Banco Central.\n");
+      w.put(path.join(root, "fora", "b.md"), "notas #alfa\nReunião no Banco Central.\n");
+      w.put(path.join(root, "fora", "c.md"), "notas #alfa #beta\n");
+      w.update((s) => {
+        s.contexts = [{ id: "cliente-x", name: "Cliente X", paths: [inside] }];
+      });
+      await w.index();
+      const url = (query = "") => `/api/memory/entities/${enc("tag:alfa")}${query}`;
+      const all = await w.call("GET", url());
+      expect(all.status).toBe(200);
+      expect(all.body.mentions).toHaveLength(3);
+      const narrowed = await w.call("GET", url("?context=cliente-x"));
+      expect(narrowed.status, JSON.stringify(narrowed.body)).toBe(200);
+      expect(narrowed.body.mentions.map((m: Json) => m.path)).toEqual([path.join(inside, "a.md")]);
+      // the term counts the context's one mention; an entity with no mention in the context is not there
+      const term = await w.call(
+        "GET",
+        `/api/memory/entities/${enc("termo:banco central")}?context=cliente-x`,
+      );
+      expect(term.body.mentions.map((m: Json) => m.path)).toEqual([path.join(inside, "a.md")]);
+      expect(
+        statusAndCode(await w.call("GET", `/api/memory/entities/${enc("tag:beta")}?context=cliente-x`)),
+      ).toEqual([404, "not_found"]);
+      expect(statusAndCode(await w.call("GET", url("?context=nope")))).toEqual([404, "context_not_found"]);
+    });
+  });
+});

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import type { RunStatus } from "@mordomo/contracts";
 import { recordSuggestionBatch } from "@mordomo/core/internal";
 import { scheduleSuggestionBatches } from "../apps/api/src/routes/suggestions.js";
 import * as safeFs from "../core/src/security/safeFs.js";
@@ -444,6 +445,117 @@ describe("C135 what a batch is handed, and who runs it", () => {
       expect(second.status, JSON.stringify(second.body)).toBe(202);
       expect(w.ctx.runs.get(second.body.id)?.provider).toBe("codex");
       await w.settle(second.body.id);
+    });
+  });
+});
+
+// ---- C141: what each status of a batch's run means at the boundary -------------------------------------------------------
+
+describe("C141 a batch's run status, one case per member of RunStatus", () => {
+  const STATUSES: Record<RunStatus, "open" | "done" | "refused"> = {
+    queued: "open",
+    running: "open",
+    waiting_approval: "open",
+    done: "done",
+    failed: "refused",
+    cancelled: "refused",
+    timed_out: "refused",
+    interrupted: "refused",
+  };
+
+  /** A batch whose run is a row in `status`, started an hour ago over `file`, with `written` as its entities.json (null: none). */
+  function seedBatch(w: SugestoesWorld, status: RunStatus, file: string, written: unknown) {
+    const id = `semeado-${status}`;
+    const created = Date.now() - HOUR;
+    w.ctx.db
+      .prepare(
+        "INSERT INTO runs (id, created_at, started_at, finished_at, origin, provider, status, duration_ms, skill_slug, request_json, started_by) VALUES (?, ?, ?, ?, 'skill', 'claude', ?, ?, 'brain-entities', ?, 'owner')",
+      )
+      .run(
+        id,
+        created,
+        created,
+        STATUSES[status] === "open" ? null : created + 1000,
+        status,
+        STATUSES[status] === "open" ? null : 1000,
+        JSON.stringify({
+          version: 1,
+          kind: "skill",
+          skillSlug: "brain-entities",
+          inputs: { files: file },
+          mode: "read_only",
+        }),
+      );
+    recordSuggestionBatch(w.ctx.db, { runId: id, startedAt: created, files: [file] });
+    if (written !== null) {
+      fs.mkdirSync(path.join(w.ctx.paths.artifacts, id), { recursive: true });
+      fs.writeFileSync(path.join(w.ctx.paths.artifacts, id, "entities.json"), JSON.stringify(written));
+    }
+    return id;
+  }
+
+  for (const status of Object.keys(STATUSES) as RunStatus[]) {
+    it(`C141 ${status}: ${STATUSES[status] === "open" ? "still reading, no suggestion, the next POST 409 suggestions_in_progress" : STATUSES[status] === "done" ? "the suggestions of a valid file, the next POST 202" : "no suggestion, the reason, the next POST 202"}`, async () => {
+      await fresh(async (w) => {
+        const note = w.note(
+          path.join(w.notas, "ana.md"),
+          "# Ana\n\nFalei com Ana Clara ontem.\n",
+          Date.now() - 2 * HOUR,
+        );
+        await w.index();
+        const valid = { v: 1, suggestions: [suggestion("perfil", "Ana Clara", [[note, 3]])] };
+        const id = seedBatch(w, status, note, STATUSES[status] === "done" ? valid : null);
+        const listed = await w.list();
+        expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+        expect(listed.body.lastBatch).toMatchObject({ id, status });
+        if (STATUSES[status] === "open") {
+          // the contract's lastBatch.status is the run's own status; the check's literal "running" for the three open ones is read there
+          expect(listed.body.items).toEqual([]);
+          expect(listed.body.lastBatch.reason).toBeUndefined();
+        } else if (STATUSES[status] === "done") {
+          expect(listed.body.items.map((i: Json) => i.name)).toEqual(["Ana Clara"]);
+          expect(listed.body.lastBatch.reason).toBeUndefined();
+        } else {
+          expect(listed.body.items).toEqual([]);
+          expect(listed.body.lastBatch.reason).toBe(`A execução terminou em ${status}.`);
+        }
+        // a note changed after the batch started, so a next POST has something to read
+        w.note(note, "# Ana\n\nFalei com Ana Clara ontem.\n", Date.now() + MINUTE);
+        await w.index();
+        const runs = w.runCount();
+        const next = await w.start();
+        if (STATUSES[status] === "open") {
+          expect(code(next)).toEqual([409, "suggestions_in_progress"]);
+          expect(w.runCount()).toBe(runs);
+        } else {
+          expect(next.status, JSON.stringify(next.body)).toBe(202);
+          await w.settle(next.body.id);
+        }
+      });
+    });
+  }
+
+  it("C141 done with no entities.json: no suggestion, reason A execução não escreveu entities.json., the next POST 202", async () => {
+    await fresh(async (w) => {
+      const note = w.note(
+        path.join(w.notas, "ana.md"),
+        "# Ana\n\nFalei com Ana Clara ontem.\n",
+        Date.now() - 2 * HOUR,
+      );
+      await w.index();
+      const id = seedBatch(w, "done", note, null);
+      const listed = await w.list();
+      expect(listed.body.items).toEqual([]);
+      expect(listed.body.lastBatch).toMatchObject({
+        id,
+        status: "done",
+        reason: "A execução não escreveu entities.json.",
+      });
+      w.note(note, "# Ana\n\nFalei com Ana Clara ontem.\n", Date.now() + MINUTE);
+      await w.index();
+      const next = await w.start();
+      expect(next.status, JSON.stringify(next.body)).toBe(202);
+      await w.settle(next.body.id);
     });
   });
 });
