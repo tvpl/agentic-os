@@ -1430,3 +1430,10 @@ Souza` answers `404 not_found`, not `400`); not changed, since the pattern is th
   `true` again; the body is `{ memory: { entities: { enabled: true, llm: { enabled } } } }` and nothing else. With
   `EntitiesView.tsx:376` always sending `true` (fault F4 of round 1) two of the three cases fail.
   Proof: `EntitiesView.test.tsx` (C137 3)
+- C144, the Correções fold's rows and the icons: closed (Landing 11a, before the code). `correctionText` wrote the stored norm
+  (`Juntou com a sousa`); the row is now `CorrectionText`, which names the other side by its shown name: the entity's own
+  name or alias, a `related` or `duplicates` entry, else the name of the entity `GET /api/memory/entities?q=<norm>` lists
+  with that norm. The contract is unchanged (`names` stay the norms C134 proves). A row whose other side no list shows (an
+  entity ignored since) reads with an empty name. The new cases fail on the old component (2 of 4). Icons `Search`,
+  `Sparkles`, `MoreHorizontal` (by class and accessible name) and `RefreshCw` (by role and class) are asserted. Proofs:
+  `EntitiesView.test.tsx` (C144 4), `SummariesView.test.tsx` (C144 1)

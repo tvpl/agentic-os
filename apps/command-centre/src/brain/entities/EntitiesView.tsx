@@ -544,18 +544,9 @@ function EntityPanel({
   for (const m of e.mentions) byFile.set(m.fileId, [...(byFile.get(m.fileId) ?? []), m]);
   const groups = [...byFile.values()];
   const dups = e.duplicates.filter((d) => !separated.has(d.key));
-  const keyNorm = e.key.slice(e.key.indexOf(":") + 1);
   const shownCorrections = e.corrections.filter(
     (c) => c.undoneAt === null && ["merge", "separate", "ignore", "rename"].includes(c.action),
   );
-  const correctionText = (c: EntityDetail["corrections"][number]) => {
-    const other = c.names.find((n) => n !== keyNorm) ?? c.names[1] ?? "";
-    const day = dayOf(c.createdAt);
-    if (c.action === "merge") return t("entities.correction.merge", { name: other, day });
-    if (c.action === "separate") return t("entities.correction.separate", { name: other, day });
-    if (c.action === "rename") return t("entities.correction.rename", { name: c.name ?? "", day });
-    return t("entities.correction.ignore", { day });
-  };
   const goFile = (fileId: number) => brain.go("graph", `?sel=${fileId}`);
 
   return (
@@ -692,7 +683,7 @@ function EntityPanel({
             <ul className="ent-corrows">
               {shownCorrections.map((c) => (
                 <li key={c.id}>
-                  <span>{correctionText(c)}</span>
+                  <CorrectionText c={c} e={e} />
                   <button
                     type="button"
                     className="ent-link"
@@ -713,6 +704,52 @@ function EntityPanel({
       )}
     </div>
   );
+}
+
+const normOfKey = (key: string) => key.slice(key.indexOf(":") + 1);
+/** The normalized name (door 2) as far as the screen needs it: to find a name the correction stores by its norm. */
+const normOfName = (name: string) =>
+  name
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+/** The name an entity's detail shows for `norm` (Landing 11a): its own, an alias, or a related or maybe-same entity's. */
+function nameInDetail(e: EntityDetail, norm: string): string | undefined {
+  if (normOfKey(e.key) === norm) return e.name;
+  return (
+    e.aliases.find((a) => normOfName(a) === norm) ??
+    [...e.related, ...e.duplicates].find((r) => normOfKey(r.key) === norm)?.name
+  );
+}
+
+/** One row of "Correções": the other side by the name the audience sees it with, never by the norm the correction stores. */
+function CorrectionText({ c, e }: { c: EntityDetail["corrections"][number]; e: EntityDetail }) {
+  const t = useT();
+  const day = dayOf(c.createdAt);
+  const norm = c.names.find((n) => n !== normOfKey(e.key)) ?? "";
+  const local = c.action === "merge" || c.action === "separate" ? nameInDetail(e, norm) : undefined;
+  const found = useRouteQuery(
+    [...LIST_KEY, "named", norm],
+    "GET /api/memory/entities",
+    { query: { q: norm, limit: 10 } },
+    {
+      enabled: (c.action === "merge" || c.action === "separate") && norm !== "" && local === undefined,
+      retry: false,
+    },
+  );
+  const shown =
+    local ??
+    found.data?.items.find((i) => normOfKey(i.key) === norm || i.aliases.some((a) => normOfName(a) === norm))
+      ?.name ??
+    "";
+  if (c.action === "merge") return <span>{t("entities.correction.merge", { name: shown, day })}</span>;
+  if (c.action === "separate") return <span>{t("entities.correction.separate", { name: shown, day })}</span>;
+  if (c.action === "rename")
+    return <span>{t("entities.correction.rename", { name: c.name ?? "", day })}</span>;
+  return <span>{t("entities.correction.ignore", { day })}</span>;
 }
 
 /** "Juntar com <nome>": the entity's name as the list answers it, its norm until then. */

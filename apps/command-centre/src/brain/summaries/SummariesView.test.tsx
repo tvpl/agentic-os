@@ -172,6 +172,16 @@ describe("C119 the arrangement", () => {
   });
 });
 
+describe("C144 the icon of the summary's Atualizar", () => {
+  it("C144 RefreshCw sits in the header's Atualizar of an open summary, found by its accessible name", async () => {
+    await up(PROJETOS);
+    const head = panel()!.querySelector<HTMLElement>(".sum-phead")!;
+    const button = within(head).getByRole("button", { name: "Atualizar" });
+    expect(button.querySelector("svg.lucide-refresh-cw")).not.toBeNull();
+    expect(button.getAttribute("aria-hidden")).toBeNull();
+  });
+});
+
 describe("C121 the list rows", () => {
   it("C121 each state: Atual · 24/11 (CircleCheck), Velho: 3 mudaram, 1 saiu, 2 novas (Clock), Sem resumo (CircleDashed), Gerando… (Loader)", async () => {
     await up();

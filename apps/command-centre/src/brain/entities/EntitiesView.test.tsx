@@ -846,6 +846,83 @@ describe("C137 the card's toggle, both ways", () => {
   });
 });
 
+describe("C144 the Correções fold's rows and the icons design.md draws", () => {
+  const corrowText = () =>
+    [...panel()!.querySelectorAll(".ent-corrows li")].map((li) => li.querySelector("span")!.textContent);
+  const withCorrections = async (
+    corrections: EntityDetailCorrections,
+    over: Record<string, unknown> = {},
+  ) => {
+    kit.entities = all();
+    kit.details.set(ANA.key, { ...ANA_FULL, ...over, corrections } as never);
+    mountEntities({ search: `?key=${encodeURIComponent(ANA.key)}` });
+    await waitFor(() => expect(panel()!.querySelector(".ent-corrows")).not.toBeNull());
+  };
+  type EntityDetailCorrections = (typeof ANA_FULL)["corrections"];
+
+  it("C144 the fold is shut and reads Correções (N); a merge row names the other entity as it is shown, A. Sousa, never the norm a sousa", async () => {
+    await withCorrections(
+      [{ id: 7, action: "merge", names: ["ana souza", "a sousa"], createdAt: NOW, undoneAt: null }],
+      { aliases: ["Ana", "A. Sousa"] },
+    );
+    const fold = panel()!.querySelector(".ent-corrections .notes-fold")!;
+    expect(fold.querySelector("button")!.getAttribute("aria-expanded")).toBe("false");
+    expect(fold.querySelector("button")!.textContent).toBe("Correções (1)");
+    expect(corrowText()).toEqual(["Juntou com A. Sousa em 24/11"]);
+    expect(panel()!.querySelector(".ent-corrows")!.textContent).not.toContain("a sousa");
+  });
+
+  it("C144 each row reads <verb> <name> em <dia>: Juntou com, Separou de (an entity the detail does not cite, found in the list), Renomeou para, Tirou das entidades", async () => {
+    await withCorrections([
+      { id: 7, action: "merge", names: ["ana souza", "banco central"], createdAt: NOW, undoneAt: null },
+      { id: 8, action: "separate", names: ["ana souza", "ana sousa"], createdAt: NOW, undoneAt: null },
+      { id: 9, action: "rename", names: ["ana souza"], name: "Ana S.", createdAt: NOW, undoneAt: null },
+      { id: 10, action: "ignore", names: ["ana souza"], createdAt: NOW, undoneAt: null },
+    ]);
+    // the merge's other side is a related entity's name; the separate's, the list's
+    await waitFor(() =>
+      expect(corrowText()).toEqual([
+        "Juntou com Banco Central em 24/11",
+        "Separou de Ana Sousa em 24/11",
+        "Renomeou para Ana S. em 24/11",
+        "Tirou das entidades em 24/11",
+      ]),
+    );
+    fireEvent.click(panel()!.querySelector(".ent-corrections .notes-fold button")!);
+    expect(panel()!.querySelector(".ent-corrections .notes-fold button")!.getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+  });
+
+  it("C144 Desfazer sends undo with the row's correction id, one button per row", async () => {
+    on("correct", only({ action: "undo", id: 8 }, wrote(8, "undo")));
+    await withCorrections([
+      { id: 7, action: "merge", names: ["ana souza", "banco central"], createdAt: NOW, undoneAt: null },
+      { id: 8, action: "ignore", names: ["ana souza"], createdAt: NOW, undoneAt: null },
+    ]);
+    const buttons = within(panel()!.querySelector(".ent-corrows")!).getAllByRole("button", {
+      name: "Desfazer",
+      hidden: true,
+    });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[1]!);
+    await waitFor(() => expect(sent("correct")).toEqual([{ action: "undo", id: 8 }]));
+  });
+
+  it("C144 the icons: Search in the search field, Sparkles in Pedir sugestões agora, MoreHorizontal in the entity menu", async () => {
+    await up(`?key=${encodeURIComponent(ANA.key)}`);
+    await panelUp();
+    const field = document.querySelector(".ent-view .ent-search")!;
+    expect(field.querySelector("svg.lucide-search")).not.toBeNull();
+    expect(field.querySelector("input")!.getAttribute("aria-label")).toBe("Buscar por nome");
+    const ask = within(card()!).getByRole("button", { name: "Pedir sugestões agora" });
+    expect(ask.querySelector("svg.lucide-sparkles")).not.toBeNull();
+    const menu = panel()!.querySelector(".ent-menu")!;
+    expect(menu.querySelector("svg.lucide-ellipsis, svg.lucide-more-horizontal")).not.toBeNull();
+    expect(menu.getAttribute("aria-label")).toBe("Mais");
+  });
+});
+
 describe("C118 the Sugestões fold", () => {
   it("C118 open, only with suggestions: each item with the kind chip, the name, também: … or Juntar com <nome>, and each evidence line with the file as a link to /brain?sel=", async () => {
     kit.details.set(ANA.key, ANA_FULL);
