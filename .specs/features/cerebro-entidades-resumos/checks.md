@@ -1437,3 +1437,11 @@ Souza` answers `404 not_found`, not `400`); not changed, since the pattern is th
   entity ignored since) reads with an empty name. The new cases fail on the old component (2 of 4). Icons `Search`,
   `Sparkles`, `MoreHorizontal` (by class and accessible name) and `RefreshCw` (by role and class) are asserted. Proofs:
   `EntitiesView.test.tsx` (C144 4), `SummariesView.test.tsx` (C144 1)
+- C138, the right-aligned items in a real browser: closed, with a defect the proof found. In both shells at 1280×800 and at
+  360px the card's toggle, "Pedir sugestões agora", each suggestion's "Aceitar"/"Recusar", each entity row's count and each
+  summary row's button end at the right edge of their container's content box (1px), their vertical centre inside it, and
+  nothing scrolls sideways. The 320px column wrapped "Pedir sugestões agora" and the suggestion's two buttons under their
+  text, where `space-between` leaves a lone item at the left; `entities.css` gains `margin-inline-start: auto` on
+  `.ent-ai-state > .btn` and `.ent-sugg-acts` (reversible styling, no door). The toggle is the item the fault of round 1
+  moves: with `space-between` → `flex-start` (fault F5, on the fixed stylesheet, the browser build of the scratch
+  worktree) both cases fail on "the toggle". Proof: `entidades.spec.ts` (C138 2)

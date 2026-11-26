@@ -390,6 +390,129 @@ async function serious(page: Page) {
     .map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target) }));
 }
 
+/** The content box of an element (its border box less its border and padding), and its border box's vertical span. */
+type Content = { left: number; right: number; top: number; bottom: number };
+const contentOf = (l: ReturnType<Page["locator"]>): Promise<Content> =>
+  l.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    const px = (p: string) => parseFloat(cs.getPropertyValue(p)) || 0;
+    return {
+      left: r.left + px("border-left-width") + px("padding-left"),
+      right: r.right - px("border-right-width") - px("padding-right"),
+      top: r.top,
+      bottom: r.bottom,
+    };
+  });
+
+/** `item` ends at the right edge of `container`'s content box (1px) and its vertical centre is inside the container. */
+async function atRight(
+  item: ReturnType<Page["locator"]>,
+  container: ReturnType<Page["locator"]>,
+  what: string,
+) {
+  const c = await contentOf(container);
+  const b = await box(item);
+  expect(
+    Math.abs(b.x + b.width - c.right),
+    `${what}: right edge ${b.x + b.width} against ${c.right}`,
+  ).toBeLessThanOrEqual(1);
+  const middle = b.y + b.height / 2;
+  expect(middle, `${what}: centre ${middle} inside ${c.top}..${c.bottom}`).toBeGreaterThanOrEqual(c.top);
+  expect(middle, `${what}: centre ${middle} inside ${c.top}..${c.bottom}`).toBeLessThanOrEqual(c.bottom);
+}
+
+const SUGGESTION = {
+  id: "e2e:0",
+  kind: "perfil",
+  name: "Bruno Lima",
+  aliases: ["Bruno"],
+  evidence: [
+    {
+      fileId: 1,
+      path: `${MEMORY}/notes/reuniao.md`,
+      line: 3,
+      excerpt: "Falei com Bruno Lima sobre o plano.",
+    },
+  ],
+  state: "pending",
+};
+
+for (const shell of SHELLS)
+  test(`C138 the right-aligned items in the ${shell}: the card's toggle and Pedir sugestões agora, each suggestion's Aceitar and Recusar, each entity row's count and each summary row's button, at the right of their container's content box; none overflows at 360px`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await open(page, shell, "/brain");
+    const { name, key } = await makeNotes(page);
+    await page.route(/\/api\/v1\/memory\/entities\/suggestions(\?.*)?$/, (route) =>
+      route.request().method() === "GET"
+        ? route.fulfill({
+            json: {
+              items: [SUGGESTION, { ...SUGGESTION, id: "e2e:1", name: "Carla Dias", aliases: [] }],
+              lastBatch: {
+                id: "e2e",
+                status: "done",
+                startedAt: Date.now() - DAY,
+                finishedAt: Date.now() - DAY + 9_000,
+              },
+            },
+          })
+        : route.fallback(),
+    );
+    await page.goto(`/#/brain/entities?key=${encodeURIComponent(key)}`);
+    const v = page.locator(".ent-view");
+    await expect(v.locator(".ent-pname")).toHaveText(name);
+    await expect(v.locator(".ent-sugg")).toHaveCount(2);
+
+    const measure = async (width: number) => {
+      const tag = `at ${width}px`;
+      const card = v.locator(".ent-ai");
+      await atRight(card.locator(".ent-ai-top button"), card, `the toggle ${tag}`);
+      await atRight(card.locator(".ent-ai-state button"), card, `Pedir sugestões agora ${tag}`);
+      for (const [i, sugg] of (await v.locator(".ent-sugg").all()).entries()) {
+        await atRight(
+          sugg.getByRole("button", { name: "Recusar" }),
+          sugg,
+          `Recusar of suggestion ${i + 1} ${tag}`,
+        );
+        const accept = await box(sugg.getByRole("button", { name: "Aceitar" }));
+        const reject = await box(sugg.getByRole("button", { name: "Recusar" }));
+        expect(accept.x + accept.width, `Aceitar ends before Recusar ${tag}`).toBeLessThanOrEqual(
+          reject.x + 1,
+        );
+      }
+      const row = v.locator(".ent-pick", { hasText: name });
+      await atRight(row.locator(".ent-count"), row, `the count of ${name} ${tag}`);
+      const overflow = await v.evaluate((el) => el.scrollWidth <= el.clientWidth);
+      expect(overflow, `the view scrolls sideways ${tag}`).toBe(true);
+    };
+    await measure(1280);
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto("/#/brain/entities");
+    await expect(v.locator(".ent-sugg")).toHaveCount(2);
+    await measure(360);
+
+    // the summaries' rows
+    await summaries(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/#/brain/summaries?kind=area&id=Projetos");
+    const s = page.locator(".sum-view");
+    await expect(s.locator(".sum-row")).toHaveCount(3);
+    const measureRows = async (width: number) => {
+      for (const [i, row] of (await s.locator(".sum-row").all()).entries()) {
+        await atRight(row.locator("button.btn.sm"), row, `the button of summary row ${i + 1} at ${width}px`);
+      }
+      const overflow = await s.evaluate((el) => el.scrollWidth <= el.clientWidth);
+      expect(overflow, `the summaries scroll sideways at ${width}px`).toBe(true);
+    };
+    await measureRows(1280);
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto("/#/brain/summaries");
+    await expect(s.locator(".sum-row")).toHaveCount(3);
+    await measureRows(360);
+  });
+
 for (const theme of THEMES)
   for (const shell of SHELLS) {
     test(`C130 /brain/entities in the ${shell}, ${theme}: the list with an entity open and AI suggestions, no serious axe violation`, async ({

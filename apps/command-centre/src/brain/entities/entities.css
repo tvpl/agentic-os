@@ -196,6 +196,12 @@
   justify-content: space-between;
 }
 
+/* Wrapped under the text (the column is 320px), the button still ends at the right. */
+.ent-view .ent-ai-state > .btn,
+.ent-view .ent-sugg-acts {
+  margin-inline-start: auto;
+}
+
 .ent-view .ent-ai-title {
   margin: 0;
   color: var(--text);
