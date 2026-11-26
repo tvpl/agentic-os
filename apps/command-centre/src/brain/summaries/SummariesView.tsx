@@ -317,7 +317,16 @@ const SOURCE_STATE: Record<Detail["sources"][number]["state"], [LucideIcon, TKey
   removed: [X, "summaries.source.removed"],
 };
 
-function SummaryPanel({
+/** The view's own frame around one panel: the gallery's story of a summary being made or of the view off. */
+export function SummaryFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="sum-view">
+      <section className="sum-panelcol">{children}</section>
+    </div>
+  );
+}
+
+export function SummaryPanel({
   scope,
   name,
   off,

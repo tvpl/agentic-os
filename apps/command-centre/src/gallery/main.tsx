@@ -68,6 +68,9 @@ const AskStory = lazy(() => import("./askStory"));
 const SemanticStory = lazy(() => import("./semanticStory"));
 /** "Agentes (MCP)" (cerebro-perguntar, C99): through the Settings tab's chunk, as it is in the app. */
 const AgentsMcpStory = lazy(() => import("./agentsMcpStory"));
+/** "Entidades" and "Resumos" (cerebro-entidades-resumos, C145): through each view's chunk, as it is in the app. */
+const EntitiesStory = lazy(() => import("./entitiesStory"));
+const SummariesStory = lazy(() => import("./summariesStory"));
 
 /* ---------- fixtures (plainly synthetic; the gallery never talks to the API) ---------- */
 const NOW = Date.UTC(2026, 8, 2, 14, 30);
@@ -924,6 +927,18 @@ function Gallery() {
       <Story id="agents-mcp" title="Agentes (MCP)">
         <Suspense fallback={null}>
           <AgentsMcpStory />
+        </Suspense>
+      </Story>
+
+      <Story id="entities" title="Entidades">
+        <Suspense fallback={null}>
+          <EntitiesStory />
+        </Suspense>
+      </Story>
+
+      <Story id="summaries" title="Resumos">
+        <Suspense fallback={null}>
+          <SummariesStory />
         </Suspense>
       </Story>
 

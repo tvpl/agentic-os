@@ -1445,3 +1445,15 @@ Souza` answers `404 not_found`, not `400`); not changed, since the pattern is th
   `.ent-ai-state > .btn` and `.ent-sugg-acts` (reversible styling, no door). The toggle is the item the fault of round 1
   moves: with `space-between` → `flex-start` (fault F5, on the fixed stylesheet, the browser build of the scratch
   worktree) both cases fail on "the toggle". Proof: `entidades.spec.ts` (C138 2)
+- C145, the gallery's stories: closed. `gallery/entitiesStory.tsx` renders the real `EntitiesView` in four frames (the empty list
+  with the card off; an entity open with two mentions, a duplicate, a correction and a batch of two suggestions; the card
+  with a batch that left nothing new and the extraction on; the view off) and `gallery/summariesStory.tsx` the real
+  `SummariesView` (a fresh, a stale, a missing and a generating scope, the stale summary open) and, through `SummaryFrame`
+  (one exported frame, 80 B) and `SummaryPanel`, a summary being made and the view off. Each frame has its own cache with
+  the answers seeded and `enabled: false` on every query, so nothing polls an API the gallery lacks. Both are
+  registered in `gallery/main.tsx` through `lazy(() => import(...))`. One existing assertion changed: `summariesEntries`
+  C130 listed `brain/BrainViewSwitch.tsx` as the only importer of each view, and now also the view's story (as
+  `askEntries` C99 did for the ask view), the story reached from `gallery/main.tsx` dynamically. Bundle on this build: JS
+  gzip 645 053 B (+18 338 over `cerebro-perguntar`, at most 647 195; +2 759 since batch G), CSS gzip 88 194 B (+2 332, at
+  most 88 934); `scripts/bundle-baseline.json` re-measured. Proofs: `entitiesEntries.test.tsx` (C145 4),
+  `entidades.contract` (C132 1)

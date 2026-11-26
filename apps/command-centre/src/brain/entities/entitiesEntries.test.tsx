@@ -9,10 +9,12 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { Suspense, lazy } from "react";
 import { useLocation } from "react-router-dom";
 import type * as ApiModule from "../../api";
 import { installPage } from "../../ui/testkit";
 import { renderWith } from "../../contexts/testkit";
+import { loadTree } from "../../testing/sourceGraph";
 import { mountShell } from "../../commands/testkit";
 import { CommandRegistry } from "../../commands/registry";
 import { AppRouteContext } from "../../desktop/appRoute";
@@ -272,5 +274,83 @@ describe("C116 the note panel's fold Entidades", () => {
     const line = heads()[2]!.closest("section")!.querySelector("p")!;
     expect(line.textContent).toBe("Nenhuma entidade nesta nota.");
     expect(line.className).toBe("mf-dim");
+  });
+});
+
+describe("C145 the gallery's stories of the two views", () => {
+  const tree = loadTree();
+  const mounted = async (file: "entitiesStory" | "summariesStory") => {
+    const Story = lazy(() =>
+      file === "entitiesStory"
+        ? import("../../gallery/entitiesStory")
+        : import("../../gallery/summariesStory"),
+    );
+    renderWith(
+      <Suspense fallback={null}>
+        <Story />
+      </Suspense>,
+      { lang: "pt-BR" },
+    );
+    await waitFor(() => expect(document.querySelectorAll(".ent-view, .sum-view").length).toBeGreaterThan(0));
+  };
+  const text = (el: Element | null) => el?.textContent ?? "";
+
+  for (const [Name, file, id, title] of [
+    ["EntitiesStory", "entitiesStory", "entities", "Entidades"],
+    ["SummariesStory", "summariesStory", "summaries", "Resumos"],
+  ] as const)
+    it(`C145 the gallery's index registers the story ${title} through its own lazy module`, () => {
+      const main = tree.get("gallery/main.tsx")!;
+      expect(main).toContain(`const ${Name} = lazy(() => import("./${file}"));`);
+      expect(main).toMatch(
+        new RegExp(`<Story id="${id}" title="${title}">\\s*<Suspense fallback=\\{null\\}>\\s*<${Name} />`),
+      );
+      expect(tree.has(`gallery/${file}.tsx`)).toBe(true);
+    });
+
+  it("C145 Entidades renders its four frames without error: empty with the card off, an entity open with mentions, duplicates, a correction and a batch, the card with none, the view off", async () => {
+    await mounted("entitiesStory");
+    const views = [...document.querySelectorAll<HTMLElement>(".ent-view")];
+    expect(views).toHaveLength(4);
+    const [empty, open, none, viewOff] = views as [HTMLElement, HTMLElement, HTMLElement, HTMLElement];
+    expect(text(empty.querySelector(".ent-empty .ent-line"))).toContain("Nenhuma entidade ainda.");
+    expect(text(empty.querySelector(".ent-ai .ent-ai-state .ent-line"))).toBe("Nenhum lote ainda.");
+    expect(empty.querySelector(".ent-ai-top button")!.getAttribute("aria-pressed")).toBe("false");
+
+    expect(text(open.querySelector(".ent-pname"))).toBe("Ana Souza");
+    expect(text(open.querySelector(".ent-mentions h3"))).toBe("MENÇÕES (2)");
+    expect(text(open.querySelector(".ent-dup .ent-name"))).toBe("Ana Sousa");
+    expect(text(open.querySelector(".ent-corrows li span"))).toMatch(/^Juntou com A\. Souza em \d\d\/\d\d$/);
+    expect(text(open.querySelector(".ent-ai .notes-fold-head"))).toBe("Sugestões (2)");
+    expect(open.querySelectorAll(".ent-sugg")).toHaveLength(2);
+    expect(text(open.querySelector(".ent-ai .ent-ai-state .ent-line"))).toMatch(
+      /^Último lote: \d\d\/\d\d, 2 sugestões$/,
+    );
+
+    expect(text(none.querySelector(".ent-ai > .ent-small:last-child"))).toBe("Nenhuma sugestão nova.");
+    expect(none.querySelector(".ent-ai-top button")!.getAttribute("aria-pressed")).toBe("true");
+
+    expect(text(viewOff.querySelector(".ent-off .ent-line"))).toContain("Entidades desligadas.");
+    expect(text(viewOff.querySelector(".ent-off button"))).toBe("Ligar");
+  });
+
+  it("C145 Resumos renders its three frames without error: the list with fresh, stale, missing and generating and a stale summary open; a summary being generated; the view off", async () => {
+    await mounted("summariesStory");
+    const views = [...document.querySelectorAll<HTMLElement>(".sum-view")];
+    expect(views).toHaveLength(3);
+    const [list, generating, off] = views as [HTMLElement, HTMLElement, HTMLElement];
+    const states = [...list.querySelectorAll(".sum-row .sum-state")].map((s) => text(s));
+    expect(states).toEqual([
+      "Velho: 3 mudaram, 1 saiu, 2 novas",
+      "Sem resumo",
+      expect.stringMatching(/^Atual · \d\d\/\d\d$/),
+      "Gerando…",
+    ]);
+    expect(text(list.querySelector(".sum-pname"))).toBe("Projects");
+    expect(list.querySelector(".sum-stale")).not.toBeNull();
+    expect(list.querySelectorAll(".sum-par")).toHaveLength(2);
+    expect(generating.querySelector(".sum-panel")).not.toBeNull();
+    expect(text(generating)).toContain("Gerando…");
+    expect(text(off.querySelector(".sum-off"))).toContain("Resumos está desligado");
   });
 });

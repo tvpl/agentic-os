@@ -222,11 +222,21 @@ describe("C120 the mode summaries of the brain (door 8)", () => {
 
 describe("C130 each view is its own chunk, fetched the first time its route opens", () => {
   const VIEWS = [
-    ["EntitiesView", "brain/entities/EntitiesView.tsx", "./entities/EntitiesView"],
-    ["SummariesView", "brain/summaries/SummariesView.tsx", "./summaries/SummariesView"],
+    [
+      "EntitiesView",
+      "brain/entities/EntitiesView.tsx",
+      "./entities/EntitiesView",
+      "gallery/entitiesStory.tsx",
+    ],
+    [
+      "SummariesView",
+      "brain/summaries/SummariesView.tsx",
+      "./summaries/SummariesView",
+      "gallery/summariesStory.tsx",
+    ],
   ] as const;
 
-  for (const [name, file, spec] of VIEWS)
+  for (const [name, file, spec, story] of VIEWS)
     it(`C130 ${name} is reached only through lazyRoute(import()) of BrainViewSwitch: neither entry loads it, or its folder's view, before its route opens`, () => {
       const tree = loadTree();
       expect(tree.get("brain/BrainViewSwitch.tsx")!).toContain(
@@ -253,7 +263,9 @@ describe("C130 each view is its own chunk, fetched the first time its route open
             !/\.test\./.test(f) && !f.endsWith("/testkit.tsx") && edgesOf(tree, f).some((e) => e.to === file),
         )
         .sort();
-      expect(importers).toEqual(["brain/BrainViewSwitch.tsx"]);
+      // and the gallery's story of the view (C145), which main.tsx loads lazily
+      expect(importers).toEqual(["brain/BrainViewSwitch.tsx", story]);
+      expect(edgesOf(tree, "gallery/main.tsx").find((e) => e.to === story)?.how).toBe("dynamic");
       expect(edgesOf(tree, "brain/BrainViewSwitch.tsx").find((e) => e.to === file)?.how).toBe("dynamic");
     });
 });
