@@ -402,3 +402,119 @@ describe("C134 an entity's detail names only what the caller reads", () => {
     });
   });
 });
+
+describe("C147 an add entity by audience", () => {
+  /** The `add` an owner accepted: the row `writeCorrection` stores for it (`accept` writes this shape). */
+  function accepted(w: MemoriaWorld, name: string, aliases: string[]) {
+    w.ctx.db
+      .prepare("INSERT INTO entity_overrides (action, a, b, name, created_at) VALUES ('add', ?, ?, ?, ?)")
+      .run(name.toLowerCase(), JSON.stringify({ kind: "projeto", aliases }), name, Date.now());
+    w.ctx.entities.invalidate();
+  }
+  const ADD = { key: "projeto:projeto sigilo", name: "Projeto Sigilo", alias: "Sigilo X" };
+
+  async function setup(w: MemoriaWorld, root: string, hide: "devices" | "agents") {
+    const hidden = path.join(root, "sigilo");
+    w.put(path.join(root, "aberta.md"), "notas #aberta\n");
+    w.put(path.join(hidden, "ata.md"), "O Projeto Sigilo atrasou.\n");
+    w.update((s) => {
+      s.folderAccess = [
+        {
+          path: hidden,
+          agents: hide === "agents" ? "hide" : "read",
+          devices: hide === "devices" ? "hide" : "read",
+        },
+      ];
+    });
+    accepted(w, ADD.name, [ADD.alias]);
+    await w.index();
+    // the owner lists it through the hidden note, and merges it into the visible tag
+    const owner = await w.call("GET", "/api/memory/entities");
+    expect(owner.body.items.find((e: Json) => e.key === ADD.key)).toMatchObject({
+      files: 1,
+      aliases: [ADD.alias],
+    });
+    expect((await w.call("GET", `/api/memory/entities/${enc(ADD.key)}`)).status).toBe(200);
+  }
+
+  async function sees(w: MemoriaWorld, who: string, headers: Record<string, string>) {
+    const list = await w.call("GET", "/api/memory/entities?limit=200", undefined, headers);
+    expect(list.status, who).toBe(200);
+    expect(
+      list.body.items.map((e: Json) => e.key),
+      who,
+    ).toEqual(["tag:aberta"]);
+    expect((await w.call("GET", `/api/memory/entities?q=sigilo`, undefined, headers)).body.total, who).toBe(
+      0,
+    );
+    expect(
+      code(await w.call("GET", `/api/memory/entities/${enc(ADD.key)}`, undefined, headers)),
+      who,
+    ).toEqual([404, "not_found"]);
+    const tag = await w.call("GET", `/api/memory/entities/${enc("tag:aberta")}`, undefined, headers);
+    expect(JSON.stringify([list.body, tag.body]), who).not.toMatch(/sigilo/i);
+  }
+
+  it("C147 a device: the hidden note's add lists nothing, a correction merging it into a visible tag names neither it nor its alias; the owner lists it with files 1", async () => {
+    await fresh(async (w, root) => {
+      await setup(w, root, "devices");
+      // an owner's merge of the add into the visible tag: its row is the visible name only
+      const merged = await w.call("POST", "/api/memory/entities/corrections", {
+        action: "merge",
+        key: "tag:aberta",
+        other: ADD.key,
+      });
+      expect(merged.status, JSON.stringify(merged.body)).toBe(200);
+      const device = w.device(["content"]);
+      await sees(w, "device", device);
+      const row = (await w.call("GET", `/api/memory/entities/${enc("tag:aberta")}`, undefined, device)).body
+        .corrections;
+      expect(row.map((c: Json) => c.names)).toEqual([["aberta"]]);
+    });
+  });
+
+  it("C147 a run's rc_ and the principal mcp, with the folder hidden from agents: the same; a device that reads the folder lists it", async () => {
+    await fresh(async (w, root) => {
+      await setup(w, root, "agents");
+      await w.call("POST", "/api/memory/entities/corrections", {
+        action: "merge",
+        key: "tag:aberta",
+        other: ADD.key,
+      });
+      await sees(w, "run", w.run("read_only").headers);
+      await sees(w, "mcp", mcpOf(w));
+      const device = await w.call("GET", "/api/memory/entities?limit=200", undefined, w.device(["content"]));
+      expect(device.body.items.map((e: Json) => e.name)).toEqual(["Projeto Sigilo"]);
+    });
+  });
+
+  it("C147 an add no file mentions is listed to the owner with files 0 and to nobody else", async () => {
+    await fresh(async (w, root) => {
+      w.put(path.join(root, "aberta.md"), "notas #aberta\n");
+      accepted(w, "Zeca Pagodinho", ["Zeca"]);
+      await w.index();
+      const key = "projeto:zeca pagodinho";
+      const owner = await w.call("GET", "/api/memory/entities");
+      expect(owner.body.items.find((e: Json) => e.key === key)).toMatchObject({
+        files: 0,
+        aliases: ["Zeca"],
+      });
+      for (const [who, headers] of [
+        ["device", w.device(["content"])],
+        ["run", w.run("read_only").headers],
+        ["mcp", mcpOf(w)],
+      ] as const) {
+        const list = await w.call("GET", "/api/memory/entities?limit=200", undefined, headers);
+        expect(
+          list.body.items.map((e: Json) => e.key),
+          who,
+        ).toEqual(["tag:aberta"]);
+        expect(JSON.stringify(list.body), who).not.toMatch(/zeca/i);
+        expect(
+          code(await w.call("GET", `/api/memory/entities/${enc(key)}`, undefined, headers)),
+          who,
+        ).toEqual([404, "not_found"]);
+      }
+    });
+  });
+});

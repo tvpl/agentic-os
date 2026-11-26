@@ -160,6 +160,11 @@ export function nameCandidates(
 export interface DedupOptions {
   /** The signature of a norm (default `nameSignature`); a test gives fixed ones. */
   signature?: (norm: string) => Uint32Array;
+  /**
+   * An audience other than the owner: an `add` counts only through a mention of its name or an alias in the rows, and its
+   * aliases only as those rows write them. The owner's accepted names are the owner's, and list with no mention.
+   */
+  mentionedAddsOnly?: boolean;
 }
 
 /** An `add` correction's `b`: the kind and the aliases of the accepted entity (Landing 3a). */
@@ -290,6 +295,7 @@ export function computeEntities(
     if (c.action !== "add") continue;
     const payload = addPayload(c.b);
     if (!payload) continue;
+    if (options.mentionedAddsOnly && ![c.a, ...payload.aliases.map(entityNorm)].some((n) => byNorm.has(n))) continue;
     uf.add(c.a);
     adds.set(c.a, { ...payload, name: c.name ?? c.a });
     for (const alias of payload.aliases) {
@@ -360,7 +366,7 @@ export function computeEntities(
       const names = (byNorm.get(norm) ?? []).map((m) => m.name);
       if (names.length > 0) aliasByNorm.set(norm, mostFrequent(names));
     }
-    for (const alias of add?.aliases ?? []) {
+    for (const alias of options.mentionedAddsOnly ? [] : (add?.aliases ?? [])) {
       const norm = entityNorm(alias);
       if (norm !== "" && norm !== canonical && !aliasByNorm.has(norm)) aliasByNorm.set(norm, alias);
     }
@@ -512,20 +518,20 @@ export class EntityReader {
   }
 
   /** Work the view out from the index (no cache). */
-  compute(allow: Allow): EntityView {
+  compute(allow: Allow, mentionedAddsOnly = false): EntityView {
     const corrections = readCorrections(this.db);
     const rows = liveMentions(readMentions(this.db, allow), corrections);
-    const entities = computeEntities(rows, corrections);
+    const entities = computeEntities(rows, corrections, { mentionedAddsOnly });
     const byNorm = new Map<string, Entity>();
     for (const e of entities) for (const n of e.norms) byNorm.set(n, e);
     return { rows, corrections, entities, byKey: new Map(entities.map((e) => [e.key, e])), byNorm };
   }
 
-  /** The view of `audience` (a key that names who reads and what is hidden from them). */
-  read(audience: string, allow: Allow): EntityView {
+  /** The view of `audience` (a key that names who reads and what is hidden from them); `mentionedAddsOnly` for any but the owner. */
+  read(audience: string, allow: Allow, mentionedAddsOnly = false): EntityView {
     const cached = this.cache.get(audience);
     if (cached) return cached;
-    const view = this.compute(allow);
+    const view = this.compute(allow, mentionedAddsOnly);
     this.cache.set(audience, view);
     return view;
   }

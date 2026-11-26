@@ -773,3 +773,43 @@ describe("C139 the corrections at their own layer, one case per row", () => {
     expect(computeEntities(twoTags(), both, { signature })).toHaveLength(1);
   });
 });
+
+describe("C147 an add is listed to an audience only through mentions it reads", () => {
+  const add = (aliases: string[] = ["Sigilo X"]) =>
+    correction(1, "add", "projeto sigilo", JSON.stringify({ kind: "projeto", aliases }), "Projeto Sigilo");
+  const nome = (src: number, name: string) => mention(src, "nome", "projeto", name);
+  const reads = { mentionedAddsOnly: true };
+
+  it("C147 the owner lists an add with no mention (files 0, its aliases); an audience's rows with none drop it", () => {
+    const owner = computeEntities([], [add()]);
+    expect(owner.map((e) => [e.key, e.files, e.aliases])).toEqual([
+      ["projeto:projeto sigilo", 0, ["Sigilo X"]],
+    ]);
+    expect(computeEntities([], [add()], reads)).toEqual([]);
+    // the rows of other names change nothing
+    expect(computeEntities([mention(5, "tag", "tag", "aberta")], [add()], reads).map((e) => e.key)).toEqual([
+      "tag:aberta",
+    ]);
+  });
+
+  it("C147 an audience that reads a mention of the name lists the entity, with the aliases it reads and no other", () => {
+    const seen = computeEntities([nome(2, "Projeto Sigilo")], [add()], reads);
+    expect(seen.map((e) => [e.key, e.files, e.aliases])).toEqual([["projeto:projeto sigilo", 1, []]]);
+    const both = computeEntities([nome(2, "Projeto Sigilo"), nome(3, "Sigilo X")], [add()], reads);
+    expect(both.map((e) => [e.files, e.aliases])).toEqual([[2, ["Sigilo X"]]]);
+  });
+
+  it("C147 an add no mention backs does not rename or retype a visible entity the owner merged it into", () => {
+    const rows = [mention(1, "tag", "tag", "aberta")];
+    const merged = [add(), correction(2, "merge", "aberta", "projeto sigilo")];
+    const owner = computeEntities(rows, merged);
+    expect(owner.map((e) => [e.key, e.kind, e.name])).toEqual([
+      ["projeto:projeto sigilo", "projeto", "Projeto Sigilo"],
+    ]);
+    const seen = computeEntities(rows, merged, reads);
+    expect(seen.map((e) => [e.key, e.kind, e.name, e.aliases])).toEqual([
+      ["tag:aberta", "tag", "aberta", []],
+    ]);
+    expect(JSON.stringify(seen.map((e) => [e.name, e.aliases]))).not.toMatch(/sigilo/i);
+  });
+});

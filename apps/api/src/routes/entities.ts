@@ -19,6 +19,8 @@ export const entityView = (ctx: AppContext, view: AccessView): ReturnType<AppCon
   ctx.entities.read(
     `${view.audience ?? "owner"}\u0000${JSON.stringify(view.settings.excludes)}`,
     view.rowFilter(),
+    // the owner's accepted names list with no mention; any other audience reads one only through a mention
+    view.audience !== null,
   );
 
 /**

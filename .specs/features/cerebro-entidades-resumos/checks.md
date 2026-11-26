@@ -1565,3 +1565,13 @@ bundle:check` exit 0; every `Proof:` line of C146 passes run alone and runs only
   by name reads the same list as `entities`; the fix is `listEntities` matching `shownOf(e)` (canonical norm and aliases), and
   `shownNorms` of C134 now builds on the same helper.
 - **Abandoned:** nothing.
+
+Status of batch F3 (C147-C149, the round 2 fixes):
+
+- C147, an `add` entity is listed to an audience only through mentions it reads: closed. `computeEntities` lists an accepted
+  name (and its aliases) to the owner with no mention (`files: 0`), as before; with `mentionedAddsOnly` (the reader passes
+  it for the device, the run's `rc_` and `mcp`, `entityView`) an `add` counts only when a row of the audience carries its
+  name or an alias, and its aliases show only as those rows write them. Without it a non-owner listed the entity and its
+  aliases with no mention, and an owner's merge of it into a visible entity renamed and retyped that entity for them. The
+  leak (the old `entities.ts` and `routes/entities.ts` in a scratch worktree) fails all 6 new cases. Proofs:
+  `entidades.access` (C147 3), `entidades.layer` (C147 3)
