@@ -4,7 +4,7 @@ Profile: ui
 Plan: `.specs/features/cerebro-entidades-resumos/plan.md`
 Design: `.specs/features/cerebro-entidades-resumos/design.md` (binding for the screens of S6, S7 and the S8 section)
 
-145 checks (C1-C132, C133 of `## Correções do lote F` and C134-C145 of `## Correções da rodada 1`) in 8 slices + cross-cutting · 10 one-way doors · open questions: none, the plan's two answered by the
+146 checks (C1-C132, C133 of `## Correções do lote F` and C134-C146 of `## Correções da rodada 1`) in 8 slices + cross-cutting · 10 one-way doors · open questions: none, the plan's two answered by the
 owner on 24/11/2026 and S8 approved the same day (AD-054)
 
 The plan's slices are kept: S1-S5 and S8 are the core and the API, "Cross-cutting, API" holds what every new or changed route
@@ -846,10 +846,37 @@ stories are registered in the gallery's index and render without error; the `cer
 Proof: `npm run test -w apps/command-centre -- src/brain/entities/entitiesEntries.test.tsx -t "C145 "`
 Proof: `npx vitest run tests/entidades.contract.test.ts -t "C132 "`
 
+**C146** - A search never confirms a hidden name, for the four audiences (owner, device, run, `mcp`): with a visible profile `Ana
+Souza` merged by the owner with a term `Projeto Sigilo` that lives only in files hidden from the audience, `GET
+/api/memory/entities?q=projeto sigilo` for the device, the run's `rc_` and `mcp` lists no item and `total` 0 (the filter matches
+only the norms the audience's own entities show: a canonical norm and its aliases, never a norm only a hidden file holds), and
+`q=ana` lists the entity; the owner's `q=projeto sigilo` lists it; the MCP tools `entities { query: "sigilo" }` answers `No
+entity matched.` and `entity { name: "Projeto Sigilo" }` is an `isError` `Entity not found: Projeto Sigilo`; the same at the
+layer (`listEntities` with a hidden-only norm in `norms`). The leak found by the orchestrator at `core/src/memory/entities.ts`
+`listEntities` (`e.norms.some(...)`), the sibling of C134 (round 1 gap 1, found after the report)
+Proof: `npx vitest run tests/entidades.access.test.ts -t "C146 "`
+Proof: `npx vitest run tests/entidades.layer.test.ts -t "C146 "`
+Proof: `npx vitest run tests/entidades.mcp.test.ts -t "C146 "`
+
 Readings of round 1's lower-weight notes, settled by the orchestrator (for the owner's screen session, `STATE.md`, Perguntas ao
 dono): the stale sentence and the row follow the table's template and have no singular form ("1 fontes mudaram"); the off state of
 Entidades also drops the search field and the AI card, while C114 claims only that the header and the support line stay; the
 door 5 outsider limit is open question 3.
+
+## Correções do lote F1
+
+Recorded by the orchestrator on 26/11/2026 from the builder's report of batch F1 (reported, not edited by it).
+
+- **C141, literal corrected:** the route returns the run's own status in `lastBatch.status` (`queued`, `running`,
+  `waiting_approval`, `done`, `failed`, `cancelled`, `timed_out`, `interrupted`), because `SuggestionBatchSchema.status` is
+  `RunStatusSchema` and the view reads the three open ones; "→ `running`" meant "is open", and `batchOutcome` at the layer is
+  `running` for all three. The route cases assert the seeded status plus no suggestion and `409 suggestions_in_progress`.
+- **C142, literal corrected:** the key pattern admits upper-case and accented letters, so `perfil:Ana Souza` is a well-formed key
+  of no entity (`404 not_found`); `400 validation` is for the forms the contract refuses (`pessoa:ana`, `ana`, `perfil:`, a double
+  space, a hyphen).
+- **C140, reading kept:** the five batch conditions are decided by `autoSuggestionBatch(ctx, now)` with a fixed clock and no HTTP
+  or index pass, not by a separate pure function.
+- **C146 added** for a leak the builder flagged unverified and the orchestrator confirmed in the code; built in batch F2.
 
 ## Coverage
 
