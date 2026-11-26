@@ -1457,3 +1457,25 @@ Souza` answers `404 not_found`, not `400`); not changed, since the pattern is th
   gzip 645 053 B (+18 338 over `cerebro-perguntar`, at most 647 195; +2 759 since batch G), CSS gzip 88 194 B (+2 332, at
   most 88 934); `scripts/bundle-baseline.json` re-measured. Proofs: `entitiesEntries.test.tsx` (C145 4),
   `entidades.contract` (C132 1)
+
+- **Boundary (batch F1):** C134-C145 closed at `def4651` (C136 at `2995e29`, C134 at `95f2176`, C135 at `2c6694e`, C140-C143 at
+  `2fe9d56`, C139 at `188eba5`, C137 at `b7db823`, C144 at `f105e34`, C138 at `b4e725f`, C145 at `def4651`). On that tree `npm
+run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0; every `Proof:` line of C134-C145 passes run
+  alone and runs only its check's cases (C134 2 + 2, C135 3, C136 3 + 1, C137 3, C138 2 in the browser, C139 11, C140 2 + 6, C141 9 +
+  1, C142 2, C143 3, C144 4 + 1, C145 4, `entidades.contract` C132 1); `npx vitest run` at the root has one failure,
+  `tests/paineis.refresh.test.ts` C13 (as on the base: 3805 passed, 3 skipped); the command-centre suite passes (2260). The
+  round 1 faults F1, F3, F4 and F5 and the audience leak each fail the new cases when put back in a scratch worktree. Routes
+  185, no event, migration or route added; the whole feature weighs 645 053 B of JS gzip and 88 194 B of CSS gzip, +18 338 and
+  +2 332 over `cerebro-perguntar` (the ceiling is +20 480 and +3 072).
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) Landing 11a: the "Correções"
+  rows name the other side by the shown name, found client-side (the detail's own names, `related`, `duplicates`, else the
+  entities list by `q`), the contract unchanged; (b) C134: a correction is listed when one of its names is a name the
+  audience's entities show (canonical or alias), with `names` cut to those, so a rename of a name only hidden files hold is
+  not listed; (c) C138 found a real defect (the 320px column wrapped "Pedir sugestões agora" and the suggestion's buttons
+  under their text, at the left), fixed with `margin-inline-start: auto`; (d) C141: at the route, `lastBatch.status` is the
+  run's own status for `queued` and `waiting_approval` (the contract), not the check's literal `"running"`, which holds for
+  `batchOutcome` at the layer; (e) C142: the key's pattern admits an upper-case or accented letter (`perfil:Ana Souza` is
+  `404`, not `400`), left as the contract has it; (f) C140's batch conditions are proven through `autoSuggestionBatch(ctx,
+now)` with a fixed clock, not a separate pure function; (g) C145 changed one existing assertion (`summariesEntries` C130
+  importers gain the story, as `askEntries` C99 did).
+- **Abandoned:** nothing.
