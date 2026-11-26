@@ -4,7 +4,7 @@ Profile: ui
 Plan: `.specs/features/cerebro-entidades-resumos/plan.md`
 Design: `.specs/features/cerebro-entidades-resumos/design.md` (binding for the screens of S6, S7 and the S8 section)
 
-146 checks (C1-C132, C133 of `## Correções do lote F` and C134-C146 of `## Correções da rodada 1`) in 8 slices + cross-cutting · 10 one-way doors · open questions: none, the plan's two answered by the
+149 checks (C1-C132, C133 of `## Correções do lote F`, C134-C146 of `## Correções da rodada 1` and C147-C149 of `## Correções da rodada 2`) in 8 slices + cross-cutting · 10 one-way doors · open questions: none, the plan's two answered by the
 owner on 24/11/2026 and S8 approved the same day (AD-054)
 
 The plan's slices are kept: S1-S5 and S8 are the core and the API, "Cross-cutting, API" holds what every new or changed route
@@ -858,6 +858,30 @@ Proof: `npx vitest run tests/entidades.access.test.ts -t "C146 "`
 Proof: `npx vitest run tests/entidades.layer.test.ts -t "C146 "`
 Proof: `npx vitest run tests/entidades.mcp.test.ts -t "C146 "`
 
+**C147** - An `add` entity is listed to an audience only through mentions that audience reads, for the four audiences (owner, device,
+run, `mcp`): with a note in a folder hidden from devices and agents saying `Projeto Sigilo` and an accepted `add` of that name
+(alias `Sigilo X`), `GET /api/memory/entities` and `GET /api/memory/entities/projeto:projeto sigilo` for the device, the run's
+`rc_` and `mcp` list no item (404 for the detail, `total` 0 for `q=sigilo`) and name neither the entity nor its aliases anywhere
+in a `corrections[]` row; the owner lists it with `files: 1`; a device that reads the folder lists it; an `add` whose name no
+file mentions at all is listed to the owner (`files: 0`) and to nobody else; at the layer, `computeEntities` over an audience's
+rows drops an `add` with no mention (round 2 gap 1; the sibling of C134 and C146; AC 33)
+Proof: `npx vitest run tests/entidades.access.test.ts -t "C147 "`
+Proof: `npx vitest run tests/entidades.layer.test.ts -t "C147 "`
+
+**C148** - The corrections' writer at its own layer (`writeCorrection` over a database and an owner view, no HTTP), one asserted
+case per row, each refused or accepted for its own reason alone (L-039): `merge` of a pair with an active `separate`, and
+`separate` of a pair with an active `merge` (`correction_conflict`, each); `separate` of one norm (`validation`); 1 999 active
+corrections accepted and the 2 000th refused (`too_many_corrections`), undone ones not counted; `undo` of an unknown id
+(`not_found`) and of an undone one (`correction_conflict`); `accept` and `reject` of a suggestion no longer pending
+(`correction_conflict`); `accept` without `mergeWith` stores `add` with the aliases as JSON in `b`, with `mergeWith` stores
+`merge` of the two norms (round 2 gap 2, Test policy row 1; C23-C28)
+Proof: `npx vitest run tests/entidades.layer.test.ts -t "C148 "`
+
+**C149** - The correction row of an entity whose other side can no longer be named by any list (ignored since, hidden from the
+audience) never reads with an empty name: it reads without "com <nome>" (`Juntou em 24/11`, `Separou em 24/11`), with no double
+space, in the component and in the browser (round 2 lower-weight note; design.md "Correções")
+Proof: `npm run test -w apps/command-centre -- src/brain/entities/EntitiesView.test.tsx -t "C149 "`
+
 Readings of round 1's lower-weight notes, settled by the orchestrator (for the owner's screen session, `STATE.md`, Perguntas ao
 dono): the stale sentence and the row follow the table's template and have no singular form ("1 fontes mudaram"); the off state of
 Entidades also drops the search field and the AI card, while C114 claims only that the header and the support line stay; the
@@ -877,6 +901,18 @@ Recorded by the orchestrator on 26/11/2026 from the builder's report of batch F1
 - **C140, reading kept:** the five batch conditions are decided by `autoSuggestionBatch(ctx, now)` with a fixed clock and no HTTP
   or index pass, not by a separate pure function.
 - **C146 added** for a leak the builder flagged unverified and the orchestrator confirmed in the code; built in batch F2.
+
+## Correções da rodada 2
+
+Written by the orchestrator on 26/11/2026 from `verification.md` round 2 (FAIL at `ecd240e`: every check proven, five faults
+injected and five killed, one more audience leak and one Test policy gap). The fix is one batch (F3), sequential, only on
+green; round 3 is the last before the owner. The Coverage and Binding sources rows that drifted are corrected here too:
+
+- `term exclusions (4)` is credited to C6 and C136 (the wikilink address); the `GET /api/memory/entities/:key` `400` to C32
+  and C142; a new row `search audiences (4)`: owner C146 · device C146 · run C146 · `mcp` C146; a new row `add entity by
+audience (4)`: owner C147 · device C147 · run C147 · `mcp` C147.
+- Binding sources: C137, C138, C144, C145 and C149 are added to the rows they check (`primitivas` for the toggle, the
+  design's arrangement for C138, the corrections fold and the gallery).
 
 ## Coverage
 
@@ -899,6 +935,8 @@ Recorded by the orchestrator on 26/11/2026 from the builder's report of batch F1
 | run statuses for summaries (8)                                                      | `queued` C56, C63 · `running` C56, C63 · `waiting_approval` C56, C63 · `done` C63 · `failed` C56, C63 · `cancelled` C56, C63 · `timed_out` C56, C63 · `interrupted` C56, C63                                     | -        |
 | run statuses for suggestion batches (8)                                             | `queued` C141 · `running` C141 · `waiting_approval` C141 · `done` C141 · `failed` C141 · `cancelled` C141 · `timed_out` C141 · `interrupted` C141                                                                | -        |
 | audiences for an entity's detail corrections and duplicates (4)                     | owner C134 · device C134 · run C134 · `mcp` C134                                                                                                                                                                 | -        |
+| search audiences (4)                                                                | owner C146 · device C146 · run C146 · `mcp` C146                                                                                                                                                                 | -        |
+| `add` entity by audience (4)                                                        | owner C147 · device C147 · run C147 · `mcp` C147                                                                                                                                                                 | -        |
 | right-aligned items (5)                                                             | toggle C138 · ask-now button C138 · accept/reject C138 · list-row count C138 · summary-row button C138                                                                                                           | -        |
 | gallery stories (2 views)                                                           | Entidades C145 · Resumos C145                                                                                                                                                                                    | -        |
 | summary check rows (10)                                                             | not a source C60 · section C60 · policy C60 · hidden C60 · size C60 · paragraphs C60 · 0 citations C60 · 7 citations C60 · text C60 · JSON/v C60                                                                 | -        |
@@ -909,7 +947,7 @@ Recorded by the orchestrator on 26/11/2026 from the builder's report of batch F1
 | automatic batch conditions (5)                                                      | after 24 h C74 · before 24 h C74 · run open C74 · nothing changed C74 · never C74                                                                                                                                | -        |
 | `GET /api/memory/recall` (changed) statuses (3)                                     | 200 C43, C48 · 400 C43 · 404 C43                                                                                                                                                                                 | -        |
 | `GET /api/memory/entities` statuses (4)                                             | 200 C31 · 400 C32 · 404 C33 · 409 C17                                                                                                                                                                            | -        |
-| `GET /api/memory/entities/:key` statuses (4)                                        | 200 C34 · 400 C32 · 404 C35 · 409 C17                                                                                                                                                                            | -        |
+| `GET /api/memory/entities/:key` statuses (4)                                        | 200 C34 · 400 C32, C142 · 404 C35 · 409 C17                                                                                                                                                                      | -        |
 | `POST /api/memory/entities/corrections` statuses (5)                                | 200 C21 · 400 C23 · 403 C29 · 404 C29 · 409 C27                                                                                                                                                                  | -        |
 | `GET /api/memory/summaries` statuses (2)                                            | 200 C68 · 403 C70                                                                                                                                                                                                | -        |
 | `GET /api/memory/summaries/:kind/:id` statuses (3)                                  | 200 C59 · 403 C70 · 404 C70                                                                                                                                                                                      | -        |
