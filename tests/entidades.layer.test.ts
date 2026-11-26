@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { entityNorm, extractMentions, extractTerms } from "../core/src/memory/entityMentions.js";
 import {
+  CorrectionError,
   coMentionEdges,
   computeEntities,
   entityDetail,
@@ -12,6 +13,9 @@ import {
   nameCandidates,
   activeCorrections,
   nameSignature,
+  readCorrections,
+  writeCorrection,
+  type SuggestionChoice,
   normEntropy,
   passesGate,
   type CorrectionRow,
@@ -811,5 +815,134 @@ describe("C147 an add is listed to an audience only through mentions it reads", 
       ["tag:aberta", "tag", "aberta", []],
     ]);
     expect(JSON.stringify(seen.map((e) => [e.name, e.aliases]))).not.toMatch(/sigilo/i);
+  });
+});
+
+describe("C148 the corrections' writer at its own layer, one case per row", () => {
+  let world: NotesViewWorld;
+  beforeAll(async () => {
+    world = await notesViewWorld("mordomo-entidades-writer-");
+  });
+  afterAll(async () => {
+    await world.close();
+  });
+  beforeEach(() => {
+    world.ctx.db.prepare("DELETE FROM entity_overrides").run();
+  });
+
+  const rows = () => [
+    mention(1, "tag", "tag", "projeto atlas"),
+    mention(2, "tag", "tag", "projeto zeus"),
+    mention(3, "tag", "tag", "cliente x"),
+  ];
+  /** The owner's view as the reader builds it, over the corrections stored now. */
+  const view = (): EntityView => {
+    const corrections = readCorrections(world.ctx.db);
+    const entities = computeEntities(rows(), corrections);
+    const byNorm = new Map<string, (typeof entities)[number]>();
+    for (const e of entities) for (const n of e.norms) byNorm.set(n, e);
+    return { rows: rows(), corrections, entities, byKey: new Map(entities.map((e) => [e.key, e])), byNorm };
+  };
+  const NOW = 1_000;
+  const write = (
+    input: Parameters<typeof writeCorrection>[2],
+    suggestion?: (id: string) => SuggestionChoice | null,
+  ) => writeCorrection(world.ctx.db, view(), input, NOW, suggestion);
+  const reason = (fn: () => unknown): string | null => {
+    try {
+      fn();
+      return null;
+    } catch (err) {
+      if (!(err instanceof CorrectionError)) throw err;
+      return err.reason;
+    }
+  };
+  const ATLAS = "tag:projeto atlas";
+  const ZEUS = "tag:projeto zeus";
+
+  it("C148 merge of a pair with an active separate is correction_conflict; with the separate undone it is written", () => {
+    const separate = write({ action: "separate", key: ATLAS, other: ZEUS });
+    expect(reason(() => write({ action: "merge", key: ATLAS, other: ZEUS }))).toBe("correction_conflict");
+    world.ctx.db.prepare("UPDATE entity_overrides SET undone_at = 5 WHERE id = ?").run(separate.id);
+    expect(write({ action: "merge", key: ATLAS, other: ZEUS })).toMatchObject({
+      action: "merge",
+      a: "projeto atlas",
+      b: "projeto zeus",
+    });
+  });
+
+  it("C148 separate of a pair with an active merge is correction_conflict", () => {
+    write({ action: "merge", key: ATLAS, other: ZEUS });
+    // the pair is one entity now: the two keys name it, so the opposite is found by the stored norms
+    expect(reason(() => write({ action: "separate", key: ATLAS, other: ZEUS }))).toBe("correction_conflict");
+  });
+
+  it("C148 separate of one norm is validation, and nothing is written", () => {
+    expect(reason(() => write({ action: "separate", key: ATLAS, other: ATLAS }))).toBe("validation");
+    expect(readCorrections(world.ctx.db)).toEqual([]);
+  });
+
+  it("C148 1 999 active corrections accept the next, 2 000 refuse it with too_many_corrections; undone ones are not counted", () => {
+    const insert = world.ctx.db.prepare(
+      "INSERT INTO entity_overrides (action, a, b, name, created_at, undone_at) VALUES ('ignore', ?, NULL, NULL, 1, ?)",
+    );
+    for (let i = 0; i < 1999; i++) insert.run(`nome ${i}`, null);
+    // plenty of undone ones beside them
+    for (let i = 0; i < 50; i++) insert.run(`velho ${i}`, 9);
+    expect(write({ action: "ignore", key: ATLAS })).toMatchObject({ action: "ignore" });
+    expect(readCorrections(world.ctx.db).filter((c) => c.undoneAt === null)).toHaveLength(2000);
+    expect(reason(() => write({ action: "ignore", key: ZEUS }))).toBe("too_many_corrections");
+  });
+
+  it("C148 undo of an unknown id is not_found; of an undone one correction_conflict; of an active one writes undone_at", () => {
+    expect(reason(() => write({ action: "undo", id: 999 }))).toBe("not_found");
+    const done = write({ action: "ignore", key: ATLAS });
+    expect(write({ action: "undo", id: done.id })).toMatchObject({ id: done.id, undoneAt: NOW });
+    expect(reason(() => write({ action: "undo", id: done.id }))).toBe("correction_conflict");
+  });
+
+  const choice = (over: Partial<SuggestionChoice> = {}): SuggestionChoice => ({
+    kind: "perfil",
+    name: "Bruno Lima",
+    norm: "bruno lima",
+    aliases: ["Bruno"],
+    ...over,
+  });
+
+  it("C148 accept and reject of a suggestion no longer pending are correction_conflict, each", () => {
+    // the norm is an entity's already
+    const taken = choice({ name: "Projeto Atlas", norm: "projeto atlas" });
+    expect(reason(() => write({ action: "accept", suggestion: "s:0" }, () => taken))).toBe(
+      "correction_conflict",
+    );
+    expect(reason(() => write({ action: "reject", suggestion: "s:0" }, () => taken))).toBe(
+      "correction_conflict",
+    );
+    // the norm was rejected
+    write({ action: "reject", suggestion: "s:1" }, () => choice());
+    expect(reason(() => write({ action: "accept", suggestion: "s:1" }, () => choice()))).toBe(
+      "correction_conflict",
+    );
+    expect(reason(() => write({ action: "reject", suggestion: "s:1" }, () => choice()))).toBe(
+      "correction_conflict",
+    );
+    // and the suggestion that is no suggestion
+    expect(reason(() => write({ action: "accept", suggestion: "s:9" }, () => null))).toBe("not_found");
+  });
+
+  it("C148 accept without mergeWith stores an add: the norm in a, the name, and the kind and aliases as JSON in b", () => {
+    const row = write({ action: "accept", suggestion: "s:0" }, () => choice());
+    expect(row).toMatchObject({ action: "add", a: "bruno lima", name: "Bruno Lima" });
+    expect(JSON.parse(row.b!)).toEqual({ kind: "perfil", aliases: ["Bruno"] });
+    expect(readCorrections(world.ctx.db).map((c) => [c.action, c.a, c.b, c.name])).toEqual([
+      ["add", "bruno lima", '{"kind":"perfil","aliases":["Bruno"]}', "Bruno Lima"],
+    ]);
+  });
+
+  it("C148 accept with mergeWith stores a merge of the target's canonical norm and the suggestion's norm", () => {
+    const row = write({ action: "accept", suggestion: "s:0" }, () =>
+      choice({ name: "Projeto Zeuz", norm: "projeto zeuz", mergeWith: ATLAS }),
+    );
+    expect(row).toMatchObject({ action: "merge", a: "projeto atlas", b: "projeto zeuz", name: null });
   });
 });

@@ -1575,3 +1575,10 @@ Status of batch F3 (C147-C149, the round 2 fixes):
   aliases with no mention, and an owner's merge of it into a visible entity renamed and retyped that entity for them. The
   leak (the old `entities.ts` and `routes/entities.ts` in a scratch worktree) fails all 6 new cases. Proofs:
   `entidades.access` (C147 3), `entidades.layer` (C147 3)
+- C148, the corrections' writer at its own layer: closed. No code changed: `writeCorrection` over the test home's database and an
+  owner view, one case per row (merge against an active `separate` and, with it undone, written; `separate` against an active
+  `merge`; `separate` of one norm, nothing written; 1 999 active accept the next with 50 undone beside them and 2 000 refuse
+  it; `undo` of an unknown, an active and an undone id; `accept` and `reject` of a suggestion whose norm is an entity's or
+  was rejected, and of none; `accept` as an `add` with the JSON in `b`, and with `mergeWith` as a `merge`). "The 2 000th
+  refused" is read as the rule of door 3 (at most 2 000 active): the write that makes 2 000 is accepted and the next is
+  refused. Proof: `entidades.layer` (C148 8)
