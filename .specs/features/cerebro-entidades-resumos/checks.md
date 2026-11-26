@@ -1517,3 +1517,13 @@ Status of batch F2 (C146, the round 1 sibling leak):
   `entities { query: "sigilo" }` answers `No entity matched.` and `entity { name: "Projeto Sigilo" }` `Entity not found`.
   The leak (`e.norms.some(...)`) put back in a scratch worktree fails all 4 new cases. No new door. Proofs:
   `entidades.access` (C146 2), `entidades.layer` (C146 1), `entidades.mcp` (C146 1)
+
+- **Boundary (batch F2):** C146 closed at `d2733fb`. On that tree `npm run build`, `npm run typecheck`, `npm run lint` and `npm run
+bundle:check` exit 0; every `Proof:` line of C146 passes run alone and runs only its check's cases (access 2, layer 1, mcp 1);
+  `npx vitest run` at the root has one failure, `tests/paineis.refresh.test.ts` C13 (as on the base: 3809 passed, 3
+  skipped); no UI file changed, so the command-centre suite and the bundle (645 053 B of JS gzip, 88 194 B of CSS gzip) are
+  those of batch F1.
+- **Settled mid-build:** nothing by the owner. Builder decision inside the approved shape: the MCP tools needed no code, since `entity`
+  by name reads the same list as `entities`; the fix is `listEntities` matching `shownOf(e)` (canonical norm and aliases), and
+  `shownNorms` of C134 now builds on the same helper.
+- **Abandoned:** nothing.
