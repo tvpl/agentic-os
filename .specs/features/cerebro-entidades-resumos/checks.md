@@ -1588,3 +1588,19 @@ Status of batch F3 (C147-C149, the round 2 fixes):
   (C129 holds every `entities.` key to a string of design.md), no double space, and a row that can be named still reads its
   name. The cases fail on the old row (2 of 2). In the browser both shells read the same (`entidades.spec.ts` C149 2, beyond
   the proof line). Proof: `EntitiesView.test.tsx` (C149 2)
+
+- **Boundary (batch F3):** C147-C149 closed at `b60d680` (C147 at `16e7eff`, C148 at `0bda407`, C149 at `b60d680`). On that tree `npm
+run build`, `npm run typecheck`, `npm run lint` and `npm run bundle:check` exit 0; every `Proof:` line of C147-C149 passes run
+  alone and runs only its check's cases (C147 3 + 3, C148 8, C149 2); `npx vitest run` at the root has one failure,
+  `tests/paineis.refresh.test.ts` C13 (as on the base: 3823 passed, 3 skipped); the command-centre suite passes (2262).
+  Routes 185, no event, migration or route added; the whole feature weighs 645 106 B of JS gzip and 88 194 B of CSS gzip, +18 391
+  and +2 332 over `cerebro-perguntar` (the ceiling is +20 480 and +3 072; `scripts/bundle-baseline.json` re-measured).
+- **Settled mid-build:** nothing by the owner. Builder decisions inside the approved shape: (a) C147: the reader takes a flag
+  (`mentionedAddsOnly`, set by `entityView` for every audience but the owner) and `computeEntities` ignores an `add` no row of
+  the audience carries, so an `add` the owner merged into a visible entity no longer renames or retypes it for them; an audience
+  that reads a mention of an alias only still sees the entity under the `add`'s name; (b) C148 reads "the 2 000th refused" as
+  door 3 does (the write that makes 2 000 active is accepted, the next refused); (c) C149 cuts the table's own template at the
+  placeholder instead of adding two copy keys, since C129 holds every `entities.` key to a string of design.md. Read, not
+  built: `suggestionKnown` hands the agents' batch every rejected norm, which came from a suggestion over files the agents
+  read when it was made.
+- **Abandoned:** nothing.

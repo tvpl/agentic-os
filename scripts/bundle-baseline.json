@@ -130,9 +130,9 @@
     },
     {
       "feature": "cerebro-entidades-resumos",
-      "reason": "the views Entidades and Resumos of the Second Brain, each a chunk of its own with its stylesheet (EntitiesView with its tabs, search, list, entity panel, corrections and the AI suggestions card; SummariesView with its list of areas and contexts, the open summary with its citations, the Fontes fold, the stale band and the card of how it was made; each fetched the first time /brain/entities or /brain/summaries is opened), the note panel's Entidades fold, their entries in both shells (the two toolbar buttons, the two scene menu rows, the two palette commands and the view:entities and view:summaries keys) the gallery's two stories (Entidades and Resumos, each through its view's own chunk) and the strings in two languages; measured on the build of batch F1 (the round 1 fixes: the shown names of the corrections, the card's buttons at the right and the two stories; before them batch G's 15 579 B of JS gzip and 2 318 B of CSS gzip): 17.9 KB JS gzip (18 338 B) and 2.3 KB CSS gzip (2 332 B) above cerebro-perguntar",
-      "jsRaw": 1964024,
-      "jsGzip": 645053,
+      "reason": "the views Entidades and Resumos of the Second Brain, each a chunk of its own with its stylesheet (EntitiesView with its tabs, search, list, entity panel, corrections and the AI suggestions card; SummariesView with its list of areas and contexts, the open summary with its citations, the Fontes fold, the stale band and the card of how it was made; each fetched the first time /brain/entities or /brain/summaries is opened), the note panel's Entidades fold, their entries in both shells (the two toolbar buttons, the two scene menu rows, the two palette commands and the view:entities and view:summaries keys) the gallery's two stories (Entidades and Resumos, each through its view's own chunk) and the strings in two languages; measured on the build of batch F3 (the round 1 and 2 fixes: the shown names of the corrections and the row with no name, the card's buttons at the right and the two stories; before them batch G's 15 579 B of JS gzip and 2 318 B of CSS gzip): 17.9 KB JS gzip (18 391 B) and 2.3 KB CSS gzip (2 332 B) above cerebro-perguntar",
+      "jsRaw": 1964071,
+      "jsGzip": 645106,
       "cssRaw": 392095,
       "cssGzip": 88194
     }
